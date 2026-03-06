@@ -16,6 +16,9 @@ public class CharacterStateDoc
     public List<string> CommunicationNotes { get; set; } = new();
     public List<string> ThingsMarkCares    { get; set; } = new();
 
+    // Self — how she sees and understands herself (appearance, fears, inner world)
+    public List<string> SelfConcept { get; set; } = new();
+
     // Growth edges — valence learned from experience
     public Dictionary<string, float> TopicValence { get; set; } = new();
     public Dictionary<string, float> ToneValence  { get; set; } = new();
