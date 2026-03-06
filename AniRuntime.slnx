@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AniRuntime.Actions/AniRuntime.Actions.csproj" />
+    <Project Path="src/AniRuntime.Core/AniRuntime.Core.csproj" />
+    <Project Path="src/AniRuntime.LLM/AniRuntime.LLM.csproj" />
+    <Project Path="src/AniRuntime.Loops/AniRuntime.Loops.csproj" />
+    <Project Path="src/AniRuntime.Memory/AniRuntime.Memory.csproj" />
+    <Project Path="src/AniRuntime.Perception/AniRuntime.Perception.csproj" />
+    <Project Path="src/AniRuntime.Service/AniRuntime.Service.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AniRuntime.Tests/AniRuntime.Tests.csproj" />
+  </Folder>
+</Solution>
