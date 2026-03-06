@@ -1,6 +1,8 @@
+using System.Text.Json;
 using AniRuntime.Actions;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
+using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Memory;
@@ -61,6 +63,33 @@ try
     builder.Services.AddHostedService<AniHeartbeatService>();
 
     var host = builder.Build();
+
+    // ── Seed character state on first run (idempotent) ────────────────────────
+    await using (var scope = host.Services.CreateAsyncScope())
+    {
+        var memory   = scope.ServiceProvider.GetRequiredService<IMemoryService>();
+        var existing = await memory.GetCharacterStateAsync();
+        if (existing.CoreTraits.Count == 0)
+        {
+            var seedPath = Path.Combine(AppContext.BaseDirectory, "data", "character-seed.json");
+            if (File.Exists(seedPath))
+            {
+                var json = await File.ReadAllTextAsync(seedPath);
+                var doc  = JsonSerializer.Deserialize<CharacterStateDoc>(json,
+                               new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (doc is not null)
+                {
+                    await memory.SaveCharacterStateAsync(doc);
+                    Log.Information("Character state seeded from {Path}", seedPath);
+                }
+            }
+            else
+            {
+                Log.Warning("No character-seed.json found at {Path} — starting with empty character state", seedPath);
+            }
+        }
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)

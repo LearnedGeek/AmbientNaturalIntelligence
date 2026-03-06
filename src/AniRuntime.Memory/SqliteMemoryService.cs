@@ -195,7 +195,9 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         if (string.IsNullOrEmpty(raw))
             return new CharacterStateDoc();
 
-        return JsonSerializer.Deserialize<CharacterStateDoc>(raw) ?? new CharacterStateDoc();
+        return JsonSerializer.Deserialize<CharacterStateDoc>(raw,
+                   new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? new CharacterStateDoc();
     }
 
     public async Task SaveCharacterStateAsync(CharacterStateDoc doc, CancellationToken ct = default)

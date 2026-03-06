@@ -17,6 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="data\character-seed.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AniRuntime.Core\AniRuntime.Core.csproj" />
     <ProjectReference Include="..\AniRuntime.Memory\AniRuntime.Memory.csproj" />
     <ProjectReference Include="..\AniRuntime.Loops\AniRuntime.Loops.csproj" />
