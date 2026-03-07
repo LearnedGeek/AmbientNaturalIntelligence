@@ -10,6 +10,9 @@ public class CharacterStateDoc
     public List<string> FamilyContext { get; set; } = new();
     public string Occupation          { get; set; } = "Bookstore";
 
+    // Primary connection — the person this character reaches out to
+    public string PrimaryContactName { get; set; } = string.Empty;
+
     // Relationship layer — grows through experience
     public List<string> LearnedAboutMark   { get; set; } = new();
     public List<string> SharedExperiences  { get; set; } = new();
