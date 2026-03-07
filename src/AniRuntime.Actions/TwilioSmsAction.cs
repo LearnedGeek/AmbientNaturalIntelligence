@@ -30,6 +30,16 @@ public class TwilioSmsAction : IAniAction
             return false;
         }
 
+        if (string.IsNullOrWhiteSpace(_options.AccountSid) ||
+            string.IsNullOrWhiteSpace(_options.AuthToken)  ||
+            string.IsNullOrWhiteSpace(_options.FromNumber)  ||
+            string.IsNullOrWhiteSpace(_options.ToNumber))
+        {
+            _log.LogWarning("Twilio credentials not configured — logging outreach instead of sending");
+            _log.LogInformation("[DRY RUN] Would have sent SMS: {Message}", decision.Message);
+            return true;
+        }
+
         TwilioClient.Init(_options.AccountSid, _options.AuthToken);
 
         var message = await MessageResource.CreateAsync(
