@@ -4,9 +4,12 @@
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
 # ANI Runtime — live data (seed files ARE tracked, live databases are not)
-data/*.db
-data/*.db-wal
-data/*.db-shm
+**/data/*.db
+**/data/*.db-wal
+**/data/*.db-shm
+
+# Large model files — not tracked in git
+*.gguf
 
 # User-specific files
 *.rsuser
@@ -421,3 +424,5 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+NOTES.md

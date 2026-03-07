@@ -6,7 +6,7 @@ unblocks the next.
 
 ---
 
-## Task 1 — Seed Ani's Character State
+## ✅ Task 1 — Seed Ani's Character State (COMPLETE)
 
 **Why first:** Every cognitive cycle reconstructs Ani's identity from
 `CharacterStateDoc`. Until this is seeded, the system runs with a blank
@@ -120,7 +120,7 @@ Confirm `coreTraits` and `learnedAboutMark` are populated.
 
 ---
 
-## Task 2 — First Live Run
+## ✅ Task 2 — First Live Run (COMPLETE)
 
 **Why second:** Character state must exist before the first real cognitive
 cycle. Once it does, run the service against a real Ollama instance and observe
@@ -328,8 +328,8 @@ start to notice that it is a Tuesday, or that the weekend is coming.
 
 | Task | Done when |
 |---|---|
-| 1. Character seed | `dotnet run` + SQLite query confirms `coreTraits` populated |
-| 2. First live run | Full cognitive cycle logged without errors; inner thought saved to DB |
+| ✅ 1. Character seed | `dotnet run` + SQLite query confirms `coreTraits` populated |
+| ✅ 2. First live run | Full cognitive cycle logged without errors; inner thought saved to DB |
 | 3. Semantic search | New test passes for correct reason; relevant memories appear in context |
 | 4. Time perception | Time-context lines appear in cycle logs; inner thoughts reference the day |
 
