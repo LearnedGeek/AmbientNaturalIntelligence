@@ -25,9 +25,12 @@ public class AniOptions
 
 public class OllamaOptions
 {
-    public string BaseUrl    { get; set; } = "http://localhost:11434";
-    public string ChatModel  { get; set; } = "llama3.2";
-    public string EmbedModel { get; set; } = "nomic-embed-text";
+    public string BaseUrl              { get; set; } = "http://localhost:11434";
+    public string ChatModel            { get; set; } = "llama3.2";
+    public string? InnerMonologueModel { get; set; }
+    public string EmbedModel           { get; set; } = "nomic-embed-text";
+
+    public string ResolvedInnerMonologueModel => InnerMonologueModel ?? ChatModel;
 }
 
 public class TwilioOptions

@@ -139,7 +139,7 @@ public class CognitiveCycleProcessor
         ContextSnapshot snapshot, CancellationToken ct)
     {
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
-        var thought       = await _ollama.ChatAsync(
+        var thought       = await _ollama.InnerMonologueChatAsync(
             thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 

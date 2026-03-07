@@ -28,9 +28,19 @@ public class OllamaClient : IOllamaClient
         _log     = log;
     }
 
-    public async Task<string> ChatAsync(
+    public Task<string> ChatAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
         CancellationToken ct = default)
+        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, ct);
+
+    public Task<string> InnerMonologueChatAsync(
+        string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
+        CancellationToken ct = default)
+        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, ct);
+
+    private async Task<string> SendChatAsync(
+        string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
+        CancellationToken ct)
     {
         var messages = new List<object>
         {
@@ -44,7 +54,7 @@ public class OllamaClient : IOllamaClient
 
         var request = new
         {
-            model    = _options.ChatModel,
+            model    = model,
             messages = messages,
             stream   = false,
         };
@@ -58,7 +68,7 @@ public class OllamaClient : IOllamaClient
                                  .ConfigureAwait(false);
 
         var content = body?.Message?.Content ?? string.Empty;
-        _log.LogDebug("Ollama response ({Chars} chars)", content.Length);
+        _log.LogDebug("Ollama [{Model}] response ({Chars} chars)", model, content.Length);
         return content;
     }
 
