@@ -6,6 +6,7 @@ using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Memory;
+using AniRuntime.Perception;
 using Microsoft.Extensions.Options;
 using Serilog;
 
@@ -52,7 +53,9 @@ try
     builder.Services.AddSingleton<IAniAction, TwilioSmsAction>();
     builder.Services.AddSingleton<IAniAction, MemoryWriteAction>();
 
-    // ── Perception sources (Phase 2+, uncomment as implemented) ──────────────
+    // ── Perception sources ────────────────────────────────────────────────────
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton<IPerceptionSource, TimePerceptionSource>();
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, BlogPerceptionSource>();
     // builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
