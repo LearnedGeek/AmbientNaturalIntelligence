@@ -1,5 +1,23 @@
 namespace AniRuntime.Core.Models;
 
+/// <summary>
+/// Mark's known daily routine — what he's likely doing at a given time.
+/// Used by MarkStatePerceptionSource to infer his current state.
+/// Times are local (Central Time).
+/// </summary>
+public class MarkRoutine
+{
+    /// <summary>
+    /// Default weekday schedule. Key = "HH:mm", value = activity description.
+    /// </summary>
+    public Dictionary<string, string> Weekday  { get; set; } = new();
+
+    /// <summary>
+    /// Day-specific overrides. Key = DayOfWeek name (e.g. "Thursday"), value = time→activity pairs.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, string>> DayOverrides { get; set; } = new();
+}
+
 public class CharacterStateDoc
 {
     // Identity — seeded from training, rarely changes
@@ -21,6 +39,9 @@ public class CharacterStateDoc
 
     // Self — how she sees and understands herself (appearance, fears, inner world)
     public List<string> SelfConcept { get; set; } = new();
+
+    // Mark's routine — what he's likely doing at a given time
+    public MarkRoutine? MarkRoutine { get; set; }
 
     // Growth edges — valence learned from experience
     public Dictionary<string, float> TopicValence { get; set; } = new();
