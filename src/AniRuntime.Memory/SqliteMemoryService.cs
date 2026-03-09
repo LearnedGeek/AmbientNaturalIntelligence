@@ -25,14 +25,19 @@ namespace AniRuntime.Memory;
 public class SqliteMemoryService : IMemoryService, IDisposable
 {
     private readonly string                          _connectionString;
+    private readonly IOllamaClient?                  _ollama;
     private readonly ILogger<SqliteMemoryService>    _log;
     // Keeps in-memory databases alive for the lifetime of this service instance.
     // For file-based databases this is unused but harmless.
     private readonly SqliteConnection                _keepAlive;
 
-    public SqliteMemoryService(IOptions<AniOptions> options, ILogger<SqliteMemoryService> log)
+    public SqliteMemoryService(
+        IOptions<AniOptions> options,
+        ILogger<SqliteMemoryService> log,
+        IOllamaClient? ollama = null)
     {
-        _log = log;
+        _log    = log;
+        _ollama = ollama;
         var dbPath = options.Value.MemoryDbPath;
 
         if (dbPath.Equals(":memory:", StringComparison.OrdinalIgnoreCase)
@@ -67,6 +72,19 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
     {
+        // Auto-embed content if no embedding provided and Ollama is available
+        if (record.Embedding is null && _ollama is not null && !string.IsNullOrWhiteSpace(record.Content))
+        {
+            try
+            {
+                record.Embedding = await _ollama.EmbedAsync(record.Content, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Failed to generate embedding for {Type} record — saving without", record.Type);
+            }
+        }
+
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
@@ -118,10 +136,51 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     public async Task<IEnumerable<MemoryRecord>> SearchAsync(
         string query, int topK = 10, CancellationToken ct = default)
     {
-        // Phase 1: return all records that have embeddings; caller provides the query text.
-        // Full semantic search (embedding the query then cosine similarity) requires
-        // an active OllamaClient — that dependency is injected at the service level in Phase 2.
-        // For now, return the most recent records with embeddings as a useful approximation.
+        // If no embedding client available, fall back to recency
+        if (_ollama is null)
+        {
+            _log.LogDebug("Semantic search unavailable (no embedding client) — falling back to recency");
+            return await FallbackRecentAsync(topK, ct).ConfigureAwait(false);
+        }
+
+        float[] queryEmbedding;
+        try
+        {
+            queryEmbedding = await _ollama.EmbedAsync(query, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to embed search query — falling back to recency");
+            return await FallbackRecentAsync(topK, ct).ConfigureAwait(false);
+        }
+
+        if (queryEmbedding.Length == 0)
+            return await FallbackRecentAsync(topK, ct).ConfigureAwait(false);
+
+        // Fetch all records with embeddings and rank by cosine similarity in C#.
+        // Brute-force is correct at our expected data volume (thousands of records).
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL";
+
+        var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+
+        var ranked = candidates
+            .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
+            .Select(r => (record: r, similarity: CosineSimilarity(queryEmbedding, r.Embedding!)))
+            .OrderByDescending(x => x.similarity)
+            .Take(topK)
+            .ToList();
+
+        _log.LogDebug("Semantic search: {Candidates} candidates, top score={TopScore:F3}",
+            candidates.Count, ranked.Count > 0 ? ranked[0].similarity : 0f);
+
+        return ranked.Select(x => x.record);
+    }
+
+    private async Task<IEnumerable<MemoryRecord>> FallbackRecentAsync(int limit, CancellationToken ct)
+    {
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
@@ -132,9 +191,22 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             LIMIT $limit
             """;
 
-        cmd.Parameters.AddWithValue("$limit", topK);
-
+        cmd.Parameters.AddWithValue("$limit", limit);
         return await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+    }
+
+    private static float CosineSimilarity(float[] a, float[] b)
+    {
+        float dot = 0, normA = 0, normB = 0;
+        for (var i = 0; i < a.Length; i++)
+        {
+            dot   += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+
+        var denom = MathF.Sqrt(normA) * MathF.Sqrt(normB);
+        return denom == 0 ? 0f : dot / denom;
     }
 
     public async Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default)

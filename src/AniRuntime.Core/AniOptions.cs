@@ -54,3 +54,16 @@ public class TwilioOptions
     public string FromNumber  { get; set; } = string.Empty;
     public string ToNumber    { get; set; } = string.Empty;
 }
+
+public class RssOptions
+{
+    public bool          Enabled         { get; set; } = true;
+    public List<RssFeed> Feeds           { get; set; } = new();
+    public int           MaxItemsPerFeed { get; set; } = 3;
+}
+
+public class RssFeed
+{
+    public string Name { get; set; } = string.Empty;
+    public string Url  { get; set; } = string.Empty;
+}

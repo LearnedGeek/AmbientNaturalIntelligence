@@ -68,6 +68,18 @@ public static class PromptBuilder
             sections.AddRange(externalMemories.Select(m => $"  - {m.Content}"));
         }
 
+        // Relevant memories from semantic search — things connected to current perceptions
+        var relevantMemories = snapshot.RelevantMemory
+            .Where(m => m.Type != MemoryType.InnerThought)
+            .Take(3)
+            .ToList();
+
+        if (relevantMemories.Count > 0)
+        {
+            sections.Add("Memories that feel connected to right now:");
+            sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+        }
+
         // Feed recent inner-thought topics so the model can avoid repeating itself
         var recentTopics = snapshot.RecentMemory
             .Where(m => m.Type == MemoryType.InnerThought)
