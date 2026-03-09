@@ -35,6 +35,11 @@ public class CognitiveCycleProcessor
 
     private DateTimeOffset _lastCycleAt = DateTimeOffset.UtcNow;
 
+    // Dedup cache: prevents saving the same perception ("Mark is probably at the gym")
+    // every cycle. Key = summary text, Value = when it was last persisted.
+    private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
+    private static readonly TimeSpan PerceptionDedupeWindow = TimeSpan.FromHours(4);
+
     public CognitiveCycleProcessor(
         IMemoryService                 memory,
         IOllamaClient                  ollama,
@@ -59,6 +64,10 @@ public class CognitiveCycleProcessor
 
         // Phase 1: Perception
         var perceptions = await PollPerceptionSourcesAsync(ct).ConfigureAwait(false);
+
+        // Persist notable perceptions so they accumulate embeddings and feed future
+        // semantic search. Without this, perceptions are ephemeral — gone after one cycle.
+        await PersistNotablePerceptionsAsync(perceptions, ct).ConfigureAwait(false);
 
         // Phase 2: Context snapshot — built once, shared across all phases
         var snapshot = await BuildContextSnapshotAsync(perceptions, ct).ConfigureAwait(false);
@@ -121,6 +130,54 @@ public class CognitiveCycleProcessor
         return events;
     }
 
+    /// <summary>
+    /// Saves notable perceptions (RSS articles, mark-state inferences) as memory records
+    /// so they get embedded and become findable via semantic search in future cycles.
+    /// Low-relevance or time-only perceptions are skipped to avoid noise.
+    /// </summary>
+    private async Task PersistNotablePerceptionsAsync(
+        List<PerceptionEvent> perceptions, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        // Evict stale entries from the dedup cache
+        var stale = _recentPerceptions
+            .Where(kv => now - kv.Value > PerceptionDedupeWindow)
+            .Select(kv => kv.Key).ToList();
+        foreach (var key in stale) _recentPerceptions.Remove(key);
+
+        foreach (var p in perceptions)
+        {
+            // Skip low-relevance perceptions (e.g. "It's 3:14 PM on a Tuesday")
+            // and time-source events which are always regenerated fresh
+            if (p.MarkRelevance < 0.25f || p.SourceName == "time")
+                continue;
+
+            // Skip if we recently saved an identical perception
+            if (_recentPerceptions.ContainsKey(p.Summary))
+                continue;
+
+            try
+            {
+                await _memory.SaveAsync(new MemoryRecord
+                {
+                    Type        = MemoryType.Perception,
+                    Content     = p.Summary,
+                    MarkValence = p.MarkRelevance,
+                    Importance  = p.MarkRelevance,
+                    SourceName  = p.SourceName,
+                    OccurredAt  = p.OccurredAt,
+                }, ct).ConfigureAwait(false);
+
+                _recentPerceptions[p.Summary] = now;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Failed to persist perception from {Source}", p.SourceName);
+            }
+        }
+    }
+
     private async Task<ContextSnapshot> BuildContextSnapshotAsync(
         List<PerceptionEvent> perceptions, CancellationToken ct)
     {
@@ -129,11 +186,30 @@ public class CognitiveCycleProcessor
         var recentMem   = await _memory.GetByTypeAsync(MemoryType.Episodic, 10, ct).ConfigureAwait(false);
         var openLoops   = await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false);
 
+        // Semantic search: use perceptions as the query to surface memories relevant
+        // to what Ani is currently experiencing — not just the most recent ones
+        var relevantMem = new List<MemoryRecord>();
+        if (perceptions.Count > 0)
+        {
+            var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
+            try
+            {
+                var results = await _memory.SearchAsync(searchQuery, 5, ct).ConfigureAwait(false);
+                relevantMem = results.ToList();
+                _log.LogDebug("Semantic search returned {Count} relevant memories", relevantMem.Count);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Semantic memory search failed — continuing without");
+            }
+        }
+
         return new ContextSnapshot
         {
             CharacterState = charState,
             DesireState    = desireState,
             RecentMemory   = recentMem.ToList(),
+            RelevantMemory = relevantMem,
             OpenLoops      = openLoops.ToList(),
             Perceptions    = perceptions,
             BuiltAt        = DateTimeOffset.UtcNow,

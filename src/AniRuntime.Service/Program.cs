@@ -46,6 +46,7 @@ try
     builder.Services.Configure<AniOptions>(config.GetSection("Ani"));
     builder.Services.Configure<OllamaOptions>(config.GetSection("Ollama"));
     builder.Services.Configure<TwilioOptions>(config.GetSection("Twilio"));
+    builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
 
     // ── Core services ─────────────────────────────────────────────────────────
     builder.Services.AddSingleton<IMemoryService, SqliteMemoryService>();
@@ -67,9 +68,10 @@ try
     // ── Perception sources ────────────────────────────────────────────────────
     builder.Services.AddSingleton(TimeProvider.System);
     builder.Services.AddSingleton<IPerceptionSource, TimePerceptionSource>();
+    builder.Services.AddHttpClient("rss");
+    builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
+    builder.Services.AddSingleton<IPerceptionSource, MarkStatePerceptionSource>();
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
-    // builder.Services.AddSingleton<IPerceptionSource, BlogPerceptionSource>();
-    // builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 
     // ── Cognitive cycle ───────────────────────────────────────────────────────
