@@ -31,16 +31,21 @@ public class OllamaClient : IOllamaClient
     public Task<string> ChatAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
         CancellationToken ct = default)
-        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, ct);
+        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, format: null, ct);
+
+    public Task<string> ChatJsonAsync(
+        string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
+        CancellationToken ct = default)
+        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, format: "json", ct);
 
     public Task<string> InnerMonologueChatAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
         CancellationToken ct = default)
-        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, ct);
+        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: null, ct);
 
     private async Task<string> SendChatAsync(
         string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
-        CancellationToken ct)
+        string? format, CancellationToken ct)
     {
         var messages = new List<object>
         {
@@ -52,12 +57,9 @@ public class OllamaClient : IOllamaClient
 
         messages.Add(new { role = "user", content = userMessage });
 
-        var request = new
-        {
-            model    = model,
-            messages = messages,
-            stream   = false,
-        };
+        object request = format is not null
+            ? new { model, messages, stream = false, format }
+            : new { model, messages, stream = false };
 
         var response = await _http.PostAsJsonAsync(
             "/api/chat", request, JsonOpts, ct).ConfigureAwait(false);

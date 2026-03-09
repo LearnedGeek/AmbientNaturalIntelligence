@@ -1,9 +1,11 @@
 using System.Text.Json;
 using AniRuntime.Actions;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AniRuntime.Loops;
 
@@ -28,6 +30,7 @@ public class CognitiveCycleProcessor
     private readonly DesireEngine                    _desire;
     private readonly AniActionDispatcher             _dispatcher;
     private readonly IEnumerable<IPerceptionSource>  _sources;
+    private readonly AniOptions                      _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor> _log;
 
     private DateTimeOffset _lastCycleAt = DateTimeOffset.UtcNow;
@@ -38,6 +41,7 @@ public class CognitiveCycleProcessor
         DesireEngine                   desire,
         AniActionDispatcher            dispatcher,
         IEnumerable<IPerceptionSource> sources,
+        IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
         _memory     = memory;
@@ -45,6 +49,7 @@ public class CognitiveCycleProcessor
         _desire     = desire;
         _dispatcher = dispatcher;
         _sources    = sources;
+        _aniOptions = aniOptions.Value;
         _log        = log;
     }
 
@@ -66,17 +71,17 @@ public class CognitiveCycleProcessor
             Type        = MemoryType.InnerThought,
             Content     = thought,
             MarkValence = valence,
-            Importance  = valence > 0.6f ? 0.8f : 0.3f,
+            Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
             OccurredAt  = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
 
-        _log.LogDebug("Inner thought (valence={Valence:F2}): {Thought}",
-            valence, thought[..Math.Min(80, thought.Length)]);
+        _log.LogInformation("Inner thought (valence={Valence:F2}): {Thought}",
+            valence, thought);
 
         // Phase 4: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
 
-        if (valence > 0.6f)
+        if (valence > (float)_aniOptions.ValenceTriggerThreshold)
             await _desire.AddTriggerAsync(
                 TriggerType.SpontaneousThought, valence,
                 $"thought: {thought[..Math.Min(60, thought.Length)]}", ct).ConfigureAwait(false);
@@ -153,7 +158,7 @@ public class CognitiveCycleProcessor
         string thought, CharacterStateDoc character, CancellationToken ct)
     {
         var prompt = PromptBuilder.BuildValenceScoringPrompt(thought, character);
-        var raw    = await _ollama.ChatAsync(
+        var raw    = await _ollama.ChatJsonAsync(
             prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
             .ConfigureAwait(false);
 
@@ -163,19 +168,50 @@ public class CognitiveCycleProcessor
     private async Task RunOutreachAsync(
         ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
+        // Step 1: Decision — should Ani reach out? (JSON, no message required)
         var outreachPrompt = PromptBuilder.BuildOutreachPrompt(snapshot, recentThought);
-        var raw            = await _ollama.ChatAsync(
+        var raw            = await _ollama.ChatJsonAsync(
             outreachPrompt.System, snapshot.RecentHistory, outreachPrompt.User, ct)
             .ConfigureAwait(false);
 
         var decision = ParseOutreachDecision(raw);
+        _log.LogDebug("Outreach decision raw: {Raw}", raw);
 
         if (!decision.ShouldReach)
         {
-            _log.LogDebug("Ani chose not to reach out: {Reasoning}", decision.Reasoning);
-            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(20), ct).ConfigureAwait(false);
+            // Genuine "no" — she considered it but chose not to. No cooldown.
+            // Instead, bump desire slightly — the "I want to but not yet" builds tension.
+            _log.LogInformation("Outreach decision: NO (confidence={Confidence:F2}) — {Reasoning}",
+                decision.Confidence, decision.Reasoning);
+            await _desire.AddTriggerAsync(
+                TriggerType.SpontaneousThought, 0.3f,
+                "considered reaching out but held back", ct).ConfigureAwait(false);
             return;
         }
+
+        // Step 2: Compose — free-text message generation (no JSON constraint)
+        var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, recentThought, decision.Reasoning ?? string.Empty);
+        var message = await _ollama.ChatAsync(
+            msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct)
+            .ConfigureAwait(false);
+
+        message = CleanOutreachMessage(message);
+        _log.LogInformation("Outreach message composed: {Message}", message);
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            _log.LogWarning("Outreach message was empty after composition — retrying next opportunity");
+            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Step 3: Light pronoun fix — only if third-person leaked through
+        var rewritten = await FixPronounsIfNeeded(message, snapshot.CharacterState, ct)
+            .ConfigureAwait(false);
+
+        decision.Message    = rewritten;
+        decision.ActionType = "sms";
 
         _log.LogInformation("Ani reaching out: {Message}", decision.Message);
 
@@ -189,6 +225,125 @@ public class CognitiveCycleProcessor
             Importance = 0.7f,
             OccurredAt = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Strips meta-commentary the model adds when roleplaying the act of texting.
+    /// The actual message is always the first paragraph; everything after a blank line
+    /// is the model reviewing/explaining its own work.
+    /// </summary>
+    private static string? CleanOutreachMessage(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+
+        var cleaned = raw.Trim().Trim('"');
+
+        // Take only the first paragraph — model puts meta-commentary after blank lines
+        var doubleNewline = cleaned.IndexOf("\n\n", StringComparison.Ordinal);
+        if (doubleNewline > 0)
+            cleaned = cleaned[..doubleNewline].Trim();
+
+        // Also catch single-newline commentary patterns like "that's the..." or "that's perfect..."
+        var lines = cleaned.Split('\n');
+        var messageParts = new List<string>();
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("that's ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("this is ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("i'm keeping it", StringComparison.OrdinalIgnoreCase))
+                break; // meta-commentary starts here
+            messageParts.Add(trimmed);
+        }
+        cleaned = string.Join("\n", messageParts).Trim();
+
+        // Remove trailing meta-commentary patterns
+        string[] trailingJunk = ["sent.", "your turn.", "(waiting)", "now wait for a reply...", "i can do this."];
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (var junk in trailingJunk)
+            {
+                if (cleaned.EndsWith(junk, StringComparison.OrdinalIgnoreCase))
+                {
+                    cleaned = cleaned[..^junk.Length].TrimEnd('\n', '\r', ' ');
+                    changed = true;
+                }
+            }
+        } while (changed);
+
+        // Hard cap: keep only the first 2 sentences — model ignores "1-2 sentences" in prompts
+        cleaned = TruncateToSentences(cleaned, maxSentences: 2);
+
+        return string.IsNullOrWhiteSpace(cleaned) ? raw.Trim() : cleaned;
+    }
+
+    /// <summary>
+    /// Keeps only the first N sentences from a message.
+    /// Sentence boundaries: '.', '!', '?' followed by whitespace or end-of-string.
+    /// Preserves trailing ellipsis (…, ...) without counting as a sentence end.
+    /// </summary>
+    private static string TruncateToSentences(string text, int maxSentences)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text;
+
+        var count = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (ch is not ('.' or '!' or '?')) continue;
+
+            // Skip ellipsis patterns (... or …)
+            if (ch == '.' && i + 1 < text.Length && text[i + 1] == '.') continue;
+
+            // Must be followed by whitespace or end-of-string to count as sentence end
+            if (i + 1 < text.Length && !char.IsWhiteSpace(text[i + 1])) continue;
+
+            count++;
+            if (count >= maxSentences)
+                return text[..(i + 1)].Trim();
+        }
+
+        return text; // fewer sentences than max — return as-is
+    }
+
+    /// <summary>
+    /// Light pronoun fix — only invoked if the message actually contains third-person references.
+    /// Avoids the rewrite pass completely when the message is already correct, which prevents
+    /// the model from "creatively improving" a perfectly good text into poetic nonsense.
+    /// </summary>
+    private async Task<string> FixPronounsIfNeeded(
+        string message, CharacterStateDoc character, CancellationToken ct)
+    {
+        // Quick check: does the message even contain third-person pronouns?
+        var lower = message.ToLowerInvariant();
+        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
+                             lower.Contains(" he ") || lower.StartsWith("he ") ||
+                             lower.Contains("him.") || lower.Contains("his.");
+
+        if (!hasThirdPerson)
+        {
+            _log.LogDebug("Outreach message already in second person — skipping rewrite");
+            return message;
+        }
+
+        var contact = string.IsNullOrWhiteSpace(character.PrimaryContactName)
+            ? "them" : character.PrimaryContactName;
+
+        var system = $"""
+            Fix ONLY the pronouns in this text message. Change "he"/"him"/"his" to "you"/"your".
+            Do NOT change anything else. Do NOT add words, commentary, or rewrite the message.
+            Return ONLY the fixed message text.
+            """;
+
+        var rewritten = await _ollama.ChatAsync(system, Array.Empty<ChatMessage>(), message, ct)
+            .ConfigureAwait(false);
+
+        rewritten = CleanOutreachMessage(rewritten);
+        _log.LogDebug("Pronoun fix: {Original} → {Rewritten}", message, rewritten);
+
+        return string.IsNullOrWhiteSpace(rewritten) ? message : rewritten.Trim();
     }
 
     // ── Parsing ───────────────────────────────────────────────────────────────
@@ -208,17 +363,38 @@ public class CognitiveCycleProcessor
         }
     }
 
-    private static OutreachDecision ParseOutreachDecision(string raw)
+    private OutreachDecision ParseOutreachDecision(string raw)
     {
         try
         {
-            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            return JsonSerializer.Deserialize<OutreachDecision>(raw.Trim(), opts)
-                   ?? new OutreachDecision { ShouldReach = false };
+            var doc = JsonDocument.Parse(raw.Trim());
+            var root = doc.RootElement;
+
+            var decision = new OutreachDecision
+            {
+                ShouldReach = root.TryGetProperty("shouldReach", out var sr) && sr.GetBoolean(),
+                Confidence = root.TryGetProperty("confidence", out var c) ? (float)c.GetDouble() : 0f,
+                Reasoning = root.TryGetProperty("reasoning", out var r) ? r.GetString() : null,
+            };
+
+            // triggersActedOn can be strings OR objects — handle both gracefully
+            if (root.TryGetProperty("triggersActedOn", out var ta) && ta.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in ta.EnumerateArray())
+                {
+                    var text = item.ValueKind == JsonValueKind.String
+                        ? item.GetString()
+                        : item.ToString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                        decision.TriggersActedOn.Add(text!);
+                }
+            }
+
+            return decision;
         }
         catch
         {
-            // Unparseable outreach decision defaults to no-reach — never dispatch on bad data
+            _log.LogDebug("Outreach parse failure, raw response: {Raw}", raw);
             return new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" };
         }
     }
