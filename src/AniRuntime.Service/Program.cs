@@ -27,7 +27,18 @@ try
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
         .WriteTo.Console()
-        .WriteTo.File("logs/ani-.log", rollingInterval: RollingInterval.Day));
+        // Journal — inner thoughts, outreach decisions, messages sent (queryable story)
+        .WriteTo.File("logs/ani-.log",
+            rollingInterval: RollingInterval.Day,
+            restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+            retainedFileCountLimit: 30)
+        // Diagnostic — everything, for debugging
+        .WriteTo.File("logs/ani-debug-.log",
+            rollingInterval: RollingInterval.Day,
+            restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug,
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+            retainedFileCountLimit: 7));
 
     var config = builder.Configuration;
 

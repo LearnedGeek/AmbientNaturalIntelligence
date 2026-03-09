@@ -41,7 +41,7 @@ public class AniHeartbeatService : BackgroundService
                 var state = await _desire.GetStateAsync(stoppingToken).ConfigureAwait(false);
                 var delay = _desire.ComputeNextWakeTime(state);
 
-                _log.LogDebug("Next cognitive cycle in {Minutes:F1} min", delay.TotalMinutes);
+                _log.LogInformation("Next cognitive cycle in {Minutes:F1} min", delay.TotalMinutes);
 
                 await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
                 await _cycle.RunAsync(stoppingToken).ConfigureAwait(false);
