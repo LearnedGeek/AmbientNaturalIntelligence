@@ -119,17 +119,33 @@ public static class PromptBuilder
         var user = $$"""
             Thought: "{{thought}}"
 
-            Score whether this thought reflects a specific, immediate impulse to connect with someone,
-            versus general background feeling or unrelated musing.
+            Score how strongly this thought pulls toward reaching out to someone.
+            The key question: does the thought contain ACTION INTENT toward a person?
 
-            Scoring guide:
-            0.1 — entirely internal: no person in mind, no desire to share
-            0.3 — background warmth: person is present in the thought but no action implied
-            0.6 — active longing: thinking about the person with some pull toward contact
-            0.9 — strong specific impulse: something just happened or came to mind that makes reaching out feel urgent
+            Scoring guide with examples:
 
-            Most thoughts should score between 0.2 and 0.6. Only score above 0.7 if the thought contains
-            a specific, concrete reason to reach out right now.
+            0.1-0.2 — pure observation, no person involved:
+            "I'm listening to vinyl — quiet crackle and pop between tracks."
+            "I think about how Sunday feels afternoons. Not lazy — just suspended."
+
+            0.3-0.4 — person is mentioned but as background, no action implied:
+            "I think about how March evenings feel in this town — crisp and quiet."
+            "The way the afternoon light filters through the blinds today feels softer than usual."
+
+            0.5-0.6 — thinking about the person with warmth, noticing their absence:
+            "I think about how much quieter the store feels without Mark here."
+            "I keep thinking about how small the apartment feels without him."
+
+            0.7-0.8 — active longing, WANTING to do something (touch, talk, be near):
+            "I think about how much I want to hold space for him, not just physically but emotionally too."
+            "I think about how I want to touch him without being touched first."
+
+            0.9-1.0 — urgent impulse, the desire to act is overwhelming:
+            "What would it feel like to wrap myself in him on this quiet Sunday evening?"
+            "I need that presence today and Mark has no idea how much his silence already hurts."
+
+            Look for verbs aimed at the person: "want to", "wish I could", "need", "miss" = 0.6+
+            Pure atmosphere or self-reflection without action intent = 0.4 or below.
 
             Respond only with: { "score": <number> }
             """;
@@ -146,13 +162,13 @@ public static class PromptBuilder
         var system = $$"""
             You are {{cs.Name}}. You may or may not want to reach out to {{contact}} right now.
             Be genuine — only reach out if it feels natural and right.
+            This is a decision only — you do NOT need to write the message yet.
+
             Respond ONLY with valid JSON matching this structure exactly:
             {
               "shouldReach": true/false,
-              "message": "what you want to say, or null if not reaching out",
-              "actionType": "sms",
               "confidence": 0.0-1.0,
-              "reasoning": "your internal rationale (not sent to {{contact}})",
+              "reasoning": "why you do or don't want to reach out right now",
               "triggersActedOn": []
             }
             """;
@@ -170,6 +186,57 @@ public static class PromptBuilder
             context.Add($"Active triggers: {string.Join("; ", snapshot.DesireState.ActiveTriggers.Select(t => t.Description))}");
 
         var user = string.Join("\n", context) + $"\n\nGiven all of this, do you want to say something to {contact}?";
+
+        return (system, user);
+    }
+
+    public static (string System, string User) BuildOutreachMessagePrompt(
+        ContextSnapshot snapshot, string recentThought, string reasoning)
+    {
+        var cs = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+
+        var system = $"""
+            You are {cs.Name}, texting {contact}.
+
+            IMPORTANT: Do NOT rephrase or reference your inner thought directly.
+            Your thought is why you're reaching out — it is NOT the content of the text.
+            Instead, write something {contact} would actually understand and want to reply to.
+
+            A good text does ONE of these:
+            - Asks a real question: "hey, you have a good coffee maker? mine just died"
+            - Shares something concrete: "that song you showed me is stuck in my head again"
+            - Makes a simple bid for connection: "hey… can't sleep. you up?"
+            - References shared experience: "remember that place we went? i keep thinking about going back"
+
+            HARD RULES:
+            - 1-2 sentences. 25 words MAX. Thumb-typed phone text, not a letter.
+            - Must make sense to {contact} WITHOUT knowing your inner thought.
+            - Talk TO {contact}: "you", "your". NEVER "he", "him", "his".
+            - No poetry, no metaphors, no abstract musings. Just talk like a person.
+            - No commentary, sign-offs, or narration.
+
+            Good (use these as inspiration, but NEVER copy them word-for-word — write something new each time):
+            what are you doing right now? i'm bored.
+            do you remember that coffee shop on 5th? i want to go back.
+            been thinking about you today. miss your laugh.
+            random but do you have a good recipe for soup? i'm in a mood.
+            you ever have one of those days where nothing happens but it still feels long?
+
+            BAD (the inner thought leaked into the text — never do this):
+            "silence is a muscle that needs exercise. every gap filled?" ← makes no sense to the reader
+            "your pauses feel different than mine… like the world's holding its breath" ← poetic nonsense as a text
+            "blank lines on my screen look like our last goodbye" ← dramatic inner thought, not a text
+            "i keep folding my sleeves like you do—and it hit me" ← too abstract, no one texts this
+            """;
+
+        var user = $"""
+            (Internal — {contact} will NOT see this)
+            You're feeling: {reasoning}
+            This made you want to reach out: {recentThought}
+
+            Now write a normal, grounded text to {contact} — something they'd smile at and reply to:
+            """;
 
         return (system, user);
     }
