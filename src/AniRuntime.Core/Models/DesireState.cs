@@ -5,9 +5,10 @@ public record DesireState
     public float          DesireToConnect      { get; set; }        // 0.0 – 1.0, builds over time
     public float          OutreachThreshold    { get; set; }        // randomised each evaluation
     public bool           CooldownActive       { get; set; }
+    public DateTimeOffset CooldownUntil        { get; set; }        // expiry — cooldown lifts automatically
     public DateTimeOffset LastOutreach         { get; set; }
     public DateTimeOffset LastInnerThought     { get; set; }
-    public DateTimeOffset LastMarkContact      { get; set; }
+    public DateTimeOffset LastMarkContact      { get; set; } = DateTimeOffset.UtcNow;
     public List<DesireTrigger> ActiveTriggers  { get; set; } = new();
     public float          CircadianModifier    { get; set; } = 1.0f;
 }

@@ -2,13 +2,14 @@ using AniRuntime.Core.Models;
 using AniRuntime.Loops;
 using AniRuntime.Tests.Infrastructure;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace AniRuntime.Tests;
 
 public class DesireEngineTests : AniTestBase
 {
-    private DesireEngine CreateEngine() => new(MockMemory.Object, DefaultOptions);
+    private DesireEngine CreateEngine() => new(MockMemory.Object, DefaultOptions, NullLogger<DesireEngine>.Instance);
 
     // ── ComputeNextWakeTime ────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ public class DesireEngineTests : AniTestBase
     [Fact]
     public async Task ShouldReachOutAsync_WhenCooldownActive_ReturnsFalse()
     {
-        var state = HighDesireState() with { CooldownActive = true };
+        var state = HighDesireState() with { CooldownActive = true, CooldownUntil = DateTimeOffset.UtcNow.AddMinutes(20) };
         MockMemory.Setup(m => m.GetDesireStateAsync(It.IsAny<CancellationToken>()))
                   .ReturnsAsync(state);
 
@@ -104,6 +105,28 @@ public class DesireEngineTests : AniTestBase
         var result = await engine.ShouldReachOutAsync();
 
         result.Should().BeFalse("cooldown must gate outreach regardless of desire level");
+    }
+
+    [Fact]
+    public async Task ShouldReachOutAsync_WhenCooldownExpired_LiftsCooldownAndEvaluates()
+    {
+        var state = HighDesireState() with
+        {
+            CooldownActive = true,
+            CooldownUntil = DateTimeOffset.UtcNow.AddMinutes(-1), // expired 1 minute ago
+        };
+        MockMemory.Setup(m => m.GetDesireStateAsync(It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(state);
+        MockMemory.Setup(m => m.SaveDesireStateAsync(It.IsAny<DesireState>(), It.IsAny<CancellationToken>()))
+                  .Returns(Task.CompletedTask);
+
+        var engine = CreateEngine();
+        // High desire + expired cooldown should pass at least sometimes
+        var trueCount = 0;
+        for (var i = 0; i < 100; i++)
+            if (await engine.ShouldReachOutAsync()) trueCount++;
+
+        trueCount.Should().BeGreaterThan(0, "expired cooldown should be lifted, allowing high-desire outreach");
     }
 
     [Fact]

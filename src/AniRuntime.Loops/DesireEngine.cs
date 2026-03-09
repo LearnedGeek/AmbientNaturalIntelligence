@@ -1,6 +1,7 @@
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AniRuntime.Loops;
@@ -14,13 +15,15 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class DesireEngine
 {
-    private readonly IMemoryService _memory;
-    private readonly AniOptions     _options;
+    private readonly IMemoryService         _memory;
+    private readonly AniOptions             _options;
+    private readonly ILogger<DesireEngine>  _log;
 
-    public DesireEngine(IMemoryService memory, IOptions<AniOptions> options)
+    public DesireEngine(IMemoryService memory, IOptions<AniOptions> options, ILogger<DesireEngine> log)
     {
         _memory  = memory;
         _options = options.Value;
+        _log     = log;
     }
 
     // ── Scheduling ────────────────────────────────────────────────────────────
@@ -62,10 +65,26 @@ public class DesireEngine
     public async Task<bool> ShouldReachOutAsync(CancellationToken ct = default)
     {
         var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        if (state.CooldownActive) return false;
 
-        var threshold = 0.55 + (Random.Shared.NextDouble() * 0.30);
-        return state.DesireToConnect >= threshold;
+        // Auto-expire cooldown
+        if (state.CooldownActive && DateTimeOffset.UtcNow >= state.CooldownUntil)
+        {
+            state.CooldownActive = false;
+            _log.LogDebug("Cooldown expired — lifting");
+            await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        }
+
+        if (state.CooldownActive)
+        {
+            _log.LogDebug("Cooldown active until {Until} — outreach blocked", state.CooldownUntil);
+            return false;
+        }
+
+        var threshold = _options.OutreachThresholdFloor + (Random.Shared.NextDouble() * _options.OutreachThresholdRange);
+        var passes = state.DesireToConnect >= threshold;
+        _log.LogInformation("Outreach gate: desire={Desire:F2} threshold={Threshold:F2} → {Result}",
+            state.DesireToConnect, threshold, passes ? "PASS" : "blocked");
+        return passes;
     }
 
     // ── State reads ───────────────────────────────────────────────────────────
@@ -84,13 +103,16 @@ public class DesireEngine
         var state   = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
         var elapsed = DateTimeOffset.UtcNow - state.LastMarkContact;
 
-        // Drift contribution capped at 0.4 per cycle to prevent runaway accumulation
-        var drift = (float)Math.Min(elapsed.TotalHours * 0.08, 0.4);
+        var previousDesire = state.DesireToConnect;
+        var drift = (float)Math.Min(elapsed.TotalHours * _options.DriftPerHour, _options.DriftCapPerCycle);
         state.DesireToConnect   = Math.Min(1.0f, state.DesireToConnect + drift);
         state.LastInnerThought  = DateTimeOffset.UtcNow;
 
         // Circadian hour uses local time intentionally — we want Ani's clock, not UTC
         state.CircadianModifier = ComputeCircadianModifier();
+
+        _log.LogInformation("Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (elapsed={Hours:F1}h, circadian={Circadian:F2})",
+            previousDesire, drift, state.DesireToConnect, elapsed.TotalHours, state.CircadianModifier);
 
         await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
@@ -112,7 +134,11 @@ public class DesireEngine
             CreatedAt   = DateTimeOffset.UtcNow,
         });
 
-        state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + weight * 0.15f);
+        var bump = weight * (float)_options.TriggerDesireMultiplier;
+        state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + bump);
+
+        _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2}",
+            type, weight, bump, state.DesireToConnect);
 
         await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
@@ -125,6 +151,8 @@ public class DesireEngine
     {
         var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
         state.CooldownActive = true;
+        state.CooldownUntil  = DateTimeOffset.UtcNow + duration;
+        _log.LogDebug("Cooldown activated until {Until} (desire={Desire:F2})", state.CooldownUntil, state.DesireToConnect);
         await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
@@ -135,6 +163,8 @@ public class DesireEngine
     public async Task ResetAfterOutreachAsync(CancellationToken ct = default)
     {
         var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        _log.LogInformation("Outreach reset: desire {Previous:F2} → 0.00, clearing {TriggerCount} triggers",
+            state.DesireToConnect, state.ActiveTriggers.Count);
         state.DesireToConnect = 0.0f;
         state.CooldownActive  = false;
         state.LastOutreach    = DateTimeOffset.UtcNow;

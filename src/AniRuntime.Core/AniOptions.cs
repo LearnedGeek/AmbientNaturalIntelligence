@@ -18,6 +18,20 @@ public class AniOptions
     public double MinOutreachGapMinutes  { get; set; } = 60.0;
     public int    MaxOutreachPerDay      { get; set; } = 4;
 
+    // Outreach threshold — randomized between Floor and Floor+Range each cycle
+    public double OutreachThresholdFloor { get; set; } = 0.55;
+    public double OutreachThresholdRange { get; set; } = 0.30;
+
+    // Desire drift — per-cycle accumulation rate and cap
+    public double DriftPerHour           { get; set; } = 0.08;
+    public double DriftCapPerCycle       { get; set; } = 0.4;
+
+    // Trigger weight multiplier — how much a trigger raises desire
+    public double TriggerDesireMultiplier { get; set; } = 0.15;
+
+    // Valence threshold — thoughts above this add a spontaneous trigger
+    public double ValenceTriggerThreshold { get; set; } = 0.6;
+
     // Storage paths (relative to service working directory)
     public string CharacterStatePath     { get; set; } = "data/character-state.json";
     public string MemoryDbPath           { get; set; } = "data/ani-memory.db";
