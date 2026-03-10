@@ -50,6 +50,7 @@ try
 
     // ── Core services ─────────────────────────────────────────────────────────
     builder.Services.AddSingleton<IMemoryService, SqliteMemoryService>();
+    builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
     builder.Services.AddSingleton<DesireEngine>();
 
     // ── LLM ───────────────────────────────────────────────────────────────────
@@ -71,6 +72,9 @@ try
     builder.Services.AddHttpClient("rss");
     builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource, MarkStatePerceptionSource>();
+    builder.Services.AddHttpClient("twilio");
+    builder.Services.AddSingleton<TwilioInboundPerceptionSource>();
+    builder.Services.AddSingleton<IPerceptionSource>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 
@@ -79,6 +83,12 @@ try
     builder.Services.AddHostedService<AniHeartbeatService>();
 
     var host = builder.Build();
+
+    // ── Wire early wake: Twilio inbound → heartbeat interrupt ───────────────
+    var twilioSource = host.Services.GetRequiredService<TwilioInboundPerceptionSource>();
+    var heartbeat    = host.Services.GetServices<IHostedService>()
+                           .OfType<AniHeartbeatService>().First();
+    twilioSource.OnMessageReceived = heartbeat.RequestEarlyWake;
 
     // ── Seed character state on first run (idempotent) ────────────────────────
     await using (var scope = host.Services.CreateAsyncScope())

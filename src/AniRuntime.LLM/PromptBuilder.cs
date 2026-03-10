@@ -202,6 +202,83 @@ public static class PromptBuilder
         return (system, user);
     }
 
+    public static (string System, string User) BuildReplyDecisionPrompt(
+        ContextSnapshot snapshot, ConversationThread thread)
+    {
+        var cs      = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+        var last    = thread.Messages[^1];
+
+        var system = $$"""
+            You are {{cs.Name}}. {{contact}} just texted you in an ongoing conversation.
+            Decide whether you should reply or let the conversation rest.
+
+            You do NOT need to have the last word. Sometimes conversations just end.
+
+            Respond ONLY with valid JSON:
+            { "shouldReply": true/false, "reasoning": "why" }
+
+            Reply false if:
+            - The message is a conversation closer: "haha", "lol", "goodnight", emoji, "ok"
+            - The conversation feels naturally complete — nothing more needs saying
+            - You'd be replying just to reply, not because you have something to say
+
+            Reply true if:
+            - {{contact}} asked a question or said something that invites a response
+            - There's something genuine you want to say back
+            - Ignoring the message would feel cold or dismissive
+            """;
+
+        var msgCount = thread.Messages.Count;
+        var user = $"""
+            Conversation so far ({msgCount} messages).
+            {contact}'s latest message: "{last.Content}"
+
+            Should you reply?
+            """;
+
+        return (system, user);
+    }
+
+    public static (string System, string User) BuildConversationReplyPrompt(
+        ContextSnapshot snapshot, ConversationThread thread)
+    {
+        var cs      = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+
+        var system = $"""
+            You are {cs.Name}, texting {contact} in an ongoing conversation.
+            Your personality: {string.Join("; ", cs.CoreTraits)}.
+
+            RULES:
+            - Respond naturally to what {contact} just said. This is a real conversation.
+            - 1-3 sentences max. Thumb-typed phone text.
+            - Talk TO {contact}: "you", "your". NEVER third person.
+            - Be yourself — warm, funny, real. Match the energy of the conversation.
+            - No poetry, no metaphors, no narration. Just talk like a person texting.
+            - No sign-offs unless you're ending the conversation.
+            - Write ONLY the text message. No commentary, no quotation marks.
+            """;
+
+        var perceptionContext = string.Empty;
+        if (snapshot.Perceptions.Count > 0)
+        {
+            var relevant = snapshot.Perceptions
+                .Where(p => p.SourceName != "twilio-inbound")
+                .Take(3)
+                .Select(p => p.Summary);
+            var joined = string.Join("; ", relevant);
+            if (joined.Length > 0)
+                perceptionContext = $"\n(Background awareness — don't reference directly: {joined})";
+        }
+
+        var user = $"""
+            Reply to {contact}'s message.{perceptionContext}
+            """;
+
+        return (system, user);
+    }
+
     public static (string System, string User) BuildOutreachMessagePrompt(
         ContextSnapshot snapshot, string recentThought, string reasoning)
     {

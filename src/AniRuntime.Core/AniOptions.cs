@@ -32,6 +32,10 @@ public class AniOptions
     // Valence threshold — thoughts above this add a spontaneous trigger
     public double ValenceTriggerThreshold { get; set; } = 0.6;
 
+    // Conversation mode — active back-and-forth with Mark
+    public double ConversationHeartbeatSeconds { get; set; } = 45.0;
+    public double ConversationTimeoutMinutes   { get; set; } = 15.0;
+
     // Storage paths (relative to service working directory)
     public string CharacterStatePath     { get; set; } = "data/character-state.json";
     public string MemoryDbPath           { get; set; } = "data/ani-memory.db";
@@ -53,6 +57,10 @@ public class TwilioOptions
     public string AuthToken   { get; set; } = string.Empty;
     public string FromNumber  { get; set; } = string.Empty;
     public string ToNumber    { get; set; } = string.Empty;
+
+    // Inbound SMS polling
+    public bool   InboundEnabled      { get; set; } = true;
+    public double PollIntervalSeconds { get; set; } = 45.0;
 }
 
 public class RssOptions

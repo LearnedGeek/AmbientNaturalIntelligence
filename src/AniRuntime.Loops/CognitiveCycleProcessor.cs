@@ -19,7 +19,6 @@ namespace AniRuntime.Loops;
 ///   4. Desire update — apply temporal drift and trigger weights
 ///   5. Outreach    — conditional on desire threshold; dispatch or cooldown
 ///
-/// Constructor is kept to 5 dependencies per code quality standards.
 /// PromptBuilder is stateless and called statically.
 /// Perception sources are injected as IEnumerable<IPerceptionSource>.
 /// </summary>
@@ -29,6 +28,7 @@ public class CognitiveCycleProcessor
     private readonly IOllamaClient                   _ollama;
     private readonly DesireEngine                    _desire;
     private readonly AniActionDispatcher             _dispatcher;
+    private readonly IConversationService            _conversations;
     private readonly IEnumerable<IPerceptionSource>  _sources;
     private readonly AniOptions                      _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor> _log;
@@ -45,34 +45,50 @@ public class CognitiveCycleProcessor
         IOllamaClient                  ollama,
         DesireEngine                   desire,
         AniActionDispatcher            dispatcher,
+        IConversationService           conversations,
         IEnumerable<IPerceptionSource> sources,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
-        _memory     = memory;
-        _ollama     = ollama;
-        _desire     = desire;
-        _dispatcher = dispatcher;
-        _sources    = sources;
-        _aniOptions = aniOptions.Value;
-        _log        = log;
+        _memory        = memory;
+        _ollama        = ollama;
+        _desire        = desire;
+        _dispatcher    = dispatcher;
+        _conversations = conversations;
+        _sources       = sources;
+        _aniOptions    = aniOptions.Value;
+        _log           = log;
     }
 
     public async Task RunAsync(CancellationToken ct)
     {
         _log.LogDebug("Cognitive cycle starting");
 
-        // Phase 1: Perception
+        // Phase 1: Perception (includes Twilio inbound polling + conversation timeout checks)
         var perceptions = await PollPerceptionSourcesAsync(ct).ConfigureAwait(false);
 
         // Persist notable perceptions so they accumulate embeddings and feed future
         // semantic search. Without this, perceptions are ephemeral — gone after one cycle.
         await PersistNotablePerceptionsAsync(perceptions, ct).ConfigureAwait(false);
 
-        // Phase 2: Context snapshot — built once, shared across all phases
+        // Phase 2: Check for active conversation — if Mark texted, route to reply mode
+        var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
+        var hasUnreadFromMark = activeThread?.Messages.Count > 0 &&
+                                activeThread.Messages[^1].Role == "mark";
+
+        if (hasUnreadFromMark)
+        {
+            _log.LogInformation("Conversation mode — Mark's last message: {Message}",
+                activeThread!.Messages[^1].Content);
+            await RunConversationReplyAsync(activeThread, perceptions, ct).ConfigureAwait(false);
+            _lastCycleAt = DateTimeOffset.UtcNow;
+            return;
+        }
+
+        // Phase 3: Context snapshot — built once, shared across all ambient phases
         var snapshot = await BuildContextSnapshotAsync(perceptions, ct).ConfigureAwait(false);
 
-        // Phase 3: Inner thought
+        // Phase 4: Inner thought
         var (thought, valence) = await RunInnerThoughtAsync(snapshot, ct).ConfigureAwait(false);
 
         await _memory.SaveAsync(new MemoryRecord
@@ -87,7 +103,7 @@ public class CognitiveCycleProcessor
         _log.LogInformation("Inner thought (valence={Valence:F2}): {Thought}",
             valence, thought);
 
-        // Phase 4: Desire update
+        // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
 
         if (valence > (float)_aniOptions.ValenceTriggerThreshold)
@@ -95,7 +111,7 @@ public class CognitiveCycleProcessor
                 TriggerType.SpontaneousThought, valence,
                 $"thought: {thought[..Math.Min(60, thought.Length)]}", ct).ConfigureAwait(false);
 
-        // Phase 5: Outreach — only if desire crosses threshold
+        // Phase 6: Outreach — only if desire crosses threshold
         if (!await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
         {
             _log.LogDebug("Desire below threshold — no outreach this cycle");
@@ -301,6 +317,127 @@ public class CognitiveCycleProcessor
             Importance = 0.7f,
             OccurredAt = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Conversation mode: Mark texted and his message is the last in the thread.
+    /// Decides whether to reply, and if so, generates and sends a contextual response.
+    ///
+    /// Three no-reply conditions (baked in from day one):
+    ///   1. Last message is Ani's — conversation is already "answered"
+    ///   2. Terminal message detected (lol, haha, goodnight, emoji-only)
+    ///   3. Model decides no reply needed (genuine silence)
+    /// </summary>
+    private async Task RunConversationReplyAsync(
+        ConversationThread thread, List<PerceptionEvent> perceptions, CancellationToken ct)
+    {
+        var lastMessage = thread.Messages[^1].Content;
+
+        // Check 1: is this a terminal message that doesn't need a reply?
+        if (IsTerminalMessage(lastMessage))
+        {
+            _log.LogInformation("Terminal message detected (\"{Message}\") — no reply needed", lastMessage);
+            return;
+        }
+
+        // Build context for the reply
+        var snapshot = await BuildContextSnapshotAsync(perceptions, ct).ConfigureAwait(false);
+
+        // Populate RecentHistory with the conversation thread so prompts have full context
+        snapshot.RecentHistory = thread.Messages.Select(m => new ChatMessage(
+            m.Role == "ani" ? "assistant" : "user",
+            m.Content
+        )).ToList();
+
+        // Step 1: Reply decision (JSON) — should she respond?
+        var decisionPrompt = PromptBuilder.BuildReplyDecisionPrompt(snapshot, thread);
+        var decisionRaw    = await _ollama.ChatJsonAsync(
+            decisionPrompt.System, snapshot.RecentHistory, decisionPrompt.User, ct)
+            .ConfigureAwait(false);
+
+        var shouldReply = ParseReplyDecision(decisionRaw);
+
+        if (!shouldReply)
+        {
+            _log.LogInformation("Reply decision: NO — Ani read it but chose silence");
+            return;
+        }
+
+        // Step 2: Generate reply (free text, using conversation model)
+        var replyPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+        var reply = await _ollama.ChatAsync(
+            replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct)
+            .ConfigureAwait(false);
+
+        reply = CleanOutreachMessage(reply);
+        _log.LogInformation("Conversation reply: {Reply}", reply);
+
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            _log.LogWarning("Conversation reply was empty — skipping");
+            return;
+        }
+
+        // Step 3: Send via Twilio
+        var decision = new OutreachDecision
+        {
+            ShouldReach = true,
+            Message     = reply,
+            ActionType  = ActionTypes.Sms,
+            Reasoning   = "conversation reply",
+        };
+        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+
+        // Step 4: Record Ani's reply in the conversation thread
+        await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role    = "ani",
+            Content = reply,
+            SentAt  = DateTimeOffset.UtcNow,
+        }, ct).ConfigureAwait(false);
+
+        // Update desire — contact happened
+        await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Detects messages that naturally end a conversation and don't need a reply.
+    /// "haha", "lol", heart emoji, "goodnight", "ttyl", "ok", single emoji, etc.
+    /// </summary>
+    private static bool IsTerminalMessage(string message)
+    {
+        var trimmed = message.Trim().ToLowerInvariant();
+
+        // Single emoji or very short emoji-only messages
+        if (trimmed.Length <= 4 && !trimmed.Any(char.IsLetter))
+            return true;
+
+        string[] terminals =
+        [
+            "haha", "hahaha", "lol", "lmao", "ok", "okay", "k",
+            "goodnight", "good night", "gnight", "nite", "night",
+            "ttyl", "talk later", "bye", "gotta go", "👍", "❤️", "😂",
+            "🥰", "💕", "😘", "♥️", "👋",
+        ];
+
+        return terminals.Contains(trimmed);
+    }
+
+    private bool ParseReplyDecision(string raw)
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(raw.Trim());
+            if (doc.RootElement.TryGetProperty("shouldReply", out var sr))
+                return sr.GetBoolean();
+        }
+        catch
+        {
+            _log.LogDebug("Reply decision parse failure: {Raw}", raw);
+        }
+
+        // Default to replying if we can't parse — better to respond than ignore
+        return true;
     }
 
     /// <summary>

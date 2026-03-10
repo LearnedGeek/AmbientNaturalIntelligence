@@ -11,8 +11,9 @@ namespace AniRuntime.Tests;
 
 public class CognitiveCycleProcessorTests : AniTestBase
 {
-    private readonly Mock<IPerceptionSource> _mockSource    = new();
-    private readonly Mock<IAniAction>        _mockSmsAction = new();
+    private readonly Mock<IPerceptionSource>    _mockSource        = new();
+    private readonly Mock<IAniAction>           _mockSmsAction     = new();
+    private readonly Mock<IConversationService> _mockConversations = new();
 
     private CognitiveCycleProcessor CreateProcessor()
     {
@@ -44,11 +45,15 @@ public class CognitiveCycleProcessorTests : AniTestBase
             new[] { _mockSmsAction.Object },
             NullLogger<AniActionDispatcher>.Instance);
 
+        _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
+                          .ReturnsAsync((ConversationThread?)null);
+
         return new CognitiveCycleProcessor(
             MockMemory.Object,
             MockOllama.Object,
             desire,
             dispatcher,
+            _mockConversations.Object,
             sources,
             DefaultOptions,
             NullLogger<CognitiveCycleProcessor>.Instance);
