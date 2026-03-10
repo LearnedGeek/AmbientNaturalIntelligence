@@ -29,5 +29,6 @@ public enum TriggerType
     EmotionalResidue,
     SpontaneousThought,
     ContextualMoment,
-    IntegrationEvent
+    IntegrationEvent,
+    ReactiveShare
 }

@@ -40,6 +40,10 @@ public class CognitiveCycleProcessor
     // Resets when a new message arrives (different SentAt timestamp).
     private DateTimeOffset? _lastEvaluatedMessageAt;
 
+    // Reactive share rate limiting — resets daily
+    private int  _reactiveShareCount;
+    private DateTimeOffset _reactiveShareDay = DateTimeOffset.MinValue;
+
     // Dedup cache: prevents saving the same perception ("Mark is probably at the gym")
     // every cycle. Key = summary text, Value = when it was last persisted.
     private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
@@ -102,7 +106,15 @@ public class CognitiveCycleProcessor
             }
         }
 
-        // Phase 3: Context snapshot — built once, shared across all ambient phases
+        // Phase 3: Reactive sharing — high-relevance RSS items shared directly
+        // Bypasses desire engine but respects daily rate limit and cooldown
+        if (await TryReactiveShareAsync(perceptions, ct).ConfigureAwait(false))
+        {
+            _lastCycleAt = DateTimeOffset.UtcNow;
+            return;
+        }
+
+        // Phase 4: Context snapshot — built once, shared across all ambient phases
         var snapshot = await BuildContextSnapshotAsync(perceptions, ct).ConfigureAwait(false);
 
         // Phase 4: Inner thought
@@ -209,6 +221,88 @@ public class CognitiveCycleProcessor
                 _log.LogWarning(ex, "Failed to persist perception from {Source}", p.SourceName);
             }
         }
+    }
+
+    /// <summary>
+    /// Checks for high-relevance RSS items that Mark would care about and shares
+    /// them directly — bypassing the desire engine. Rate-limited to prevent spam.
+    /// Returns true if a share was sent (cycle should end), false otherwise.
+    /// </summary>
+    private async Task<bool> TryReactiveShareAsync(
+        List<PerceptionEvent> perceptions, CancellationToken ct)
+    {
+        var threshold = (float)_aniOptions.ReactiveShareThreshold;
+        var shareable = perceptions
+            .Where(p => p.SourceName == "rss" && p.MarkRelevance >= threshold)
+            .OrderByDescending(p => p.MarkRelevance)
+            .FirstOrDefault();
+
+        if (shareable is null)
+            return false;
+
+        // Reset daily counter if the day has rolled over
+        var today = DateTimeOffset.Now.Date;
+        if (_reactiveShareDay.Date != today)
+        {
+            _reactiveShareCount = 0;
+            _reactiveShareDay = DateTimeOffset.Now;
+        }
+
+        if (_reactiveShareCount >= _aniOptions.MaxReactiveSharesPerDay)
+        {
+            _log.LogDebug("Reactive share blocked — daily limit ({Limit}) reached", _aniOptions.MaxReactiveSharesPerDay);
+            return false;
+        }
+
+        // Respect cooldown — don't share if she just texted
+        var state = await _desire.GetStateAsync(ct).ConfigureAwait(false);
+        if (state.CooldownActive)
+        {
+            _log.LogDebug("Reactive share blocked — cooldown active");
+            return false;
+        }
+
+        _log.LogInformation("Reactive share triggered: {Summary} (relevance={Relevance:F2})",
+            shareable.Summary, shareable.MarkRelevance);
+
+        // Generate the share message
+        var charState = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+        var prompt = PromptBuilder.BuildReactiveSharePrompt(charState, shareable.Summary);
+        var message = await _ollama.ChatAsync(
+            prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
+            .ConfigureAwait(false);
+
+        message = CleanOutreachMessage(message);
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            _log.LogWarning("Reactive share message was empty — skipping");
+            return false;
+        }
+
+        _log.LogInformation("Reactive share: {Message}", message);
+
+        // Dispatch via Twilio
+        var decision = new OutreachDecision
+        {
+            ShouldReach = true,
+            Message     = message,
+            ActionType  = ActionTypes.Sms,
+            Reasoning   = $"reactive share: {shareable.Summary[..Math.Min(60, shareable.Summary.Length)]}",
+        };
+        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+        await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
+
+        _reactiveShareCount++;
+
+        await _memory.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.Episodic,
+            Content    = $"Ani shared with Mark: {message} (about: {shareable.Summary})",
+            Importance = 0.5f,
+            OccurredAt = DateTimeOffset.UtcNow,
+        }, ct).ConfigureAwait(false);
+
+        return true;
     }
 
     private async Task<ContextSnapshot> BuildContextSnapshotAsync(

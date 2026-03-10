@@ -36,6 +36,10 @@ public class AniOptions
     public double ConversationHeartbeatSeconds { get; set; } = 45.0;
     public double ConversationTimeoutMinutes   { get; set; } = 15.0;
 
+    // Reactive sharing — RSS items relevant enough to share directly with Mark
+    public double ReactiveShareThreshold    { get; set; } = 0.6;
+    public int    MaxReactiveSharesPerDay   { get; set; } = 2;
+
     // Storage paths (relative to service working directory)
     public string CharacterStatePath     { get; set; } = "data/character-state.json";
     public string MemoryDbPath           { get; set; } = "data/ani-memory.db";

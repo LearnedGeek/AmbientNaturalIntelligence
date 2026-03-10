@@ -15,11 +15,15 @@ namespace AniRuntime.Perception;
 public sealed class RssPerceptionSource : IPerceptionSource
 {
     private readonly IHttpClientFactory             _httpFactory;
+    private readonly IMemoryService                 _memory;
     private readonly RssOptions                     _options;
     private readonly ILogger<RssPerceptionSource>   _log;
 
     // Track last-seen publish date per feed to avoid re-emitting old items
     private readonly Dictionary<string, DateTimeOffset> _lastSeen = new();
+
+    // Cached keyword sets from CharacterStateDoc — refreshed lazily
+    private List<string>? _relevanceKeywords;
 
     public string             SourceName => "rss";
     public PerceptionCategory Category   => PerceptionCategory.Content;
@@ -27,10 +31,12 @@ public sealed class RssPerceptionSource : IPerceptionSource
 
     public RssPerceptionSource(
         IHttpClientFactory httpFactory,
+        IMemoryService memory,
         IOptions<RssOptions> options,
         ILogger<RssPerceptionSource> log)
     {
         _httpFactory = httpFactory;
+        _memory      = memory;
         _options     = options.Value;
         _log         = log;
     }
@@ -38,6 +44,10 @@ public sealed class RssPerceptionSource : IPerceptionSource
     public async Task<IEnumerable<PerceptionEvent>> PollAsync(
         DateTimeOffset since, CancellationToken ct = default)
     {
+        // Lazy-load relevance keywords from character state
+        if (_relevanceKeywords is null)
+            await LoadRelevanceKeywordsAsync(ct).ConfigureAwait(false);
+
         var events = new List<PerceptionEvent>();
 
         foreach (var feed in _options.Feeds)
@@ -106,12 +116,14 @@ public sealed class RssPerceptionSource : IPerceptionSource
                 ? $"[{feed.Name}] {title}"
                 : $"[{feed.Name}] {title} — {description}";
 
+            var relevance = ScoreRelevance(title, description);
+
             events.Add(new PerceptionEvent
             {
                 SourceName    = SourceName,
                 Category      = Category,
                 Summary       = summary,
-                MarkRelevance = 0.2f,
+                MarkRelevance = relevance,
                 OccurredAt    = pubDate ?? DateTimeOffset.UtcNow,
             });
 
@@ -163,5 +175,69 @@ public sealed class RssPerceptionSource : IPerceptionSource
             }
         }
         return result.ToString().Trim();
+    }
+
+    // ── Relevance scoring ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads keywords from CharacterStateDoc — things Mark cares about, interests,
+    /// shared experiences. These drive relevance scoring for RSS items.
+    /// Extracted once and cached for the lifetime of the source.
+    /// </summary>
+    private async Task LoadRelevanceKeywordsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var cs = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+            var keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Extract meaningful keywords from character state lists
+            foreach (var source in new[] { cs.ThingsMarkCares, cs.Interests, cs.SharedExperiences })
+            {
+                foreach (var entry in source)
+                {
+                    // Split on common delimiters and take words 4+ chars (skip "the", "and", etc.)
+                    var words = entry.Split(new[] { ' ', ',', '—', '–', '-', '/', '(', ')' },
+                        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var word in words.Where(w => w.Length >= 4))
+                        keywords.Add(word.TrimEnd('.', '!', '?', '\'', '"'));
+                }
+            }
+
+            // Also add topic valence keys as-is (they're already curated phrases)
+            foreach (var topic in cs.TopicValence.Keys)
+                keywords.Add(topic.ToLowerInvariant());
+
+            _relevanceKeywords = keywords.ToList();
+            _log.LogDebug("Loaded {Count} relevance keywords from character state", _relevanceKeywords.Count);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to load relevance keywords — using empty set");
+            _relevanceKeywords = new List<string>();
+        }
+    }
+
+    /// <summary>
+    /// Scores an RSS item's relevance to Mark based on keyword matches.
+    /// Returns 0.2 (baseline) for no matches, scaling up to 0.85 for strong matches.
+    /// Items above the reactive share threshold can trigger direct sharing.
+    /// </summary>
+    private float ScoreRelevance(string title, string description)
+    {
+        if (_relevanceKeywords is null || _relevanceKeywords.Count == 0)
+            return 0.2f;
+
+        var text = $"{title} {description}".ToLowerInvariant();
+        var matchCount = _relevanceKeywords.Count(kw => text.Contains(kw, StringComparison.OrdinalIgnoreCase));
+
+        return matchCount switch
+        {
+            0     => 0.2f,   // no match — generic background awareness
+            1     => 0.4f,   // weak match — colors thoughts
+            2     => 0.6f,   // moderate — worth noting
+            >= 3  => 0.85f,  // strong — Mark would care about this
+            _     => 0.2f,
+        };
     }
 }
