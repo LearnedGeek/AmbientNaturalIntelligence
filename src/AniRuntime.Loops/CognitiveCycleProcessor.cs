@@ -108,10 +108,11 @@ public class CognitiveCycleProcessor
             if (AdminCommandHandler.IsAdminCommand(lastMsg.Content))
             {
                 _log.LogInformation("Admin command detected: {Content}", lastMsg.Content);
-                await _adminCommands.HandleAsync(lastMsg.Content, ct).ConfigureAwait(false);
 
-                // Close the thread so the admin command doesn't linger as "unread"
+                // Close the thread FIRST so the command doesn't replay if the reply fails
                 await _conversations.CloseThreadAsync(activeThread.Id, ct).ConfigureAwait(false);
+
+                await _adminCommands.HandleAsync(lastMsg.Content, ct).ConfigureAwait(false);
                 _lastCycleAt = DateTimeOffset.UtcNow;
                 return;
             }
