@@ -39,7 +39,9 @@ public class CognitiveCycleProcessor
     // Tracks the last contact message we evaluated a reply decision for.
     // Once Ani decides "NO" on a specific message, she won't re-evaluate it every cycle.
     // Resets when a new message arrives (different SentAt timestamp).
-    private DateTimeOffset? _lastEvaluatedMessageAt;
+    // Public so the heartbeat can check whether the contact's last message has already
+    // been evaluated — if so, use ambient timing instead of conversation heartbeat.
+    public DateTimeOffset? LastEvaluatedMessageAt { get; private set; }
 
     // Reactive share rate limiting — resets daily
     private int  _reactiveShareCount;
@@ -119,7 +121,7 @@ public class CognitiveCycleProcessor
 
             // If we already evaluated this exact message and decided NO, don't re-ask.
             // A new message from the contact (different SentAt) resets the gate.
-            if (_lastEvaluatedMessageAt.HasValue && lastMsg.SentAt == _lastEvaluatedMessageAt.Value)
+            if (LastEvaluatedMessageAt.HasValue && lastMsg.SentAt == LastEvaluatedMessageAt.Value)
             {
                 _log.LogDebug("Already evaluated reply for message at {SentAt} — skipping to ambient mode",
                     lastMsg.SentAt);
@@ -550,13 +552,13 @@ public class CognitiveCycleProcessor
         if (!shouldReply)
         {
             // Lock this decision — don't re-evaluate the same message every cycle
-            _lastEvaluatedMessageAt = thread.Messages[^1].SentAt;
+            LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
             _log.LogInformation("Reply decision: NO — read it but chose silence");
             return;
         }
 
         // She's replying — clear the gate so future messages evaluate fresh
-        _lastEvaluatedMessageAt = null;
+        LastEvaluatedMessageAt = null;
 
         // Step 2: Generate reply (free text, using conversation model)
         var replyPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);

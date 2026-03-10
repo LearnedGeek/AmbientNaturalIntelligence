@@ -22,11 +22,11 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class AniHeartbeatService : BackgroundService
 {
-    private readonly CognitiveCycleProcessor      _cycle;
-    private readonly DesireEngine                 _desire;
-    private readonly IConversationService         _conversations;
-    private readonly AniOptions                   _aniOptions;
-    private readonly ILogger<AniHeartbeatService> _log;
+    private readonly CognitiveCycleProcessor       _cycle;
+    private readonly DesireEngine                  _desire;
+    private readonly IConversationService          _conversations;
+    private readonly AniOptions                    _aniOptions;
+    private readonly ILogger<AniHeartbeatService>  _log;
 
     private CancellationTokenSource? _wakeCts;
 
@@ -104,6 +104,7 @@ public class AniHeartbeatService : BackgroundService
     /// Determines how long to sleep before the next cycle.
     /// Active conversation with unread contact message → short heartbeat (ConversationHeartbeatSeconds).
     /// Active conversation but Ani spoke last → normal delay (it's the contact's turn).
+    /// Active conversation but Ani already chose silence → normal delay (she read it and decided).
     /// Ambient mode → normal exponential delay from DesireEngine.
     /// </summary>
     private async Task<TimeSpan> ComputeDelayAsync(CancellationToken ct)
@@ -111,12 +112,19 @@ public class AniHeartbeatService : BackgroundService
         var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
         if (activeThread is not null)
         {
-            // Only use fast heartbeat when the contact has an unread message waiting for reply.
-            // If Ani spoke last, use normal timing — it's the contact's turn.
+            // Only use fast heartbeat when the contact has an unread message waiting for reply
+            // AND Ani hasn't already evaluated it (chose silence). Without this check, choosing
+            // silence traps her in 45s cycles until the thread times out (BUG-001).
             var hasUnreadFromContact = activeThread.Messages.Count > 0 &&
                                       activeThread.Messages[^1].Role == "mark";
             if (hasUnreadFromContact)
-                return TimeSpan.FromSeconds(_aniOptions.ConversationHeartbeatSeconds);
+            {
+                var lastContactMsg = activeThread.Messages[^1];
+                var alreadyEvaluated = _cycle.LastEvaluatedMessageAt.HasValue &&
+                                       lastContactMsg.SentAt == _cycle.LastEvaluatedMessageAt.Value;
+                if (!alreadyEvaluated)
+                    return TimeSpan.FromSeconds(_aniOptions.ConversationHeartbeatSeconds);
+            }
         }
 
         var state = await _desire.GetStateAsync(ct).ConfigureAwait(false);
