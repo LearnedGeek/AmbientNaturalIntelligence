@@ -35,6 +35,11 @@ public class CognitiveCycleProcessor
 
     private DateTimeOffset _lastCycleAt = DateTimeOffset.UtcNow;
 
+    // Tracks the last Mark message we evaluated a reply decision for.
+    // Once Ani decides "NO" on a specific message, she won't re-evaluate it every cycle.
+    // Resets when a new message arrives (different SentAt timestamp).
+    private DateTimeOffset? _lastEvaluatedMessageAt;
+
     // Dedup cache: prevents saving the same perception ("Mark is probably at the gym")
     // every cycle. Key = summary text, Value = when it was last persisted.
     private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
@@ -78,11 +83,23 @@ public class CognitiveCycleProcessor
 
         if (hasUnreadFromMark)
         {
-            _log.LogInformation("Conversation mode — Mark's last message: {Message}",
-                activeThread!.Messages[^1].Content);
-            await RunConversationReplyAsync(activeThread, perceptions, ct).ConfigureAwait(false);
-            _lastCycleAt = DateTimeOffset.UtcNow;
-            return;
+            var lastMsg = activeThread!.Messages[^1];
+
+            // If we already evaluated this exact message and decided NO, don't re-ask.
+            // A new message from Mark (different SentAt) resets the gate.
+            if (_lastEvaluatedMessageAt.HasValue && lastMsg.SentAt == _lastEvaluatedMessageAt.Value)
+            {
+                _log.LogDebug("Already evaluated reply for message at {SentAt} — skipping to ambient mode",
+                    lastMsg.SentAt);
+            }
+            else
+            {
+                _log.LogInformation("Conversation mode — Mark's last message: {Message}",
+                    lastMsg.Content);
+                await RunConversationReplyAsync(activeThread, perceptions, ct).ConfigureAwait(false);
+                _lastCycleAt = DateTimeOffset.UtcNow;
+                return;
+            }
         }
 
         // Phase 3: Context snapshot — built once, shared across all ambient phases
@@ -359,9 +376,14 @@ public class CognitiveCycleProcessor
 
         if (!shouldReply)
         {
+            // Lock this decision — don't re-evaluate the same message every cycle
+            _lastEvaluatedMessageAt = thread.Messages[^1].SentAt;
             _log.LogInformation("Reply decision: NO — Ani read it but chose silence");
             return;
         }
+
+        // She's replying — clear the gate so future messages evaluate fresh
+        _lastEvaluatedMessageAt = null;
 
         // Step 2: Generate reply (free text, using conversation model)
         var replyPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
