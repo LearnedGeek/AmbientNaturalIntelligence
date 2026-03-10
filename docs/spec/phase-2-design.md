@@ -54,10 +54,10 @@ Awareness of Mark's life. Checking in. Caring about what's coming up. "how was c
 **Data sources for Mark's state:**
 - **Learned routine** (from CharacterStateDoc): 4 AM wake, gym mornings, commute, teaching Thursdays, Spanish on Sundays
 - **Time of day + day of week** → what he's probably doing right now
-- **Calendar integration** (future): actual scheduled events
 - **Last interaction** → when, what mood, did the conversation end well?
 - **Time since last text from him** → has he been quiet today? Is that normal?
-- **Home Assistant** (future): is he home? lights on? etc.
+- **Calendar integration** (Phase 3): actual scheduled events — requires dashboard/profile for user self-service
+- **Home Assistant** (Phase 3): is he home? lights on? etc. — requires dashboard/profile for user self-service
 
 The "Mark's likely state" perception source is the key enabler. It combines time + routine + interaction history into a qualitative summary: "Mark is probably at the gym right now. He hasn't texted since this morning — that's normal for a weekday."
 
@@ -296,20 +296,22 @@ To support Mark's Likely State and Attentive mode, the character seed needs a st
 
 ## Implementation Priority
 
-| # | Feature | Impact | Effort | Dependencies |
-|---|---------|--------|--------|-------------|
-| 1 | Inbound SMS (reply loop) | Highest | Medium | Twilio webhook, conversation threading |
-| 2 | Mark's Likely State perception | High | Low | Routine data in CharacterStateDoc |
-| 3 | Event-driven sharing | Medium | Low | RSS already exists, add relevance scoring |
-| 4 | Persistent emotional state | Medium | Medium | New model + engine, similar to DesireEngine |
-| 5 | Calendar integration | Medium | Medium | Google Calendar API or iCal parsing |
-| 6 | Home Assistant integration | Lower | Medium | Phase 2+ per original spec |
+| # | Feature | Impact | Effort | Dependencies | Status |
+|---|---------|--------|--------|-------------|--------|
+| 1 | Inbound SMS (reply loop) | Highest | Medium | Twilio polling, conversation threading | Done |
+| 2 | Contact's Likely State perception | High | Low | Routine data in CharacterStateDoc | Done |
+| 3 | Event-driven sharing | Medium | Low | RSS already exists, add relevance scoring | Done |
+| 4 | Persistent emotional state | Medium | Medium | New model + engine, similar to DesireEngine | Done |
+| 5 | Calendar integration | Medium | Medium | Google Calendar API or iCal parsing | → Phase 3 |
+| 6 | Home Assistant integration | Lower | Medium | Home Assistant API | → Phase 3 |
 
-### Recommended order:
-1. **Mark's Likely State** — lowest effort, immediate impact on thought/outreach quality, no external dependencies
-2. **Inbound SMS** — biggest single leap, but more complex. Needs Twilio webhook + conversation model
-3. **Event-driven sharing** — quick addition on top of existing RSS
-4. **Emotional state** — enhances everything once conversation mode exists
+Items 5 and 6 moved to Phase 3 — they require a dashboard/profile system for user self-service configuration (add/remove integrations, manage API keys, set preferences).
+
+### Recommended order (original, preserved for reference):
+1. **Contact's Likely State** — lowest effort, immediate impact on thought/outreach quality, no external dependencies ✓
+2. **Inbound SMS** — biggest single leap, but more complex. Needs Twilio polling + conversation model ✓
+3. **Event-driven sharing** — quick addition on top of existing RSS ✓
+4. **Emotional state** — enhances everything once conversation mode exists ✓
 
 ---
 

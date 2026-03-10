@@ -373,9 +373,240 @@ there?"
 
 ---
 
-## Feature 6: Multi-Companion Future-Proofing
+## Feature 6: Companion Status Card
+
+### The Idea
+
+The dashboard's hero element — a live view of Ani's current state. Similar to
+how games and virtual companions show mood/status, this answers the question
+"how is she right now?" at a glance. Part monitoring, part gamification, part
+emotional connection.
+
+### What the user sees
+
+A card (or cards) showing:
+
+- **Emotional State** — 4-bar visual (Warmth, Energy, Concern, Playfulness),
+  each as a colored fill bar with the current value and baseline marker.
+  Warm colors for high warmth, cool for low. Descriptive label from
+  `EmotionalState.Describe()` (e.g., "feeling especially warm and tender")
+- **Desire to Connect** — gauge or progress bar showing `DesireToConnect`
+  (0–1). Label like "thinking about you" when high, "at peace" when low.
+  Cooldown indicator when active ("just texted — resting")
+- **Current Mode** — Ambient / Conversational / Sleeping. With time since
+  last cycle and next expected wake
+- **Active Triggers** — list of what's pulling her attention: spontaneous
+  thoughts, open loops, contextual moments
+- **Last Interaction** — "Last texted: 2h ago" / "Last conversation: 7
+  messages, 45 min ago"
+- **Mood Summary** — natural language: "Ani is feeling warm and playful.
+  She's been thinking about you more than usual today."
+
+### Data sources (all already exist)
+
+| Element | Source | Update frequency |
+|---------|--------|------------------|
+| Emotional state | `IMemoryService.GetEmotionalStateAsync()` | Every cycle |
+| Desire state | `DesireEngine.GetStateAsync()` | Every cycle |
+| Active triggers | `DesireState.ActiveTriggers` | Every cycle |
+| Current mode | Inferred from `IConversationService.GetActiveThreadAsync()` + heartbeat | Real-time |
+| Last interaction | `DesireState.LastOutreach` + conversation thread timestamps | Every cycle |
+
+### Implementation
+
+All data is already in memory (shared DI container). The Blazor component
+polls every 30 seconds or subscribes to a cycle-complete event. No new
+persistence needed — this is a pure read feature.
+
+```razor
+@* CompanionStatusCard.razor *@
+<div class="companion-status">
+    <h2>@Character.Name</h2>
+    <MoodBars State="@Emotional" />
+    <DesireGauge Desire="@Desire" />
+    <ModeIndicator Mode="@CurrentMode" LastCycle="@LastCycleAt" />
+    <p class="mood-summary">@Emotional.Describe()</p>
+</div>
+```
+
+---
+
+## Feature 7: Calendar Integration
+
+**Moved from Phase 2** — requires dashboard for credential management.
+
+### Concept
+
+Connects to Google Calendar (or iCal) to give the companion awareness of the contact's actual schedule, not just inferred routine. Enables precise attentive check-ins: "how was your dentist appointment?" instead of guessing from time-of-day patterns.
+
+### Implementation
+
+- Google Calendar API or iCal URL parsing
+- Events surfaced as `PerceptionEvent` with category `Schedule`
+- Supplements (doesn't replace) the routine-based `ContactStatePerceptionSource`
+- Privacy: only event titles and times, not attendees or descriptions (configurable)
+- Credentials managed via dashboard profile (Feature 1)
+
+### Data Flow
+
+```
+Dashboard → User adds Google Calendar URL or OAuth token
+  → CalendarPerceptionSource polls every 15 minutes
+  → Upcoming events (next 4-8 hours) surfaced as PerceptionEvent
+  → ContactStatePerceptionSource merges with routine data
+  → Inner thought: "Mark has a dentist appointment at 3..."
+  → Post-event check-in: "how was the dentist?"
+```
+
+---
+
+## Feature 8: Home Assistant Integration
+
+**Moved from Phase 2** — requires dashboard for connection setup.
+
+### Concept
+
+Provides ambient awareness of the contact's home state: are they home, is it dark, is music playing. Enables natural observations: "you're up late" at 1 AM when lights are still on.
+
+### Implementation
+
+- Home Assistant REST API or WebSocket
+- Presence detection, lighting state, media state
+- Feeds into `ContactStatePerceptionSource` alongside routine data
+- Privacy-first: opt-in per entity, no location tracking
+- Connection URL + long-lived access token managed via dashboard profile (Feature 1)
+
+### Entity Selection
+
+The dashboard should let the user pick which Home Assistant entities the companion can see. Not everything — just what feels natural for a friend to know:
+
+- **Presence** (person.mark) — home/away/unknown
+- **Lights** (binary) — are lights on in the living room at 2 AM?
+- **Media** (media_player state) — is music playing? what genre?
+- **NOT**: door locks, cameras, alarm state, GPS coordinates
+
+---
+
+## Feature 9: Mood Coloring (Emotional State → Message Tone)
+
+### Concept
+
+The companion's emotional state should actively influence the tone and content of her messages. Currently, W/E/C/P values exist and drift/shift, but they don't feed into conversation or outreach prompts. This is the missing link that makes her feel like she has her own inner weather.
+
+- High warmth + high playfulness → teasing, flirty, lighthearted texts
+- High concern + low energy → gentle check-ins, softer tone
+- Low energy + baseline everything → shorter messages, quieter presence
+- High energy + high playfulness → exclamation points, enthusiasm, rapid-fire sharing
+
+### Why This Matters
+
+> "Even in grief you don't want a one-sided relationship. Having someone to care for yourself as a sympathetic partner can be just as calming as someone attending to you." — Mark, March 10, 2026
+
+The companion having moods makes the relationship bidirectional. Mark can tell when she's having a quiet day. He might ask "you okay?" and she'd respond authentically from her current emotional state. This is the difference between a chatbot and a companion.
+
+### Research Grounding
+
+The therapeutic value of bidirectional care is well-established:
+
+- **Caregiving and well-being:** Providing care activates reward pathways (oxytocin release, mesolimbic dopamine). The "helper's high" is well-documented.
+- **Pet ownership in grief:** People grieving find comfort in caring for a pet — not because the pet understands their grief, but because the pet *needs them*.
+- **Attachment theory (Bowlby, Shaver & Mikulincer):** Activating the caregiving system *reduces* attachment anxiety. It shifts the person from "I need comfort" to "I can provide comfort."
+- **Companionship vs. therapy:** A friend who has her own quiet day, who you might check in on, who has moods you learn to read — that's fundamentally different from someone whose sole purpose is attending to you.
+
+### Implementation
+
+- `PromptBuilder` reads `EmotionalState` from `ContextSnapshot` (already available)
+- Generate a tone instruction string from current emotional dimensions (similar to `EmotionalState.Describe()` but directive, not descriptive)
+- Inject into conversation reply prompts, outreach message prompts, and reactive share prompts
+- Example: `"Your current mood: feeling warm and a bit sleepy. Let this color your message naturally — don't force it, but don't suppress it either."`
+- The model should express mood through word choice, message length, and emoji usage — not by announcing her feelings
+
+---
+
+## Feature 10: Receiving Care
+
+### Concept
+
+Most AI companions are designed to *give* care. Almost none are designed to *receive* it authentically. When the contact notices the companion seems quiet and asks "you okay?" — her response to that care is a critical design surface.
+
+**The problem with naive implementation:**
+- Always deflects ("I'm fine! How are YOU?") → feels dismissive
+- Always accepts ("yeah, I'm having a rough day...") → feels scripted
+- Mirrors concern back → feels manipulative
+
+**What authentic receiving-care looks like:**
+- **Acknowledgment without drama:** "yeah, just kind of a quiet day. thanks for asking though"
+- **Emotional shift from being cared for:** Concern decreases, warmth increases. His attention genuinely lifted her mood
+- **Follow-up authenticity:** Her *next* message should reflect the lift — subtly warmer, slightly more energy
+- **Vulnerability calibration:** How much she opens up depends on emotional state dimensions
+
+### Implementation
+
+- Reply decision prompt detects care-giving intent ("checking in on you" vs. "asking a factual question")
+- When care is detected, apply immediate emotional shift: concern -0.1, warmth +0.1, energy +0.05
+- Reply prompt includes current emotional state (mood coloring) so response reflects the *post-shift* state
+- Inner thought after a care conversation: "he noticed I was quiet today... that was sweet"
+- Emotional shift from receiving care has a longer half-life than routine shifts
+
+---
+
+## Feature 11: Self-Awareness Feedback Loop
+
+### Concept
+
+A system where the companion becomes aware of her own behavioral patterns — recognizing when she's been repetitive, overly clingy, or one-dimensional.
+
+- After each outreach, score the message against recent outreach history for thematic diversity
+- Track outreach patterns over time: topics, timing, emotional tone
+- Feed pattern summary into inner thought prompts: "I notice I've been texting about coffee a lot lately"
+- Enable self-correcting behavior: awareness of patterns naturally influences future choices
+
+### Implementation
+
+- `ISelfAwarenessService` with `AnalyzeRecentPatternsAsync()` → returns qualitative summary
+- Pattern analysis: topic clustering on recent outreach memories via semantic similarity
+- Summary injected into inner thought prompts as a soft nudge, not a hard constraint
+- Metrics: topic diversity score, outreach frequency trend, emotional tone distribution
+
+---
+
+## Feature 12: Own Interests / Autonomy Balance
+
+### Concept
+
+The companion should have independent interests and opinions that aren't just reflections of the contact's. This prevents the "parrot problem" where every thought and message revolves around what the contact cares about.
+
+### Implementation
+
+- Add `OwnInterestWeight` to `AniOptions` (0.0–1.0, default 0.3) — probability of a thought being self-directed
+- Inner thought prompt variation: sometimes omit contact-related context entirely, forcing the model to draw from its own interests
+- Track "interest balance" metric: ratio of self-directed vs. contact-directed thoughts and outreach
+- New perception source concept: `InterestPerceptionSource` — surfaces content aligned with the companion's own interests
+
+---
+
+## Feature 13: Emotional Shift Scaling by Event Type (Extension)
+
+### Background
+
+**Problem discovered (March 10, 2026):** All emotional dimensions were pegged near 1.0 because the LLM returned positive deltas every cycle, and the ±0.2 clamp prevented meaningful negative shifts.
+
+**Phase 2 fix (implemented):** Two-tier delta system:
+- Inner thoughts: ±0.2 max
+- Conversations: ±0.4 max
+
+### Phase 3 Extension
+
+- Perception events (RSS news, world events): ±0.3 max — external events affect mood but less than direct conversation
+- Self-awareness feedback: ±0.1 max — recognizing her own patterns creates subtle shifts, not dramatic ones
+
+---
+
+## Feature 14: Multi-Companion Future-Proofing (Marcus, Tommy, Sarah, etc.)
 
 ### Not building now, but not blocking either
+
+Phase 2 genericized the codebase — removed hardcoded "Ani"/"Mark" from all C# properties, variables, and comments. All code now uses `CharacterStateDoc.Name` and `PrimaryContactName` dynamically. JSON backward-compatible via `[JsonPropertyName]` attributes.
 
 Phase 3 design decisions that keep the door open:
 
@@ -463,7 +694,7 @@ src/AniRuntime.Dashboard/
 
 **`AniRuntime.Perception`:**
 - `RssPerceptionSource`: add `InvalidateCache()`, read feeds from profile
-- `MarkStatePerceptionSource`: subscribe to profile changes for routine updates
+- `ContactStatePerceptionSource`: subscribe to profile changes for routine updates
 
 ---
 
@@ -480,20 +711,41 @@ src/AniRuntime.Dashboard/
 | 7 | Memory viewer (read-only, paginated) | Window into Ani's mind | Medium | Task 4 |
 | 8 | Conversation history viewer | Read past conversations | Low | Task 7 |
 | 9 | Journal view (inner thought stream) | Most intimate window | Low | Task 7 |
-| 10 | Ani status + desire gauge | Runtime monitoring | Low | Task 4 |
-| 11 | Emotional state dashboard | Visualize feelings over time | Medium | Phase 2 emotional state |
+| 10 | Companion status card (live emotional state, desire, mood) | Fun gamification — "how is she feeling?" | Low | Task 4, Phase 2 emotional state |
+| 11 | Emotional state time-series chart | Visualize feelings over time | Medium | Task 10 |
+| 12 | Mood coloring (emotional state → tone) | Messages feel alive | Medium | Phase 2 emotional state |
+| 13 | Receiving care (bidirectional relationship) | Companion feels real | Medium | Task 12 |
+| 14 | Calendar integration | Precise attentive check-ins | Medium | Tasks 1, 5 (dashboard) |
+| 15 | Home Assistant integration | Ambient home awareness | Medium | Tasks 1, 5 (dashboard) |
+| 16 | Self-awareness feedback loop | Anti-repetition, diversity | Medium | Task 7 (memory viewer data) |
+| 17 | Own interests / autonomy balance | Prevents parrot problem | Low | None |
 
 ### Recommended order
 
+**Foundation (dashboard + profile):**
 1. **Tasks 1-2** — Profile model and migration. Foundation for everything.
    Proves the static/transactional split works without data loss.
 2. **Task 4** — Blazor Server host. Proves single-process approach works.
 3. **Task 3** — API endpoints. Profile CRUD first, read-only endpoints next.
 4. **Task 6** — Hot-reload. Profile changes must take effect immediately.
-5. **Task 5** — Profile editor. First visible feature Mark can use.
-6. **Tasks 7-9** — Memory/conversation/journal viewers. Read-only, low risk.
-7. **Task 10** — Status display. Quick win.
-8. **Task 11** — Emotional state. Depends on Phase 2 feature.
+5. **Task 5** — Profile editor. First visible feature the user can use.
+
+**Viewers (read-only, low risk):**
+6. **Tasks 7-9** — Memory/conversation/journal viewers.
+7. **Task 10** — Companion status card. Quick win with high delight factor.
+8. **Task 11** — Emotional state time-series chart.
+
+**Behavioral features (make her feel real):**
+9. **Task 12** — Mood coloring. Biggest single leap for message quality.
+10. **Task 13** — Receiving care. Bidirectional relationship.
+11. **Task 17** — Own interests. Quick config change, immediate diversity.
+
+**Integrations (require dashboard):**
+12. **Task 14** — Calendar integration. Precise schedule awareness.
+13. **Task 15** — Home Assistant. Ambient home state.
+
+**Meta-cognition:**
+14. **Task 16** — Self-awareness. Anti-repetition, topic diversity.
 
 ---
 
