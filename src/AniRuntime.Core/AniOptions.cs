@@ -33,8 +33,10 @@ public class AniOptions
     public double ValenceTriggerThreshold { get; set; } = 0.75;
 
     // Conversation mode — active back-and-forth with Mark
-    public double ConversationHeartbeatSeconds { get; set; } = 45.0;
-    public double ConversationTimeoutMinutes   { get; set; } = 15.0;
+    public double ConversationHeartbeatSeconds  { get; set; } = 45.0;
+    public double ConversationTimeoutMinutes    { get; set; } = 15.0;
+    public double ConversationMinReplySeconds   { get; set; } = 12.0;
+    public double ConversationMaxReplySeconds   { get; set; } = 25.0;
 
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;

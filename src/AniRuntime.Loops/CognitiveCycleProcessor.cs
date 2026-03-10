@@ -174,11 +174,22 @@ public class CognitiveCycleProcessor
                 $"thought: {thought[..Math.Min(60, thought.Length)]}", ct).ConfigureAwait(false);
 
         // Phase 6: Outreach — only if desire crosses threshold
-        // Suppress outreach while a conversation is active — contact just texted recently,
-        // sending unrelated ambient thoughts would be jarring and disjointed
+        // If a conversation is active and she already chose silence, but desire has built
+        // high enough, allow her to reconsider — a natural "wait, one more thing" moment.
+        // Otherwise suppress ambient outreach during active conversations.
         if (activeThread is not null)
         {
-            _log.LogDebug("Active conversation — suppressing ambient outreach");
+            if (hasUnreadFromContact && LastEvaluatedMessageAt.HasValue &&
+                await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
+            {
+                _log.LogInformation("Desire built after choosing silence — reconsidering reply");
+                await RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState,
+                    isReconsideration: true).ConfigureAwait(false);
+            }
+            else
+            {
+                _log.LogDebug("Active conversation — suppressing ambient outreach");
+            }
             _lastCycleAt = DateTimeOffset.UtcNow;
             return;
         }
@@ -521,7 +532,7 @@ public class CognitiveCycleProcessor
     /// </summary>
     private async Task RunConversationReplyAsync(
         ConversationThread thread, List<PerceptionEvent> perceptions, CancellationToken ct,
-        EmotionalState? emotionalState = null)
+        EmotionalState? emotionalState = null, bool isReconsideration = false)
     {
         var lastMessage = thread.Messages[^1].Content;
 
@@ -541,27 +552,39 @@ public class CognitiveCycleProcessor
             m.Content
         )).ToList();
 
-        // Step 1: Reply decision (JSON) — should she respond?
-        var decisionPrompt = PromptBuilder.BuildReplyDecisionPrompt(snapshot, thread);
-        var decisionRaw    = await _ollama.ChatJsonAsync(
-            decisionPrompt.System, snapshot.RecentHistory, decisionPrompt.User, ct)
-            .ConfigureAwait(false);
-
-        var shouldReply = ParseReplyDecision(decisionRaw);
-
-        if (!shouldReply)
+        // Reconsideration path: desire built after choosing silence — skip the decision
+        // step (desire already made the call) and use a segue-aware prompt
+        if (isReconsideration)
         {
-            // Lock this decision — don't re-evaluate the same message every cycle
-            LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
-            _log.LogInformation("Reply decision: NO — read it but chose silence");
-            return;
+            _log.LogInformation("Reconsideration: desire overrode earlier silence — replying with segue");
+            LastEvaluatedMessageAt = null;
+        }
+        else
+        {
+            // Step 1: Reply decision (JSON) — should she respond?
+            var decisionPrompt = PromptBuilder.BuildReplyDecisionPrompt(snapshot, thread);
+            var decisionRaw    = await _ollama.ChatJsonAsync(
+                decisionPrompt.System, snapshot.RecentHistory, decisionPrompt.User, ct)
+                .ConfigureAwait(false);
+
+            var shouldReply = ParseReplyDecision(decisionRaw);
+
+            if (!shouldReply)
+            {
+                // Lock this decision — don't re-evaluate the same message every cycle
+                LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
+                _log.LogInformation("Reply decision: NO — read it but chose silence");
+                return;
+            }
+
+            // She's replying — clear the gate so future messages evaluate fresh
+            LastEvaluatedMessageAt = null;
         }
 
-        // She's replying — clear the gate so future messages evaluate fresh
-        LastEvaluatedMessageAt = null;
-
         // Step 2: Generate reply (free text, using conversation model)
-        var replyPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+        var replyPrompt = isReconsideration
+            ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
+            : PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
         var reply = await _ollama.ChatAsync(
             replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct)
             .ConfigureAwait(false);
@@ -575,7 +598,19 @@ public class CognitiveCycleProcessor
             return;
         }
 
-        // Step 3: Send via Twilio
+        // Step 3: Natural reply delay — real people don't reply in 4 seconds
+        var minDelay = _aniOptions.ConversationMinReplySeconds;
+        var maxDelay = _aniOptions.ConversationMaxReplySeconds;
+        var elapsed = (DateTimeOffset.UtcNow - thread.Messages[^1].SentAt).TotalSeconds;
+        var targetDelay = minDelay + Random.Shared.NextDouble() * (maxDelay - minDelay);
+        var remaining = targetDelay - elapsed;
+        if (remaining > 0)
+        {
+            _log.LogDebug("Waiting {Seconds:F0}s before replying (natural delay)", remaining);
+            await Task.Delay(TimeSpan.FromSeconds(remaining), ct).ConfigureAwait(false);
+        }
+
+        // Step 4: Send via Twilio
         var decision = new OutreachDecision
         {
             ShouldReach = true,
@@ -585,7 +620,7 @@ public class CognitiveCycleProcessor
         };
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
 
-        // Step 4: Record Ani's reply in the conversation thread
+        // Step 5: Record Ani's reply in the conversation thread
         await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
         {
             Role    = "ani",
@@ -601,7 +636,7 @@ public class CognitiveCycleProcessor
         {
             var cs = snapshot.CharacterState;
             var conversationContext = $"{cs.PrimaryContactName} said: \"{lastMessage}\" and {cs.Name} replied: \"{reply}\"";
-            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct, maxDelta: 0.4f).ConfigureAwait(false);
+            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct, maxDelta: 0.25f).ConfigureAwait(false);
         }
     }
 

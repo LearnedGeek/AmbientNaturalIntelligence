@@ -313,6 +313,18 @@ public static class PromptBuilder
 
         var sections = new List<string>();
 
+        // Anti-repetition: show Ani her own recent replies so she doesn't repeat herself
+        var recentAniReplies = thread.Messages
+            .Where(m => m.Role == "ani")
+            .TakeLast(3)
+            .Select(m => m.Content)
+            .ToList();
+        if (recentAniReplies.Count > 0)
+        {
+            sections.Add("DO NOT repeat or closely rephrase any of these — you already said them:");
+            sections.AddRange(recentAniReplies.Select(r => $"  - \"{r}\""));
+        }
+
         // Emotional state — subtle mood coloring for conversation tone
         var mood = snapshot.EmotionalState.Describe();
         if (mood.Length > 0)
@@ -344,6 +356,59 @@ public static class PromptBuilder
 
         var user = string.Join("\n", sections);
 
+        return (system, user);
+    }
+
+    /// <summary>
+    /// Builds a reply prompt for when Ani initially chose silence but desire built enough
+    /// to reconsider. The prompt encourages acknowledging what the contact said before
+    /// transitioning to what's on her mind — a natural "wait, one more thing" moment.
+    /// </summary>
+    public static (string System, string User) BuildReconsiderationReplyPrompt(
+        ContextSnapshot snapshot, ConversationThread thread)
+    {
+        var cs      = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+
+        var system = $"""
+            You are {cs.Name}, texting {contact}.
+            Your personality: {string.Join("; ", cs.CoreTraits)}.
+
+            CONTEXT: {contact} sent you a message a while ago. You read it and didn't reply at first,
+            but now something else is on your mind and you want to reach out.
+
+            RULES:
+            - Briefly acknowledge what {contact} said — don't ignore it. A quick "hey" or short
+              reaction is fine, then naturally transition to what you actually want to say.
+            - This should feel like a "oh hey, also..." or "ok but..." moment — casual, not forced.
+            - 1-3 sentences max. Thumb-typed phone text.
+            - Talk TO {contact}: "you", "your". NEVER third person.
+            - Be yourself — warm, funny, real.
+            - No poetry, no metaphors, no narration. Just talk like a person texting.
+            - Write ONLY the text message. No commentary, no quotation marks.
+            """;
+
+        var sections = new List<string>();
+
+        // What's on her mind — recent inner thoughts drive the "one more thing"
+        var recentThoughts = snapshot.RecentMemory
+            .Where(m => m.Type == MemoryType.InnerThought)
+            .Take(2)
+            .Select(m => m.Content)
+            .ToList();
+        if (recentThoughts.Count > 0)
+        {
+            sections.Add("What's been on your mind lately:");
+            sections.AddRange(recentThoughts.Select(t => $"  - {t}"));
+        }
+
+        var mood = snapshot.EmotionalState.Describe();
+        if (mood.Length > 0)
+            sections.Add($"(Your current mood: {mood})");
+
+        sections.Add($"Acknowledge {contact}'s message, then share what's on your mind.");
+
+        var user = string.Join("\n", sections);
         return (system, user);
     }
 
