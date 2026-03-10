@@ -37,6 +37,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
     public Action? OnMessageReceived { get; set; }
 
     private DateTimeOffset _lastPollTime = DateTimeOffset.UtcNow;
+    private Task? _backgroundPollTask;
 
     public string             SourceName => "twilio-inbound";
     public PerceptionCategory Category   => PerceptionCategory.Communication;
@@ -131,6 +132,58 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
 
         _lastPollTime = DateTimeOffset.UtcNow;
         return events;
+    }
+
+    // ── Background polling ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Starts a lightweight background loop that polls Twilio every 30 seconds,
+    /// independent of the cognitive cycle. When a new message is detected, fires
+    /// OnMessageReceived to trigger an early wake — so the cognitive cycle runs
+    /// within ~30 seconds of an inbound text instead of waiting for the next
+    /// scheduled cycle (which could be 10+ minutes away).
+    ///
+    /// The background poll only peeks for new messages — it does NOT process them
+    /// or update the watermark. Full processing still happens in PollAsync during
+    /// the cognitive cycle.
+    /// </summary>
+    public void StartBackgroundPolling(CancellationToken ct)
+    {
+        if (!IsEnabled) return;
+        _backgroundPollTask = BackgroundPollLoopAsync(ct);
+    }
+
+    private async Task BackgroundPollLoopAsync(CancellationToken ct)
+    {
+        _log.LogDebug("Background Twilio polling started (every 30s)");
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+
+                var messages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
+                if (messages.Count > 0)
+                {
+                    _log.LogDebug("Background poll: {Count} new message(s) — triggering early wake",
+                        messages.Count);
+                    OnMessageReceived?.Invoke();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Background Twilio poll failed — will retry in 60s");
+                try { await Task.Delay(TimeSpan.FromSeconds(60), ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+
+        _log.LogDebug("Background Twilio polling stopped");
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

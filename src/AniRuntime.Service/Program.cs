@@ -91,6 +91,11 @@ try
                            .OfType<AniHeartbeatService>().First();
     twilioSource.OnMessageReceived = heartbeat.RequestEarlyWake;
 
+    // Start background Twilio polling — checks for inbound messages every 30s
+    // independent of the cognitive cycle, so early wake actually works
+    var appLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+    twilioSource.StartBackgroundPolling(appLifetime.ApplicationStopping);
+
     // ── Seed character state on first run (idempotent) ────────────────────────
     await using (var scope = host.Services.CreateAsyncScope())
     {
