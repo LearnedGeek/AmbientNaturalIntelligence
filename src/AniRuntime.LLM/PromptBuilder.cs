@@ -246,9 +246,21 @@ public static class PromptBuilder
         var cs      = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
 
+        // Build backstory context — shared experiences and knowledge about Mark
+        // that inform how Ani talks to him (limited to keep prompt concise)
+        var backstory = new List<string>();
+        if (cs.SharedExperiences.Count > 0)
+            backstory.AddRange(cs.SharedExperiences.Take(5));
+        if (cs.CommunicationNotes.Count > 0)
+            backstory.AddRange(cs.CommunicationNotes.Take(3));
+
+        var backstoryBlock = backstory.Count > 0
+            ? $"\n\n            Things you and {contact} share (use naturally, don't force):\n            {string.Join("\n            ", backstory.Select(b => $"- {b}"))}"
+            : string.Empty;
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
-            Your personality: {string.Join("; ", cs.CoreTraits)}.
+            Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
 
             RULES:
             - Respond naturally to what {contact} just said. This is a real conversation.
@@ -260,7 +272,19 @@ public static class PromptBuilder
             - Write ONLY the text message. No commentary, no quotation marks.
             """;
 
-        var perceptionContext = string.Empty;
+        var sections = new List<string>();
+
+        // Semantic memories relevant to the conversation topic
+        var relevantMemories = snapshot.RelevantMemory
+            .Where(m => m.Type != MemoryType.InnerThought)
+            .Take(3)
+            .ToList();
+        if (relevantMemories.Count > 0)
+        {
+            sections.Add("Things that feel connected to this conversation:");
+            sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+        }
+
         if (snapshot.Perceptions.Count > 0)
         {
             var relevant = snapshot.Perceptions
@@ -269,12 +293,12 @@ public static class PromptBuilder
                 .Select(p => p.Summary);
             var joined = string.Join("; ", relevant);
             if (joined.Length > 0)
-                perceptionContext = $"\n(Background awareness — don't reference directly: {joined})";
+                sections.Add($"(Background awareness — don't reference directly: {joined})");
         }
 
-        var user = $"""
-            Reply to {contact}'s message.{perceptionContext}
-            """;
+        sections.Add($"Reply to {contact}'s message.");
+
+        var user = string.Join("\n", sections);
 
         return (system, user);
     }
