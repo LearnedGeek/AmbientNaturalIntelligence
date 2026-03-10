@@ -43,6 +43,11 @@ public static class PromptBuilder
 
         var sections = new List<string>();
 
+        // Emotional state — subtle mood coloring
+        var mood = snapshot.EmotionalState.Describe();
+        if (mood.Length > 0)
+            sections.Add($"(Your current mood: {mood})");
+
         if (snapshot.Perceptions.Count > 0)
         {
             // Present perceptions as subtle background, not prominent context
@@ -274,6 +279,11 @@ public static class PromptBuilder
 
         var sections = new List<string>();
 
+        // Emotional state — subtle mood coloring for conversation tone
+        var mood = snapshot.EmotionalState.Describe();
+        if (mood.Length > 0)
+            sections.Add($"(Your current mood: {mood})");
+
         // Semantic memories relevant to the conversation topic
         var relevantMemories = snapshot.RelevantMemory
             .Where(m => m.Type != MemoryType.InnerThought)
@@ -349,6 +359,37 @@ public static class PromptBuilder
             This made you want to reach out: {recentThought}
 
             Now write a normal, grounded text to {contact} — something they'd smile at and reply to:
+            """;
+
+        return (system, user);
+    }
+
+    /// <summary>
+    /// Scores emotional shift from an inner thought or conversation event.
+    /// Returns JSON with delta values for each emotional dimension.
+    /// </summary>
+    public static (string System, string User) BuildEmotionalShiftPrompt(
+        string content, EmotionalState current)
+    {
+        var system = """
+            You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
+            Respond ONLY with valid JSON: { "warmth": <float>, "energy": <float>, "concern": <float>, "playfulness": <float> }
+            Each value is a DELTA (change), ranging from -0.2 to +0.2. Use 0.0 for no change.
+
+            Dimensions:
+            - warmth: affection, tenderness, desire for closeness (+0.1 = feeling warmer, -0.1 = feeling distant)
+            - energy: alertness, enthusiasm (+0.1 = more energized, -0.1 = more drained/quiet)
+            - concern: worry about someone (+0.1 = more worried, -0.1 = more at ease)
+            - playfulness: humor, lightheartedness (+0.1 = more playful, -0.1 = more serious)
+            """;
+
+        var user = $"""
+            Current emotional state: warmth={current.Warmth:F2}, energy={current.Energy:F2}, concern={current.Concern:F2}, playfulness={current.Playfulness:F2}
+
+            Content to evaluate:
+            "{content}"
+
+            How would this shift the emotional state? Small deltas only (-0.2 to +0.2).
             """;
 
         return (system, user);

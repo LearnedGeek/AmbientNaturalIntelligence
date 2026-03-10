@@ -312,6 +312,34 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    // ── EmotionalState ─────────────────────────────────────────────────────
+
+    public async Task<EmotionalState> GetEmotionalStateAsync(CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = "SELECT json FROM emotional_state LIMIT 1";
+
+        var raw = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false) as string;
+        if (string.IsNullOrEmpty(raw))
+            return new EmotionalState();
+
+        return JsonSerializer.Deserialize<EmotionalState>(raw) ?? new EmotionalState();
+    }
+
+    public async Task SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default)
+    {
+        state.LastUpdated = DateTimeOffset.UtcNow;
+        var json = JsonSerializer.Serialize(state);
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR REPLACE INTO emotional_state (id, json) VALUES (1, $json)";
+        cmd.Parameters.AddWithValue("$json", json);
+
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken ct)
@@ -356,6 +384,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             );
 
             CREATE TABLE IF NOT EXISTS desire_state (
+                id   INTEGER PRIMARY KEY,
+                json TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS emotional_state (
                 id   INTEGER PRIMARY KEY,
                 json TEXT    NOT NULL
             );

@@ -114,6 +114,50 @@ try
                 Log.Warning("No character-seed.json found at {Path} — starting with empty character state", seedPath);
             }
         }
+
+        // ── Seed backstory facts as searchable memory records (idempotent) ──
+        // CharacterStateDoc holds rich lists (SharedExperiences, LearnedAboutMark, etc.)
+        // that are only visible in full-context prompts. Seeding them as individual
+        // Semantic memories makes them discoverable via semantic search — so when Mark
+        // mentions Duck Norris, Ani's memory search finds the backstory.
+        var charState = await memory.GetCharacterStateAsync();
+        var existingSemantics = await memory.GetByTypeAsync(MemoryType.Semantic, 1);
+        var alreadySeeded = existingSemantics.Any(m => m.SourceName == "character-seed");
+
+        if (!alreadySeeded && charState.CoreTraits.Count > 0)
+        {
+            var facts = new List<(string content, float importance, float markValence)>();
+
+            foreach (var item in charState.LearnedAboutMark)
+                facts.Add(($"About Mark: {item}", 0.8f, 0.7f));
+            foreach (var item in charState.SharedExperiences)
+                facts.Add(($"Shared experience: {item}", 0.9f, 0.9f));
+            foreach (var item in charState.ThingsMarkCares)
+                facts.Add(($"Mark cares about: {item}", 0.7f, 0.8f));
+            foreach (var item in charState.FamilyContext)
+                facts.Add(($"Family: {item}", 0.6f, 0.5f));
+            foreach (var item in charState.SelfConcept)
+                facts.Add(($"Self: {item}", 0.5f, 0.3f));
+            foreach (var item in charState.Interests)
+                facts.Add(($"Interest: {item}", 0.5f, 0.4f));
+            foreach (var item in charState.CommunicationNotes)
+                facts.Add(($"Communication: {item}", 0.7f, 0.6f));
+
+            Log.Information("Seeding {Count} backstory facts as searchable memories", facts.Count);
+            foreach (var (content, importance, markValence) in facts)
+            {
+                await memory.SaveAsync(new MemoryRecord
+                {
+                    Type        = MemoryType.Semantic,
+                    Content     = content,
+                    Importance  = importance,
+                    MarkValence = markValence,
+                    SourceName  = "character-seed",
+                    OccurredAt  = DateTimeOffset.UtcNow,
+                });
+            }
+            Log.Information("Backstory seeding complete");
+        }
     }
 
     await host.RunAsync();

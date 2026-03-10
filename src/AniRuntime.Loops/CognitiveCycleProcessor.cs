@@ -73,6 +73,12 @@ public class CognitiveCycleProcessor
     {
         _log.LogDebug("Cognitive cycle starting");
 
+        // Phase 0: Emotional state — load and drift toward baselines
+        var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var elapsed = DateTimeOffset.UtcNow - emotionalState.LastUpdated;
+        emotionalState.DriftTowardBaseline(elapsed);
+        await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+
         // Phase 1: Perception (includes Twilio inbound polling + conversation timeout checks)
         var perceptions = await PollPerceptionSourcesAsync(ct).ConfigureAwait(false);
 
@@ -100,7 +106,7 @@ public class CognitiveCycleProcessor
             {
                 _log.LogInformation("Conversation mode — Mark's last message: {Message}",
                     lastMsg.Content);
-                await RunConversationReplyAsync(activeThread, perceptions, ct).ConfigureAwait(false);
+                await RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState).ConfigureAwait(false);
                 _lastCycleAt = DateTimeOffset.UtcNow;
                 return;
             }
@@ -115,7 +121,7 @@ public class CognitiveCycleProcessor
         }
 
         // Phase 4: Context snapshot — built once, shared across all ambient phases
-        var snapshot = await BuildContextSnapshotAsync(perceptions, ct).ConfigureAwait(false);
+        var snapshot = await BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
         // Phase 4: Inner thought
         var (thought, valence) = await RunInnerThoughtAsync(snapshot, ct).ConfigureAwait(false);
@@ -131,6 +137,9 @@ public class CognitiveCycleProcessor
 
         _log.LogInformation("Inner thought (valence={Valence:F2}): {Thought}",
             valence, thought);
+
+        // Phase 4b: Emotional shift from inner thought
+        await ApplyEmotionalShiftAsync(emotionalState, thought, ct).ConfigureAwait(false);
 
         // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
@@ -306,7 +315,8 @@ public class CognitiveCycleProcessor
     }
 
     private async Task<ContextSnapshot> BuildContextSnapshotAsync(
-        List<PerceptionEvent> perceptions, CancellationToken ct)
+        List<PerceptionEvent> perceptions, CancellationToken ct,
+        EmotionalState? emotionalState = null)
     {
         var charState   = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
         var desireState = await _desire.GetStateAsync(ct).ConfigureAwait(false);
@@ -331,10 +341,13 @@ public class CognitiveCycleProcessor
             }
         }
 
+        emotionalState ??= await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+
         return new ContextSnapshot
         {
             CharacterState = charState,
             DesireState    = desireState,
+            EmotionalState = emotionalState,
             RecentMemory   = recentMem.ToList(),
             RelevantMemory = relevantMem,
             OpenLoops      = openLoops.ToList(),
@@ -440,7 +453,8 @@ public class CognitiveCycleProcessor
     ///   3. Model decides no reply needed (genuine silence)
     /// </summary>
     private async Task RunConversationReplyAsync(
-        ConversationThread thread, List<PerceptionEvent> perceptions, CancellationToken ct)
+        ConversationThread thread, List<PerceptionEvent> perceptions, CancellationToken ct,
+        EmotionalState? emotionalState = null)
     {
         var lastMessage = thread.Messages[^1].Content;
 
@@ -452,7 +466,7 @@ public class CognitiveCycleProcessor
         }
 
         // Build context for the reply
-        var snapshot = await BuildContextSnapshotAsync(perceptions, ct).ConfigureAwait(false);
+        var snapshot = await BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
         // Populate RecentHistory with the conversation thread so prompts have full context
         snapshot.RecentHistory = thread.Messages.Select(m => new ChatMessage(
@@ -514,6 +528,13 @@ public class CognitiveCycleProcessor
 
         // Update desire — contact happened
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
+
+        // Emotional shift from conversation — receiving a message + replying is emotionally warm
+        if (emotionalState is not null)
+        {
+            var conversationContext = $"Mark said: \"{lastMessage}\" and Ani replied: \"{reply}\"";
+            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -673,6 +694,61 @@ public class CognitiveCycleProcessor
         _log.LogDebug("Pronoun fix: {Original} → {Rewritten}", message, rewritten);
 
         return string.IsNullOrWhiteSpace(rewritten) ? message : rewritten.Trim();
+    }
+
+    /// <summary>
+    /// Scores and applies emotional shift from a thought, conversation reply, or event.
+    /// Uses the LLM to extract small deltas for each emotional dimension.
+    /// </summary>
+    private async Task ApplyEmotionalShiftAsync(
+        EmotionalState state, string content, CancellationToken ct)
+    {
+        try
+        {
+            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state);
+            var raw = await _ollama.ChatJsonAsync(
+                prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
+                .ConfigureAwait(false);
+
+            var (warmth, energy, concern, playfulness) = ParseEmotionalShift(raw);
+            state.ApplyShift(warmth, energy, concern, playfulness);
+
+            _log.LogDebug("Emotional shift: W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
+                warmth, energy, concern, playfulness);
+
+            await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Emotional shift scoring failed — continuing with current state");
+        }
+    }
+
+    private (float warmth, float energy, float concern, float playfulness) ParseEmotionalShift(string raw)
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(raw.Trim());
+            var root = doc.RootElement;
+            return (
+                ClampDelta(root, "warmth"),
+                ClampDelta(root, "energy"),
+                ClampDelta(root, "concern"),
+                ClampDelta(root, "playfulness")
+            );
+        }
+        catch
+        {
+            _log.LogDebug("Emotional shift parse failure: {Raw}", raw);
+            return (0f, 0f, 0f, 0f);
+        }
+
+        static float ClampDelta(JsonElement root, string prop)
+        {
+            if (root.TryGetProperty(prop, out var val))
+                return (float)Math.Clamp(val.GetDouble(), -0.2, 0.2);
+            return 0f;
+        }
     }
 
     // ── Parsing ───────────────────────────────────────────────────────────────

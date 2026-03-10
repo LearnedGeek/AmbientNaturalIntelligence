@@ -29,6 +29,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .ReturnsAsync(Array.Empty<OpenLoop>());
         MockMemory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
                   .Returns(Task.CompletedTask);
+        MockMemory.Setup(m => m.GetEmotionalStateAsync(It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new EmotionalState());
+        MockMemory.Setup(m => m.SaveEmotionalStateAsync(It.IsAny<EmotionalState>(), It.IsAny<CancellationToken>()))
+                  .Returns(Task.CompletedTask);
 
         _mockSource.Setup(s => s.IsEnabled).Returns(true);
         _mockSource.Setup(s => s.SourceName).Returns("test-source");
@@ -122,6 +126,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                       It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                       It.IsAny<string>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync("""{ "score": 0.3 }""")   // valence score (low — no spontaneous trigger)
+                  .ReturnsAsync("""{ "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }""")  // emotional shift
                   .ReturnsAsync("""{ "shouldReach": true, "confidence": 0.9, "reasoning": "been a while", "triggersActedOn": [] }""");   // outreach decision (no message — separate step now)
 
         // Step 2: message composition + Step 3: rewrite pass (both use ChatAsync)

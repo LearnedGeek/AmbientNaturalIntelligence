@@ -193,4 +193,71 @@ public class SqliteMemoryServiceTests : AniTestBase
         var loaded = await _svc.GetDesireStateAsync();
         loaded.DesireToConnect.Should().BeApproximately(0.8f, 0.001f);
     }
+
+    // ── EmotionalState ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetEmotionalStateAsync_ReturnsDefaultWhenNew()
+    {
+        var state = await _svc.GetEmotionalStateAsync();
+        state.Should().NotBeNull();
+        state.Warmth.Should().BeApproximately(0.6f, 0.001f);
+        state.Energy.Should().BeApproximately(0.5f, 0.001f);
+    }
+
+    [Fact]
+    public async Task SaveEmotionalStateAsync_ThenGet_RoundTrips()
+    {
+        var state = new EmotionalState
+        {
+            Warmth = 0.85f, Energy = 0.3f,
+            Concern = 0.7f, Playfulness = 0.9f,
+        };
+
+        await _svc.SaveEmotionalStateAsync(state);
+
+        var loaded = await _svc.GetEmotionalStateAsync();
+        loaded.Warmth.Should().BeApproximately(0.85f, 0.001f);
+        loaded.Energy.Should().BeApproximately(0.3f, 0.001f);
+        loaded.Concern.Should().BeApproximately(0.7f, 0.001f);
+        loaded.Playfulness.Should().BeApproximately(0.9f, 0.001f);
+    }
+
+    [Fact]
+    public async Task SaveEmotionalStateAsync_IsIdempotent_LastWriteWins()
+    {
+        var first  = new EmotionalState { Warmth = 0.3f };
+        var second = new EmotionalState { Warmth = 0.9f };
+
+        await _svc.SaveEmotionalStateAsync(first);
+        await _svc.SaveEmotionalStateAsync(second);
+
+        var loaded = await _svc.GetEmotionalStateAsync();
+        loaded.Warmth.Should().BeApproximately(0.9f, 0.001f);
+    }
+
+    // ── Backstory seeding (SourceName filter) ────────────────────────────────
+
+    [Fact]
+    public async Task SaveAsync_WithSourceName_PersistsSourceName()
+    {
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.Semantic,
+            Content    = "About Mark: He loves mythology",
+            SourceName = "character-seed",
+            Importance = 0.8f,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.Semantic,
+            Content    = "Some other semantic memory",
+            SourceName = "rss",
+            Importance = 0.5f,
+        });
+
+        var all = await _svc.GetByTypeAsync(MemoryType.Semantic, limit: 50);
+        all.Should().HaveCount(2);
+        all.Count(m => m.SourceName == "character-seed").Should().Be(1);
+    }
 }

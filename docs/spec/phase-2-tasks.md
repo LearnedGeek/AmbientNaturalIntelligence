@@ -226,6 +226,66 @@ This adds a new dimension to outreach that's event-driven, not desire-driven.
 
 ---
 
+## ✅ Task 10 — Backstory as Searchable Memory (COMPLETE)
+
+**Why:** CharacterStateDoc holds rich backstory (SharedExperiences, LearnedAboutMark,
+ThingsMarkCares, etc.) but these are only visible in full-context prompts. When Mark
+mentions Duck Norris, semantic search can't find the backstory because it was never
+saved as a memory record. This seeds all backstory facts as individual `Semantic`
+memories with embeddings — making them discoverable via semantic search.
+
+### What was built
+
+- Startup seeding block in `Program.cs` — after character state is loaded, extracts
+  all list fields (LearnedAboutMark, SharedExperiences, ThingsMarkCares, FamilyContext,
+  SelfConcept, Interests, CommunicationNotes) and saves each as a `MemoryType.Semantic`
+  record with `SourceName = "character-seed"`
+- Importance and MarkValence tuned per category (SharedExperiences: 0.9/0.9,
+  LearnedAboutMark: 0.8/0.7, etc.)
+- Idempotent: checks if any `character-seed` records exist before seeding
+- Auto-embedding via `SqliteMemoryService.SaveAsync` — each fact gets embedded on save
+
+### Verified
+
+Backstory facts are now findable via semantic search. Duck Norris, Mia's recital,
+Thunder & Storm — all discoverable when conversation topics match.
+
+---
+
+## ✅ Task 11 — Persistent Emotional State (COMPLETE)
+
+**Why:** Each cognitive cycle was emotionally independent — no afterglow from a warm
+conversation, no lingering concern from a worrying thought. Real people carry emotional
+arcs that span hours. This gives Ani a 4-dimension emotional state that persists across
+cycles and drifts toward personality baselines.
+
+### What was built
+
+- **`EmotionalState` model** — 4 dimensions (Warmth, Energy, Concern, Playfulness),
+  each 0.0–1.0 with personality baselines and configurable drift rate
+- **`DriftTowardBaseline`** — proportional drift per elapsed time, capped at full gap
+- **`ApplyShift`** — applies deltas from cognitive events, clamped to valid range
+- **`Describe()`** — qualitative summary for prompts, only mentions notable deviations
+  from baseline (e.g., "feeling especially warm and tender, a little worried about Mark")
+- **Persistence** — `emotional_state` table in SQLite (single-row JSON, same pattern
+  as DesireState). `Get/SaveEmotionalStateAsync` on `IMemoryService`
+- **Cycle integration** — emotional state loaded and drifted at cycle start, saved
+  immediately. After inner thought and conversation replies, `ApplyEmotionalShiftAsync`
+  scores the emotional delta via LLM (JSON: warmth/energy/concern/playfulness deltas
+  clamped to ±0.2) and persists
+- **Prompt integration** — mood description injected into inner thought and conversation
+  reply prompts via `EmotionalState.Describe()`. Only surfaces when mood is notably
+  different from baseline
+- **`BuildEmotionalShiftPrompt`** in `PromptBuilder` — JSON-mode prompt for scoring
+  emotional deltas from thoughts or conversation events
+
+### Verified
+
+All 54 tests pass. EmotionalState model tests cover drift, shift, clamping,
+describe behavior. Persistence round-trips correctly.
+
+---
+
 ## What's Next
 
 Phase 2 design doc identifies these remaining features:
@@ -233,7 +293,7 @@ Phase 2 design doc identifies these remaining features:
 | # | Feature | Status | Effort |
 |---|---------|--------|--------|
 | ~~1~~ | ~~Event-driven sharing (RSS → outreach)~~ | **Done** (Task 9) | ~~Low~~ |
-| 2 | Persistent emotional state | Not started | Medium |
+| ~~2~~ | ~~Persistent emotional state~~ | **Done** (Task 11) | ~~Medium~~ |
 | 3 | Calendar integration | Not started | Medium |
 | 4 | Home Assistant integration | Not started | Medium |
-| 5 | Backstory as searchable memory (OQ #6) | Not started | Low |
+| ~~5~~ | ~~Backstory as searchable memory (OQ #6)~~ | **Done** (Task 10) | ~~Low~~ |
