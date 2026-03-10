@@ -63,9 +63,8 @@ public class TwilioOptions
     public string FromNumber  { get; set; } = string.Empty;
     public string ToNumber    { get; set; } = string.Empty;
 
-    // Inbound SMS polling
-    public bool   InboundEnabled      { get; set; } = true;
-    public double PollIntervalSeconds { get; set; } = 45.0;
+    // Inbound SMS — webhook-driven (Twilio POSTs to /sms/inbound)
+    public bool InboundEnabled { get; set; } = true;
 }
 
 public class RssOptions

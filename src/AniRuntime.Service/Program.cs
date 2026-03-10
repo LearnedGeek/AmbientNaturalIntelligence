@@ -7,8 +7,10 @@ using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using Serilog;
+using Twilio.Security;
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
@@ -18,7 +20,7 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    var builder = Host.CreateApplicationBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 
     builder.Services.AddWindowsService(options => options.ServiceName = "AniRuntime");
 
@@ -83,21 +85,62 @@ try
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
     builder.Services.AddHostedService<AniHeartbeatService>();
 
-    var host = builder.Build();
+    // ── Forwarded headers — needed for Twilio signature validation behind ngrok
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto |
+                                   ForwardedHeaders.XForwardedHost;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
 
-    // ── Wire early wake: Twilio inbound → heartbeat interrupt ───────────────
-    var twilioSource = host.Services.GetRequiredService<TwilioInboundPerceptionSource>();
-    var heartbeat    = host.Services.GetServices<IHostedService>()
+    var app = builder.Build();
+
+    app.UseForwardedHeaders();
+
+    // ── Wire early wake: Twilio webhook → heartbeat interrupt ─────────────────
+    var twilioSource = app.Services.GetRequiredService<TwilioInboundPerceptionSource>();
+    var heartbeat    = app.Services.GetServices<IHostedService>()
                            .OfType<AniHeartbeatService>().First();
     twilioSource.OnMessageReceived = heartbeat.RequestEarlyWake;
 
-    // Start background Twilio polling — checks for inbound messages every 30s
-    // independent of the cognitive cycle, so early wake actually works
-    var appLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
-    twilioSource.StartBackgroundPolling(appLifetime.ApplicationStopping);
+    // ── Inbound SMS webhook ──────────────────────────────────────────────────
+    // Twilio POSTs here when an SMS arrives at Ani's number.
+    // Enqueues the message for the cognitive cycle and triggers an early wake.
+    app.MapPost("/sms/inbound", async (HttpContext ctx, IOptions<TwilioOptions> twilioOpts) =>
+    {
+        var form = await ctx.Request.ReadFormAsync();
+
+        // Validate Twilio request signature
+        var authToken = twilioOpts.Value.AuthToken;
+        var signature = ctx.Request.Headers["X-Twilio-Signature"].FirstOrDefault() ?? "";
+        var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.Path}";
+        var parameters = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
+
+        var validator = new RequestValidator(authToken);
+        if (!string.IsNullOrWhiteSpace(authToken) && !validator.Validate(requestUrl, parameters, signature))
+        {
+            Log.Warning("Rejected inbound SMS webhook — invalid Twilio signature");
+            return Results.StatusCode(403);
+        }
+
+        var body = form["Body"].ToString();
+        var messageSid = form["MessageSid"].ToString();
+
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            // Enqueue the message and trigger early wake — the cognitive cycle
+            // will process it immediately via PollAsync draining the queue
+            twilioSource.EnqueueInbound(messageSid, body, DateTimeOffset.UtcNow);
+            Log.Information("Webhook: inbound SMS enqueued ({Sid})", messageSid);
+        }
+
+        // Empty TwiML — no auto-reply, Ani will respond via the cognitive cycle
+        return Results.Content("<Response></Response>", "application/xml");
+    });
 
     // ── Seed character state on first run (idempotent) ────────────────────────
-    await using (var scope = host.Services.CreateAsyncScope())
+    await using (var scope = app.Services.CreateAsyncScope())
     {
         var memory   = scope.ServiceProvider.GetRequiredService<IMemoryService>();
         var existing = await memory.GetCharacterStateAsync();
@@ -168,7 +211,7 @@ try
     }
 
     // ── Startup status dump ───────────────────────────────────────────────
-    await using (var scope = host.Services.CreateAsyncScope())
+    await using (var scope = app.Services.CreateAsyncScope())
     {
         var memory    = scope.ServiceProvider.GetRequiredService<IMemoryService>();
         var desire    = scope.ServiceProvider.GetRequiredService<DesireEngine>();
@@ -195,10 +238,11 @@ try
             desireState.CooldownActive ? $"until {desireState.CooldownUntil:HH:mm}" : "none");
         Log.Information("║  Timing: {Min:F0}–{Max:F0} min (conversation: {Conv:F0}s)",
             aniOpts.MinWakeMinutes, aniOpts.MaxWakeMinutes, aniOpts.ConversationHeartbeatSeconds);
+        Log.Information("║  Webhook: http://localhost:5100/sms/inbound");
         Log.Information("╚══════════════════════════════════════════╝");
     }
 
-    await host.RunAsync();
+    await app.RunAsync();
 }
 catch (Exception ex)
 {

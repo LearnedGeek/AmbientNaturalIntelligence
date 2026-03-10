@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -10,14 +11,14 @@ using Microsoft.Extensions.Options;
 namespace AniRuntime.Perception;
 
 /// <summary>
-/// Polls Twilio's message list API for inbound SMS sent to the Ani phone number.
+/// Processes inbound SMS sent to the Ani phone number.
 ///
-/// Design rationale (from phase-2-design.md):
-///   - Polling (not webhooks) — no Kestrel, no ngrok, fits IPerceptionSource pattern
-///   - 30-60 second latency is a feature — it's her "thinking"
-///   - Each new inbound message becomes a PerceptionEvent(Communication) with high ContactRelevance
-///   - Creates or extends a ConversationThread via IConversationService
-///   - Signals an early wake to shorten the heartbeat during conversation mode
+/// Inbound detection uses two complementary mechanisms:
+///   - A Twilio webhook (POST /sms/inbound) receives the message instantly,
+///     enqueues it locally, and fires OnMessageReceived to trigger an early wake.
+///   - PollAsync (called during the cognitive cycle) drains the webhook queue first,
+///     then falls back to the Twilio REST API as a safety net (e.g. if the webhook
+///     was briefly unreachable). Messages are deduped by SID.
 ///
 /// Uses Twilio REST API directly via HttpClient (no Twilio SDK dependency in Perception layer).
 /// </summary>
@@ -31,13 +32,15 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
     private readonly ILogger<TwilioInboundPerceptionSource>   _log;
 
     /// <summary>
-    /// Callback invoked when a new inbound message is detected.
+    /// Callback invoked when a new inbound message is detected (via webhook).
     /// The heartbeat service sets this to trigger an early wake.
     /// </summary>
     public Action? OnMessageReceived { get; set; }
 
     private DateTimeOffset _lastPollTime = DateTimeOffset.UtcNow;
-    private Task? _backgroundPollTask;
+
+    // Webhook-delivered messages waiting to be processed by the cognitive cycle
+    private readonly ConcurrentQueue<TwilioMessage> _webhookQueue = new();
 
     public string             SourceName => "twilio-inbound";
     public PerceptionCategory Category   => PerceptionCategory.Communication;
@@ -64,16 +67,46 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
         _log           = log;
     }
 
+    /// <summary>
+    /// Called by the webhook endpoint to deliver a message directly.
+    /// Enqueues it for the next cognitive cycle and fires the early wake.
+    /// </summary>
+    public void EnqueueInbound(string messageSid, string body, DateTimeOffset receivedAt)
+    {
+        _webhookQueue.Enqueue(new TwilioMessage(messageSid, body, receivedAt));
+        _log.LogDebug("Webhook message enqueued: {Sid}", messageSid);
+        OnMessageReceived?.Invoke();
+    }
+
     public async Task<IEnumerable<PerceptionEvent>> PollAsync(
         DateTimeOffset since, CancellationToken ct = default)
     {
         if (!IsEnabled) return [];
 
         var events = new List<PerceptionEvent>();
+        var seenSids = new HashSet<string>();
 
         try
         {
-            var messages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
+            // Primary path: drain messages delivered by the webhook
+            var messages = new List<TwilioMessage>();
+            while (_webhookQueue.TryDequeue(out var queued))
+            {
+                messages.Add(queued);
+                seenSids.Add(queued.Sid);
+            }
+
+            // Safety net: also fetch from Twilio API in case the webhook missed anything
+            // (e.g. ngrok was briefly down, or service restarted mid-conversation)
+            var apiMessages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
+            foreach (var msg in apiMessages)
+            {
+                if (seenSids.Add(msg.Sid))
+                    messages.Add(msg);
+            }
+
+            // Sort chronologically
+            messages.Sort((a, b) => a.DateSent.CompareTo(b.DateSent));
 
             // Load contact name for dynamic log/event references
             var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
@@ -117,9 +150,6 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
                         ["messageSid"] = msg.Sid,
                     },
                 });
-
-                // Signal early wake — Mark is talking, she needs to respond
-                OnMessageReceived?.Invoke();
             }
         }
         catch (Exception ex)
@@ -132,58 +162,6 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
 
         _lastPollTime = DateTimeOffset.UtcNow;
         return events;
-    }
-
-    // ── Background polling ────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Starts a lightweight background loop that polls Twilio every 30 seconds,
-    /// independent of the cognitive cycle. When a new message is detected, fires
-    /// OnMessageReceived to trigger an early wake — so the cognitive cycle runs
-    /// within ~30 seconds of an inbound text instead of waiting for the next
-    /// scheduled cycle (which could be 10+ minutes away).
-    ///
-    /// The background poll only peeks for new messages — it does NOT process them
-    /// or update the watermark. Full processing still happens in PollAsync during
-    /// the cognitive cycle.
-    /// </summary>
-    public void StartBackgroundPolling(CancellationToken ct)
-    {
-        if (!IsEnabled) return;
-        _backgroundPollTask = BackgroundPollLoopAsync(ct);
-    }
-
-    private async Task BackgroundPollLoopAsync(CancellationToken ct)
-    {
-        _log.LogDebug("Background Twilio polling started (every 30s)");
-
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
-
-                var messages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
-                if (messages.Count > 0)
-                {
-                    _log.LogDebug("Background poll: {Count} new message(s) — triggering early wake",
-                        messages.Count);
-                    OnMessageReceived?.Invoke();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Background Twilio poll failed — will retry in 60s");
-                try { await Task.Delay(TimeSpan.FromSeconds(60), ct).ConfigureAwait(false); }
-                catch (OperationCanceledException) { break; }
-            }
-        }
-
-        _log.LogDebug("Background Twilio polling stopped");
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -237,11 +215,8 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
             }
         }
 
-        // Oldest first so conversation threading is in chronological order
-        messages.Sort((a, b) => a.DateSent.CompareTo(b.DateSent));
-
         if (messages.Count > 0)
-            _log.LogDebug("Fetched {Count} new inbound messages from Twilio", messages.Count);
+            _log.LogDebug("Fetched {Count} new inbound messages from Twilio API", messages.Count);
 
         return messages;
     }
