@@ -19,6 +19,10 @@ public class DesireEngine
     private readonly AniOptions             _options;
     private readonly ILogger<DesireEngine>  _log;
 
+    // Daily outreach counter — resets when the day rolls over
+    private int            _outreachCountToday;
+    private DateTimeOffset _outreachCountDay = DateTimeOffset.MinValue;
+
     public DesireEngine(IMemoryService memory, IOptions<AniOptions> options, ILogger<DesireEngine> log)
     {
         _memory  = memory;
@@ -47,7 +51,7 @@ public class DesireEngine
         // Circadian: morning/evening raise modifier (shorten interval), night lowers it
         var circadian = (double)Math.Max(desire.CircadianModifier, 0.01f); // guard against 0
 
-        // Jitter: ±20% — Ani cannot predict herself, neither can Mark
+        // Jitter: ±20% — Ani cannot predict herself, neither can the contact
         var jitterFactor = 0.8 + (Random.Shared.NextDouble() * 0.4);
 
         var finalMinutes = baseMinutes * desireModifier * (1.0 / circadian) * jitterFactor;
@@ -80,6 +84,19 @@ public class DesireEngine
             return false;
         }
 
+        // Enforce daily outreach limit
+        var today = DateTimeOffset.Now.Date;
+        if (_outreachCountDay.Date != today)
+        {
+            _outreachCountToday = 0;
+            _outreachCountDay   = DateTimeOffset.Now;
+        }
+        if (_outreachCountToday >= _options.MaxOutreachPerDay)
+        {
+            _log.LogInformation("Daily outreach limit reached ({Limit}) — blocked", _options.MaxOutreachPerDay);
+            return false;
+        }
+
         var threshold = _options.OutreachThresholdFloor + (Random.Shared.NextDouble() * _options.OutreachThresholdRange);
         var passes = state.DesireToConnect >= threshold;
         _log.LogInformation("Outreach gate: desire={Desire:F2} threshold={Threshold:F2} → {Result}",
@@ -101,7 +118,12 @@ public class DesireEngine
     public async Task ApplyDriftAsync(CancellationToken ct = default)
     {
         var state   = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        var elapsed = DateTimeOffset.UtcNow - state.LastMarkContact;
+
+        // Use the more recent of LastContactInbound or LastOutreach — Ani's own messages
+        // partially satisfy her connection need, so drift should slow after she texts too
+        var lastConnection = state.LastContactInbound > state.LastOutreach
+            ? state.LastContactInbound : state.LastOutreach;
+        var elapsed = DateTimeOffset.UtcNow - lastConnection;
 
         var previousDesire = state.DesireToConnect;
         var drift = (float)Math.Min(elapsed.TotalHours * _options.DriftPerHour, _options.DriftCapPerCycle);
@@ -157,6 +179,18 @@ public class DesireEngine
     }
 
     /// <summary>
+    /// Records that the primary contact reached out. Updates the LastContactInbound timestamp
+    /// so desire drift uses the correct elapsed time.
+    /// </summary>
+    public async Task RecordInboundContactAsync(CancellationToken ct = default)
+    {
+        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        state.LastContactInbound = DateTimeOffset.UtcNow;
+        _log.LogDebug("Inbound contact recorded at {Time}", state.LastContactInbound);
+        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Resets all desire state after a successful outreach.
     /// Desire is zeroed, triggers cleared, cooldown lifted, timestamp recorded.
     /// </summary>
@@ -166,15 +200,24 @@ public class DesireEngine
         _log.LogInformation("Outreach reset: desire {Previous:F2} → 0.00, clearing {TriggerCount} triggers",
             state.DesireToConnect, state.ActiveTriggers.Count);
         state.DesireToConnect = 0.0f;
-        state.CooldownActive  = false;
         state.LastOutreach    = DateTimeOffset.UtcNow;
         state.ActiveTriggers.Clear();
+
+        // Track daily outreach count
+        _outreachCountToday++;
+
+        // Activate cooldown — prevents rapid-fire messages
+        state.CooldownActive = true;
+        state.CooldownUntil  = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(_options.MinOutreachGapMinutes);
+        _log.LogInformation("Cooldown activated until {Until} ({Minutes} min)",
+            state.CooldownUntil, _options.MinOutreachGapMinutes);
+
         await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     // ── Private ───────────────────────────────────────────────────────────────
 
-    // Local time is intentional here — circadian rhythm maps to Ani's (Mark's) timezone
+    // Local time is intentional here — circadian rhythm maps to Ani's (contact's) timezone
     private static float ComputeCircadianModifier() => DateTimeOffset.Now.Hour switch
     {
         >= 6  and < 10  => 1.2f,   // morning  — curious, engaged

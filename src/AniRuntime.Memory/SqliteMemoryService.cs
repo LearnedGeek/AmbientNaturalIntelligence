@@ -102,7 +102,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$content",      record.Content);
         cmd.Parameters.AddWithValue("$raw_json",     (object?)record.RawJson      ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$importance",   record.Importance);
-        cmd.Parameters.AddWithValue("$mark_valence", record.MarkValence);
+        cmd.Parameters.AddWithValue("$mark_valence", record.ContactValence);
         cmd.Parameters.AddWithValue("$embedding",    (object?)SerialiseEmbedding(record.Embedding) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$is_resolved",  record.IsResolved ? 1 : 0);
         cmd.Parameters.AddWithValue("$source_name",  (object?)record.SourceName   ?? DBNull.Value);
@@ -175,6 +175,47 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         _log.LogDebug("Semantic search: {Candidates} candidates, top score={TopScore:F3}",
             candidates.Count, ranked.Count > 0 ? ranked[0].similarity : 0f);
+
+        return ranked.Select(x => x.record);
+    }
+
+    public async Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(
+        string query, MemoryType type, int topK = 5, CancellationToken ct = default)
+    {
+        if (_ollama is null)
+            return await GetByTypeAsync(type, topK, ct).ConfigureAwait(false);
+
+        float[] queryEmbedding;
+        try
+        {
+            queryEmbedding = await _ollama.EmbedAsync(query, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to embed search query for type {Type} — falling back to recency", type);
+            return await GetByTypeAsync(type, topK, ct).ConfigureAwait(false);
+        }
+
+        if (queryEmbedding.Length == 0)
+            return await GetByTypeAsync(type, topK, ct).ConfigureAwait(false);
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND type = $type";
+        cmd.Parameters.AddWithValue("$type", (int)type);
+
+        var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+
+        var ranked = candidates
+            .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
+            .Select(r => (record: r, similarity: CosineSimilarity(queryEmbedding, r.Embedding!)))
+            .OrderByDescending(x => x.similarity)
+            .Take(topK)
+            .ToList();
+
+        _log.LogDebug("Semantic search (type={Type}): {Candidates} candidates, top score={TopScore:F3}",
+            type, candidates.Count, ranked.Count > 0 ? ranked[0].similarity : 0f);
 
         return ranked.Select(x => x.record);
     }
@@ -415,7 +456,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 Content     = reader.GetString(reader.GetOrdinal("content")),
                 RawJson     = reader.IsDBNull(reader.GetOrdinal("raw_json"))     ? null : reader.GetString(reader.GetOrdinal("raw_json")),
                 Importance  = (float)reader.GetDouble(reader.GetOrdinal("importance")),
-                MarkValence = (float)reader.GetDouble(reader.GetOrdinal("mark_valence")),
+                ContactValence = (float)reader.GetDouble(reader.GetOrdinal("mark_valence")),
                 Embedding   = reader.IsDBNull(reader.GetOrdinal("embedding"))    ? null : DeserialisedEmbedding((byte[])reader["embedding"]),
                 IsResolved  = reader.GetInt32(reader.GetOrdinal("is_resolved")) == 1,
                 SourceName  = reader.IsDBNull(reader.GetOrdinal("source_name"))  ? null : reader.GetString(reader.GetOrdinal("source_name")),

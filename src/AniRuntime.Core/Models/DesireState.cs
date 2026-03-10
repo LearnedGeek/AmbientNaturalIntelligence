@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AniRuntime.Core.Models;
 
 public record DesireState
@@ -8,7 +10,8 @@ public record DesireState
     public DateTimeOffset CooldownUntil        { get; set; }        // expiry — cooldown lifts automatically
     public DateTimeOffset LastOutreach         { get; set; }
     public DateTimeOffset LastInnerThought     { get; set; }
-    public DateTimeOffset LastMarkContact      { get; set; } = DateTimeOffset.UtcNow;
+    [JsonPropertyName("LastMarkContact")]
+    public DateTimeOffset LastContactInbound   { get; set; } = DateTimeOffset.UtcNow;
     public List<DesireTrigger> ActiveTriggers  { get; set; } = new();
     public float          CircadianModifier    { get; set; } = 1.0f;
 }

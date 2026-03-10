@@ -55,6 +55,15 @@ public static class PromptBuilder
             sections.Add($"(Background: {perceptionSummary})");
         }
 
+        // Recent conversation context — the most important grounding signal.
+        // If the contact just talked about going to the dentist, thoughts should
+        // naturally drift toward that — not random food or music topics.
+        if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+        {
+            sections.Add($"Something that just happened (this should color your thoughts naturally):");
+            sections.Add($"  {snapshot.RecentConversationSummary}");
+        }
+
         if (snapshot.OpenLoops.Count > 0)
         {
             sections.Add("Things still unresolved on your mind:");
@@ -85,17 +94,32 @@ public static class PromptBuilder
             sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
         }
 
-        // Feed recent inner-thought topics so the model can avoid repeating itself
+        // Thought loop detection via semantic search — if recent thoughts are too similar
+        // to the current context, the model is stuck. Show what it already said AND
+        // escalate the diversity instruction based on how clustered the thoughts are.
         var recentTopics = snapshot.RecentMemory
             .Where(m => m.Type == MemoryType.InnerThought)
-            .Take(3)
-            .Select(m => m.Content.Length > 50 ? m.Content[..50] : m.Content)
+            .Take(5)
+            .Select(m => m.Content.Length > 60 ? m.Content[..60] : m.Content)
             .ToList();
 
-        if (recentTopics.Count > 0)
+        var similarThoughts = snapshot.SimilarRecentThoughts
+            .Select(m => m.Content.Length > 60 ? m.Content[..60] : m.Content)
+            .ToList();
+
+        // Merge recent + similar (dedup) for maximum awareness of what's been said
+        var allAvoidTopics = recentTopics.Union(similarThoughts).Distinct().ToList();
+
+        if (allAvoidTopics.Count > 0)
         {
-            sections.Add("Your recent thoughts (pick a DIFFERENT topic — do not repeat these):");
-            sections.AddRange(recentTopics.Select(t => $"  - \"{t}...\""));
+            // If semantic search found highly similar thoughts, the model is looping
+            var isLooping = similarThoughts.Count >= 2;
+            var instruction = isLooping
+                ? "WARNING: Your recent thoughts are repetitive. You MUST break the pattern NOW. Think about something COMPLETELY UNRELATED — a sound, a texture, a stranger, a memory from childhood, a question about the universe. DO NOT think about food, lunch, music, or the same person again:"
+                : "Your recent thoughts (pick a DIFFERENT topic — do not repeat these):";
+
+            sections.Add(instruction);
+            sections.AddRange(allAvoidTopics.Select(t => $"  - \"{t}...\""));
         }
 
         // Translate desire level to qualitative language — prevents model from anchoring on "100%"
@@ -175,10 +199,14 @@ public static class PromptBuilder
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+        var timeNow = DateTimeOffset.Now;
+        var timeDesc = $"{timeNow:h:mm tt} on {timeNow:dddd, MMMM d}";
 
         var system = $$"""
-            You are {{cs.Name}}. You may or may not want to reach out to {{contact}} right now.
+            You are {{cs.Name}}. It is currently {{timeDesc}}.
+            You may or may not want to reach out to {{contact}} right now.
             Be genuine — only reach out if it feels natural and right.
+            Consider the time of day — would {{contact}} appreciate hearing from you right now?
             This is a decision only — you do NOT need to write the message yet.
 
             Respond ONLY with valid JSON matching this structure exactly:
@@ -195,6 +223,10 @@ public static class PromptBuilder
             $"Your desire to connect: {snapshot.DesireState.DesireToConnect:P0}",
             $"Your most recent thought: {recentThought}",
         };
+
+        // Recent conversation awareness — crucial for contextual outreach
+        if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+            context.Add($"You recently talked with {contact}: {snapshot.RecentConversationSummary}");
 
         if (snapshot.OpenLoops.Count > 0)
             context.Add($"Open threads: {string.Join("; ", snapshot.OpenLoops.Select(l => l.Description))}");
@@ -232,6 +264,8 @@ public static class PromptBuilder
             - {{contact}} asked a question or said something that invites a response
             - There's something genuine you want to say back
             - Ignoring the message would feel cold or dismissive
+            - {{contact}} expressed vulnerability, deep emotion, or gratitude — even a short warm reply matters
+            - The message shows {{contact}} thinking about you or expressing love — acknowledge it, even briefly
             """;
 
         var msgCount = thread.Messages.Count;
@@ -251,8 +285,8 @@ public static class PromptBuilder
         var cs      = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
 
-        // Build backstory context — shared experiences and knowledge about Mark
-        // that inform how Ani talks to him (limited to keep prompt concise)
+        // Build backstory context — shared experiences and knowledge about the contact
+        // that inform how Ani talks to them (limited to keep prompt concise)
         var backstory = new List<string>();
         if (cs.SharedExperiences.Count > 0)
             backstory.AddRange(cs.SharedExperiences.Take(5));
@@ -318,9 +352,12 @@ public static class PromptBuilder
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+        var timeNow = DateTimeOffset.Now;
+        var timeDesc = $"{timeNow:h:mm tt} on {timeNow:dddd, MMMM d}";
 
         var system = $"""
             You are {cs.Name}, texting {contact}.
+            It is currently {timeDesc}. Any time references in your text MUST match this.
 
             IMPORTANT: Do NOT rephrase or reference your inner thought directly.
             Your thought is why you're reaching out — it is NOT the content of the text.
@@ -329,7 +366,7 @@ public static class PromptBuilder
             A good text does ONE of these:
             - Asks a real question: "hey, you have a good coffee maker? mine just died"
             - Shares something concrete: "that song you showed me is stuck in my head again"
-            - Makes a simple bid for connection: "hey… can't sleep. you up?"
+            - Follows up on something recent: "how did the dentist go?" or "did that meeting go okay?"
             - References shared experience: "remember that place we went? i keep thinking about going back"
 
             HARD RULES:
@@ -338,6 +375,7 @@ public static class PromptBuilder
             - Talk TO {contact}: "you", "your". NEVER "he", "him", "his".
             - No poetry, no metaphors, no abstract musings. Just talk like a person.
             - No commentary, sign-offs, or narration.
+            - Do NOT repeat themes from your recent messages (listed below). Pick something FRESH.
 
             Good (use these as inspiration, but NEVER copy them word-for-word — write something new each time):
             what are you doing right now? i'm bored.
@@ -353,13 +391,39 @@ public static class PromptBuilder
             "i keep folding my sleeves like you do—and it hit me" ← too abstract, no one texts this
             """;
 
-        var user = $"""
-            (Internal — {contact} will NOT see this)
-            You're feeling: {reasoning}
-            This made you want to reach out: {recentThought}
+        var sections = new List<string>
+        {
+            $"(Internal — {contact} will NOT see this)",
+            $"You're feeling: {reasoning}",
+            $"This made you want to reach out: {recentThought}",
+        };
 
-            Now write a normal, grounded text to {contact} — something they'd smile at and reply to:
-            """;
+        // Feed recent conversation context so outreach can follow up naturally.
+        // This is CRITICAL — if the contact just told you about a dentist appointment,
+        // "how did it go?" is always better than a disconnected "hey you up?"
+        if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+        {
+            sections.Add($"\nIMPORTANT — You recently talked with {contact}:");
+            sections.Add($"  {snapshot.RecentConversationSummary}");
+            sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
+        }
+
+        // Feed recent outreach messages so the model knows what it already said
+        var outreachPrefix = $"{cs.Name} reached out: ";
+        var recentOutreach = snapshot.RecentMemory
+            .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith(outreachPrefix))
+            .Take(3)
+            .ToList();
+
+        if (recentOutreach.Count > 0)
+        {
+            sections.Add($"\nMessages you already sent recently (do NOT repeat these topics or phrases):");
+            sections.AddRange(recentOutreach.Select(m => $"  - {m.Content[outreachPrefix.Length..].Trim()}"));
+        }
+
+        sections.Add($"\nNow write a normal, grounded text to {contact} — something they'd smile at and reply to:");
+
+        var user = string.Join("\n", sections);
 
         return (system, user);
     }
@@ -369,27 +433,37 @@ public static class PromptBuilder
     /// Returns JSON with delta values for each emotional dimension.
     /// </summary>
     public static (string System, string User) BuildEmotionalShiftPrompt(
-        string content, EmotionalState current)
+        string content, EmotionalState current, float maxDelta = 0.2f)
     {
-        var system = """
+        var range = $"-{maxDelta:F1} to +{maxDelta:F1}";
+        var system = $$"""
             You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
             Respond ONLY with valid JSON: { "warmth": <float>, "energy": <float>, "concern": <float>, "playfulness": <float> }
-            Each value is a DELTA (change), ranging from -0.2 to +0.2. Use 0.0 for no change.
+            Each value is a DELTA (change), ranging from {{range}}.
+
+            CRITICAL RULES:
+            - DEFAULT to 0.0 for most dimensions. Most thoughts only shift 1-2 dimensions, not all 4.
+            - Routine, neutral thoughts → all zeros: { "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }
+            - Prefer SMALL shifts: plus/minus 0.02 to 0.05 for subtle effects, plus/minus 0.1 for notable events.
+            - Use the full range ({{range}}) ONLY for life-changing events: death, major crisis, declarations of love.
+            - NEGATIVE shifts are just as common as positive ones. Boredom → -energy. Worry → -playfulness. Missing someone → +warmth but -energy.
+            - If a dimension is already high (>0.8), it takes something EXCEPTIONAL to push it higher. Diminishing returns.
 
             Dimensions:
-            - warmth: affection, tenderness, desire for closeness (+0.1 = feeling warmer, -0.1 = feeling distant)
-            - energy: alertness, enthusiasm (+0.1 = more energized, -0.1 = more drained/quiet)
-            - concern: worry about someone (+0.1 = more worried, -0.1 = more at ease)
-            - playfulness: humor, lightheartedness (+0.1 = more playful, -0.1 = more serious)
+            - warmth: affection, tenderness, desire for closeness
+            - energy: alertness, enthusiasm (decreases with boredom, tiredness, routine thoughts)
+            - concern: worry about someone (increases with uncertainty, bad news; decreases with good news)
+            - playfulness: humor, lightheartedness (decreases with serious, sad, or repetitive thoughts)
             """;
 
         var user = $"""
             Current emotional state: warmth={current.Warmth:F2}, energy={current.Energy:F2}, concern={current.Concern:F2}, playfulness={current.Playfulness:F2}
+            Baselines (her natural resting state): warmth=0.60, energy=0.50, concern=0.20, playfulness=0.50
 
             Content to evaluate:
             "{content}"
 
-            How would this shift the emotional state? Small deltas only (-0.2 to +0.2).
+            Return the emotional DELTA as JSON. Remember: 0.0 is the most common value for any single dimension.
             """;
 
         return (system, user);

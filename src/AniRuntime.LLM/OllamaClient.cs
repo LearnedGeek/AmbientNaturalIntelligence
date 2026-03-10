@@ -57,9 +57,11 @@ public class OllamaClient : IOllamaClient
 
         messages.Add(new { role = "user", content = userMessage });
 
+        // keep_alive controls how long the model stays loaded in VRAM after this request.
+        // 5 minutes keeps the model warm between cognitive cycles without squatting on VRAM forever.
         object request = format is not null
-            ? new { model, messages, stream = false, format }
-            : new { model, messages, stream = false };
+            ? new { model, messages, stream = false, format, keep_alive = "5m" }
+            : new { model, messages, stream = false, keep_alive = "5m" };
 
         var response = await _http.PostAsJsonAsync(
             "/api/chat", request, JsonOpts, ct).ConfigureAwait(false);
@@ -76,7 +78,9 @@ public class OllamaClient : IOllamaClient
 
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
-        var request  = new { model = _options.EmbedModel, prompt = text };
+        // Short keep_alive for embeddings — the model is small but adds up.
+        // 10 seconds is enough for batch embedding, then it frees VRAM for the LLMs.
+        var request  = new { model = _options.EmbedModel, prompt = text, keep_alive = "10s" };
         var response = await _http.PostAsJsonAsync(
             "/api/embeddings", request, JsonOpts, ct).ConfigureAwait(false);
 

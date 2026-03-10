@@ -31,7 +31,7 @@ public abstract class AniTestBase
     {
         DesireToConnect  = 0.0f,
         CooldownActive   = false,
-        LastMarkContact  = DateTimeOffset.UtcNow,
+        LastContactInbound  = DateTimeOffset.UtcNow,
         LastInnerThought = DateTimeOffset.UtcNow,
         CircadianModifier = 1.0f,
     };
@@ -40,7 +40,7 @@ public abstract class AniTestBase
     {
         DesireToConnect   = 0.9f,
         CooldownActive    = false,
-        LastMarkContact   = DateTimeOffset.UtcNow.AddHours(-8),
+        LastContactInbound   = DateTimeOffset.UtcNow.AddHours(-8),
         LastInnerThought  = DateTimeOffset.UtcNow.AddMinutes(-30),
         CircadianModifier = 1.0f,
     };

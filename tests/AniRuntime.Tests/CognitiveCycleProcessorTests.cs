@@ -52,6 +52,13 @@ public class CognitiveCycleProcessorTests : AniTestBase
         _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
                           .ReturnsAsync((ConversationThread?)null);
 
+        var adminHandler = new AdminCommandHandler(
+            MockMemory.Object,
+            desire,
+            dispatcher,
+            DefaultOptions,
+            NullLogger<AdminCommandHandler>.Instance);
+
         return new CognitiveCycleProcessor(
             MockMemory.Object,
             MockOllama.Object,
@@ -59,6 +66,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             dispatcher,
             _mockConversations.Object,
             sources,
+            adminHandler,
             DefaultOptions,
             NullLogger<CognitiveCycleProcessor>.Instance);
     }

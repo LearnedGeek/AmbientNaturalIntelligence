@@ -30,15 +30,16 @@ public class AniOptions
     public double TriggerDesireMultiplier { get; set; } = 0.15;
 
     // Valence threshold — thoughts above this add a spontaneous trigger
-    public double ValenceTriggerThreshold { get; set; } = 0.6;
+    public double ValenceTriggerThreshold { get; set; } = 0.75;
 
     // Conversation mode — active back-and-forth with Mark
     public double ConversationHeartbeatSeconds { get; set; } = 45.0;
     public double ConversationTimeoutMinutes   { get; set; } = 15.0;
 
     // Reactive sharing — RSS items relevant enough to share directly with Mark
-    public double ReactiveShareThreshold    { get; set; } = 0.6;
-    public int    MaxReactiveSharesPerDay   { get; set; } = 2;
+    public double ReactiveShareThreshold       { get; set; } = 0.6;
+    public int    MaxReactiveSharesPerDay      { get; set; } = 2;
+    public double ReactiveShareCooldownMinutes { get; set; } = 20.0;
 
     // Storage paths (relative to service working directory)
     public string CharacterStatePath     { get; set; } = "data/character-state.json";

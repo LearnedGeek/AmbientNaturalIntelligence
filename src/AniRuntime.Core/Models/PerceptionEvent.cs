@@ -5,7 +5,7 @@ public class PerceptionEvent
     public string             SourceName    { get; set; } = string.Empty;
     public PerceptionCategory Category      { get; set; }
     public string             Summary       { get; set; } = string.Empty;
-    public float              MarkRelevance { get; set; }
+    public float              ContactRelevance { get; set; }
     public DateTimeOffset     OccurredAt    { get; set; } = DateTimeOffset.UtcNow;
     public Dictionary<string, object> Metadata { get; set; } = new();
 }

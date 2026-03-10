@@ -17,7 +17,7 @@ namespace AniRuntime.Loops;
 ///   5. Run one cognitive cycle
 ///
 /// No polling. No dice-rolling. Her schedule emerges from who she is right now.
-/// Early wake support: when Mark texts, the TwilioInboundPerceptionSource calls
+/// Early wake support: when the contact texts, TwilioInboundPerceptionSource calls
 /// RequestEarlyWake() to cancel the current sleep and trigger an immediate cycle.
 /// </summary>
 public class AniHeartbeatService : BackgroundService
@@ -46,7 +46,7 @@ public class AniHeartbeatService : BackgroundService
 
     /// <summary>
     /// Interrupts the current sleep so the next cognitive cycle runs immediately.
-    /// Called by TwilioInboundPerceptionSource when Mark texts.
+    /// Called by TwilioInboundPerceptionSource when the contact texts.
     /// </summary>
     public void RequestEarlyWake()
     {
@@ -102,7 +102,8 @@ public class AniHeartbeatService : BackgroundService
 
     /// <summary>
     /// Determines how long to sleep before the next cycle.
-    /// Active conversation → short heartbeat (ConversationHeartbeatSeconds).
+    /// Active conversation with unread contact message → short heartbeat (ConversationHeartbeatSeconds).
+    /// Active conversation but Ani spoke last → normal delay (it's the contact's turn).
     /// Ambient mode → normal exponential delay from DesireEngine.
     /// </summary>
     private async Task<TimeSpan> ComputeDelayAsync(CancellationToken ct)
@@ -110,7 +111,12 @@ public class AniHeartbeatService : BackgroundService
         var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
         if (activeThread is not null)
         {
-            return TimeSpan.FromSeconds(_aniOptions.ConversationHeartbeatSeconds);
+            // Only use fast heartbeat when the contact has an unread message waiting for reply.
+            // If Ani spoke last, use normal timing — it's the contact's turn.
+            var hasUnreadFromContact = activeThread.Messages.Count > 0 &&
+                                      activeThread.Messages[^1].Role == "mark";
+            if (hasUnreadFromContact)
+                return TimeSpan.FromSeconds(_aniOptions.ConversationHeartbeatSeconds);
         }
 
         var state = await _desire.GetStateAsync(ct).ConfigureAwait(false);

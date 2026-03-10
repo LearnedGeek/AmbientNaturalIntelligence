@@ -15,7 +15,7 @@ namespace AniRuntime.Perception;
 /// Design rationale (from phase-2-design.md):
 ///   - Polling (not webhooks) — no Kestrel, no ngrok, fits IPerceptionSource pattern
 ///   - 30-60 second latency is a feature — it's her "thinking"
-///   - Each new inbound message becomes a PerceptionEvent(Communication) with high MarkRelevance
+///   - Each new inbound message becomes a PerceptionEvent(Communication) with high ContactRelevance
 ///   - Creates or extends a ConversationThread via IConversationService
 ///   - Signals an early wake to shorten the heartbeat during conversation mode
 ///
@@ -24,6 +24,7 @@ namespace AniRuntime.Perception;
 public sealed class TwilioInboundPerceptionSource : IPerceptionSource
 {
     private readonly IConversationService                     _conversations;
+    private readonly IMemoryService                           _memory;
     private readonly TwilioOptions                            _twilioOptions;
     private readonly AniOptions                               _aniOptions;
     private readonly IHttpClientFactory                       _httpFactory;
@@ -48,12 +49,14 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
 
     public TwilioInboundPerceptionSource(
         IConversationService conversations,
+        IMemoryService memory,
         IOptions<TwilioOptions> twilioOptions,
         IOptions<AniOptions> aniOptions,
         IHttpClientFactory httpFactory,
         ILogger<TwilioInboundPerceptionSource> log)
     {
         _conversations = conversations;
+        _memory        = memory;
         _twilioOptions = twilioOptions.Value;
         _aniOptions    = aniOptions.Value;
         _httpFactory   = httpFactory;
@@ -71,9 +74,13 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
         {
             var messages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
 
+            // Load contact name for dynamic log/event references
+            var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+            var contactName = character.PrimaryContactName;
+
             foreach (var msg in messages)
             {
-                _log.LogInformation("Inbound SMS from Mark: {Body}", msg.Body);
+                _log.LogInformation("Inbound SMS from {Contact}: {Body}", contactName, msg.Body);
 
                 // Get or create a conversation thread
                 var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
@@ -100,8 +107,8 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
                 {
                     SourceName    = SourceName,
                     Category      = Category,
-                    Summary       = $"Mark texted: \"{msg.Body}\"",
-                    MarkRelevance = 0.95f,
+                    Summary       = $"{contactName} texted: \"{msg.Body}\"",
+                    ContactRelevance = 0.95f,
                     OccurredAt    = msg.DateSent,
                     Metadata      =
                     {

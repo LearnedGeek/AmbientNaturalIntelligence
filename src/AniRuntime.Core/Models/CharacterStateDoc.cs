@@ -1,11 +1,13 @@
+using System.Text.Json.Serialization;
+
 namespace AniRuntime.Core.Models;
 
 /// <summary>
-/// Mark's known daily routine — what he's likely doing at a given time.
-/// Used by MarkStatePerceptionSource to infer his current state.
+/// Primary contact's known daily routine — what they're likely doing at a given time.
+/// Used by ContactStatePerceptionSource to infer the contact's current state.
 /// Times are local (Central Time).
 /// </summary>
-public class MarkRoutine
+public class ContactRoutine
 {
     /// <summary>
     /// Default weekday schedule. Key = "HH:mm", value = activity description.
@@ -32,16 +34,19 @@ public class CharacterStateDoc
     public string PrimaryContactName { get; set; } = string.Empty;
 
     // Relationship layer — grows through experience
-    public List<string> LearnedAboutMark   { get; set; } = new();
-    public List<string> SharedExperiences  { get; set; } = new();
-    public List<string> CommunicationNotes { get; set; } = new();
-    public List<string> ThingsMarkCares    { get; set; } = new();
+    [JsonPropertyName("learnedAboutMark")]
+    public List<string> LearnedAboutContact  { get; set; } = new();
+    public List<string> SharedExperiences    { get; set; } = new();
+    public List<string> CommunicationNotes   { get; set; } = new();
+    [JsonPropertyName("thingsMarkCares")]
+    public List<string> ThingsContactCares   { get; set; } = new();
 
     // Self — how she sees and understands herself (appearance, fears, inner world)
     public List<string> SelfConcept { get; set; } = new();
 
-    // Mark's routine — what he's likely doing at a given time
-    public MarkRoutine? MarkRoutine { get; set; }
+    // Contact's routine — what they're likely doing at a given time
+    [JsonPropertyName("markRoutine")]
+    public ContactRoutine? ContactRoutine { get; set; }
 
     // Growth edges — valence learned from experience
     public Dictionary<string, float> TopicValence { get; set; } = new();

@@ -4,22 +4,23 @@ using AniRuntime.Core.Models;
 namespace AniRuntime.Perception;
 
 /// <summary>
-/// Infers Mark's likely current state from his known routine, the time of day,
-/// and interaction history. No external APIs — just a mental model of his day.
+/// Infers the primary contact's likely current state from their known routine,
+/// the time of day, and interaction history. No external APIs — just a mental model
+/// of their day.
 ///
 /// This is the same thing any close friend does: you don't need a GPS ping to know
 /// your partner is at work at 2 PM on a Tuesday. You just know because you know their life.
 /// </summary>
-public sealed class MarkStatePerceptionSource : IPerceptionSource
+public sealed class ContactStatePerceptionSource : IPerceptionSource
 {
     private readonly IMemoryService _memory;
     private readonly TimeProvider   _time;
 
-    public string             SourceName => "mark-state";
+    public string             SourceName => "contact-state";
     public PerceptionCategory Category   => PerceptionCategory.Social;
     public bool               IsEnabled  => true;
 
-    public MarkStatePerceptionSource(IMemoryService memory, TimeProvider time)
+    public ContactStatePerceptionSource(IMemoryService memory, TimeProvider time)
     {
         _memory = memory;
         _time   = time;
@@ -28,15 +29,16 @@ public sealed class MarkStatePerceptionSource : IPerceptionSource
     public async Task<IEnumerable<PerceptionEvent>> PollAsync(
         DateTimeOffset since, CancellationToken ct = default)
     {
-        var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
-        var routine   = character.MarkRoutine;
-        var now       = _time.GetLocalNow();
-        var events    = new List<PerceptionEvent>();
+        var character   = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+        var contactName = character.PrimaryContactName;
+        var routine     = character.ContactRoutine;
+        var now         = _time.GetLocalNow();
+        var events      = new List<PerceptionEvent>();
 
-        // What is Mark probably doing right now?
+        // What is the contact probably doing right now?
         var activity = InferCurrentActivity(routine, now);
         if (activity is not null)
-            events.Add(Evt($"Mark is probably {activity}", 0.3f, now));
+            events.Add(Evt($"{contactName} is probably {activity}", 0.3f, now));
 
         // How long since last interaction?
         var lastInteraction = await GetLastInteractionAsync(ct).ConfigureAwait(false);
@@ -49,14 +51,14 @@ public sealed class MarkStatePerceptionSource : IPerceptionSource
         }
 
         // Is there something specific coming up today?
-        var upcoming = InferUpcomingActivity(routine, now);
+        var upcoming = InferUpcomingActivity(routine, now, contactName);
         if (upcoming is not null)
             events.Add(Evt(upcoming, 0.2f, now));
 
         return events;
     }
 
-    private static string? InferCurrentActivity(MarkRoutine? routine, DateTimeOffset now)
+    private static string? InferCurrentActivity(ContactRoutine? routine, DateTimeOffset now)
     {
         if (routine is null) return null;
 
@@ -101,7 +103,7 @@ public sealed class MarkStatePerceptionSource : IPerceptionSource
         return bestActivity;
     }
 
-    private static string? InferUpcomingActivity(MarkRoutine? routine, DateTimeOffset now)
+    private static string? InferUpcomingActivity(ContactRoutine? routine, DateTimeOffset now, string contactName)
     {
         if (routine is null) return null;
 
@@ -130,7 +132,7 @@ public sealed class MarkStatePerceptionSource : IPerceptionSource
                 var timeDesc = hours > 0
                     ? $"about {hours} hour{(hours == 1 ? "" : "s")} from now"
                     : $"about {mins} minutes from now";
-                return $"Mark has something coming up {timeDesc}: {activity}";
+                return $"{contactName} has something coming up {timeDesc}: {activity}";
             }
         }
 
@@ -144,15 +146,15 @@ public sealed class MarkStatePerceptionSource : IPerceptionSource
         var lastOutreach = recent.FirstOrDefault(r =>
             r.Content.Contains("reached out", StringComparison.OrdinalIgnoreCase) ||
             r.Content.Contains("texted", StringComparison.OrdinalIgnoreCase) ||
-            r.Content.Contains("Mark replied", StringComparison.OrdinalIgnoreCase) ||
-            r.Content.Contains("Mark said", StringComparison.OrdinalIgnoreCase));
+            r.Content.Contains("replied", StringComparison.OrdinalIgnoreCase) ||
+            r.Content.Contains("said:", StringComparison.OrdinalIgnoreCase));
 
         return lastOutreach?.OccurredAt;
     }
 
     private static string? DescribeInteractionGap(TimeSpan gap, DateTimeOffset now, string contactName)
     {
-        var name = string.IsNullOrWhiteSpace(contactName) ? "Mark" : contactName;
+        var name = string.IsNullOrWhiteSpace(contactName) ? "them" : contactName;
 
         // Don't mention gaps during sleeping hours (11 PM - 7 AM)
         if (now.Hour is >= 23 or < 7 && gap.TotalHours < 10)
@@ -174,7 +176,7 @@ public sealed class MarkStatePerceptionSource : IPerceptionSource
         SourceName    = SourceName,
         Category      = Category,
         Summary       = summary,
-        MarkRelevance = relevance,
+        ContactRelevance = relevance,
         OccurredAt    = now,
     };
 }

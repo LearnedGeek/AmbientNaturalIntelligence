@@ -59,7 +59,7 @@ public sealed class TimePerceptionSource : IPerceptionSource
         SourceName    = SourceName,
         Category      = Category,
         Summary       = summary,
-        MarkRelevance = 0.1f,
+        ContactRelevance = 0.1f,
         OccurredAt    = _time.GetLocalNow(),
     };
 

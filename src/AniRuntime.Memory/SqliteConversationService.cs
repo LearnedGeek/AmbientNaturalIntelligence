@@ -159,7 +159,9 @@ public class SqliteConversationService : IConversationService, IDisposable
 
         if (messages.Count > 0)
         {
-            var summary = BuildThreadSummary(messages);
+            // Load character state for dynamic name mapping in thread summary
+            var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+            var summary = BuildThreadSummary(messages, character.Name, character.PrimaryContactName);
             await _memory.SaveAsync(new MemoryRecord
             {
                 Type       = MemoryType.Episodic,
@@ -204,11 +206,12 @@ public class SqliteConversationService : IConversationService, IDisposable
         return messages;
     }
 
-    private static string BuildThreadSummary(List<ConversationMessage> messages)
+    private static string BuildThreadSummary(
+        List<ConversationMessage> messages, string companionName, string contactName)
     {
         var lines = messages.Select(m =>
         {
-            var name = m.Role == "ani" ? "Ani" : "Mark";
+            var name = m.Role == "ani" ? companionName : contactName;
             return $"{name}: {m.Content}";
         });
 

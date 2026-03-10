@@ -7,7 +7,7 @@ public class MemoryRecord
     public string         Content     { get; set; } = string.Empty;
     public string?        RawJson     { get; set; }
     public float          Importance  { get; set; }
-    public float          MarkValence { get; set; }
+    public float          ContactValence { get; set; }
     public float[]?       Embedding   { get; set; }
     public bool           IsResolved  { get; set; }
     public string?        SourceName  { get; set; }

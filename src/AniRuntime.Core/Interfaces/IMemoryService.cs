@@ -6,6 +6,7 @@ public interface IMemoryService
 {
     Task SaveAsync(MemoryRecord record, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> SearchAsync(string query, int topK = 10, CancellationToken ct = default);
+    Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(string query, MemoryType type, int topK = 5, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> GetByTypeAsync(MemoryType type, int limit = 50, CancellationToken ct = default);
     Task<IEnumerable<OpenLoop>>     GetOpenLoopsAsync(CancellationToken ct = default);
     Task                            ResolveOpenLoopAsync(Guid id, CancellationToken ct = default);

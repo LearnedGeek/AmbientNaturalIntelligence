@@ -39,7 +39,7 @@ public class SqliteMemoryServiceTests : AniTestBase
             Type        = MemoryType.InnerThought,
             Content     = "I wonder how Mark is doing.",
             Importance  = 0.7f,
-            MarkValence = 0.8f,
+            ContactValence = 0.8f,
         };
 
         await _svc.SaveAsync(record);
@@ -141,14 +141,14 @@ public class SqliteMemoryServiceTests : AniTestBase
         {
             Name     = "Ani",
             CoreTraits = new List<string> { "warm", "curious", "bookish" },
-            LearnedAboutMark = new List<string> { "loves mythology", "works in tech" },
+            LearnedAboutContact = new List<string> { "loves mythology", "works in tech" },
         };
 
         await _svc.SaveCharacterStateAsync(doc);
 
         var loaded = await _svc.GetCharacterStateAsync();
         loaded.CoreTraits.Should().BeEquivalentTo(doc.CoreTraits);
-        loaded.LearnedAboutMark.Should().BeEquivalentTo(doc.LearnedAboutMark);
+        loaded.LearnedAboutContact.Should().BeEquivalentTo(doc.LearnedAboutContact);
     }
 
     // ── DesireState ───────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ public class SqliteMemoryServiceTests : AniTestBase
         {
             DesireToConnect  = 0.75f,
             CooldownActive   = true,
-            LastMarkContact  = DateTimeOffset.UtcNow.AddHours(-3),
+            LastContactInbound = DateTimeOffset.UtcNow.AddHours(-3),
             CircadianModifier = 1.15f,
         };
 

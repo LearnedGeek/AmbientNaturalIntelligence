@@ -168,7 +168,7 @@ public class DesireEngineTests : AniTestBase
         var state = FreshDesireState() with
         {
             DesireToConnect = 0.2f,
-            LastMarkContact = DateTimeOffset.UtcNow.AddHours(-4),
+            LastContactInbound = DateTimeOffset.UtcNow.AddHours(-4),
         };
         MockMemory.Setup(m => m.GetDesireStateAsync(It.IsAny<CancellationToken>()))
                   .ReturnsAsync(state);
@@ -190,7 +190,7 @@ public class DesireEngineTests : AniTestBase
         var state = FreshDesireState() with
         {
             DesireToConnect = 0.95f,
-            LastMarkContact = DateTimeOffset.UtcNow.AddHours(-48),
+            LastContactInbound = DateTimeOffset.UtcNow.AddHours(-48),
         };
         MockMemory.Setup(m => m.GetDesireStateAsync(It.IsAny<CancellationToken>()))
                   .ReturnsAsync(state);
@@ -224,7 +224,8 @@ public class DesireEngineTests : AniTestBase
         await CreateEngine().ResetAfterOutreachAsync();
 
         saved!.DesireToConnect.Should().Be(0.0f);
-        saved.CooldownActive.Should().BeFalse();
+        saved.CooldownActive.Should().BeTrue("cooldown must activate after outreach");
+        saved.CooldownUntil.Should().BeAfter(DateTimeOffset.UtcNow, "cooldown expiry must be in the future");
         saved.ActiveTriggers.Should().BeEmpty();
         saved.LastOutreach.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }

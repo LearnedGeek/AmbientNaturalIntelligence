@@ -9,7 +9,7 @@ namespace AniRuntime.Core.Models;
 /// Each dimension is 0.0–1.0:
 ///   Warmth      — affection, tenderness, desire for closeness
 ///   Energy      — alertness, enthusiasm, engagement level
-///   Concern     — worry, protectiveness, unease about Mark
+///   Concern     — worry, protectiveness, unease about the contact
 ///   Playfulness — humor, teasing, lightheartedness
 /// </summary>
 public class EmotionalState
@@ -51,9 +51,9 @@ public class EmotionalState
             parts.Add("feeling low-energy and quiet");
 
         if (Concern - ConcernBaseline > threshold)
-            parts.Add("a little worried about Mark");
+            parts.Add("a little worried");
         else if (ConcernBaseline - Concern > threshold)
-            parts.Add("feeling at ease about Mark");
+            parts.Add("feeling at ease");
 
         if (Playfulness - PlayfulnessBaseline > threshold)
             parts.Add("in a playful mood");

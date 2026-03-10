@@ -123,7 +123,7 @@ public sealed class RssPerceptionSource : IPerceptionSource
                 SourceName    = SourceName,
                 Category      = Category,
                 Summary       = summary,
-                MarkRelevance = relevance,
+                ContactRelevance = relevance,
                 OccurredAt    = pubDate ?? DateTimeOffset.UtcNow,
             });
 
@@ -192,7 +192,7 @@ public sealed class RssPerceptionSource : IPerceptionSource
             var keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Extract meaningful keywords from character state lists
-            foreach (var source in new[] { cs.ThingsMarkCares, cs.Interests, cs.SharedExperiences })
+            foreach (var source in new[] { cs.ThingsContactCares, cs.Interests, cs.SharedExperiences })
             {
                 foreach (var entry in source)
                 {

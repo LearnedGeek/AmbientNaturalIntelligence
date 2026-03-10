@@ -15,7 +15,7 @@ namespace AniRuntime.Loops;
 /// Phase sequence:
 ///   1. Perception  — poll all enabled sources since last cycle
 ///   2. Context     — build snapshot once, share across all phases
-///   3. Inner thought — private LLM call; score Mark valence; persist
+///   3. Inner thought — private LLM call; score contact valence; persist
 ///   4. Desire update — apply temporal drift and trigger weights
 ///   5. Outreach    — conditional on desire threshold; dispatch or cooldown
 ///
@@ -30,12 +30,13 @@ public class CognitiveCycleProcessor
     private readonly AniActionDispatcher             _dispatcher;
     private readonly IConversationService            _conversations;
     private readonly IEnumerable<IPerceptionSource>  _sources;
+    private readonly AdminCommandHandler             _adminCommands;
     private readonly AniOptions                      _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor> _log;
 
     private DateTimeOffset _lastCycleAt = DateTimeOffset.UtcNow;
 
-    // Tracks the last Mark message we evaluated a reply decision for.
+    // Tracks the last contact message we evaluated a reply decision for.
     // Once Ani decides "NO" on a specific message, she won't re-evaluate it every cycle.
     // Resets when a new message arrives (different SentAt timestamp).
     private DateTimeOffset? _lastEvaluatedMessageAt;
@@ -44,7 +45,7 @@ public class CognitiveCycleProcessor
     private int  _reactiveShareCount;
     private DateTimeOffset _reactiveShareDay = DateTimeOffset.MinValue;
 
-    // Dedup cache: prevents saving the same perception ("Mark is probably at the gym")
+    // Dedup cache: prevents saving the same perception (e.g. "probably at the gym")
     // every cycle. Key = summary text, Value = when it was last persisted.
     private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
     private static readonly TimeSpan PerceptionDedupeWindow = TimeSpan.FromHours(4);
@@ -56,6 +57,7 @@ public class CognitiveCycleProcessor
         AniActionDispatcher            dispatcher,
         IConversationService           conversations,
         IEnumerable<IPerceptionSource> sources,
+        AdminCommandHandler            adminCommands,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
@@ -65,6 +67,7 @@ public class CognitiveCycleProcessor
         _dispatcher    = dispatcher;
         _conversations = conversations;
         _sources       = sources;
+        _adminCommands = adminCommands;
         _aniOptions    = aniOptions.Value;
         _log           = log;
     }
@@ -86,17 +89,35 @@ public class CognitiveCycleProcessor
         // semantic search. Without this, perceptions are ephemeral — gone after one cycle.
         await PersistNotablePerceptionsAsync(perceptions, ct).ConfigureAwait(false);
 
-        // Phase 2: Check for active conversation — if Mark texted, route to reply mode
-        var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
-        var hasUnreadFromMark = activeThread?.Messages.Count > 0 &&
-                                activeThread.Messages[^1].Role == "mark";
+        // Load character state early — needed for dynamic name references in logs and memory
+        var charState = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
 
-        if (hasUnreadFromMark)
+        // Phase 2: Check for active conversation — if contact texted, route to reply mode
+        var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
+        var hasUnreadFromContact = activeThread?.Messages.Count > 0 &&
+                                   activeThread.Messages[^1].Role == "mark";
+
+        if (hasUnreadFromContact)
         {
+            // Record inbound contact — feeds desire drift timing
+            await _desire.RecordInboundContactAsync(ct).ConfigureAwait(false);
+
             var lastMsg = activeThread!.Messages[^1];
 
+            // Admin commands bypass conversation entirely — handle and exit
+            if (AdminCommandHandler.IsAdminCommand(lastMsg.Content))
+            {
+                _log.LogInformation("Admin command detected: {Content}", lastMsg.Content);
+                await _adminCommands.HandleAsync(lastMsg.Content, ct).ConfigureAwait(false);
+
+                // Close the thread so the admin command doesn't linger as "unread"
+                await _conversations.CloseThreadAsync(activeThread.Id, ct).ConfigureAwait(false);
+                _lastCycleAt = DateTimeOffset.UtcNow;
+                return;
+            }
+
             // If we already evaluated this exact message and decided NO, don't re-ask.
-            // A new message from Mark (different SentAt) resets the gate.
+            // A new message from the contact (different SentAt) resets the gate.
             if (_lastEvaluatedMessageAt.HasValue && lastMsg.SentAt == _lastEvaluatedMessageAt.Value)
             {
                 _log.LogDebug("Already evaluated reply for message at {SentAt} — skipping to ambient mode",
@@ -104,8 +125,8 @@ public class CognitiveCycleProcessor
             }
             else
             {
-                _log.LogInformation("Conversation mode — Mark's last message: {Message}",
-                    lastMsg.Content);
+                _log.LogInformation("Conversation mode — {Contact}'s last message: {Message}",
+                    charState.PrimaryContactName, lastMsg.Content);
                 await RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState).ConfigureAwait(false);
                 _lastCycleAt = DateTimeOffset.UtcNow;
                 return;
@@ -114,7 +135,7 @@ public class CognitiveCycleProcessor
 
         // Phase 3: Reactive sharing — high-relevance RSS items shared directly
         // Bypasses desire engine but respects daily rate limit and cooldown
-        if (await TryReactiveShareAsync(perceptions, ct).ConfigureAwait(false))
+        if (await TryReactiveShareAsync(perceptions, charState, ct).ConfigureAwait(false))
         {
             _lastCycleAt = DateTimeOffset.UtcNow;
             return;
@@ -130,7 +151,7 @@ public class CognitiveCycleProcessor
         {
             Type        = MemoryType.InnerThought,
             Content     = thought,
-            MarkValence = valence,
+            ContactValence = valence,
             Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
             OccurredAt  = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
@@ -150,6 +171,15 @@ public class CognitiveCycleProcessor
                 $"thought: {thought[..Math.Min(60, thought.Length)]}", ct).ConfigureAwait(false);
 
         // Phase 6: Outreach — only if desire crosses threshold
+        // Suppress outreach while a conversation is active — contact just texted recently,
+        // sending unrelated ambient thoughts would be jarring and disjointed
+        if (activeThread is not null)
+        {
+            _log.LogDebug("Active conversation — suppressing ambient outreach");
+            _lastCycleAt = DateTimeOffset.UtcNow;
+            return;
+        }
+
         if (!await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
         {
             _log.LogDebug("Desire below threshold — no outreach this cycle");
@@ -204,7 +234,7 @@ public class CognitiveCycleProcessor
         {
             // Skip low-relevance perceptions (e.g. "It's 3:14 PM on a Tuesday")
             // and time-source events which are always regenerated fresh
-            if (p.MarkRelevance < 0.25f || p.SourceName == "time")
+            if (p.ContactRelevance < 0.25f || p.SourceName == "time")
                 continue;
 
             // Skip if we recently saved an identical perception
@@ -217,8 +247,8 @@ public class CognitiveCycleProcessor
                 {
                     Type        = MemoryType.Perception,
                     Content     = p.Summary,
-                    MarkValence = p.MarkRelevance,
-                    Importance  = p.MarkRelevance,
+                    ContactValence = p.ContactRelevance,
+                    Importance  = p.ContactRelevance,
                     SourceName  = p.SourceName,
                     OccurredAt  = p.OccurredAt,
                 }, ct).ConfigureAwait(false);
@@ -233,17 +263,17 @@ public class CognitiveCycleProcessor
     }
 
     /// <summary>
-    /// Checks for high-relevance RSS items that Mark would care about and shares
+    /// Checks for high-relevance RSS items that the contact would care about and shares
     /// them directly — bypassing the desire engine. Rate-limited to prevent spam.
     /// Returns true if a share was sent (cycle should end), false otherwise.
     /// </summary>
     private async Task<bool> TryReactiveShareAsync(
-        List<PerceptionEvent> perceptions, CancellationToken ct)
+        List<PerceptionEvent> perceptions, CharacterStateDoc charState, CancellationToken ct)
     {
         var threshold = (float)_aniOptions.ReactiveShareThreshold;
         var shareable = perceptions
-            .Where(p => p.SourceName == "rss" && p.MarkRelevance >= threshold)
-            .OrderByDescending(p => p.MarkRelevance)
+            .Where(p => p.SourceName == "rss" && p.ContactRelevance >= threshold)
+            .OrderByDescending(p => p.ContactRelevance)
             .FirstOrDefault();
 
         if (shareable is null)
@@ -263,19 +293,21 @@ public class CognitiveCycleProcessor
             return false;
         }
 
-        // Respect cooldown — don't share if she just texted
+        // Respect a shorter cooldown for reactive shares — news shouldn't wait 60 min,
+        // but she also shouldn't share 2 minutes after texting
         var state = await _desire.GetStateAsync(ct).ConfigureAwait(false);
-        if (state.CooldownActive)
+        var sinceLastOutreach = DateTimeOffset.UtcNow - state.LastOutreach;
+        if (sinceLastOutreach.TotalMinutes < _aniOptions.ReactiveShareCooldownMinutes)
         {
-            _log.LogDebug("Reactive share blocked — cooldown active");
+            _log.LogDebug("Reactive share blocked — only {Minutes:F0} min since last outreach (need {Required})",
+                sinceLastOutreach.TotalMinutes, _aniOptions.ReactiveShareCooldownMinutes);
             return false;
         }
 
         _log.LogInformation("Reactive share triggered: {Summary} (relevance={Relevance:F2})",
-            shareable.Summary, shareable.MarkRelevance);
+            shareable.Summary, shareable.ContactRelevance);
 
         // Generate the share message
-        var charState = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
         var prompt = PromptBuilder.BuildReactiveSharePrompt(charState, shareable.Summary);
         var message = await _ollama.ChatAsync(
             prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
@@ -306,7 +338,7 @@ public class CognitiveCycleProcessor
         await _memory.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
-            Content    = $"Ani shared with Mark: {message} (about: {shareable.Summary})",
+            Content    = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})",
             Importance = 0.5f,
             OccurredAt = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
@@ -318,10 +350,12 @@ public class CognitiveCycleProcessor
         List<PerceptionEvent> perceptions, CancellationToken ct,
         EmotionalState? emotionalState = null)
     {
-        var charState   = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
-        var desireState = await _desire.GetStateAsync(ct).ConfigureAwait(false);
-        var recentMem   = await _memory.GetByTypeAsync(MemoryType.Episodic, 10, ct).ConfigureAwait(false);
-        var openLoops   = await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false);
+        var charState    = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+        var desireState  = await _desire.GetStateAsync(ct).ConfigureAwait(false);
+        var recentEpisodic = await _memory.GetByTypeAsync(MemoryType.Episodic, 10, ct).ConfigureAwait(false);
+        var recentThoughts = await _memory.GetByTypeAsync(MemoryType.InnerThought, 5, ct).ConfigureAwait(false);
+        var recentMem    = recentEpisodic.Concat(recentThoughts).ToList();
+        var openLoops    = await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false);
 
         // Semantic search: use perceptions as the query to surface memories relevant
         // to what Ani is currently experiencing — not just the most recent ones
@@ -341,18 +375,47 @@ public class CognitiveCycleProcessor
             }
         }
 
+        // Extract recent conversation summary — the most important context for what's
+        // happening in the contact's life right now. This feeds into inner thoughts,
+        // outreach decisions, and outreach messages.
+        var conversationSummary = recentEpisodic
+            .Where(m => m.Content.StartsWith("Conversation ("))
+            .Select(m => m.Content)
+            .FirstOrDefault();
+
+        // Thought loop detection via semantic search — find recent inner thoughts that
+        // are similar to the current context. If similarity is high, the model is stuck
+        // in a loop and needs stronger diversity signals.
+        var similarThoughts = new List<MemoryRecord>();
+        if (perceptions.Count > 0)
+        {
+            var thoughtQuery = string.Join(". ", perceptions.Select(p => p.Summary));
+            try
+            {
+                var results = await _memory.SearchByTypeAsync(
+                    thoughtQuery, MemoryType.InnerThought, 3, ct).ConfigureAwait(false);
+                similarThoughts = results.ToList();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Thought similarity search failed — continuing without");
+            }
+        }
+
         emotionalState ??= await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
 
         return new ContextSnapshot
         {
-            CharacterState = charState,
-            DesireState    = desireState,
-            EmotionalState = emotionalState,
-            RecentMemory   = recentMem.ToList(),
-            RelevantMemory = relevantMem,
-            OpenLoops      = openLoops.ToList(),
-            Perceptions    = perceptions,
-            BuiltAt        = DateTimeOffset.UtcNow,
+            CharacterState           = charState,
+            DesireState              = desireState,
+            EmotionalState           = emotionalState,
+            RecentMemory             = recentMem.ToList(),
+            RelevantMemory           = relevantMem,
+            OpenLoops                = openLoops.ToList(),
+            Perceptions              = perceptions,
+            BuiltAt                  = DateTimeOffset.UtcNow,
+            RecentConversationSummary = conversationSummary,
+            SimilarRecentThoughts    = similarThoughts,
         };
     }
 
@@ -364,13 +427,13 @@ public class CognitiveCycleProcessor
             thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 
-        var valence = await ScoreMarkValenceAsync(thought, snapshot.CharacterState, ct)
+        var valence = await ScoreContactValenceAsync(thought, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
 
         return (thought, valence);
     }
 
-    private async Task<float> ScoreMarkValenceAsync(
+    private async Task<float> ScoreContactValenceAsync(
         string thought, CharacterStateDoc character, CancellationToken ct)
     {
         var prompt = PromptBuilder.BuildValenceScoringPrompt(thought, character);
@@ -429,7 +492,8 @@ public class CognitiveCycleProcessor
         decision.Message    = rewritten;
         decision.ActionType = "sms";
 
-        _log.LogInformation("Ani reaching out: {Message}", decision.Message);
+        var cs = snapshot.CharacterState;
+        _log.LogInformation("{Name} reaching out: {Message}", cs.Name, decision.Message);
 
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
@@ -437,14 +501,14 @@ public class CognitiveCycleProcessor
         await _memory.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
-            Content    = $"Ani reached out: {decision.Message}",
+            Content    = $"{cs.Name} reached out: {decision.Message}",
             Importance = 0.7f,
             OccurredAt = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Conversation mode: Mark texted and his message is the last in the thread.
+    /// Conversation mode: contact texted and their message is the last in the thread.
     /// Decides whether to reply, and if so, generates and sends a contextual response.
     ///
     /// Three no-reply conditions (baked in from day one):
@@ -486,7 +550,7 @@ public class CognitiveCycleProcessor
         {
             // Lock this decision — don't re-evaluate the same message every cycle
             _lastEvaluatedMessageAt = thread.Messages[^1].SentAt;
-            _log.LogInformation("Reply decision: NO — Ani read it but chose silence");
+            _log.LogInformation("Reply decision: NO — read it but chose silence");
             return;
         }
 
@@ -532,8 +596,9 @@ public class CognitiveCycleProcessor
         // Emotional shift from conversation — receiving a message + replying is emotionally warm
         if (emotionalState is not null)
         {
-            var conversationContext = $"Mark said: \"{lastMessage}\" and Ani replied: \"{reply}\"";
-            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct).ConfigureAwait(false);
+            var cs = snapshot.CharacterState;
+            var conversationContext = $"{cs.PrimaryContactName} said: \"{lastMessage}\" and {cs.Name} replied: \"{reply}\"";
+            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct, maxDelta: 0.4f).ConfigureAwait(false);
         }
     }
 
@@ -662,6 +727,9 @@ public class CognitiveCycleProcessor
     /// Light pronoun fix — only invoked if the message actually contains third-person references.
     /// Avoids the rewrite pass completely when the message is already correct, which prevents
     /// the model from "creatively improving" a perfectly good text into poetic nonsense.
+    ///
+    /// Safety: if the rewrite changes the message length by more than 50%, the model went
+    /// creative instead of just fixing pronouns — fall back to the original.
     /// </summary>
     private async Task<string> FixPronounsIfNeeded(
         string message, CharacterStateDoc character, CancellationToken ct)
@@ -678,43 +746,56 @@ public class CognitiveCycleProcessor
             return message;
         }
 
-        var contact = string.IsNullOrWhiteSpace(character.PrimaryContactName)
-            ? "them" : character.PrimaryContactName;
-
-        var system = $"""
+        var system = """
             Fix ONLY the pronouns in this text message. Change "he"/"him"/"his" to "you"/"your".
             Do NOT change anything else. Do NOT add words, commentary, or rewrite the message.
-            Return ONLY the fixed message text.
+            Return ONLY the fixed message text — same words, same length, just pronouns swapped.
             """;
 
         var rewritten = await _ollama.ChatAsync(system, Array.Empty<ChatMessage>(), message, ct)
             .ConfigureAwait(false);
 
         rewritten = CleanOutreachMessage(rewritten);
-        _log.LogDebug("Pronoun fix: {Original} → {Rewritten}", message, rewritten);
 
-        return string.IsNullOrWhiteSpace(rewritten) ? message : rewritten.Trim();
+        // Safety check: if the rewrite is too different, the model rewrote instead of fixing
+        if (string.IsNullOrWhiteSpace(rewritten))
+            return message;
+
+        var lengthRatio = (double)rewritten.Length / message.Length;
+        if (lengthRatio < 0.5 || lengthRatio > 1.5)
+        {
+            _log.LogDebug("Pronoun fix rejected — rewrite too different ({Ratio:F2}x length): {Rewritten}",
+                lengthRatio, rewritten);
+            return message;
+        }
+
+        _log.LogDebug("Pronoun fix: {Original} → {Rewritten}", message, rewritten);
+        return rewritten.Trim();
     }
 
     /// <summary>
     /// Scores and applies emotional shift from a thought, conversation reply, or event.
     /// Uses the LLM to extract small deltas for each emotional dimension.
+    ///
+    /// maxDelta controls the clamp range:
+    ///   0.2 = routine inner thoughts (default)
+    ///   0.4 = conversations with contact (real emotional events)
     /// </summary>
     private async Task ApplyEmotionalShiftAsync(
-        EmotionalState state, string content, CancellationToken ct)
+        EmotionalState state, string content, CancellationToken ct, float maxDelta = 0.2f)
     {
         try
         {
-            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state);
+            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, maxDelta);
             var raw = await _ollama.ChatJsonAsync(
                 prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
                 .ConfigureAwait(false);
 
-            var (warmth, energy, concern, playfulness) = ParseEmotionalShift(raw);
+            var (warmth, energy, concern, playfulness) = ParseEmotionalShift(raw, maxDelta);
             state.ApplyShift(warmth, energy, concern, playfulness);
 
-            _log.LogDebug("Emotional shift: W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
-                warmth, energy, concern, playfulness);
+            _log.LogDebug("Emotional shift (max={MaxDelta:F1}): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
+                maxDelta, warmth, energy, concern, playfulness);
 
             await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
         }
@@ -724,7 +805,7 @@ public class CognitiveCycleProcessor
         }
     }
 
-    private (float warmth, float energy, float concern, float playfulness) ParseEmotionalShift(string raw)
+    private (float warmth, float energy, float concern, float playfulness) ParseEmotionalShift(string raw, float maxDelta = 0.2f)
     {
         try
         {
@@ -743,10 +824,10 @@ public class CognitiveCycleProcessor
             return (0f, 0f, 0f, 0f);
         }
 
-        static float ClampDelta(JsonElement root, string prop)
+        float ClampDelta(JsonElement root, string prop)
         {
             if (root.TryGetProperty(prop, out var val))
-                return (float)Math.Clamp(val.GetDouble(), -0.2, 0.2);
+                return (float)Math.Clamp(val.GetDouble(), -maxDelta, maxDelta);
             return 0f;
         }
     }
