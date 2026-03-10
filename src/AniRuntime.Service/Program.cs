@@ -162,6 +162,37 @@ try
         }
     }
 
+    // ── Startup status dump ───────────────────────────────────────────────
+    await using (var scope = host.Services.CreateAsyncScope())
+    {
+        var memory    = scope.ServiceProvider.GetRequiredService<IMemoryService>();
+        var desire    = scope.ServiceProvider.GetRequiredService<DesireEngine>();
+        var aniOpts   = scope.ServiceProvider.GetRequiredService<IOptions<AniOptions>>().Value;
+        var charState = await memory.GetCharacterStateAsync();
+        var emotional = await memory.GetEmotionalStateAsync();
+        var desireState = await desire.GetStateAsync();
+
+        Log.Information("╔══════════════════════════════════════════╗");
+        Log.Information("║  {Name} Runtime — Startup Status        ║", charState.Name);
+        Log.Information("╠══════════════════════════════════════════╣");
+        Log.Information("║  Contact: {Contact}", charState.PrimaryContactName);
+        Log.Information("║  Persona: v{Version}", charState.PersonaVersion);
+        Log.Information("║  Mood: W={W:F2} E={E:F2} C={C:F2} P={P:F2}",
+            emotional.Warmth, emotional.Energy, emotional.Concern, emotional.Playfulness);
+        var moodDesc = emotional.Describe();
+        if (!string.IsNullOrEmpty(moodDesc))
+            Log.Information("║    → {Mood}", moodDesc);
+        Log.Information("║  Desire: {Desire:F2} (threshold: {Floor:F2}–{Ceil:F2})",
+            desireState.DesireToConnect,
+            aniOpts.OutreachThresholdFloor,
+            aniOpts.OutreachThresholdFloor + aniOpts.OutreachThresholdRange);
+        Log.Information("║  Cooldown: {Cooldown}",
+            desireState.CooldownActive ? $"until {desireState.CooldownUntil:HH:mm}" : "none");
+        Log.Information("║  Timing: {Min:F0}–{Max:F0} min (conversation: {Conv:F0}s)",
+            aniOpts.MinWakeMinutes, aniOpts.MaxWakeMinutes, aniOpts.ConversationHeartbeatSeconds);
+        Log.Information("╚══════════════════════════════════════════╝");
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)
