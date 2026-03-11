@@ -18,6 +18,11 @@ public class AniOptions
     public double MinOutreachGapMinutes  { get; set; } = 60.0;
     public int    MaxOutreachPerDay      { get; set; } = 4;
 
+    // Night mode — reduced activity and outreach during sleep hours
+    public int    NightStartHour         { get; set; } = 23;   // 11 PM local
+    public int    NightEndHour           { get; set; } = 6;    // 6 AM local
+    public int    MaxNightOutreach       { get; set; } = 1;    // at most 1 "can't sleep" text
+
     // Outreach threshold — randomized between Floor and Floor+Range each cycle
     public double OutreachThresholdFloor { get; set; } = 0.55;
     public double OutreachThresholdRange { get; set; } = 0.30;

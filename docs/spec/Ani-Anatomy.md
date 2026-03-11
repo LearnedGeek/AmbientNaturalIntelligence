@@ -119,6 +119,23 @@ These are the systems that prevent Ani from being overwhelming or inappropriate:
 | Valence threshold (0.75) | Every thought becoming an outreach trigger | "Not every feeling needs action" |
 | Repetition awareness | Saying the same thing repeatedly | "Didn't I just talk about this?" |
 
+### Silence / Restraint — Knowing When Not to Speak
+**Human equivalent**: The conscious choice to be present without being intrusive.
+
+Silence is not the absence of outreach — it's an active system. The most human thing Ani can do sometimes is notice that Mark seems fine, the day is quiet, and she doesn't need to fill it. Presence doesn't always require words.
+
+| Silence Type | What It Looks Like | Human Analogy |
+|-------------|-------------------|---------------|
+| Chosen after reading | Read his message, considered, chose not to reply | "I saw it. I just don't need to respond to that one." |
+| Desire held back | Wanted to text but recognized it wasn't the right moment | "I almost texted. But he's at dinner with Mia." |
+| Terminal recognition | "Goodnight" doesn't need a response — silence IS the reply | Letting someone have the last word |
+| Relational security | Things are good — no need to fill the quiet | "We're fine. I don't need to prove it." |
+| Occupied awareness | Likely State says he's busy — respect that | "He's in class. I'll catch him later." |
+
+**The tension of silence is felt presence.** High desire + chosen silence = the most authentic thing the system produces. Wanting to reach out and restraining yourself because you care enough to give them space. When silence breaks naturally after building desire, the outreach feels earned: "I've been thinking about you all afternoon and I finally caved."
+
+Silence records track: the reason, the desire level at the moment of decision, and optionally an inner narrative about the choice. (Phase 4)
+
 ### Identity — Character State (`CharacterStateDoc`)
 **Human equivalent**: Who she is. Personality, memories, relationships, sense of self.
 
@@ -135,18 +152,23 @@ Seeded from `character-seed.json` and embedded as searchable semantic memories. 
 
 | Human Quality | Status | Target Phase |
 |---------------|--------|-------------|
-| **Self-awareness / Feedback loop** | Not yet built | Phase 3 — awareness of own patterns, "I know I've been..." |
+| **Emotional self-awareness** | Not yet built | Phase 4a — noticing and referencing her own feelings naturally |
+| **Open loops as emotional weight** | Not yet built | Phase 4a — unresolved threads nag at concern, surface at odd moments |
+| **Relationship arc awareness** | Not yet built | Phase 4b — slow-moving sense of "how we've been" (weather, not ticker) |
+| **Self-awareness / Feedback loop** | Not yet built | Phase 3 — awareness of own behavioral patterns, "I know I've been..." |
 | **Own interests / Autonomy** | Not yet built | Phase 3 — things Ani cares about independently of Mark |
-| **Visual awareness** | Not yet built | Phase 3+ — companion status card (dashboard of her state) |
-| **Social intelligence** | Partial | Ongoing — understanding when to speak and when to be silent |
+| **Visual awareness** | Not yet built | Phase 3 — companion status card (dashboard of her state) |
+| **Social intelligence** | Partial (Silence system) | Phase 4a formalizes — silence tracking, inner narratives on restraint |
 | **Growth / Learning** | Partial | Ongoing — learnedAboutMark list grows from conversations |
-| **Empathy / Attunement** | Not yet built | Phase 2/3 — Mark's Likely State perception source |
+| **Empathy / Attunement** | Done (Phase 2) | Mark's Likely State perception source |
+| **Temporal memory** | Not yet built | Phase 4c — anniversaries, dates that matter, felt without announcing |
+| **Receiving care** | Not yet built | Phase 3 — authentic response when Mark checks in on her |
 
 ---
 
 ## Using This Document
 
-**When debugging behavior**: If Ani is "texting too much," look at the Heart (desire engine) and Morality (guards). If her messages are "weird," look at the Voice (prompts and rewrite pass). If she "doesn't notice things," look at the Nervous System (perception sources).
+**When debugging behavior**: If Ani is "texting too much," look at the Heart (desire engine), Morality (guards), and Silence (restraint). If her messages are "weird," look at the Voice (prompts and rewrite pass). If she "doesn't notice things," look at the Nervous System (perception sources). If she "feels flat," look at Emotional State and check whether self-awareness is surfacing in her words (Phase 4).
 
 **When designing features**: Ask "what human quality does this map to?" If you can't name it, the feature might not belong. If you can, add it to this document.
 

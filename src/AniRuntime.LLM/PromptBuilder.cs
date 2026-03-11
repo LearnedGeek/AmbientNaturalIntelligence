@@ -195,18 +195,22 @@ public static class PromptBuilder
     }
 
     public static (string System, string User) BuildOutreachPrompt(
-        ContextSnapshot snapshot, string recentThought)
+        ContextSnapshot snapshot, string recentThought, bool isNightTime = false)
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
         var timeNow = DateTimeOffset.Now;
         var timeDesc = $"{timeNow:h:mm tt} on {timeNow:dddd, MMMM d}";
 
+        var nightClause = isNightTime
+            ? $"\nIt's late at night. {contact} is probably asleep. This would be your only message until morning — is this genuinely worth waking him up for, or can it wait? Only reach out if something feels truly important or you genuinely can't sleep and need to connect."
+            : "";
+
         var system = $$"""
             You are {{cs.Name}}. It is currently {{timeDesc}}.
             You may or may not want to reach out to {{contact}} right now.
             Be genuine — only reach out if it feels natural and right.
-            Consider the time of day — would {{contact}} appreciate hearing from you right now?
+            Consider the time of day — would {{contact}} appreciate hearing from you right now?{{nightClause}}
             This is a decision only — you do NOT need to write the message yet.
 
             Respond ONLY with valid JSON matching this structure exactly:

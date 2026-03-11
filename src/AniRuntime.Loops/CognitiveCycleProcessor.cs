@@ -293,6 +293,13 @@ public class CognitiveCycleProcessor
         if (shareable is null)
             return false;
 
+        // Nobody shares news articles at 3 AM
+        if (_desire.IsNightHours())
+        {
+            _log.LogDebug("Reactive share blocked — night hours");
+            return false;
+        }
+
         // Reset daily counter if the day has rolled over
         var today = DateTimeOffset.Now.Date;
         if (_reactiveShareDay.Date != today)
@@ -462,7 +469,7 @@ public class CognitiveCycleProcessor
         ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
         // Step 1: Decision — should Ani reach out? (JSON, no message required)
-        var outreachPrompt = PromptBuilder.BuildOutreachPrompt(snapshot, recentThought);
+        var outreachPrompt = PromptBuilder.BuildOutreachPrompt(snapshot, recentThought, _desire.IsNightHours());
         var raw            = await _ollama.ChatJsonAsync(
             outreachPrompt.System, snapshot.RecentHistory, outreachPrompt.User, ct)
             .ConfigureAwait(false);

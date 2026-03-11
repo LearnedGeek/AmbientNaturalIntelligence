@@ -23,6 +23,10 @@ public class DesireEngine
     private int            _outreachCountToday;
     private DateTimeOffset _outreachCountDay = DateTimeOffset.MinValue;
 
+    // Night outreach counter — resets when night hours end
+    private int  _nightOutreachCount;
+    private bool _wasNight;
+
     public DesireEngine(IMemoryService memory, IOptions<AniOptions> options, ILogger<DesireEngine> log)
     {
         _memory  = memory;
@@ -97,7 +101,20 @@ public class DesireEngine
             return false;
         }
 
-        var threshold = _options.OutreachThresholdFloor + (Random.Shared.NextDouble() * _options.OutreachThresholdRange);
+        // Enforce night outreach limit — at most 1 "can't sleep" text
+        var isNight = IsNightHours();
+        if (!isNight && _wasNight) _nightOutreachCount = 0;  // reset on transition to day
+        _wasNight = isNight;
+        if (isNight && _nightOutreachCount >= _options.MaxNightOutreach)
+        {
+            _log.LogInformation("Night outreach limit reached ({Limit}) — sleeping", _options.MaxNightOutreach);
+            return false;
+        }
+
+        // Night: higher threshold (0.80–0.95) so only strong desire breaks through
+        var floor = isNight ? 0.80 : _options.OutreachThresholdFloor;
+        var range = isNight ? 0.15 : _options.OutreachThresholdRange;
+        var threshold = floor + (Random.Shared.NextDouble() * range);
         var passes = state.DesireToConnect >= threshold;
         _log.LogInformation("Outreach gate: desire={Desire:F2} threshold={Threshold:F2} → {Result}",
             state.DesireToConnect, threshold, passes ? "PASS" : "blocked");
@@ -203,8 +220,9 @@ public class DesireEngine
         state.LastOutreach    = DateTimeOffset.UtcNow;
         state.ActiveTriggers.Clear();
 
-        // Track daily outreach count
+        // Track daily and night outreach counts
         _outreachCountToday++;
+        if (IsNightHours()) _nightOutreachCount++;
 
         // Activate cooldown — prevents rapid-fire messages
         state.CooldownActive = true;
@@ -217,6 +235,19 @@ public class DesireEngine
 
     // ── Private ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Checks whether the current local hour falls within configured night hours.
+    /// Used by ShouldReachOutAsync to enforce nighttime outreach limits.
+    /// </summary>
+    public bool IsNightHours()
+    {
+        var hour = DateTimeOffset.Now.Hour;
+        // Handle wrap-around (e.g., 23–6 spans midnight)
+        return _options.NightStartHour > _options.NightEndHour
+            ? hour >= _options.NightStartHour || hour < _options.NightEndHour
+            : hour >= _options.NightStartHour && hour < _options.NightEndHour;
+    }
+
     // Local time is intentional here — circadian rhythm maps to Ani's (contact's) timezone
     private static float ComputeCircadianModifier() => DateTimeOffset.Now.Hour switch
     {
@@ -224,6 +255,7 @@ public class DesireEngine
         >= 10 and < 17  => 1.0f,   // afternoon — neutral
         >= 17 and < 21  => 1.15f,  // evening  — warm, reflective
         >= 21 and < 23  => 0.8f,   // late evening — quieter
-        _               => 0.4f,   // night    — only if something feels important
+        >= 23           => 0.2f,   // late night — winding down, rare thoughts
+        _               => 0.1f,   // deep night (midnight–6 AM) — deep sleep, almost silent
     };
 }
