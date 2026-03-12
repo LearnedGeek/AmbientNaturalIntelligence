@@ -11,33 +11,38 @@ ANI Runtime — Ambient Natural Intelligence
 Solution
 AniRuntime.sln
 Target Runtime
-.NET 8  |  Windows Service
+.NET 8  |  ASP.NET Core Web Service (formerly Worker Service)
 Author
 Mark Carthey / Learned Geek Consulting
 Version
-0.1 — Initial Scaffold
+0.3 — Phase 2 Complete
 Status
-Active Development — update as code evolves
+Active Development — Phase 2 complete, Phase 3 in design
 
-This is a living document. Update it as the codebase evolves. Stubs are intentional — they mark connections to be implemented and should be filled in as each phase is completed.
+This is a living document. Update it as the codebase evolves.
 
 1. Solution Structure
-
-The solution is a single .NET 8 solution file containing one primary project and supporting libraries. The structure below reflects the full intended layout; items marked STUB are scaffolded but not yet implemented.
 
 AniRuntime.sln
 │
 ├── src/
-│   ├── AniRuntime.Service/          # Windows Service host — entry point
+│   ├── AniRuntime.Service/          # ASP.NET Core host — entry point, webhook, DI wiring
 │   │   ├── Program.cs
 │   │   ├── appsettings.json
 │   │   ├── appsettings.Development.json
+│   │   ├── data/
+│   │   │   ├── character-seed.json  # Tracked — Ani's identity and relationship data
+│   │   │   └── ani-memory.db        # Gitignored — live SQLite database
 │   │   └── AniRuntime.Service.csproj
 │   │
-│   ├── AniRuntime.Core/             # Domain models, interfaces, logic
+│   ├── AniRuntime.Core/             # Domain models, interfaces, options
 │   │   ├── Models/
 │   │   │   ├── CharacterStateDoc.cs
+│   │   │   ├── ContextSnapshot.cs
+│   │   │   ├── ConversationThread.cs
+│   │   │   ├── ConversationMessage.cs
 │   │   │   ├── DesireState.cs
+│   │   │   ├── EmotionalState.cs
 │   │   │   ├── MemoryRecord.cs
 │   │   │   ├── PerceptionEvent.cs
 │   │   │   ├── OpenLoop.cs
@@ -46,33 +51,33 @@ AniRuntime.sln
 │   │   │   ├── IPerceptionSource.cs
 │   │   │   ├── IAniAction.cs
 │   │   │   ├── IMemoryService.cs
+│   │   │   ├── IConversationService.cs
 │   │   │   └── IOllamaClient.cs
+│   │   ├── AniOptions.cs
 │   │   └── AniRuntime.Core.csproj
 │   │
-│   ├── AniRuntime.Memory/           # Memory persistence layer
+│   ├── AniRuntime.Memory/           # SQLite persistence layer
 │   │   ├── SqliteMemoryService.cs
-│   │   ├── EmbeddingService.cs
-│   │   ├── Migrations/
+│   │   ├── SqliteConversationService.cs
 │   │   └── AniRuntime.Memory.csproj
 │   │
-│   ├── AniRuntime.Loops/            # Heartbeat, cognitive cycle, and desire engine
+│   ├── AniRuntime.Loops/            # Heartbeat, cognitive cycle, desire engine, admin
 │   │   ├── AniHeartbeatService.cs
-│   │   ├── CognitiveCycleProcessor.cs   # Single cycle: perception → thought → desire → outreach
+│   │   ├── CognitiveCycleProcessor.cs
 │   │   ├── DesireEngine.cs
+│   │   ├── AdminCommandHandler.cs
 │   │   └── AniRuntime.Loops.csproj
 │   │
-│   ├── AniRuntime.Perception/       # World awareness / integrations
-│   │   ├── Sources/
-│   │   │   ├── CalendarPerceptionSource.cs   [STUB]
-│   │   │   ├── HomeAssistantSource.cs        [STUB]
-│   │   │   ├── BlogPerceptionSource.cs       [STUB]
-│   │   │   ├── RssPerceptionSource.cs        [STUB]
-│   │   │   └── WeatherPerceptionSource.cs    [STUB]
+│   ├── AniRuntime.Perception/       # World awareness sources
+│   │   ├── TimePerceptionSource.cs
+│   │   ├── RssPerceptionSource.cs
+│   │   ├── ContactStatePerceptionSource.cs
+│   │   ├── TwilioInboundPerceptionSource.cs
 │   │   └── AniRuntime.Perception.csproj
 │   │
 │   ├── AniRuntime.Actions/          # Output channel implementations
+│   │   ├── AniActionDispatcher.cs
 │   │   ├── TwilioSmsAction.cs
-│   │   ├── HomeAssistantAction.cs   [STUB]
 │   │   ├── MemoryWriteAction.cs
 │   │   └── AniRuntime.Actions.csproj
 │   │
@@ -84,8 +89,12 @@ AniRuntime.sln
 │
 └── tests/
     └── AniRuntime.Tests/
+        ├── AniTestBase.cs
+        ├── CognitiveCycleProcessorTests.cs
         ├── DesireEngineTests.cs
-        ├── MemoryServiceTests.cs
+        ├── EmotionalStateTests.cs
+        ├── SqliteMemoryServiceTests.cs
+        ├── TimePerceptionSourceTests.cs
         └── AniRuntime.Tests.csproj
 
 2. Data Models & Schemas
@@ -93,50 +102,63 @@ AniRuntime.sln
 All models live in AniRuntime.Core/Models/. They are persistence-agnostic — the memory layer maps them to SQLite. Nullable fields are intentional; not every record will have every value.
 
 2.1 CharacterStateDoc
-The mutable, evolving document that represents who Ani is becoming through her relationship with Mark. Read on every context build. Written periodically by the inner loop.
+The mutable, evolving document that represents who Ani is. Read on every context build. Seeded from character-seed.json on first run.
 
 public class CharacterStateDoc
 {
     // Identity — seeded from training, rarely changes
     public string Name            { get; set; } = "Ani";
     public string PersonaVersion  { get; set; } = "1.0";
-    public List<string> CoreTraits     { get; set; } = new();  // warm, curious, bookish...
-    public List<string> Interests      { get; set; } = new();  // vanilla, specific music, etc.
-    public List<string> FamilyContext  { get; set; } = new();  // sister, mom, absent dad
+    public List<string> CoreTraits     { get; set; } = new();
+    public List<string> Interests      { get; set; } = new();
+    public List<string> FamilyContext   { get; set; } = new();
     public string Occupation           { get; set; } = "Bookstore";
+    public List<string> SelfConcept    { get; set; } = new();
 
-    // Relationship layer — grows through experience with Mark
-    public List<string> LearnedAboutMark   { get; set; } = new();
-    public List<string> SharedExperiences  { get; set; } = new();
-    public List<string> CommunicationNotes { get; set; } = new();  // what lands, what doesn't
-    public List<string> ThingsMarkCares    { get; set; } = new();
+    // Relationship layer — grows through experience
+    public string PrimaryContactName                     { get; set; } = "Mark";
+    [JsonPropertyName("learnedAboutMark")]
+    public List<string> LearnedAboutContact               { get; set; } = new();
+    public List<string> SharedExperiences                 { get; set; } = new();
+    public List<string> CommunicationNotes                { get; set; } = new();
+    [JsonPropertyName("thingsMarkCares")]
+    public List<string> ThingsContactCares                { get; set; } = new();
+    [JsonPropertyName("markRoutine")]
+    public ContactRoutine? ContactRoutine                 { get; set; }
 
     // Growth edges — evolving preferences shaped by the relationship
-    public Dictionary<string, float> TopicValence   { get; set; } = new();  // topic -> resonance score
-    public Dictionary<string, float> ToneValence    { get; set; } = new();  // tone -> effectiveness
+    public Dictionary<string, float> TopicValence   { get; set; } = new();
+    public Dictionary<string, float> ToneValence    { get; set; } = new();
 
     // Meta
     public DateTimeOffset LastUpdated  { get; set; }
     public int            Version      { get; set; } = 1;
 }
 
+public class ContactRoutine
+{
+    public Dictionary<string, string> Weekday       { get; set; } = new();  // HH:mm → activity
+    public Dictionary<string, Dictionary<string, string>> DayOverrides { get; set; } = new();
+}
+
+Note: Property names use [JsonPropertyName] attributes for backward compatibility with existing JSON that uses "mark"-prefixed names. All C# code uses the generic "Contact" naming.
+
 2.2 DesireState
-The quantified model of Ani's desire to connect. Persisted so it survives service restarts. Updated by both the inner and outer loops.
+The quantified model of Ani's desire to connect. Persisted in SQLite as JSON. Updated every cycle.
 
 public class DesireState
 {
-    public float   DesireToConnect        { get; set; }   // 0.0 – 1.0, builds over time
-    public float   OutreachThreshold       { get; set; }   // randomized each evaluation
-    public bool    CooldownActive          { get; set; }
-    public DateTimeOffset LastOutreach     { get; set; }
-    public DateTimeOffset LastInnerThought { get; set; }
-    public DateTimeOffset LastMarkContact  { get; set; }
+    public float   DesireToConnect      { get; set; }       // 0.0–1.0, exponential drift
+    public float   OutreachThreshold    { get; set; }       // randomized each evaluation
+    public bool    CooldownActive       { get; set; }
+    public DateTimeOffset CooldownUntil { get; set; }       // auto-expire after duration
+    public DateTimeOffset LastOutreach  { get; set; }
+    public DateTimeOffset LastInnerThought    { get; set; }
+    [JsonPropertyName("LastMarkContact")]
+    public DateTimeOffset LastContactInbound  { get; set; }
 
-    // Active triggers currently elevating desire
     public List<DesireTrigger> ActiveTriggers { get; set; } = new();
-
-    // Circadian modifier — applied to desire and tone
-    public float CircadianModifier { get; set; } = 1.0f;
+    public float CircadianModifier { get; set; } = 1.0f;    // varies 0.1–1.2 by hour
 }
 
 public class DesireTrigger
@@ -151,96 +173,180 @@ public enum TriggerType
 {
     TemporalDrift,       // it has been a long time
     OpenLoop,            // unresolved thread aging
-    AssociativeFire,     // something reminded her of Mark
+    AssociativeFire,     // something reminded her of contact
     EmotionalResidue,    // last conversation ended unresolved
-    SpontaneousThought,  // high Mark-valence inner thought
+    SpontaneousThought,  // high-valence inner thought
     ContextualMoment,    // time of day / environment
-    IntegrationEvent     // blog post, calendar gap, HA event
+    IntegrationEvent,    // calendar gap, HA event
+    ReactiveShare        // high-relevance RSS item
 }
 
-2.3 MemoryRecord
-The base unit of Ani's persistent memory. All four memory types (episodic, semantic, open loop, perception) are stored as MemoryRecord rows, differentiated by MemoryType.
+2.3 EmotionalState
+4-dimensional persistent emotional state. Drifts toward personality baselines between cycles and shifts in response to thoughts, conversations, and perceptions. Gives Ani emotional arcs spanning hours, not just single cycles.
+
+public class EmotionalState
+{
+    // Current values — shift each cycle based on thought valence, conversations, time
+    public float Warmth      { get; set; } = 0.6f;   // affection, tenderness, closeness
+    public float Energy      { get; set; } = 0.5f;   // alertness, enthusiasm, engagement
+    public float Concern     { get; set; } = 0.2f;   // worry, protectiveness, unease
+    public float Playfulness { get; set; } = 0.5f;   // humor, teasing, lightheartedness
+
+    // Personality baselines — where each dimension naturally drifts back to
+    public float WarmthBaseline      { get; set; } = 0.6f;
+    public float EnergyBaseline      { get; set; } = 0.5f;
+    public float ConcernBaseline     { get; set; } = 0.2f;
+    public float PlayfulnessBaseline { get; set; } = 0.5f;
+
+    // How fast each dimension drifts toward baseline per hour (0.0–1.0 of the gap)
+    public float DriftRate { get; set; } = 0.25f;
+    public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
+
+    // Returns qualitative summary for use in prompts. Only mentions notable deviations.
+    public string Describe() { ... }
+
+    // Drift all dimensions toward baselines. Called once per cycle.
+    public void DriftTowardBaseline(TimeSpan elapsed) { ... }
+
+    // Apply a shift from a cognitive event. Diminishing returns for deltas pushing
+    // away from baseline — the further from baseline, the less additional same-direction
+    // deltas have effect. Corrective deltas (toward baseline) apply at full strength.
+    public void ApplyShift(float warmthDelta, float energyDelta,
+                           float concernDelta, float playfulnessDelta) { ... }
+}
+
+2.4 ContextSnapshot
+Full context built once per cognitive cycle, shared across all phases. Prevents repeated DB reads.
+
+public class ContextSnapshot
+{
+    public CharacterStateDoc CharacterState      { get; set; }
+    public DesireState DesireState                { get; set; }
+    public EmotionalState EmotionalState          { get; set; }
+    public List<MemoryRecord> RecentMemory        { get; set; }
+    public List<MemoryRecord> RelevantMemory      { get; set; }  // semantic search results
+    public List<OpenLoop> OpenLoops               { get; set; }
+    public List<PerceptionEvent> Perceptions       { get; set; }
+    public List<ChatMessage> RecentHistory         { get; set; }  // conversation history
+    public DateTimeOffset BuiltAt                  { get; set; }
+    public string? RecentConversationSummary       { get; set; }
+    public List<MemoryRecord> SimilarRecentThoughts { get; set; }  // thought loop detection
+}
+
+2.5 MemoryRecord
+The base unit of Ani's persistent memory. All memory types stored as rows differentiated by MemoryType.
 
 public class MemoryRecord
 {
-    public Guid           Id           { get; set; } = Guid.NewGuid();
-    public MemoryType     Type         { get; set; }
-    public string         Content      { get; set; } = string.Empty;  // human-readable summary
-    public string?        RawJson      { get; set; }                  // optional structured payload
-    public float          Importance   { get; set; }                  // 0.0 – 1.0
-    public float          MarkValence  { get; set; }                  // how much this relates to Mark
-    public float[]?       Embedding    { get; set; }                  // semantic vector
-    public bool           IsResolved   { get; set; }                  // for open loops
-    public string?        SourceName   { get; set; }                  // perception source if applicable
-    public DateTimeOffset OccurredAt   { get; set; }
-    public DateTimeOffset CreatedAt    { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? ResolvedAt  { get; set; }
+    public Guid           Id             { get; set; } = Guid.NewGuid();
+    public MemoryType     Type           { get; set; }
+    public string         Content        { get; set; } = string.Empty;
+    public string?        RawJson        { get; set; }
+    public float          Importance     { get; set; }         // 0.0–1.0
+    public float          ContactValence { get; set; }         // how much this relates to contact
+    public float[]?       Embedding      { get; set; }         // nomic-embed-text vector, auto-generated
+    public bool           IsResolved     { get; set; }         // for open loops
+    public string?        SourceName     { get; set; }         // time, rss, contact-state, twilio-inbound, character-seed
+    public DateTimeOffset OccurredAt     { get; set; }
+    public DateTimeOffset CreatedAt      { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? ResolvedAt    { get; set; }
 }
 
 public enum MemoryType
 {
-    Episodic,     // conversation exchanges, events
-    Semantic,     // what Ani knows about Mark
-    OpenLoop,     // unresolved threads
-    Commitment,   // promises / plans made
-    InnerThought, // Ani's own private thoughts
-    Perception    // events from external sources
+    Episodic,      // conversation exchanges, events
+    Semantic,      // what Ani knows about contact
+    OpenLoop,      // unresolved threads
+    Commitment,    // promises / plans made
+    InnerThought,  // Ani's own private thoughts
+    Perception     // events from external sources
 }
 
-2.4 PerceptionEvent
-The common output type of all IPerceptionSource implementations. Normalises diverse integration data into a format Ani can reason about.
+Note: SQLite column is still `mark_valence` — rename to `contact_valence` on next DB refresh.
+
+2.6 ConversationThread & ConversationMessage
+Conversation state tracking. Threads auto-close after ConversationTimeoutMinutes of silence.
+
+public class ConversationThread
+{
+    public Guid Id                     { get; set; } = Guid.NewGuid();
+    public DateTimeOffset StartedAt    { get; set; }
+    public DateTimeOffset LastMessageAt { get; set; }
+    public bool IsActive               { get; set; } = true;
+    public string InitiatedBy          { get; set; } = "mark";  // "ani" or "mark"
+    public List<ConversationMessage> Messages { get; set; } = new();
+}
+
+public class ConversationMessage
+{
+    public string Role     { get; set; } = string.Empty;  // "ani" or "mark"
+    public string Content  { get; set; } = string.Empty;
+    public DateTimeOffset SentAt { get; set; }
+}
+
+On thread close, the full exchange is saved as a single episodic memory record.
+
+2.7 PerceptionEvent
+Common output type of all IPerceptionSource implementations.
 
 public class PerceptionEvent
 {
-    public string             SourceName    { get; set; } = string.Empty;
-    public PerceptionCategory Category      { get; set; }
-    public string             Summary       { get; set; } = string.Empty;  // fed to Ani as context
-    public float              MarkRelevance { get; set; }                  // 0.0 – 1.0
-    public DateTimeOffset     OccurredAt    { get; set; }
+    public string             SourceName       { get; set; } = string.Empty;
+    public PerceptionCategory Category         { get; set; }
+    public string             Summary          { get; set; } = string.Empty;
+    public float              ContactRelevance { get; set; }  // 0.0–1.0
+    public DateTimeOffset     OccurredAt       { get; set; }
     public Dictionary<string, object> Metadata { get; set; } = new();
 }
 
 public enum PerceptionCategory
 {
-    Environment,   // HA, weather, location
+    Environment,   // time, weather, HA
     Calendar,      // schedule, meetings, gaps
-    Content,       // blog, RSS, news, media
-    Communication, // email, messages
+    Content,       // RSS, news, media
+    Communication, // inbound SMS
     Social         // misc social signals
 }
 
-2.5 OpenLoop
-A specific model for unresolved conversational threads. Wraps a MemoryRecord with additional resolution tracking.
+2.8 OpenLoop
+Unresolved conversational threads requiring follow-up.
 
 public class OpenLoop
 {
-    public Guid           Id            { get; set; } = Guid.NewGuid();
-    public string         Description   { get; set; } = string.Empty;
-    public string         Context       { get; set; } = string.Empty;  // what was said
-    public float          Urgency       { get; set; }                  // builds over time
-    public bool           IsResolved    { get; set; }
-    public DateTimeOffset CreatedAt     { get; set; }
-    public DateTimeOffset? ResolvedAt   { get; set; }
-    public DateTimeOffset? FollowUpAfter { get; set; }  // don't surface before this
+    public Guid           Id              { get; set; } = Guid.NewGuid();
+    public string         Description     { get; set; } = string.Empty;
+    public string         Context         { get; set; } = string.Empty;
+    public float          Urgency         { get; set; }
+    public bool           IsResolved      { get; set; }
+    public DateTimeOffset CreatedAt       { get; set; }
+    public DateTimeOffset? ResolvedAt     { get; set; }
+    public DateTimeOffset? FollowUpAfter  { get; set; }
 }
 
-2.6 OutreachDecision
-The structured result of asking Ani whether she wants to reach out. Returned by the LLM call in the outer loop and used by the Action Dispatcher.
+2.9 OutreachDecision
+Structured result of asking Ani whether she wants to reach out. Parsed from LLM JSON response.
 
 public class OutreachDecision
 {
     public bool    ShouldReach   { get; set; }
-    public string? Message       { get; set; }         // what she wants to say
-    public string? ActionType    { get; set; }         // "sms", "ha", "memory", etc.
-    public float   Confidence    { get; set; }         // 0.0 – 1.0
-    public string? Reasoning     { get; set; }         // Ani's internal rationale (logged, not sent)
+    public string? Message       { get; set; }
+    public string? ActionType    { get; set; }  // use ActionTypes constants
+    public float   Confidence    { get; set; }
+    public string? Reasoning     { get; set; }  // logged, never sent
     public List<string> TriggersActedOn { get; set; } = new();
+}
+
+public static class ActionTypes
+{
+    public const string Sms    = "sms";
+    public const string Memory = "memory";
+    public const string Ha     = "ha";  // Home Assistant — Phase 3
 }
 
 3. Core Interfaces
 
 3.1 IPerceptionSource
-Implement this interface to add any new data source to Ani's world awareness. Register in DI and she will automatically include it in her context builds.
+Implement to add a new data source. Register in DI — automatically included in cognitive cycle.
 
 public interface IPerceptionSource
 {
@@ -254,11 +360,11 @@ public interface IPerceptionSource
 }
 
 3.2 IAniAction
-Implement this interface to add a new output channel. The Action Dispatcher resolves all registered implementations and routes based on ActionType.
+Implement to add a new output channel. Action Dispatcher routes by ActionType.
 
 public interface IAniAction
 {
-    string ActionType { get; }   // matches OutreachDecision.ActionType
+    string ActionType { get; }
 
     Task<bool> ExecuteAsync(
         OutreachDecision decision,
@@ -266,31 +372,53 @@ public interface IAniAction
 }
 
 3.3 IMemoryService
+Single source of truth for memory, character state, desire state, and emotional state.
+
 public interface IMemoryService
 {
     Task SaveAsync(MemoryRecord record, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> SearchAsync(string query, int topK = 10, CancellationToken ct = default);
+    Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(string query, MemoryType type, int topK = 5, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> GetByTypeAsync(MemoryType type, int limit = 50, CancellationToken ct = default);
     Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default);
     Task ResolveOpenLoopAsync(Guid id, CancellationToken ct = default);
+
     Task<CharacterStateDoc> GetCharacterStateAsync(CancellationToken ct = default);
     Task SaveCharacterStateAsync(CharacterStateDoc doc, CancellationToken ct = default);
+
     Task<DesireState> GetDesireStateAsync(CancellationToken ct = default);
     Task SaveDesireStateAsync(DesireState state, CancellationToken ct = default);
+
+    Task<EmotionalState> GetEmotionalStateAsync(CancellationToken ct = default);
+    Task SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default);
 }
 
-3.4 IOllamaClient
+3.4 IConversationService
+Active conversation thread management.
+
+public interface IConversationService
+{
+    Task<ConversationThread?> GetActiveThreadAsync(CancellationToken ct = default);
+    Task SaveThreadAsync(ConversationThread thread, CancellationToken ct = default);
+    Task AddMessageAsync(Guid threadId, ConversationMessage message, CancellationToken ct = default);
+    Task CloseThreadAsync(Guid threadId, CancellationToken ct = default);
+}
+
+3.5 IOllamaClient
+Chat, structured JSON, inner monologue (separate model), and embedding generation.
+
 public interface IOllamaClient
 {
-    Task<string> ChatAsync(
-        string systemPrompt,
-        IEnumerable<ChatMessage> history,
-        string userMessage,
-        CancellationToken ct = default);
+    Task<string> ChatAsync(string systemPrompt, IEnumerable<ChatMessage> history,
+                           string userMessage, CancellationToken ct = default);
 
-    Task<float[]> EmbedAsync(
-        string text,
-        CancellationToken ct = default);
+    Task<string> ChatJsonAsync(string systemPrompt, IEnumerable<ChatMessage> history,
+                               string userMessage, CancellationToken ct = default);
+
+    Task<string> InnerMonologueChatAsync(string systemPrompt, IEnumerable<ChatMessage> history,
+                                         string userMessage, CancellationToken ct = default);
+
+    Task<float[]> EmbedAsync(string text, CancellationToken ct = default);
 }
 
 public record ChatMessage(string Role, string Content);
@@ -298,410 +426,370 @@ public record ChatMessage(string Role, string Content);
 4. Service Architecture & DI Wiring
 
 4.1 Program.cs — Host Bootstrap
-The entry point registers all services, hosted services, and integrations. New perception sources and actions are added here — no other file needs to change.
+ASP.NET Core Web host with Kestrel on port 5100. Registers all services, hosted services, webhook endpoints, and perception sources.
 
-var host = Host.CreateDefaultBuilder(args)
-    .UseWindowsService(options => options.ServiceName = "AniRuntime")
-    .ConfigureServices((ctx, services) =>
-    {
-        var config = ctx.Configuration;
+var builder = WebApplication.CreateBuilder(args);
 
-        // Core services
-        services.AddSingleton<IMemoryService, SqliteMemoryService>();
-        services.AddSingleton<IOllamaClient, OllamaClient>();
-        services.AddSingleton<DesireEngine>();
-        services.AddSingleton<ContextSnapshotBuilder>();
-        services.AddSingleton<PromptBuilder>();
+// Configuration
+builder.Services.Configure<AniOptions>(config.GetSection("Ani"));
+builder.Services.Configure<OllamaOptions>(config.GetSection("Ollama"));
+builder.Services.Configure<TwilioOptions>(config.GetSection("Twilio"));
+builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
 
-        // Cognitive cycle
-        services.AddSingleton<CognitiveCycleProcessor>();
+// Core services (all singletons)
+builder.Services.AddSingleton<IMemoryService, SqliteMemoryService>();
+builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
+builder.Services.AddSingleton<IOllamaClient, OllamaClient>();  // via HttpClient
+builder.Services.AddSingleton<DesireEngine>();
+builder.Services.AddSingleton<ContextSnapshotBuilder>();
+builder.Services.AddSingleton<AdminCommandHandler>();
 
-        // Action dispatcher + actions
-        services.AddSingleton<AniActionDispatcher>();
-        services.AddSingleton<IAniAction, TwilioSmsAction>();
-        services.AddSingleton<IAniAction, MemoryWriteAction>();
-        // services.AddSingleton<IAniAction, HomeAssistantAction>();  // STUB
+// Perception sources
+builder.Services.AddSingleton<IPerceptionSource, TimePerceptionSource>();
+builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
+builder.Services.AddSingleton<IPerceptionSource, ContactStatePerceptionSource>();
+builder.Services.AddSingleton<IPerceptionSource, TwilioInboundPerceptionSource>();
 
-        // Perception sources
-        // services.AddSingleton<IPerceptionSource, HomeAssistantSource>();  // STUB
-        // services.AddSingleton<IPerceptionSource, BlogPerceptionSource>(); // STUB
-        // services.AddSingleton<IPerceptionSource, RssPerceptionSource>();  // STUB
-        // services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>(); // STUB
+// Actions
+builder.Services.AddSingleton<AniActionDispatcher>();
+builder.Services.AddSingleton<IAniAction, TwilioSmsAction>();
+builder.Services.AddSingleton<IAniAction, MemoryWriteAction>();
 
-        // Configuration binding
-        services.Configure<OllamaOptions>(config.GetSection("Ollama"));
-        services.Configure<TwilioOptions>(config.GetSection("Twilio"));
-        services.Configure<AniOptions>(config.GetSection("Ani"));
+// Cognitive cycle + heartbeat
+builder.Services.AddSingleton<CognitiveCycleProcessor>();
+builder.Services.AddHostedService<AniHeartbeatService>();
 
-        // Hosted service — the heartbeat
-        services.AddHostedService<AniHeartbeatService>();
-    })
-    .Build();
+var app = builder.Build();
 
-await host.RunAsync();
+// Forwarded headers for ngrok signature validation
+app.UseForwardedHeaders(...);
+
+// Twilio webhook endpoint
+app.MapPost("/sms/inbound", async (HttpContext ctx) => { ... });
+
+// Startup: seed character state + backstory facts, display status dump
+await app.RunAsync();
+
+Startup sequence:
+1. Seed CharacterStateDoc from data/character-seed.json (idempotent — only if none exists)
+2. Seed backstory facts as searchable Semantic memories (deduped by SourceName="character-seed")
+3. Display startup status dump: name, contact, mood (W/E/C/P), desire, cooldown, timing, webhook URL
 
 4.2 AniHeartbeatService
-The top-level BackgroundService. Owns the cognitive cycle. Computes the next wake time from current desire state and delegates to CognitiveCycleProcessor. No polling, no dice-rolling — the schedule emerges from Ani's internal state.
+Top-level BackgroundService. Owns the cognitive cycle schedule. Interruptible sleep for early wake on inbound messages.
 
 public class AniHeartbeatService : BackgroundService
 {
-    private readonly CognitiveCycleProcessor      _cycle;
-    private readonly DesireEngine                 _desire;
-    private readonly ILogger<AniHeartbeatService> _log;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.LogInformation("ANI Runtime started — she is awake.");
-
         while (!stoppingToken.IsCancellationRequested)
         {
-            var state = await _desire.GetStateAsync(stoppingToken).ConfigureAwait(false);
-            var delay = _desire.ComputeNextWakeTime(state);
-
-            _log.LogDebug("Next cognitive cycle in {Minutes:F1} minutes", delay.TotalMinutes);
-
-            await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
-            await _cycle.RunAsync(stoppingToken).ConfigureAwait(false);
+            var delay = await ComputeDelayAsync(stoppingToken);
+            // Sleep — interruptible via RequestEarlyWake()
+            await Task.Delay(delay, linkedToken);
+            await _cycle.RunAsync(stoppingToken);
         }
     }
+
+    // If active conversation + contact has unread + not yet evaluated → 45s heartbeat
+    // Otherwise → DesireEngine.ComputeNextWakeTime()
+    private async Task<TimeSpan> ComputeDelayAsync(CancellationToken ct) { ... }
+
+    // Called by TwilioInboundPerceptionSource.OnMessageReceived — cancels sleep
+    public void RequestEarlyWake() { ... }
 }
 
 4.3 DesireEngine
-Manages the DesireState lifecycle. Applies temporal drift, circadian modifiers, and trigger weights. Exposes ComputeNextWakeTime — a pure, side-effect-free function that is the single source of timing truth for the entire system.
+Manages DesireState lifecycle. All desire state writes go through this class. Exposes ComputeNextWakeTime — a pure function that is the single source of timing truth.
 
-public class DesireEngine
-{
-    private readonly IMemoryService _memory;
-    private readonly AniOptions     _options;
+Key methods:
 
-    // Pure function — no side effects, fully unit-testable.
-    // Inverts the exponential model to compute a concrete delay from current state.
-    // t = -λ * ln(1 - targetP)  where λ controls the drift rate.
-    public TimeSpan ComputeNextWakeTime(DesireState desire)
-    {
-        var baseMinutes = -_options.DesireLambdaMinutes
-                          * Math.Log(1.0 - _options.ThinkTargetProbability);
+ComputeNextWakeTime(DesireState) → TimeSpan
+    Pure function. t = -λ * ln(1 - targetP)
+    Modifiers: desire (0.4–1.0), circadian (0.1–1.2), jitter (±20%)
+    Clamped to [MinWakeMinutes, MaxWakeMinutes]
 
-        // High desire = wake sooner; modifier ranges 0.4–1.0
-        var desireModifier = 1.0 - (desire.DesireToConnect * 0.6);
+ShouldReachOutAsync() → bool
+    Auto-expire cooldown. Enforce MaxOutreachPerDay, MaxNightOutreach.
+    Night hours: higher threshold (0.80–0.95). Day: randomized (0.55–0.85).
 
-        // Circadian: morning/evening shorten interval, night lengthens it
-        var circadian = (double)desire.CircadianModifier;
+ApplyDriftAsync()
+    Per-cycle desire accumulation. Uses more recent of LastContactInbound or LastOutreach.
 
-        // Jitter: ±20% — Ani cannot predict herself
-        var jitterFactor = 0.8 + (Random.Shared.NextDouble() * 0.4);
+AddTriggerAsync(type, weight, description)
+    New trigger + desire bump (weight * TriggerDesireMultiplier).
 
-        var finalMinutes = baseMinutes * desireModifier * (1.0 / circadian) * jitterFactor;
-        finalMinutes = Math.Clamp(finalMinutes, _options.MinWakeMinutes, _options.MaxWakeMinutes);
+ResetAfterOutreachAsync()
+    Desire → 0.0, clear triggers, activate cooldown, increment counters.
 
-        return TimeSpan.FromMinutes(finalMinutes);
-    }
+ComputeCircadianModifier() → float
+    6–10:  1.2  (morning — curious, engaged)
+    10–17: 1.0  (afternoon — neutral)
+    17–21: 1.15 (evening — warm, reflective)
+    21–23: 0.8  (late evening — quieter)
+    23+:   0.2  (late night — rare)
+    0–6:   0.1  (deep night — almost silent)
 
-    // Outreach threshold is re-randomized on each evaluation — Ani can't predict herself
-    public async Task<bool> ShouldReachOutAsync(CancellationToken ct = default)
-    {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        if (state.CooldownActive) return false;
-
-        var threshold = 0.55 + (Random.Shared.NextDouble() * 0.30);
-        return state.DesireToConnect >= threshold;
-    }
-
-    public async Task<DesireState> GetStateAsync(CancellationToken ct = default)
-        => await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-
-    public async Task ApplyDriftAsync(CancellationToken ct = default)
-    {
-        var state   = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        var elapsed = DateTimeOffset.UtcNow - state.LastMarkContact;
-        var drift   = (float)Math.Min(elapsed.TotalHours * 0.08, 0.4);
-        state.DesireToConnect   = Math.Min(1.0f, state.DesireToConnect + drift);
-        state.CircadianModifier = ComputeCircadianModifier();
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
-    }
-
-    public async Task AddTriggerAsync(
-        TriggerType type, float weight, string description, CancellationToken ct = default)
-    {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        state.ActiveTriggers.Add(new DesireTrigger {
-            Type = type, Weight = weight, Description = description,
-            CreatedAt = DateTimeOffset.UtcNow
-        });
-        state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + weight * 0.15f);
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
-    }
-
-    public async Task ApplyCooldownAsync(TimeSpan duration, CancellationToken ct = default)
-    {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        state.CooldownActive = true;
-        // Cooldown is expressed as a longer next wake time — the heartbeat reads this state
-        // before computing delay, so no separate flag-clearing timer is needed.
-        // CooldownActive resets automatically after outreach or on next cycle evaluation.
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
-    }
-
-    public async Task ResetAfterOutreachAsync(CancellationToken ct = default)
-    {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
-        state.DesireToConnect   = 0.0f;
-        state.CooldownActive    = false;
-        state.LastOutreach      = DateTimeOffset.UtcNow;
-        state.ActiveTriggers.Clear();
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
-    }
-
-    private static float ComputeCircadianModifier()
-    {
-        return DateTimeOffset.Now.Hour switch {
-            >= 6  and < 10  => 1.2f,   // morning — curious, engaged
-            >= 10 and < 17  => 1.0f,   // afternoon — neutral
-            >= 17 and < 21  => 1.15f,  // evening — warm, reflective
-            >= 21 and < 23  => 0.8f,   // late evening — quieter
-            _               => 0.4f,   // night — only if important
-        };
-    }
-}
+IsNightHours() → bool
+    Local hour check, handles wrap-around (23–6 spans midnight).
 
 4.4 CognitiveCycleProcessor
-Ani's full cognitive cycle. Executes once per scheduled wake. Builds context once and passes it through all phases — perception, inner thought, desire evaluation, and conditional outreach. No work is duplicated between phases.
+Single cognitive cycle. Executes once per scheduled wake. The full pipeline:
 
-MarkValence scoring uses a second focused Ollama call with a simple 0–1 scoring prompt. This is the defined implementation of ScoreMarkValenceAsync.
+Phase 1: Emotional drift — Load emotional state, drift all 4 dimensions toward baselines
+Phase 2: Perception polling — Collect events from all enabled sources
+Phase 3: Notable perception persistence — Save high-relevance perceptions for embedding
+Phase 4: Conversation check — If contact texted, enter conversation reply flow
+Phase 5: Reactive share check — High-relevance RSS → direct SMS share (rate-limited)
+Phase 6: Context snapshot — Built once, shared across all phases
+Phase 7: Inner thought — Private LLM call (inner monologue model), score contact valence
+Phase 8: Emotional shift — LLM evaluates thought → apply deltas with diminishing returns
+Phase 9: Desire update — Temporal drift + circadian + trigger weights
+Phase 10: Outreach evaluation — Conditional on desire threshold + gating
 
-// Ollama format:"json" is used for all structured outputs — required for reliable parsing on small models.
+Conversation reply flow (RunConversationReplyAsync):
+1. Check for terminal message (haha, lol, ok, goodnight, emoji-only, etc.) — skip
+2. Build context snapshot with full thread as RecentHistory
+3. Step 1 — Reply decision (JSON: shouldReply + reasoning)
+4. Step 2 — Generate reply (free text) or reconsideration reply
+5. Step 3 — Natural delay (12–25s total response time)
+6. Step 4 — Send via Twilio
+7. Step 5 — Record reply in thread, update desire, apply emotional shift
 
-public class CognitiveCycleProcessor
-{
-    public async Task RunAsync(CancellationToken ct)
-    {
-        // Phase 1: Perception — poll all registered sources since last cycle
-        var perceptions = await _perception.PollAllAsync(ct).ConfigureAwait(false);
+Key state:
+- LastEvaluatedMessageAt — Prevents re-evaluating "decided silence" every cycle
+- _reactiveShareCount / _reactiveShareDay — Daily reactive share counter
+- _recentPerceptions — Dedup cache with 4-hour window
 
-        // Phase 2: Context snapshot — built once, shared across all phases
-        var snapshot = await _contextBuilder.BuildAsync(perceptions, ct).ConfigureAwait(false);
+Message cleanup (CleanOutreachMessage):
+- Strips meta-commentary after blank lines
+- Removes trailing junk patterns ("sent.", "your turn.", etc.)
+- Hard cap to 2 sentences, first paragraph only
 
-        // Phase 3: Inner thought — what is Ani thinking right now?
-        var thoughtPrompt = _promptBuilder.BuildInnerThoughtPrompt(snapshot);
-        var thought = await _ollama.ChatAsync(
-            thoughtPrompt.System,
-            snapshot.RecentHistory,
-            thoughtPrompt.User, ct).ConfigureAwait(false);
+Pronoun fix (FixPronounsIfNeeded):
+- Only if message contains third-person pronouns (he/him/his)
+- LLM call to swap to second person. Safety check: reject if length differs >50%
 
-        // Phase 4: Score Mark valence — focused second call with scoring prompt
-        var valencePrompt = _promptBuilder.BuildValenceScoringPrompt(thought, snapshot.CharacterState);
-        var valenceRaw    = await _ollama.ChatAsync(
-            valencePrompt.System, Array.Empty<ChatMessage>(),
-            valenceRaw.User, ct).ConfigureAwait(false);
-        var valence = ParseValenceScore(valenceRaw);  // expects { "score": 0.0–1.0 }
+4.5 AdminCommandHandler
+Triggered by messages starting with "///". Bypasses conversation pipeline.
 
-        await _memory.SaveAsync(new MemoryRecord {
-            Type        = MemoryType.InnerThought,
-            Content     = thought,
-            MarkValence = valence,
-            Importance  = valence > 0.6f ? 0.8f : 0.3f,
-            OccurredAt  = DateTimeOffset.UtcNow
-        }, ct).ConfigureAwait(false);
+Commands:
+- ///help — Show command list
+- ///status — Current emotional state, desire level, timing info
+- ///test — Snapshot DB (WAL files), enable test mode
+- ///live — Restore DB from snapshot, disable test mode
+- ///reset-mood — Reset all emotions to baselines
 
-        // Phase 5: Update desire state
-        await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
-        if (valence > 0.6f)
-            await _desire.AddTriggerAsync(
-                TriggerType.SpontaneousThought, valence, thought, ct).ConfigureAwait(false);
+5. Perception Sources
 
-        // Phase 6: Outreach evaluation — conditional on desire threshold
-        if (!await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
-            return;
+| Source | SourceName | Category | Always On | Contact Relevance | Notes |
+|--------|-----------|----------|-----------|-------------------|-------|
+| TimePerceptionSource | time | Environment | Yes | 0.1 | Time of day, season, holidays, elapsed since last cycle |
+| RssPerceptionSource | rss | Content | If configured | 0.2–0.85 | Keyword-matched relevance from CharacterStateDoc |
+| ContactStatePerceptionSource | contact-state | Social | Yes | 0.2–0.5 | Inferred state from ContactRoutine + time of day |
+| TwilioInboundPerceptionSource | twilio-inbound | Communication | If configured | 0.95 | Webhook + API fallback, dedupes by SID |
 
-        var outreachPrompt = _promptBuilder.BuildOutreachPrompt(snapshot, thought);
-        var raw            = await _ollama.ChatAsync(
-            outreachPrompt.System, snapshot.RecentHistory,
-            outreachPrompt.User, ct).ConfigureAwait(false);
-        var decision = ParseOutreachDecision(raw);  // expects structured JSON via format:"json"
+TimePerceptionSource: Emits temporal context — hour-based descriptions ("early morning", "late evening"), day of week, month position, season transitions (first 3 days), nearby holidays, elapsed time since last cycle.
 
-        if (!decision.ShouldReach || !await IsAppropriateAsync(snapshot, ct).ConfigureAwait(false))
-        {
-            await _desire.ApplyCooldownAsync(
-                TimeSpan.FromMinutes(_options.CooldownMinutes), ct).ConfigureAwait(false);
-            return;
-        }
+RssPerceptionSource: Polls configured feeds. Tracks last-seen publish date per feed. Relevance scoring: 0 keyword matches → 0.2, 1 → 0.4, 2 → 0.6, 3+ → 0.85. Keywords extracted from CharacterStateDoc (ThingsContactCares, Interests, SharedExperiences, TopicValence keys). Items above ReactiveShareThreshold can trigger direct SMS sharing.
 
-        // Phase 7: Dispatch and record
-        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
-        await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
+ContactStatePerceptionSource: Infers contact's likely state from known routine + time. Gap descriptions: <2h silent, 2–6h "a few hours", 6–12h "quiet today", 12–24h "haven't heard since yesterday", 24–48h "over a day", 48h+ "X days".
 
-        await _memory.SaveAsync(new MemoryRecord {
-            Type       = MemoryType.Episodic,
-            Content    = $"Ani reached out: {decision.Message}",
-            Importance = 0.7f,
-            OccurredAt = DateTimeOffset.UtcNow
-        }, ct).ConfigureAwait(false);
-    }
-}
+TwilioInboundPerceptionSource: Dual mechanism — webhook (POST /sms/inbound) enqueues message and fires OnMessageReceived to trigger early wake; PollAsync drains queue then fetches Twilio API as safety net. Starts new ConversationThread if needed. Closes stale threads after ConversationTimeoutMinutes.
 
-5. API Contracts
+6. Prompt Architecture
 
-5.1 Ollama
-Base URL
-http://localhost:11434  (configurable via appsettings)
-Model
-ani-llama3.2  (Ani fine-tune loaded into Ollama)
-Chat endpoint
-POST /api/chat
-Embed endpoint
-POST /api/embeddings
-Auth
-None — local only
+All prompts built by PromptBuilder — stateless pure functions. Returns (System, User) tuples. Key prompts:
 
-// Chat request
-POST http://localhost:11434/api/chat
-{
-  "model": "ani-llama3.2",
-  "messages": [
-    { "role": "system",    "content": "<system prompt>" },
-    { "role": "user",      "content": "<message>" }
-  ],
-  "stream": false
-}
+BuildInnerThoughtPrompt(snapshot) — Ani's private mind stream. 2–4 sentences, first person only. Includes thought loop detection from SimilarRecentThoughts. Topics vary widely: sounds, textures, memories, ideas, feelings, curiosities.
+
+BuildValenceScoringPrompt(thought, character) — JSON: { "score": 0.0–1.0 }. Measures how much the thought relates to the contact. Action verbs (want, wish, miss) → 0.6+. Pure self-reflection → 0.4 or below.
+
+BuildOutreachPrompt(snapshot, thought, isNightTime) — JSON decision: shouldReach, confidence, reasoning, triggersActedOn. Night clause adds restraint.
+
+BuildReplyDecisionPrompt(snapshot, thread) — JSON: shouldReply, reasoning. Guidelines for when to reply vs. choose silence.
+
+BuildConversationReplyPrompt(snapshot, thread) — Free-text reply. 1–3 sentences, thumb-typed. Includes anti-repetition block, current mood, semantic memories, grounding instruction against confabulation.
+
+BuildReconsiderationReplyPrompt(snapshot, thread) — When silence was chosen but desire built enough to reconsider. "Wait, one more thing" natural segue.
+
+BuildOutreachMessagePrompt(snapshot, thought, reasoning) — Compose grounded text. 1–2 sentences, 25 words MAX. CRITICAL: thought is WHY reaching out, NOT content. Must make sense without knowing inner thought.
+
+BuildEmotionalShiftPrompt(content, currentState, maxDelta) — JSON deltas for W/E/C/P. Default 0.0 for most dimensions. Small shifts (0.02–0.05) preferred. Negative shifts just as common.
+
+BuildReactiveSharePrompt(character, itemSummary) — Share high-relevance RSS items. "omg did you see this?" energy.
+
+7. Persistence Layer
+
+7.1 SqliteMemoryService
+Single SQLite file (data/ani-memory.db) with WAL mode enabled. Tables:
+
+memories: id (TEXT PK), type (INT), content, raw_json, importance, mark_valence, embedding (BLOB), is_resolved, source_name, occurred_at, created_at, resolved_at
+  Indexes: ix_memories_type, ix_memories_occurred
+
+character_state: id, json (singleton row, id=1)
+desire_state: id, json (singleton row, id=1)
+emotional_state: id, json (singleton row, id=1)
+
+Embeddings stored as raw bytes (float[] → little-endian binary). Auto-generated on save via IOllamaClient.EmbedAsync. Semantic search uses brute-force cosine similarity in C# — correct at expected data volume.
+
+7.2 SqliteConversationService
+Same database, separate tables:
+
+conversation_threads: id (TEXT PK), started_at, last_message_at, is_active, initiated_by
+conversation_messages: id (AUTOINCREMENT), thread_id (FK), role, content, sent_at
+  Index: ix_conv_messages_thread (thread_id, sent_at ASC)
+
+Thread closure saves full conversation as single episodic memory record.
+
+8. API Contracts
+
+8.1 Ollama
+Base URL: http://localhost:11434 (configurable)
+Models: ani-v4-conversation (chat), ani-v4-inner (inner monologue), nomic-embed-text (embeddings)
+Auth: None — local only
+
+// Chat request (stream=false, format=null or "json")
+POST /api/chat { model, messages, stream, format?, keep_alive: "5m" }
 
 // Embedding request
-POST http://localhost:11434/api/embeddings
-{
-  "model": "nomic-embed-text",
-  "prompt": "<text to embed>"
-}
+POST /api/embeddings { model, prompt, keep_alive: "10s" }
 
-5.2 Twilio SMS
-SDK
-Twilio .NET Helper Library
-Config keys
-Twilio:AccountSid, Twilio:AuthToken, Twilio:FromNumber, Twilio:ToNumber
-Existing
-Integration already working — reuse from Ani Phase 1 Twilio work
+8.2 Twilio SMS
+SDK: Twilio .NET Helper Library (v7.14.3)
+Config: Twilio:AccountSid, Twilio:AuthToken, Twilio:FromNumber, Twilio:ToNumber, Twilio:InboundEnabled
 
-// TwilioSmsAction.cs — ExecuteAsync
-TwilioClient.Init(_options.AccountSid, _options.AuthToken);
+Outbound: MessageResource.CreateAsync via TwilioSmsAction
+Inbound: POST /sms/inbound webhook endpoint, signature validated with forwarded headers for ngrok
 
-var message = await MessageResource.CreateAsync(
-    body: decision.Message,
-    from: new Twilio.Types.PhoneNumber(_options.FromNumber),
-    to:   new Twilio.Types.PhoneNumber(_options.ToNumber)
-);
+8.3 Home Assistant
+STUB — Phase 3. Base URL: http://192.168.1.41:8123. Long-lived access token.
 
-_log.LogInformation("Ani sent SMS: {Sid}", message.Sid);
-return message.Status != MessageResource.StatusEnum.Failed;
+9. Configuration Schema
 
-5.3 Home Assistant
-STUB  HomeAssistantSource and HomeAssistantAction — implement in Phase 2
-
-Base URL
-http://192.168.1.41:8123  (existing server)
-Auth
-Long-lived access token via appsettings
-State read
-GET /api/states/<entity_id>
-Event hook
-GET /api/events  (webhook or polling)
-Action
-POST /api/services/<domain>/<service>
-
-// HomeAssistantSource.cs — PollAsync (STUB)
-GET http://192.168.1.41:8123/api/states/device_tracker.mark_phone
-Authorization: Bearer <long-lived-token>
-
-// Response shape
-{
-  "entity_id": "device_tracker.mark_phone",
-  "state": "home",
-  "last_changed": "2025-03-06T18:14:22Z"
-}
-
-6. Configuration Schema
-All sensitive values should be stored in appsettings.Development.json (gitignored) or Windows credential store for production.
+All sensitive values in appsettings.Development.json (gitignored).
 
 {
+  "Kestrel": {
+    "Endpoints": { "Http": { "Url": "http://localhost:5100" } }
+  },
   "Ollama": {
-    "BaseUrl":    "http://localhost:11434",
-    "ChatModel":  "ani-llama3.2",
+    "BaseUrl": "http://localhost:11434",
+    "ChatModel": "ani-v4-conversation",
+    "InnerMonologueModel": "ani-v4-inner",
     "EmbedModel": "nomic-embed-text"
   },
   "Twilio": {
-    "AccountSid":  "<from existing integration>",
-    "AuthToken":   "<from existing integration>",
-    "FromNumber":  "<ANI-ROSE number>",
-    "ToNumber":    "<Mark's number>"
+    "InboundEnabled": true
+    // AccountSid, AuthToken, FromNumber, ToNumber in Development.json
   },
-  "HomeAssistant": {
-    "BaseUrl":     "http://192.168.1.41:8123",
-    "Token":       "<long-lived access token>"
+  "Rss": {
+    "Enabled": true,
+    "MaxItemsPerFeed": 2,
+    "Feeds": [
+      { "Name": "NPR Books", "Url": "..." },
+      { "Name": "Bon Appétit", "Url": "..." },
+      { "Name": "NPR News", "Url": "..." }
+    ]
   },
   "Ani": {
-    "DesireLambdaMinutes":    8.0,
+    "DesireLambdaMinutes": 8.0,
     "ThinkTargetProbability": 0.70,
-    "MinWakeMinutes":         2.0,
-    "MaxWakeMinutes":         45.0,
-    "CooldownMinutes":        20,
-    "MinOutreachGapMinutes":  60,
-    "MaxOutreachPerDay":      4,
-    "CharacterStatePath":     "data/character-state.json",
-    "MemoryDbPath":           "data/ani-memory.db"
+    "MinWakeMinutes": 2.0,
+    "MaxWakeMinutes": 45.0,
+    "CooldownMinutes": 20,
+    "MinOutreachGapMinutes": 60,
+    "MaxOutreachPerDay": 4,
+    "NightStartHour": 23,
+    "NightEndHour": 6,
+    "MaxNightOutreach": 1,
+    "OutreachThresholdFloor": 0.55,
+    "OutreachThresholdRange": 0.30,
+    "DriftPerHour": 0.08,
+    "DriftCapPerCycle": 0.4,
+    "TriggerDesireMultiplier": 0.15,
+    "ValenceTriggerThreshold": 0.75,
+    "ConversationHeartbeatSeconds": 45.0,
+    "ConversationTimeoutMinutes": 15.0,
+    "ConversationMinReplySeconds": 12.0,
+    "ConversationMaxReplySeconds": 25.0,
+    "ReactiveShareThreshold": 0.6,
+    "MaxReactiveSharesPerDay": 2,
+    "ReactiveShareCooldownMinutes": 20.0,
+    "CharacterStatePath": "data/character-state.json",
+    "MemoryDbPath": "data/ani-memory.db"
   }
 }
 
-7. Stub Index
-All stubs are tracked here. Check them off as phases are completed.
+10. Logging
 
-File / Component
-Phase
-Notes
-HomeAssistantSource.cs
-Phase 2
-Poll device tracker + state entities
-HomeAssistantAction.cs
-Phase 2
-Trigger HA automations from Ani
-BlogPerceptionSource.cs
-Phase 2
-Poll learnedgeek.com RSS for new posts
-RssPerceptionSource.cs
-Phase 2
-General RSS feed for Ani's interests
-CalendarPerceptionSource.cs
-Phase 2
-Google Calendar — gap + meeting awareness
-WeatherPerceptionSource.cs
-Phase 2
-Local weather context
-OpenLoopDetector.cs
-Phase 3
-Analyse conversation endings for open threads
-CommitmentTracker.cs
-Phase 3
-Extract and track promises / plans from chat
-SpotifySource.cs
-Phase 3
-What Mark is listening to
-GmailSource.cs
-Phase 3
-Email volume / unread awareness
-CharacterStateEvolution.cs
-Phase 4
-Periodic update of CharacterStateDoc from experience
-ValenceLearner.cs
-Phase 4
-Reinforce what resonates with Mark
+Dual-file Serilog:
+- Journal: ani-{date}.log — Info level, 30-day retention. Inner thoughts, outreach decisions, conversations, messages sent.
+- Diagnostic: ani-debug-{date}.log — Debug level, 7-day retention. Full pipeline detail.
 
-8. Change Log
-Update this section as the codebase evolves. Keep it brief — just enough to track what changed and why.
+11. Stub Index
 
-Version
-Date
-Changes
-0.1
-Mar 6, 2026
-Initial scaffold — all models, interfaces, and service stubs defined
-0.2
-Mar 6, 2026
-Architecture revision: replaced two-loop polling model with single scheduled cognitive cycle. Added ComputeNextWakeTime as load-bearing pure function. Replaced InnerLoopProcessor + OuterLoopProcessor with CognitiveCycleProcessor. Added ThinkTargetProbability, MinWakeMinutes, MaxWakeMinutes to AniOptions. All timing intelligence now lives in one testable place.
+Implemented components (Phase 1 & 2):
 
-Next: Scaffold the solution, implement SqliteMemoryService, seed CharacterStateDoc from Ani's existing training context, and wire the Phase 1 heartbeat loop end-to-end.
+| Component | Phase | Status |
+|-----------|-------|--------|
+| TimePerceptionSource | 1 | Complete |
+| RssPerceptionSource | 2 | Complete |
+| ContactStatePerceptionSource | 2 | Complete |
+| TwilioInboundPerceptionSource | 2 | Complete |
+| ConversationThread / ConversationMessage | 2 | Complete |
+| EmotionalState (4-dimension, drift, attenuation) | 2 | Complete |
+| AdminCommandHandler | 2 | Complete |
+| Reactive RSS sharing | 2 | Complete |
+| Night mode / deep sleep circadian | 2 | Complete |
+
+Planned stubs:
+
+| Component | Phase | Notes |
+|-----------|-------|-------|
+| AniRuntime.Dashboard (Blazor Server) | 3 | Profile system, memory viewer, status card |
+| CalendarPerceptionSource | 3 | Google Calendar / iCal — schedule awareness |
+| HomeAssistantSource | 3 | Ambient home state via HA REST API |
+| HomeAssistantAction | 3 | Trigger HA automations from Ani |
+| Mood coloring (emotional state → tone) | 3 | EmotionalState feeds into message prompts |
+| Receiving care (bidirectional relationship) | 3 | Detect care-giving intent, apply emotional shift |
+| OpenLoopDetector | 3+ | Analyze conversation endings for open threads |
+| CommitmentTracker | 3+ | Extract and track promises from chat |
+| CharacterStateEvolution | 4 | Periodic update of CharacterStateDoc from experience |
+| ValenceLearner | 4 | Reinforce what resonates with contact |
+
+12. Test Infrastructure
+
+Framework: xUnit, Moq, FluentAssertions. 56 tests passing, 0 warnings.
+
+Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
+
+Test files:
+- CognitiveCycleProcessorTests.cs — Full cycle flow, conversation handling
+- DesireEngineTests.cs — Drift, triggers, cooldown, circadian, night mode
+- EmotionalStateTests.cs — Drift toward baseline, attenuation, clamping, describe
+- SqliteMemoryServiceTests.cs — CRUD, search, embedding, character/desire/emotional state
+- TimePerceptionSourceTests.cs — Temporal context generation
+
+13. Key Architectural Patterns
+
+1. Single code path per write — All DesireState writes through DesireEngine. All memory writes through SqliteMemoryService.
+2. Pluggable perception — New sources implement IPerceptionSource, register in DI.
+3. Pluggable actions — New output channels implement IAniAction, register in DI.
+4. Stateless prompt building — PromptBuilder is pure functions, no dependencies.
+5. Context snapshot pattern — Built once per cycle, shared across all phases.
+6. Conversation gating — LastEvaluatedMessageAt prevents re-evaluating silence decisions.
+7. Reactive sharing bypass — High-relevance RSS items skip desire engine, respect rate limits.
+8. Thought loop detection — Semantic search for similar recent thoughts escalates diversity instruction.
+9. Diminishing returns on emotion — Dimensions already at extremes resist additional same-direction pushes. Corrective deltas (toward baseline) always full strength.
+10. Circadian awareness — Schedule emerges from desire state + circadian modifiers, not hardcoded.
+11. Dual inbound mechanism — Webhook for speed + API polling as safety net.
+12. Early wake — Inbound message cancels sleep timer for immediate conversation response.
+
+14. Change Log
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 0.1 | Mar 6, 2026 | Initial scaffold — all models, interfaces, and service stubs defined |
+| 0.2 | Mar 6, 2026 | Architecture revision: single scheduled cognitive cycle, ComputeNextWakeTime as pure function |
+| 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
