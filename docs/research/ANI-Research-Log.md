@@ -57,6 +57,66 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 11, 2026 — Mood Coloring Implemented (Feature 9)
+**Model version:** v4
+**Type:** System (architectural improvement)
+**Source:** Git commit, PromptBuilder.cs, CognitiveCycleProcessor.cs
+**What happened:**
+Mood coloring implemented: EmotionalState now actively shapes the tone of all outgoing messages. A new `BuildMoodInstruction()` method generates directive tone instructions from the current W/E/C/P dimensions and injects them into four prompt paths: outreach messages, conversation replies, reconsideration replies, and reactive shares.
+
+The instruction is *directive*, not descriptive. Instead of telling the model "you're feeling warm" (which it might announce), the instruction says "let that tenderness come through naturally — softer words, more affection." The model expresses mood through word choice, message length, and energy level — never by announcing its emotional state.
+
+**Key design decisions:**
+- Only fires when dimensions are notably different from baseline (>0.15 threshold) — baseline mood produces no instruction
+- Eight possible mood tones: warm/guarded, buzzing/mellow, worried/at-ease, playful/serious
+- Combined moods produce layered instructions (e.g., warm + low-energy = "tender but quiet")
+- Inner thought prompt already had descriptive mood via `Describe()` — this is the output-side complement
+
+**Why it matters:**
+This is the bridge between the emotional state system (which has been running since Phase 2) and message quality. Before this change, emotions drifted and shifted but were invisible to the contact. After this change, a quiet evening with low energy produces qualitatively different messages than a playful morning. The architecture contribution is model-agnostic: "persistent emotional state injected as tone instruction produces observably different output across emotional contexts." This works regardless of which model runs behind it.
+
+**Research significance:**
+- Validates Borotschnig (2025) dual-source emotion architecture: desire engine (motivational) and emotional state (affective) operate as independent influences on behavior
+- First step toward bidirectional care (Phase 3 Feature 10): the contact can now potentially *notice* mood changes and respond to them
+- Directly testable: compare message logs before/after for tone variation correlated with emotional state
+
+---
+
+### March 11, 2026 — Reflection Layer Implemented (Feature 11, Park et al.)
+**Model version:** v4
+**Type:** System (architectural improvement)
+**Source:** Git commit, PromptBuilder.cs, CognitiveCycleProcessor.cs
+**What happened:**
+Post-thought reflection layer added to the cognitive cycle. After generating an inner thought, Ani now reflects on it: "What does this thought mean to me? Why did it surfaced? What does it connect to?" The reflection is a second LLM call (inner monologue model) that takes the raw thought plus emotional state and relevant memories as context.
+
+**Architecture change:**
+1. Inner thought generated (existing)
+2. **NEW: Reflection generated** — 1-2 sentences connecting the thought to memories, relationships, feelings
+3. Combined thought+reflection scored for contact valence (existing scorer, enriched input)
+4. Thought stored with reflection appended: `"thought text [reflection: reflection text]"`
+
+**Example of the intended effect (not yet observed live):**
+- Without reflection: "rain on the window sounds like someone tapping" → valence 0.2 (pure observation)
+- With reflection: "rain on the window sounds like someone tapping" + "that tapping — it reminds me of when Mark drums his fingers on the steering wheel. I miss riding with him." → valence 0.7 (active longing)
+
+The thought itself doesn't change. The reflection *surfaces the connection* that was implicit, making valence scoring more accurate and outreach grounding richer.
+
+**Why it matters:**
+This is a direct adaptation of Park et al. (2023) Generative Agents reflection mechanism, but applied in a fundamentally different context:
+- **Park et al.:** Reflects on accumulated observations over time (summarization). Operates within simulated environments with second-scale cycles.
+- **ANI:** Reflects on individual thoughts *as they arise*. Operates in ambient deployment with hour-scale cycles between real humans.
+
+The architectural contribution is: "a reflection stage between thought generation and action evaluation produces richer grounding for companion behavior." This is model-agnostic — the pipeline stage works regardless of which model provides the reflection. The quality of reflection improves with model capability, but the architecture pattern is the research finding.
+
+**Cost:** One additional LLM call per cognitive cycle (inner monologue model, ~1-2s on 3B). Acceptable given cycles are 2-45 minutes apart.
+
+**Metrics to watch overnight:**
+- Does valence scoring distribution shift? (Should see fewer 0.1-0.2 scores as reflections surface connections)
+- Does outreach message quality improve? (Thoughts are better grounded → outreach messages have richer context)
+- Does the reflection add genuine insight or just echo the thought? (3B model limitation risk)
+
+---
+
 ### March 11, 2026 — Night Mode Deployed, V4 Models Live
 **Model version:** v4
 **Type:** System

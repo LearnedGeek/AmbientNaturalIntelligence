@@ -1,4 +1,5 @@
 using AniRuntime.Core.Models;
+using AniRuntime.LLM;
 using FluentAssertions;
 
 namespace AniRuntime.Tests;
@@ -164,5 +165,71 @@ public class EmotionalStateTests
         var desc = state.Describe();
         desc.Should().Contain("distant");
         desc.Should().Contain("serious");
+    }
+
+    // ── Mood Coloring (BuildMoodInstruction) ─────────────────────────────
+
+    [Fact]
+    public void BuildMoodInstruction_ReturnsEmpty_WhenNearBaseline()
+    {
+        var state = new EmotionalState(); // all at baseline
+
+        PromptBuilder.BuildMoodInstruction(state).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildMoodInstruction_IncludesWarmthInstruction_WhenHighWarmth()
+    {
+        var state = new EmotionalState
+        {
+            Warmth = 0.9f, WarmthBaseline = 0.6f,
+        };
+
+        var instruction = PromptBuilder.BuildMoodInstruction(state);
+        instruction.Should().Contain("warm");
+        instruction.Should().Contain("tenderness");
+    }
+
+    [Fact]
+    public void BuildMoodInstruction_IncludesLowEnergyInstruction()
+    {
+        var state = new EmotionalState
+        {
+            Energy = 0.2f, EnergyBaseline = 0.5f,
+        };
+
+        var instruction = PromptBuilder.BuildMoodInstruction(state);
+        instruction.Should().Contain("low-energy");
+        instruction.Should().Contain("shorter messages");
+    }
+
+    [Fact]
+    public void BuildMoodInstruction_CombinesMultipleDimensions()
+    {
+        var state = new EmotionalState
+        {
+            Warmth = 0.9f, WarmthBaseline = 0.6f,      // high warmth
+            Playfulness = 0.8f, PlayfulnessBaseline = 0.5f, // high playfulness
+            Energy = 0.5f, EnergyBaseline = 0.5f,       // at baseline — not mentioned
+        };
+
+        var instruction = PromptBuilder.BuildMoodInstruction(state);
+        instruction.Should().Contain("warm");
+        instruction.Should().Contain("playful");
+        instruction.Should().NotContain("energy");
+    }
+
+    [Fact]
+    public void BuildMoodInstruction_HandlesGuardedState()
+    {
+        var state = new EmotionalState
+        {
+            Warmth = 0.3f, WarmthBaseline = 0.6f,           // guarded
+            Playfulness = 0.2f, PlayfulnessBaseline = 0.5f,  // serious
+        };
+
+        var instruction = PromptBuilder.BuildMoodInstruction(state);
+        instruction.Should().Contain("guarded");
+        instruction.Should().Contain("serious");
     }
 }

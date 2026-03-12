@@ -147,13 +147,18 @@ public class CognitiveCycleProcessor
         // Phase 4: Context snapshot — built once, shared across all ambient phases
         var snapshot = await BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
-        // Phase 4: Inner thought
-        var (thought, valence) = await RunInnerThoughtAsync(snapshot, ct).ConfigureAwait(false);
+        // Phase 4: Inner thought + reflection
+        var (thought, reflection, valence) = await RunInnerThoughtAsync(snapshot, ct).ConfigureAwait(false);
+
+        // Store thought with reflection appended — keeps inner life richness in memory
+        var contentForStorage = reflection is not null
+            ? $"{thought} [reflection: {reflection}]"
+            : thought;
 
         await _memory.SaveAsync(new MemoryRecord
         {
             Type        = MemoryType.InnerThought,
-            Content     = thought,
+            Content     = contentForStorage,
             ContactValence = valence,
             Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
             OccurredAt  = DateTimeOffset.UtcNow,
@@ -161,6 +166,8 @@ public class CognitiveCycleProcessor
 
         _log.LogInformation("Inner thought (valence={Valence:F2}): {Thought}",
             valence, thought);
+        if (reflection is not null)
+            _log.LogInformation("Reflection: {Reflection}", reflection);
 
         // Phase 4b: Emotional shift from inner thought
         await ApplyEmotionalShiftAsync(emotionalState, thought, ct).ConfigureAwait(false);
@@ -328,8 +335,9 @@ public class CognitiveCycleProcessor
         _log.LogInformation("Reactive share triggered: {Summary} (relevance={Relevance:F2})",
             shareable.Summary, shareable.ContactRelevance);
 
-        // Generate the share message
-        var prompt = PromptBuilder.BuildReactiveSharePrompt(charState, shareable.Summary);
+        // Generate the share message (with mood coloring)
+        var currentMood = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var prompt = PromptBuilder.BuildReactiveSharePrompt(charState, shareable.Summary, currentMood);
         var message = await _ollama.ChatAsync(
             prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
             .ConfigureAwait(false);
@@ -440,7 +448,7 @@ public class CognitiveCycleProcessor
         };
     }
 
-    private async Task<(string thought, float valence)> RunInnerThoughtAsync(
+    private async Task<(string thought, string? reflection, float valence)> RunInnerThoughtAsync(
         ContextSnapshot snapshot, CancellationToken ct)
     {
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
@@ -448,10 +456,55 @@ public class CognitiveCycleProcessor
             thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 
-        var valence = await ScoreContactValenceAsync(thought, snapshot.CharacterState, ct)
+        // Reflection layer (Park et al.): Ani sits with the thought and considers
+        // what it means to her — connecting it to memories, relationships, feelings.
+        // The reflection enriches the thought for valence scoring and outreach grounding.
+        var reflection = await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
+
+        // Score the combined thought+reflection — the reflection surfaces connections
+        // that make the valence score more accurate (e.g., "rain tapping" alone is 0.2,
+        // but "rain tapping — reminds me of Mark drumming his fingers" is 0.7)
+        var combinedForScoring = reflection is not null
+            ? $"{thought}\n(reflection: {reflection})"
+            : thought;
+
+        var valence = await ScoreContactValenceAsync(combinedForScoring, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
 
-        return (thought, valence);
+        return (thought, reflection, valence);
+    }
+
+    /// <summary>
+    /// Post-thought reflection: Ani considers what her thought means, why it surfaced,
+    /// and what it connects to. Returns the reflection text, or null if reflection fails.
+    /// Uses the inner monologue model — this is private introspection, not conversation.
+    /// </summary>
+    private async Task<string?> ReflectOnThoughtAsync(
+        string thought, ContextSnapshot snapshot, CancellationToken ct)
+    {
+        try
+        {
+            var reflectionPrompt = PromptBuilder.BuildReflectionPrompt(thought, snapshot);
+            var reflection = await _ollama.InnerMonologueChatAsync(
+                reflectionPrompt.System, Array.Empty<ChatMessage>(), reflectionPrompt.User, ct)
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(reflection))
+                return null;
+
+            // Trim to reasonable length — reflection should be brief
+            reflection = reflection.Trim();
+            if (reflection.Length > 200)
+                reflection = reflection[..200];
+
+            _log.LogDebug("Reflection: {Reflection}", reflection);
+            return reflection;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Reflection failed — continuing without");
+            return null;
+        }
     }
 
     private async Task<float> ScoreContactValenceAsync(

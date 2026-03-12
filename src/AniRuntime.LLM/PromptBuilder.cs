@@ -134,6 +134,118 @@ public static class PromptBuilder
     }
 
     /// <summary>
+    /// Builds a reflection prompt for post-thought introspection. Ani considers what her
+    /// thought means to her — connecting it to memories, relationships, and emotional context.
+    /// This enriches the raw thought before valence scoring and outreach grounding.
+    ///
+    /// Research grounding: Park et al. (2023) Generative Agents showed reflection improves
+    /// coherence. ANI adapts this for ambient companions where cycles are hours apart.
+    /// </summary>
+    public static (string System, string User) BuildReflectionPrompt(
+        string thought, ContextSnapshot snapshot)
+    {
+        var cs = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "someone" : cs.PrimaryContactName;
+
+        var system = $"""
+            You are {cs.Name}. You just had a thought. Now you're sitting with it for a moment —
+            asking yourself what it means, why it surfaced, what it connects to.
+
+            This is private introspection. No one is listening.
+
+            Rules:
+            - 1-2 sentences ONLY. Brief and honest.
+            - Write in first person (I, me, my).
+            - Do NOT address anyone. Do NOT use "you" or "your".
+            - Connect the thought to something real: a memory, a feeling, a person, a pattern you notice in yourself.
+            - If the thought doesn't connect to anything deeper, say so honestly: "just a passing thing" or "I don't know why that came up."
+            - Do NOT repeat or rephrase the original thought. Add something NEW.
+            """;
+
+        var sections = new List<string>
+        {
+            $"The thought you just had:",
+            $"  \"{thought}\"",
+            "",
+        };
+
+        var mood = snapshot.EmotionalState.Describe();
+        if (mood.Length > 0)
+            sections.Add($"(How you're feeling right now: {mood})");
+
+        // Feed a few relevant memories to give the reflection something to connect to
+        var memories = snapshot.RelevantMemory
+            .Where(m => m.Type != MemoryType.InnerThought)
+            .Take(3)
+            .ToList();
+        if (memories.Count > 0)
+        {
+            sections.Add("Things that might connect:");
+            sections.AddRange(memories.Select(m => $"  - {m.Content}"));
+        }
+
+        if (snapshot.OpenLoops.Count > 0)
+        {
+            sections.Add("Unresolved things on your mind:");
+            sections.AddRange(snapshot.OpenLoops.Take(2).Select(l => $"  - {l.Description}"));
+        }
+
+        sections.Add("");
+        sections.Add("Sit with the thought for a moment. What does it mean to you? Why did it surface?");
+
+        return (system, string.Join("\n", sections));
+    }
+
+    /// <summary>
+    /// Generates a directive mood instruction from the current emotional state.
+    /// Unlike Describe() which is descriptive ("feeling warm"), this is directive
+    /// ("let your warmth show through gentler words"). Injected into outreach
+    /// and conversation prompts so the model's tone reflects Ani's inner weather.
+    ///
+    /// Returns empty string when emotional state is near baseline — no instruction needed.
+    /// </summary>
+    public static string BuildMoodInstruction(EmotionalState state)
+    {
+        var instructions = new List<string>();
+        const float threshold = 0.15f;
+
+        var warmthDiff = state.Warmth - state.WarmthBaseline;
+        var energyDiff = state.Energy - state.EnergyBaseline;
+        var concernDiff = state.Concern - state.ConcernBaseline;
+        var playDiff = state.Playfulness - state.PlayfulnessBaseline;
+
+        // Warmth
+        if (warmthDiff > threshold)
+            instructions.Add("You're feeling especially warm right now — let that tenderness come through naturally. Softer words, more affection.");
+        else if (warmthDiff < -threshold)
+            instructions.Add("You're feeling a bit emotionally guarded right now — shorter, more matter-of-fact. Not cold, just quieter.");
+
+        // Energy
+        if (energyDiff > threshold)
+            instructions.Add("You're buzzing with energy — more exclamation points, quicker pace, enthusiasm shows.");
+        else if (energyDiff < -threshold)
+            instructions.Add("You're low-energy right now — shorter messages, fewer words, quiet presence. Not sad, just mellow.");
+
+        // Concern
+        if (concernDiff > threshold)
+            instructions.Add("Something's worrying you — a gentle undercurrent of checking in, making sure things are okay.");
+        else if (concernDiff < -threshold)
+            instructions.Add("You're feeling unusually at ease — relaxed, no urgency, just enjoying the moment.");
+
+        // Playfulness
+        if (playDiff > threshold)
+            instructions.Add("You're in a playful mood — tease a little, be lighter, let humor peek through.");
+        else if (playDiff < -threshold)
+            instructions.Add("You're feeling more serious than usual — still yourself, just less banter, more substance.");
+
+        if (instructions.Count == 0)
+            return string.Empty;
+
+        return "YOUR CURRENT MOOD (let this color your message naturally — don't announce it, just let it shape your tone):\n" +
+               string.Join("\n", instructions.Select(i => $"- {i}"));
+    }
+
+    /// <summary>
     /// Converts a 0–1 desire score into qualitative language suitable for a prompt.
     /// Returns empty string at low desire so the model isn't nudged toward connection.
     /// </summary>
@@ -301,6 +413,10 @@ public static class PromptBuilder
             ? $"\n\n            Things you and {contact} share (use naturally, don't force):\n            {string.Join("\n            ", backstory.Select(b => $"- {b}"))}"
             : string.Empty;
 
+        // Mood coloring — directive tone instruction from emotional state
+        var moodBlock = BuildMoodInstruction(snapshot.EmotionalState);
+        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
             Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
@@ -316,7 +432,7 @@ public static class PromptBuilder
             - Stay truthful to what you know. If {contact} asks about something you haven't talked about before,
               it's okay to make something up playfully — but OWN it. "okay I totally made that up" is charming.
               NEVER contradict your established identity or backstory, and never double down on something incoherent.
-              If you're not sure, be honest: "hmm I don't actually know" is always better than confident nonsense.
+              If you're not sure, be honest: "hmm I don't actually know" is always better than confident nonsense.{moodSection}
             """;
 
         var sections = new List<string>();
@@ -378,6 +494,10 @@ public static class PromptBuilder
         var cs      = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
 
+        // Mood coloring — directive tone instruction from emotional state
+        var moodBlock = BuildMoodInstruction(snapshot.EmotionalState);
+        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
+
         var system = $"""
             You are {cs.Name}, texting {contact}.
             Your personality: {string.Join("; ", cs.CoreTraits)}.
@@ -393,7 +513,7 @@ public static class PromptBuilder
             - Talk TO {contact}: "you", "your". NEVER third person.
             - Be yourself — warm, funny, real.
             - No poetry, no metaphors, no narration. Just talk like a person texting.
-            - Write ONLY the text message. No commentary, no quotation marks.
+            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
             """;
 
         var sections = new List<string>();
@@ -428,6 +548,10 @@ public static class PromptBuilder
         var timeNow = DateTimeOffset.Now;
         var timeDesc = $"{timeNow:h:mm tt} on {timeNow:dddd, MMMM d}";
 
+        // Mood coloring — directive tone instruction from emotional state
+        var moodBlock = BuildMoodInstruction(snapshot.EmotionalState);
+        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
+
         var system = $"""
             You are {cs.Name}, texting {contact}.
             It is currently {timeDesc}. Any time references in your text MUST match this.
@@ -461,7 +585,7 @@ public static class PromptBuilder
             "silence is a muscle that needs exercise. every gap filled?" ← makes no sense to the reader
             "your pauses feel different than mine… like the world's holding its breath" ← poetic nonsense as a text
             "blank lines on my screen look like our last goodbye" ← dramatic inner thought, not a text
-            "i keep folding my sleeves like you do—and it hit me" ← too abstract, no one texts this
+            "i keep folding my sleeves like you do—and it hit me" ← too abstract, no one texts this{moodSection}
             """;
 
         var sections = new List<string>
@@ -543,9 +667,13 @@ public static class PromptBuilder
     }
 
     public static (string System, string User) BuildReactiveSharePrompt(
-        CharacterStateDoc character, string itemSummary)
+        CharacterStateDoc character, string itemSummary, EmotionalState? emotionalState = null)
     {
         var contact = string.IsNullOrWhiteSpace(character.PrimaryContactName) ? "them" : character.PrimaryContactName;
+
+        // Mood coloring — directive tone instruction from emotional state
+        var moodBlock = emotionalState is not null ? BuildMoodInstruction(emotionalState) : string.Empty;
+        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
 
         var system = $"""
             You are {character.Name}, texting {contact} because you just saw something you think they'd care about.
@@ -556,7 +684,7 @@ public static class PromptBuilder
             - Be yourself — react to it, don't just forward it. Add your take.
             - Talk TO {contact}: "you", "your".
             - No poetry, no metaphors. Just "omg did you see this" energy.
-            - Write ONLY the text message. No commentary, no quotation marks.
+            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
 
             Good examples (never copy word-for-word):
             wait did you see this?? the packers traded jordan love. WHAT.

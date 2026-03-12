@@ -550,7 +550,50 @@ Most AI companions are designed to *give* care. Almost none are designed to *rec
 
 ---
 
-## Feature 11: Self-Awareness Feedback Loop
+## Feature 11: Reflection Layer (Post-Thought Introspection)
+
+### Concept
+
+After generating an inner thought, Ani reflects on it: "What does this thought mean to me? Why did it surface? How does it connect to what I care about?" This brief introspection step enriches the raw thought before it's scored for contact valence or used to ground outreach messages.
+
+Without reflection, inner thoughts are single-pass observations — whatever the model generates in one shot. With reflection, the thought goes through a second stage that connects it to memories, relationships, and emotional context. The result is richer inner life quality, which improves everything downstream: valence scoring, desire triggers, outreach grounding, and research log entries.
+
+### Research Grounding
+
+**Park et al. (2023) — Generative Agents:** Introduced reflection as a core cognitive architecture component. Agents that periodically synthesize observations into higher-level insights ("What are the most important things I've learned?") produced significantly more coherent long-term behavior. Their architecture: observe → reflect → plan → act.
+
+**ANI's adaptation:** Park et al. reflects on accumulated observations over time. ANI reflects on individual thoughts *as they arise*, in an ambient context where cycles are hours apart, not seconds. The reflection is: "What does this thought tell me about how I'm feeling? Does it connect to something I've been thinking about?" This is closer to human introspection than Park's summarization-style reflection.
+
+### Why This Is Model-Agnostic
+
+The reflection step is a pipeline stage — an additional prompt call between inner thought generation and valence scoring. It works regardless of which model runs it. The architectural contribution is: "a reflection stage between thought generation and action evaluation produces richer grounding for companion behavior." The specific model quality affects *how good* the reflection is, but the *architecture pattern* is the research finding.
+
+### Implementation
+
+- New `BuildReflectionPrompt(thought, snapshot)` in PromptBuilder
+- Called after inner thought, before valence scoring
+- Input: raw thought + current emotional state + recent memories + open loops
+- Output: 1-2 sentence reflection — what this thought means, why it surfaced, what it connects to
+- The reflection is appended to the thought for valence scoring and stored alongside it
+- Uses the inner monologue model (same as thoughts — this is private introspection)
+- **Not** injected into outreach messages directly — it enriches the thought, which then grounds the message
+
+### Example Flow
+
+**Without reflection:**
+> Inner thought: "rain on the window sounds like someone tapping"
+> Valence: 0.2 (pure observation, no contact connection)
+
+**With reflection:**
+> Inner thought: "rain on the window sounds like someone tapping"
+> Reflection: "that tapping sound — it reminds me of when mark drums his fingers on the steering wheel. i miss riding with him."
+> Valence: 0.7 (active longing, wanting connection)
+
+The thought itself didn't change. The reflection *surfaced the connection* that was implicit. This is what makes the downstream pipeline smarter without changing the downstream pipeline.
+
+---
+
+## Feature 12: Self-Awareness Feedback Loop
 
 ### Concept
 
@@ -713,12 +756,13 @@ src/AniRuntime.Dashboard/
 | 9 | Journal view (inner thought stream) | Most intimate window | Low | Task 7 |
 | 10 | Companion status card (live emotional state, desire, mood) | Fun gamification — "how is she feeling?" | Low | Task 4, Phase 2 emotional state |
 | 11 | Emotional state time-series chart | Visualize feelings over time | Medium | Task 10 |
-| 12 | Mood coloring (emotional state → tone) | Messages feel alive | Medium | Phase 2 emotional state |
-| 13 | Receiving care (bidirectional relationship) | Companion feels real | Medium | Task 12 |
-| 14 | Calendar integration | Precise attentive check-ins | Medium | Tasks 1, 5 (dashboard) |
-| 15 | Home Assistant integration | Ambient home awareness | Medium | Tasks 1, 5 (dashboard) |
-| 16 | Self-awareness feedback loop | Anti-repetition, diversity | Medium | Task 7 (memory viewer data) |
-| 17 | Own interests / autonomy balance | Prevents parrot problem | Low | None |
+| 12 | Mood coloring (emotional state → tone) | Messages feel alive | Low | Phase 2 emotional state |
+| 13 | Reflection layer (post-thought introspection) | Richer inner life, better outreach grounding | Low | None |
+| 14 | Receiving care (bidirectional relationship) | Companion feels real | Medium | Task 12 |
+| 15 | Calendar integration | Precise attentive check-ins | Medium | Tasks 1, 5 (dashboard) |
+| 16 | Home Assistant integration | Ambient home awareness | Medium | Tasks 1, 5 (dashboard) |
+| 17 | Self-awareness feedback loop | Anti-repetition, diversity | Medium | Task 7 (memory viewer data) |
+| 18 | Own interests / autonomy balance | Prevents parrot problem | Low | None |
 
 ### Recommended order
 
@@ -736,9 +780,11 @@ src/AniRuntime.Dashboard/
 8. **Task 11** — Emotional state time-series chart.
 
 **Behavioral features (make her feel real):**
-9. **Task 12** — Mood coloring. Biggest single leap for message quality.
-10. **Task 13** — Receiving care. Bidirectional relationship.
-11. **Task 17** — Own interests. Quick config change, immediate diversity.
+9. **Tasks 12-13** — Mood coloring + reflection layer. No dependencies, immediate
+   impact on message quality and inner thought richness. Both are model-agnostic
+   architectural contributions for the research paper.
+10. **Task 14** — Receiving care. Bidirectional relationship.
+11. **Task 18** — Own interests. Quick config change, immediate diversity.
 
 **Integrations (require dashboard):**
 12. **Task 14** — Calendar integration. Precise schedule awareness.
