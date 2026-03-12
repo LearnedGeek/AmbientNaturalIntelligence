@@ -8,6 +8,9 @@
 **/data/*.db-wal
 **/data/*.db-shm
 
+# Ollama model data — large binaries, not tracked
+ollama-data/
+
 # Large model files — not tracked in git
 *.gguf
 

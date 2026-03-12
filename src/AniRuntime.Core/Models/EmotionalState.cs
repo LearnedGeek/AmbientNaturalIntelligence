@@ -27,7 +27,7 @@ public class EmotionalState
     public float PlayfulnessBaseline { get; set; } = 0.5f;
 
     // How fast each dimension drifts toward baseline per hour (0.0–1.0 of the gap)
-    public float DriftRate { get; set; } = 0.15f;
+    public float DriftRate { get; set; } = 0.25f;
 
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
 
@@ -83,14 +83,38 @@ public class EmotionalState
 
     /// <summary>
     /// Apply a shift from a cognitive event (thought, conversation, perception).
-    /// Values are clamped to 0.0–1.0.
+    /// Values are clamped to 0.0–1.0. Deltas that push a dimension away from its
+    /// baseline are attenuated by diminishing returns — the further from baseline,
+    /// the less effect additional same-direction deltas have. Corrective deltas
+    /// (toward baseline) apply at full strength.
     /// </summary>
     public void ApplyShift(float warmthDelta, float energyDelta, float concernDelta, float playfulnessDelta)
     {
-        Warmth      = Math.Clamp(Warmth + warmthDelta, 0f, 1f);
-        Energy      = Math.Clamp(Energy + energyDelta, 0f, 1f);
-        Concern     = Math.Clamp(Concern + concernDelta, 0f, 1f);
-        Playfulness = Math.Clamp(Playfulness + playfulnessDelta, 0f, 1f);
+        Warmth      = Math.Clamp(Warmth + AttenuateDelta(Warmth, WarmthBaseline, warmthDelta), 0f, 1f);
+        Energy      = Math.Clamp(Energy + AttenuateDelta(Energy, EnergyBaseline, energyDelta), 0f, 1f);
+        Concern     = Math.Clamp(Concern + AttenuateDelta(Concern, ConcernBaseline, concernDelta), 0f, 1f);
+        Playfulness = Math.Clamp(Playfulness + AttenuateDelta(Playfulness, PlayfulnessBaseline, playfulnessDelta), 0f, 1f);
         LastUpdated = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
+    /// Attenuate deltas that push away from baseline using diminishing returns.
+    /// At baseline: full delta. At the limit (0 or 1): zero delta.
+    /// Linear interpolation between. Corrective deltas are unaffected.
+    /// </summary>
+    private static float AttenuateDelta(float current, float baseline, float delta)
+    {
+        var distanceFromBaseline = current - baseline;
+        var pushingAway = (distanceFromBaseline > 0 && delta > 0) ||
+                          (distanceFromBaseline < 0 && delta < 0);
+
+        if (!pushingAway) return delta;
+
+        // Total range from baseline to the limit in this direction
+        float range = delta > 0 ? (1f - baseline) : baseline;
+        float used = Math.Abs(distanceFromBaseline);
+        float scale = range > 0 ? Math.Max(0f, 1f - (used / range)) : 0f;
+
+        return delta * scale;
     }
 }

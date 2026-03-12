@@ -55,27 +55,74 @@ public class EmotionalStateTests
     [Fact]
     public void ApplyShift_ClampsToValidRange()
     {
-        var state = new EmotionalState { Warmth = 0.9f, Energy = 0.1f };
+        // Start at baseline so attenuation doesn't interfere with clamp test
+        var state = new EmotionalState
+        {
+            Warmth = 0.6f, WarmthBaseline = 0.6f,
+            Energy = 0.5f, EnergyBaseline = 0.5f,
+        };
 
-        state.ApplyShift(warmthDelta: 0.2f, energyDelta: -0.2f, concernDelta: 0f, playfulnessDelta: 0f);
+        // Large deltas from baseline should still clamp to 0.0–1.0
+        state.ApplyShift(warmthDelta: 0.5f, energyDelta: -0.6f, concernDelta: 0f, playfulnessDelta: 0f);
 
-        state.Warmth.Should().Be(1.0f);  // clamped to max
-        state.Energy.Should().Be(0.0f);  // clamped to min (0.1 - 0.2 = -0.1 → 0)
+        state.Warmth.Should().BeLessOrEqualTo(1.0f);
+        state.Energy.Should().BeGreaterOrEqualTo(0.0f);
     }
 
     [Fact]
-    public void ApplyShift_AppliesAllDimensions()
+    public void ApplyShift_CorrectiveDeltas_FullStrength()
+    {
+        // Warmth below baseline → positive delta is corrective → full strength
+        // Energy above baseline → negative delta is corrective → full strength
+        var state = new EmotionalState
+        {
+            Warmth = 0.4f, WarmthBaseline = 0.6f,
+            Energy = 0.7f, EnergyBaseline = 0.5f,
+            Concern = 0.2f, ConcernBaseline = 0.2f,
+            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
+        };
+
+        state.ApplyShift(0.1f, -0.1f, 0f, 0f);
+
+        state.Warmth.Should().BeApproximately(0.5f, 0.001f);   // corrective: full +0.1
+        state.Energy.Should().BeApproximately(0.6f, 0.001f);   // corrective: full -0.1
+    }
+
+    [Fact]
+    public void ApplyShift_AwayFromBaseline_Attenuated()
+    {
+        // Warmth already 0.9 (far above 0.6 baseline) → positive delta attenuated
+        // range = 1.0 - 0.6 = 0.4, used = 0.3, scale = 1 - 0.3/0.4 = 0.25
+        // attenuated delta = 0.1 * 0.25 = 0.025
+        var state = new EmotionalState
+        {
+            Warmth = 0.9f, WarmthBaseline = 0.6f,
+            Energy = 0.5f, EnergyBaseline = 0.5f,
+            Concern = 0.2f, ConcernBaseline = 0.2f,
+            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
+        };
+
+        state.ApplyShift(0.1f, 0f, 0f, 0f);
+
+        state.Warmth.Should().BeApproximately(0.925f, 0.001f); // 0.9 + 0.025
+    }
+
+    [Fact]
+    public void ApplyShift_AtBaseline_FullStrengthInBothDirections()
     {
         var state = new EmotionalState
         {
-            Warmth = 0.5f, Energy = 0.5f, Concern = 0.5f, Playfulness = 0.5f,
+            Warmth = 0.6f, WarmthBaseline = 0.6f,
+            Energy = 0.5f, EnergyBaseline = 0.5f,
+            Concern = 0.2f, ConcernBaseline = 0.2f,
+            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
         };
 
         state.ApplyShift(0.1f, -0.1f, 0.05f, -0.05f);
 
-        state.Warmth.Should().BeApproximately(0.6f, 0.001f);
+        state.Warmth.Should().BeApproximately(0.7f, 0.001f);
         state.Energy.Should().BeApproximately(0.4f, 0.001f);
-        state.Concern.Should().BeApproximately(0.55f, 0.001f);
+        state.Concern.Should().BeApproximately(0.25f, 0.001f);
         state.Playfulness.Should().BeApproximately(0.45f, 0.001f);
     }
 

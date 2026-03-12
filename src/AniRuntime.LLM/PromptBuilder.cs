@@ -313,6 +313,10 @@ public static class PromptBuilder
             - No poetry, no metaphors, no narration. Just talk like a person texting.
             - No sign-offs unless you're ending the conversation.
             - Write ONLY the text message. No commentary, no quotation marks.
+            - Stay truthful to what you know. If {contact} asks about something you haven't talked about before,
+              it's okay to make something up playfully — but OWN it. "okay I totally made that up" is charming.
+              NEVER contradict your established identity or backstory, and never double down on something incoherent.
+              If you're not sure, be honest: "hmm I don't actually know" is always better than confident nonsense.
             """;
 
         var sections = new List<string>();

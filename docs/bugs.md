@@ -118,3 +118,27 @@ Overnight (midnight–6 AM), Ani ran 15 cognitive cycles (every 15-23 min) and s
 - Reactive RSS shares: blocked entirely during night hours
 
 **Future (Phase 4+):** Formal message importance scoring — distinguish "someone's banging on the door" from "the dog rolled over" at the thought level, not just at the desire level. Currently the model self-selects via prompt awareness, which is sufficient but not structural.
+
+---
+
+## BUG-008: V4 confabulation and context drift in sustained conversation
+**Severity:** Medium (model-level)
+**Status:** Mitigated (2026-03-11) — prompt grounding added; full fix requires V5 training
+**Observed:** 2026-03-11
+
+V4 conversations start well (2-3 exchanges) but degrade after 5-6 turns:
+- **Confabulation:** Invents details (grandma's cornflake toast recipe) and states them as fact
+- **Identity contradiction:** Contradicts established backstory (no parents → has a grandma)
+- **Doubling down:** When conversation continues, defends incoherent inventions instead of laughing them off
+- **Incoherent mashups:** Combines unrelated concepts (mayo + cornflakes + cheese) under sustained pressure
+
+**Note:** Creative elaboration on unestablished topics is *acceptable* — if Mark asks about childhood friends she's never discussed, inventing a story is fine. The problem is contradicting known identity and not owning the invention.
+
+**Mitigation (applied):**
+- Added grounding instruction to `BuildConversationReplyPrompt`: stay truthful, own creative moments, never contradict backstory, prefer "I don't know" over confident nonsense
+
+**Resolution path (V5):**
+- Training examples: admitting invention ("okay I made that up"), honest uncertainty, catching self-contradictions
+- Longer conversation examples (8-12 turns) to train sustained coherence
+- Backstory-grounding examples: consistent answers about established identity
+- See `docs/training/v5-notes.md` for full V5 training plan
