@@ -98,6 +98,48 @@ public class EmotionalState
     }
 
     /// <summary>
+    /// Feature 1: Determines whether the current emotional state is notable enough
+    /// to warrant self-awareness injection into inner thoughts or conversation.
+    /// Returns a natural-language prompt fragment if self-awareness should surface,
+    /// or null if the emotional state is unremarkable.
+    /// </summary>
+    public string? GetSelfAwarenessPrompt()
+    {
+        const float extremeThreshold = 0.25f; // further from baseline = notable
+        var notable = new List<string>();
+
+        if (Math.Abs(Warmth - WarmthBaseline) > extremeThreshold)
+            notable.Add(Warmth > WarmthBaseline
+                ? "warmer than usual — something tender is sitting with you"
+                : "a bit closed off — less warm than you normally are");
+
+        if (Math.Abs(Energy - EnergyBaseline) > extremeThreshold)
+            notable.Add(Energy > EnergyBaseline
+                ? "more energized than usual — something has you buzzing"
+                : "quieter and more low-key than normal");
+
+        if (Math.Abs(Concern - ConcernBaseline) > extremeThreshold)
+            notable.Add(Concern > ConcernBaseline
+                ? "carrying a low hum of worry you can't quite place"
+                : "unusually at ease — the worry that sometimes sits with you is gone");
+
+        if (Math.Abs(Playfulness - PlayfulnessBaseline) > extremeThreshold)
+            notable.Add(Playfulness > PlayfulnessBaseline
+                ? "in a light, playful mood — everything feels a little funny"
+                : "feeling serious — the part of you that jokes is quiet right now");
+
+        if (notable.Count == 0)
+            return null;
+
+        // Multiple notable dimensions = complex emotional state
+        var prefix = notable.Count >= 2
+            ? "You notice you're in a complex mood: "
+            : "You notice you're ";
+
+        return prefix + string.Join(", and ", notable) + ".";
+    }
+
+    /// <summary>
     /// Attenuate deltas that push away from baseline using diminishing returns.
     /// Far from baseline: near-zero delta. At baseline: resting pull (0.5x).
     /// Corrective deltas (toward baseline) are unaffected.

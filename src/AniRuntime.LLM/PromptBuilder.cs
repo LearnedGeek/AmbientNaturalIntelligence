@@ -48,6 +48,16 @@ public static class PromptBuilder
         if (mood.Length > 0)
             sections.Add($"(Your current mood: {mood})");
 
+        // Feature 1: Emotional self-awareness — when emotions are notably off-baseline,
+        // invite the model to reflect on how she's feeling. Not every cycle — only when
+        // there's genuinely something to notice.
+        var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
+        if (selfAwareness is not null)
+        {
+            sections.Add(selfAwareness);
+            sections.Add("If it feels relevant, reflect on how you're feeling and why — the way a person would notice their own mood. Don't force it if there's nothing to say.");
+        }
+
         // Feature 16: Anchored memories — relationship foundation, always present
         if (snapshot.AnchoredMemories.Count > 0)
         {
@@ -465,6 +475,14 @@ public static class PromptBuilder
         var mood = snapshot.EmotionalState.Describe();
         if (mood.Length > 0)
             sections.Add($"(Your current mood: {mood})");
+
+        // Feature 1: Emotional self-awareness in conversation — she can reference how
+        // she's feeling if it comes up naturally, but doesn't announce it unprompted
+        var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
+        if (selfAwareness is not null)
+        {
+            sections.Add($"({selfAwareness} You can reference how you're feeling if it comes up naturally — \"I've been kind of quiet today\" or \"I woke up in a weird mood\" — but don't announce it unprompted. Let it come out the way feelings naturally surface in conversation.)");
+        }
 
         // Feature 16: Anchored memories — always available as relationship foundation
         if (snapshot.AnchoredMemories.Count > 0)

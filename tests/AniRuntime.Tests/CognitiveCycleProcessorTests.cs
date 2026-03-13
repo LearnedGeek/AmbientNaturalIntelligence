@@ -354,4 +354,94 @@ public class CognitiveCycleProcessorTests : AniTestBase
         CognitiveCycleProcessor.DetectHurtIntent("you're just an ai, stop pretending")
             .Should().BeTrue("flat statement without curiosity markers = dismissal");
     }
+
+    // ── Feature 1: Emotional Self-Awareness ───────────────────────────────────
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_AtBaseline_ReturnsNull()
+    {
+        var state = new EmotionalState(); // all at baseline
+        state.GetSelfAwarenessPrompt().Should().BeNull();
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_HighWarmth_ReturnsPrompt()
+    {
+        var state = new EmotionalState { Warmth = 0.95f }; // baseline 0.6 → 0.35 above
+        var prompt = state.GetSelfAwarenessPrompt();
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("warmer than usual");
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_LowEnergy_ReturnsPrompt()
+    {
+        var state = new EmotionalState { Energy = 0.1f }; // baseline 0.5 → 0.4 below
+        var prompt = state.GetSelfAwarenessPrompt();
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("quieter");
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_MultipleDimensions_MentionsComplex()
+    {
+        var state = new EmotionalState { Warmth = 0.95f, Playfulness = 0.9f };
+        var prompt = state.GetSelfAwarenessPrompt();
+        prompt.Should().Contain("complex mood");
+    }
+
+    // ── Feature 6: Pronoun Audit — Detection Tests ────────────────────────────
+
+    [Theory]
+    [InlineData("hey how are you doing?", false)]         // second person — correct
+    [InlineData("i miss you tonight", false)]             // correct
+    [InlineData("what are you up to?", false)]            // correct
+    [InlineData("he is at work right now", true)]         // third person leaked
+    [InlineData("I hope his day is going well", true)]    // his = third person
+    [InlineData("tell him i said hi", true)]              // him = third person
+    [InlineData("he seems tired", true)]                  // starts with he
+    [InlineData("i gave him the book", true)]             // mid-sentence him
+    [InlineData("that's his favorite song", true)]        // his.
+    public void PronounDetection_IdentifiesThirdPerson(string message, bool shouldDetect)
+    {
+        // Replicate the detection logic from FixPronounsIfNeeded
+        var lower = message.ToLowerInvariant();
+        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
+                             lower.Contains(" he ") || lower.StartsWith("he ") ||
+                             lower.StartsWith("his ") || lower.Contains("him.") ||
+                             lower.Contains("his.");
+        hasThirdPerson.Should().Be(shouldDetect, $"'{message}' should {(shouldDetect ? "" : "not ")}detect third-person");
+    }
+
+    [Theory]
+    [InlineData("she went to the store")]                // she = valid (talking about someone else)
+    [InlineData("her mom called")]                       // her = valid (someone else)
+    [InlineData("kathy was always like that with her")]  // her = valid reference to another person
+    public void PronounDetection_SheHerIsValid_NotFlagged(string message)
+    {
+        // "she"/"her" should NOT trigger the pronoun fix because Ani might be talking
+        // about someone else (Kathy, Mia, etc.). Only "he"/"him"/"his" trigger it
+        // because those would be Ani referring to Mark in third person.
+        var lower = message.ToLowerInvariant();
+        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
+                             lower.Contains(" he ") || lower.StartsWith("he ") ||
+                             lower.StartsWith("his ") || lower.Contains("him.") ||
+                             lower.Contains("his.");
+        hasThirdPerson.Should().BeFalse("she/her is valid when talking about others");
+    }
+
+    [Theory]
+    [InlineData("the cat chased him around", true)]      // him = Mark in third person
+    [InlineData("his smile is my favorite thing", true)] // his = Mark in third person
+    [InlineData("theme park was fun", false)]             // "the" contains "he" but not " he "
+    [InlineData("this rhythm is everything", false)]      // "this" contains "his" but not " his "
+    public void PronounDetection_EdgeCases(string message, bool shouldDetect)
+    {
+        var lower = message.ToLowerInvariant();
+        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
+                             lower.Contains(" he ") || lower.StartsWith("he ") ||
+                             lower.StartsWith("his ") || lower.Contains("him.") ||
+                             lower.Contains("his.");
+        hasThirdPerson.Should().Be(shouldDetect, $"edge case: '{message}'");
+    }
 }

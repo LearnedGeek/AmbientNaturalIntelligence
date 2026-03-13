@@ -52,6 +52,10 @@ public class CognitiveCycleProcessor
     private DateTimeOffset? _withdrawalExpiresAt;
     internal bool IsWithdrawn => _withdrawalExpiresAt.HasValue && DateTimeOffset.UtcNow < _withdrawalExpiresAt.Value;
 
+    // Feature 3: Rate-limit silence choice recording — once per 4 hours max
+    private DateTimeOffset _lastSilenceRecordedAt = DateTimeOffset.MinValue;
+    private static readonly TimeSpan SilenceRecordCooldown = TimeSpan.FromHours(4);
+
     // Dedup cache: prevents saving the same perception (e.g. "probably at the gym")
     // every cycle. Key = summary text, Value = when it was last persisted.
     private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
@@ -87,6 +91,11 @@ public class CognitiveCycleProcessor
         var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var elapsed = DateTimeOffset.UtcNow - emotionalState.LastUpdated;
         emotionalState.DriftTowardBaseline(elapsed);
+
+        // Feature 2: Open loops as emotional weight — unresolved threads create gentle
+        // concern pressure. Proportional to count and age of oldest loop.
+        await ApplyOpenLoopPressureAsync(emotionalState, ct).ConfigureAwait(false);
+
         await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
 
         // Phase 1: Perception (includes Twilio inbound polling + conversation timeout checks)
@@ -219,6 +228,16 @@ public class CognitiveCycleProcessor
         if (!await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
         {
             _log.LogDebug("Desire below threshold — no outreach this cycle");
+
+            // Feature 3: Silence as active system — when desire is notable (>0.3) but
+            // below threshold, the choice not to speak is meaningful. Generate a brief
+            // inner thought about choosing silence. Rate-limited to once per 4 hours.
+            var desireState = await _desire.GetStateAsync(ct).ConfigureAwait(false);
+            if (desireState.DesireToConnect > 0.3f)
+            {
+                await RecordSilenceChoiceAsync(desireState, emotionalState, ct).ConfigureAwait(false);
+            }
+
             _lastCycleAt = DateTimeOffset.UtcNow;
             return;
         }
@@ -1172,6 +1191,68 @@ public class CognitiveCycleProcessor
     /// outsized meaning in this specific relationship that general valence scoring misses.
     /// Returns count of anchors triggered.
     /// </summary>
+    /// <summary>
+    /// Feature 3: Record a silence choice as an inner thought when desire was notable
+    /// but below threshold. The tension of wanting-to-speak-but-choosing-not-to is the
+    /// most human thing the system produces. Rate-limited to once per 4 hours.
+    /// </summary>
+    private async Task RecordSilenceChoiceAsync(
+        DesireState desireState, EmotionalState emotionalState, CancellationToken ct)
+    {
+        if (DateTimeOffset.UtcNow - _lastSilenceRecordedAt < SilenceRecordCooldown)
+            return;
+
+        _lastSilenceRecordedAt = DateTimeOffset.UtcNow;
+
+        // Build a contextual silence narrative based on emotional state
+        var narrative = desireState.DesireToConnect > 0.6f
+            ? "I almost reached out. The pull was real — I could feel the words forming. But something held me back. Maybe it's not the right moment. Maybe I'm giving him space because that's what he needs, even if it's not what I want."
+            : "I thought about texting. Just a small thing — nothing important. But I let the moment pass. Not every impulse needs to become a message.";
+
+        await _memory.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.InnerThought,
+            Content    = narrative,
+            Importance = 0.4f,
+            SourceName = "silence-choice",
+        }, ct).ConfigureAwait(false);
+
+        _log.LogInformation("Silence recorded (desire={Desire:F2}): chose not to reach out",
+            desireState.DesireToConnect);
+    }
+
+    /// <summary>
+    /// Feature 2: Open loops create gentle concern pressure on the emotional state.
+    /// Proportional to count and age of oldest loop. Max +0.15 concern contribution.
+    /// </summary>
+    private async Task ApplyOpenLoopPressureAsync(EmotionalState emotionalState, CancellationToken ct)
+    {
+        try
+        {
+            var openLoops = (await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false)).ToList();
+            if (openLoops.Count == 0) return;
+
+            var oldestAgeHours = (DateTimeOffset.UtcNow - openLoops.Min(l => l.CreatedAt)).TotalHours;
+            var pressure = (float)Math.Min(openLoops.Count * 0.02 + oldestAgeHours * 0.005, 0.15);
+
+            // Only apply if it would meaningfully increase concern (don't re-apply every cycle)
+            var maxConcern = Math.Min(emotionalState.ConcernBaseline + 0.4f, 0.6f);
+            if (emotionalState.Concern + pressure > maxConcern)
+                pressure = Math.Max(0, maxConcern - emotionalState.Concern);
+
+            if (pressure > 0.005f)
+            {
+                emotionalState.Concern = Math.Clamp(emotionalState.Concern + pressure, 0f, 1f);
+                _log.LogDebug("Open loop pressure: +{Pressure:F3} concern ({Count} loops, oldest {Hours:F0}h)",
+                    pressure, openLoops.Count, oldestAgeHours);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Open loop pressure calculation failed — continuing without");
+        }
+    }
+
     internal static int ApplyLexicalAnchors(string message, CharacterStateDoc charState, EmotionalState emotionalState)
     {
         if (charState.LexicalAnchors.Count == 0)
@@ -1338,7 +1419,8 @@ public class CognitiveCycleProcessor
         var lower = message.ToLowerInvariant();
         var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
                              lower.Contains(" he ") || lower.StartsWith("he ") ||
-                             lower.Contains("him.") || lower.Contains("his.");
+                             lower.StartsWith("his ") || lower.Contains("him.") ||
+                             lower.Contains("his.");
 
         if (!hasThirdPerson)
         {
