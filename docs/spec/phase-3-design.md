@@ -1023,7 +1023,7 @@ This is **Confabulation Type 4: Retrieval depth failure** — correct memory exi
 - Default weights: `0.5 × cosine + 0.3 × importance + 0.2 × recency_decay`
 - Recency decay: exponential, `e^(-t/λ)` where t = hours since memory creation, λ = 168h (7-day half-life)
 - Importance: existing `Importance` field on `MemoryRecord` (already populated)
-- ContactValence: available as secondary signal for future tuning — high-valence memories are more relationally significant
+- RelationalValence: available as secondary signal for future tuning — high-valence memories are more relationally significant
 - All weights configurable via `AniOptions`: `RetrievalWeightCosine`, `RetrievalWeightImportance`, `RetrievalWeightRecency`, `RetrievalRecencyDecayHours`
 - Enhanced top-result logging: composite score, cosine, importance, type, content preview
 

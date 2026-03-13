@@ -243,7 +243,7 @@ public class MemoryRecord
     public string         Content        { get; set; } = string.Empty;
     public string?        RawJson        { get; set; }
     public float          Importance     { get; set; }         // 0.0–1.0
-    public float          ContactValence { get; set; }         // how much this relates to contact
+    public float          RelationalValence { get; set; }      // how much this relates to the relationship
     public float[]?       Embedding      { get; set; }         // nomic-embed-text vector, auto-generated
     public bool           IsResolved     { get; set; }         // for open loops
     public string?        SourceName     { get; set; }         // time, rss, contact-state, twilio-inbound, character-seed
@@ -262,7 +262,7 @@ public enum MemoryType
     Perception     // events from external sources
 }
 
-Note: SQLite column is still `mark_valence` — rename to `contact_valence` on next DB refresh.
+SQLite column renamed from `mark_valence` → `relational_valence` (auto-migrated on startup).
 
 2.6 ConversationThread & ConversationMessage
 Conversation state tracking. Threads auto-close after ConversationTimeoutMinutes of silence.
@@ -624,7 +624,7 @@ BuildReactiveSharePrompt(character, itemSummary) — Share high-relevance RSS it
 7.1 SqliteMemoryService
 Single SQLite file (data/ani-memory.db) with WAL mode enabled. Tables:
 
-memories: id (TEXT PK), type (INT), content, raw_json, importance, mark_valence, embedding (BLOB), is_resolved, source_name, occurred_at, created_at, resolved_at
+memories: id (TEXT PK), type (INT), content, raw_json, importance, relational_valence, embedding (BLOB), is_resolved, source_name, occurred_at, created_at, resolved_at
   Indexes: ix_memories_type, ix_memories_occurred
 
 character_state: id, json (singleton row, id=1)

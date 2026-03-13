@@ -240,7 +240,7 @@ memories with embeddings — making them discoverable via semantic search.
   all list fields (LearnedAboutMark, SharedExperiences, ThingsMarkCares, FamilyContext,
   SelfConcept, Interests, CommunicationNotes) and saves each as a `MemoryType.Semantic`
   record with `SourceName = "character-seed"`
-- Importance and MarkValence tuned per category (SharedExperiences: 0.9/0.9,
+- Importance and RelationalValence tuned per category (SharedExperiences: 0.9/0.9,
   LearnedAboutMark: 0.8/0.7, etc.)
 - Idempotent: checks if any `character-seed` records exist before seeding
 - Auto-embedding via `SqliteMemoryService.SaveAsync` — each fact gets embedded on save

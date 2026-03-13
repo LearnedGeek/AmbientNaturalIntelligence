@@ -53,7 +53,7 @@ await _memoryService.SaveAsync(new MemoryRecord
     SourceName = $"conversation-{threadId}",
     OccurredAt = message.SentAt,
     Importance = message.Role == "mark" ? 0.9f : ComputeValence(message.Content),
-    MarkValence = message.Role == "mark" ? 1.0f : ComputeMarkValence(message.Content)
+    RelationalValence = message.Role == "mark" ? 1.0f : ComputeRelationalValence(message.Content)
 });
 ```
 

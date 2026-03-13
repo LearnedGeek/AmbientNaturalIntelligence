@@ -101,7 +101,7 @@ Park et al. [2023] established the foundational architecture for autonomous AI a
 
 **2.2 — Memory Architectures for Long-Term AI Relationships**
 
-Long-term memory is an active unsolved problem in LLM systems. MemGPT [Packer et al. 2023] addresses this by treating the LLM as an operating system, with hierarchical memory management and explicit eviction policies. Mem0 [Chhikara et al. 2025] provides production-ready memory with contradiction resolution and semantic deduplication. A-MEM [Xu et al. 2025] proposes graph-based associative memory with explicit links between related memories. ANI's memory architecture — SQLite-backed with embedding-based retrieval, emotional weighting via MarkValence, and episodic/semantic/open-loop record types — was developed independently and addresses the single-relationship case specifically. The emotional weighting and desire engine integration are not present in any of these systems.
+Long-term memory is an active unsolved problem in LLM systems. MemGPT [Packer et al. 2023] addresses this by treating the LLM as an operating system, with hierarchical memory management and explicit eviction policies. Mem0 [Chhikara et al. 2025] provides production-ready memory with contradiction resolution and semantic deduplication. A-MEM [Xu et al. 2025] proposes graph-based associative memory with explicit links between related memories. ANI's memory architecture — SQLite-backed with embedding-based retrieval, emotional weighting via RelationalValence, and episodic/semantic/open-loop record types — was developed independently and addresses the single-relationship case specifically. The emotional weighting and desire engine integration are not present in any of these systems.
 
 **2.3 — Proactive Conversational AI**
 

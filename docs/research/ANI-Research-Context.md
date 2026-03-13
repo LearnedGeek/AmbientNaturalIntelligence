@@ -109,7 +109,7 @@ AniRuntime.sln
 
 **EmotionalState** — four dimensions: Warmth, Energy, Concern, Playfulness. Each drifts toward baseline (0.6, 0.5, 0.2, 0.5). Persisted in SQLite. Updated each cycle.
 
-**MemoryRecord** — typed memories: Episodic, Semantic, OpenLoop, Commitment, InnerThought, Perception. Each has Importance, MarkValence, Embedding, SourceName.
+**MemoryRecord** — typed memories: Episodic, Semantic, OpenLoop, Commitment, InnerThought, Perception. Each has Importance, RelationalValence, Embedding, SourceName.
 
 **ConversationThread / ConversationMessage** — full conversation history. Thread closure saves summary as episodic memory.
 

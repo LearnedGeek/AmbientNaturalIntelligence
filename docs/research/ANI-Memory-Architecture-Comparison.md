@@ -30,7 +30,7 @@ adopt?"
 | **Clustering** | UMAP (768D→15D) + HDBSCAN density clustering | None | ANI memories are unstructured — no topic groupings |
 | **Drift detection** | Cosine distance between 30-day sliding windows | None | ANI has no way to detect topic/emotional drift over time |
 | **Memory importance** | Not implemented (similarity-only retrieval) | `Importance` field on MemoryRecord | ANI has the field but calibration is weak |
-| **Emotional weighting** | None | `MarkValence` field on MemoryRecord | ANI has a dimension ChatLake doesn't need |
+| **Emotional weighting** | None | `RelationalValence` field on MemoryRecord | ANI has a dimension ChatLake doesn't need |
 | **Memory deduplication** | SHA256 hash on content | 4-hour time-based deduplication on perceptions | ANI's deduplication is time-based only — semantic deduplication absent |
 | **Memory contradiction** | Not applicable (historical, read-only corpus) | Not implemented | Growing problem as CharacterStateDoc accumulates facts |
 | **Cache invalidation** | SHA256 content hash per segment | Not documented | ANI may be regenerating embeddings unnecessarily |
@@ -46,7 +46,7 @@ These are ANI-specific properties that don't exist in ChatLake and shouldn't be
 removed — they're what makes ANI's memory architecture appropriate for a living
 relationship rather than a historical corpus.
 
-**1. Emotional weighting (MarkValence)**
+**1. Emotional weighting (RelationalValence)**
 Every memory has a score for how much it connects to Mark specifically. This
 allows retrieval to prioritize emotionally significant memories over factual ones
 when generating inner thoughts and outreach. ChatLake has no equivalent because
@@ -116,7 +116,7 @@ relationship tempo (suggest λ = 0.05 for ~2-week half-life on routine memories,
 longer for episodic).
 
 This maps directly to Li et al. (2025) emotional salience decay — high-salience
-memories (high MarkValence + high Importance) decay slowly; routine perceptions
+memories (high RelationalValence + high Importance) decay slowly; routine perceptions
 decay fast.
 
 ---
