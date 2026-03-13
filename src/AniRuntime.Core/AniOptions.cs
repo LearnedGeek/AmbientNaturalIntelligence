@@ -62,6 +62,9 @@ public class AniOptions
     public double ConversationMinReplySeconds   { get; set; } = 12.0;
     public double ConversationMaxReplySeconds   { get; set; } = 25.0;
 
+    // Feature 18: Reactive withdrawal — how long emotional withdrawal lasts after hurt detection
+    public double WithdrawalDurationMinutes    { get; set; } = 20.0;
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

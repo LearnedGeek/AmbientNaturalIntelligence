@@ -176,7 +176,7 @@ try
         if (!alreadySeeded && charState.CoreTraits.Count > 0)
         {
             var contactName = charState.PrimaryContactName;
-            var facts = new List<(string content, float importance, float contactValence)>();
+            var facts = new List<(string content, float importance, float relationalValence)>();
 
             foreach (var item in charState.LearnedAboutContact)
                 facts.Add(($"About {contactName}: {item}", 0.8f, 0.7f));
@@ -194,14 +194,14 @@ try
                 facts.Add(($"Communication: {item}", 0.7f, 0.6f));
 
             Log.Information("Seeding {Count} backstory facts as searchable memories", facts.Count);
-            foreach (var (content, importance, contactValence) in facts)
+            foreach (var (content, importance, relationalValence) in facts)
             {
                 await memory.SaveAsync(new MemoryRecord
                 {
                     Type           = MemoryType.Semantic,
                     Content        = content,
                     Importance     = importance,
-                    ContactValence = contactValence,
+                    RelationalValence = relationalValence,
                     SourceName     = "character-seed",
                     OccurredAt     = DateTimeOffset.UtcNow,
                 });

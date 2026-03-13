@@ -33,4 +33,16 @@ public class ContextSnapshot
     /// it was answered. Assembled once per cycle for outreach continuity awareness.
     /// </summary>
     public RecentOutreachContext? OutreachContext { get; set; }
+
+    /// <summary>
+    /// Feature 16: Foundation memories that never fade — always present in context
+    /// regardless of semantic relevance. Prepended as a compact relationship foundation block.
+    /// </summary>
+    public List<MemoryRecord> AnchoredMemories { get; set; } = new();
+
+    /// <summary>
+    /// Feature 18: Reactive withdrawal — true when something hurtful was detected and
+    /// Ani is in a quieter emotional state. Affects reply tone injection.
+    /// </summary>
+    public bool IsWithdrawn { get; set; }
 }

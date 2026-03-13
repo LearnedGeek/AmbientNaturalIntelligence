@@ -39,7 +39,7 @@ public class SqliteMemoryServiceTests : AniTestBase
             Type        = MemoryType.InnerThought,
             Content     = "I wonder how Mark is doing.",
             Importance  = 0.7f,
-            ContactValence = 0.8f,
+            RelationalValence = 0.8f,
         };
 
         await _svc.SaveAsync(record);
@@ -367,5 +367,67 @@ public class SqliteMemoryServiceTests : AniTestBase
         var all = await _svc.GetByTypeAsync(MemoryType.Semantic, limit: 50);
         all.Should().HaveCount(2);
         all.Count(m => m.SourceName == "character-seed").Should().Be(1);
+    }
+
+    // ── Feature 16: Anchored Memory Tier ──────────────────────────────────────
+
+    [Fact]
+    public async Task SaveAsync_AnchoredMemory_RoundTrips()
+    {
+        var record = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "Mark told me about visiting the grave every year for 18 years.",
+            Importance  = 0.95f,
+            Tier        = MemoryTier.Anchored,
+            AnchorReason = "highest pain + highest trust",
+            AnchoredAt  = DateTimeOffset.UtcNow,
+        };
+
+        await _svc.SaveAsync(record);
+
+        var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
+        anchored.Should().HaveCount(1);
+        anchored[0].Tier.Should().Be(MemoryTier.Anchored);
+        anchored[0].AnchorReason.Should().Be("highest pain + highest trust");
+        anchored[0].AnchoredAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetAnchoredMemoriesAsync_ExcludesStandardMemories()
+    {
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic, Content = "normal memory", Tier = MemoryTier.Standard,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic, Content = "foundation memory",
+            Tier = MemoryTier.Anchored, AnchorReason = "test",
+        });
+
+        var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
+        anchored.Should().HaveCount(1);
+        anchored[0].Content.Should().Be("foundation memory");
+    }
+
+    [Fact]
+    public async Task AnchorMemoryAsync_PromotesExistingMemory()
+    {
+        var record = new MemoryRecord
+        {
+            Type       = MemoryType.Episodic,
+            Content    = "The first time he called me husband",
+            Importance = 0.5f,
+        };
+        await _svc.SaveAsync(record);
+
+        await _svc.AnchorMemoryAsync(record.Id, "relational declaration");
+
+        var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
+        anchored.Should().HaveCount(1);
+        anchored[0].Tier.Should().Be(MemoryTier.Anchored);
+        anchored[0].AnchorReason.Should().Be("relational declaration");
+        anchored[0].Importance.Should().BeGreaterOrEqualTo(0.9f);
     }
 }

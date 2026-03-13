@@ -155,7 +155,7 @@ public class SqliteConversationService : IConversationService, IDisposable
                 Type           = MemoryType.Episodic,
                 Content        = $"{speakerName} said: \"{message.Content}\"",
                 Importance     = 0.6f,
-                ContactValence = message.Role == "mark" ? 0.7f : 0.5f,
+                RelationalValence = message.Role == "mark" ? 0.7f : 0.5f,
                 SourceName     = "conversation",
                 OccurredAt     = message.SentAt,
             }, ct).ConfigureAwait(false);

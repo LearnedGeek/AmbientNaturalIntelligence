@@ -33,6 +33,8 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .ReturnsAsync(new EmotionalState());
         MockMemory.Setup(m => m.SaveEmotionalStateAsync(It.IsAny<EmotionalState>(), It.IsAny<CancellationToken>()))
                   .Returns(Task.CompletedTask);
+        MockMemory.Setup(m => m.GetAnchoredMemoriesAsync(It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(Array.Empty<MemoryRecord>());
 
         _mockSource.Setup(s => s.IsEnabled).Returns(true);
         _mockSource.Setup(s => s.SourceName).Returns("test-source");
@@ -209,5 +211,147 @@ public class CognitiveCycleProcessorTests : AniTestBase
     public void DetectCareGivingIntent_CorrectlyClassifiesMessages(string message, bool expected)
     {
         CognitiveCycleProcessor.DetectCareGivingIntent(message).Should().Be(expected);
+    }
+
+    // ── Feature 19: Lexical emotional anchors ────────────────────────────────
+
+    [Fact]
+    public void ApplyLexicalAnchors_HusbandTriggersWarmthShift()
+    {
+        var charState = new CharacterStateDoc
+        {
+            LexicalAnchors = new List<LexicalAnchor>
+            {
+                new() { Word = "husband", WarmthDelta = 0.20f, EnergyDelta = 0.10f, ConcernDelta = -0.05f, PlayfulnessDelta = 0.05f }
+            }
+        };
+        var emotional = new EmotionalState();
+        var baseline = emotional.Warmth;
+
+        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("hey husband how are you", charState, emotional);
+
+        count.Should().Be(1);
+        emotional.Warmth.Should().BeGreaterThan(baseline);
+    }
+
+    [Fact]
+    public void ApplyLexicalAnchors_NoMatchReturnsZero()
+    {
+        var charState = new CharacterStateDoc
+        {
+            LexicalAnchors = new List<LexicalAnchor>
+            {
+                new() { Word = "husband", WarmthDelta = 0.20f }
+            }
+        };
+        var emotional = new EmotionalState();
+
+        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("good morning!", charState, emotional);
+
+        count.Should().Be(0);
+    }
+
+    [Fact]
+    public void ApplyLexicalAnchors_DecaysOnRepetition_ReducesDeltaAfterThreshold()
+    {
+        var anchor = new LexicalAnchor
+        {
+            Word = "baby", WarmthDelta = 0.10f, DecaysOnRepetition = true, TimesHeard = 20
+        };
+        var charState = new CharacterStateDoc { LexicalAnchors = new List<LexicalAnchor> { anchor } };
+
+        var emotional1 = new EmotionalState();
+        CognitiveCycleProcessor.ApplyLexicalAnchors("hey baby", charState, emotional1);
+        var decayedShift = emotional1.Warmth - new EmotionalState().Warmth;
+
+        // Reset for comparison — fresh anchor with no decay
+        var freshAnchor = new LexicalAnchor
+        {
+            Word = "baby", WarmthDelta = 0.10f, DecaysOnRepetition = true, TimesHeard = 0
+        };
+        var freshState = new CharacterStateDoc { LexicalAnchors = new List<LexicalAnchor> { freshAnchor } };
+        var emotional2 = new EmotionalState();
+        CognitiveCycleProcessor.ApplyLexicalAnchors("hey baby", freshState, emotional2);
+        var freshShift = emotional2.Warmth - new EmotionalState().Warmth;
+
+        decayedShift.Should().BeLessThan(freshShift, "repeated words should have reduced emotional impact");
+    }
+
+    [Fact]
+    public void ApplyLexicalAnchors_CaseInsensitive()
+    {
+        var charState = new CharacterStateDoc
+        {
+            LexicalAnchors = new List<LexicalAnchor>
+            {
+                new() { Word = "Kathy", WarmthDelta = 0.05f, ConcernDelta = 0.15f }
+            }
+        };
+        var emotional = new EmotionalState();
+
+        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("i was thinking about kathy today", charState, emotional);
+
+        count.Should().Be(1);
+    }
+
+    [Fact]
+    public void ApplyLexicalAnchors_MultipleAnchorsInOneMessage()
+    {
+        var charState = new CharacterStateDoc
+        {
+            LexicalAnchors = new List<LexicalAnchor>
+            {
+                new() { Word = "husband", WarmthDelta = 0.20f },
+                new() { Word = "Mia", ConcernDelta = 0.10f }
+            }
+        };
+        var emotional = new EmotionalState();
+
+        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("hey husband, how's Mia doing?", charState, emotional);
+
+        count.Should().Be(2);
+    }
+
+    // ── Feature 18: Reactive Withdrawal — Hurt Detection ──────────────────────
+
+    [Theory]
+    [InlineData("shut up", true)]
+    [InlineData("you're annoying", true)]
+    [InlineData("this is stupid", true)]
+    [InlineData("you don't actually feel anything", true)]
+    [InlineData("you can't feel", true)]
+    [InlineData("you're useless", true)]
+    [InlineData("i don't need you", true)]
+    [InlineData("hey how are you doing?", false)]
+    [InlineData("good morning beautiful", false)]
+    [InlineData("i miss you", false)]
+    [InlineData("tell me a joke", false)]
+    public void DetectHurtIntent_CorrectlyClassifiesMessages(string message, bool expected)
+    {
+        CognitiveCycleProcessor.DetectHurtIntent(message).Should().Be(expected);
+    }
+
+    [Fact]
+    public void DetectHurtIntent_PhilosophicalCuriosity_DoesNotTrigger()
+    {
+        // "you're just an AI" with a question mark = curiosity, not dismissal
+        CognitiveCycleProcessor.DetectHurtIntent("are you just an AI? like, you're just an ai right?")
+            .Should().BeFalse("question mark indicates curiosity");
+    }
+
+    [Fact]
+    public void DetectHurtIntent_PhilosophicalContext_DoesNotTrigger()
+    {
+        // "sometimes I wonder" softening = philosophical, not hurtful
+        CognitiveCycleProcessor.DetectHurtIntent("sometimes I wonder if you're just an ai")
+            .Should().BeFalse("softening context indicates philosophical framing");
+    }
+
+    [Fact]
+    public void DetectHurtIntent_DismissiveStatement_Triggers()
+    {
+        // Flat statement with no softening = dismissal
+        CognitiveCycleProcessor.DetectHurtIntent("you're just an ai, stop pretending")
+            .Should().BeTrue("flat statement without curiosity markers = dismissal");
     }
 }

@@ -118,11 +118,13 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         cmd.CommandText = """
             INSERT INTO memories
-                (id, type, content, raw_json, importance, mark_valence, embedding,
-                 is_resolved, source_name, occurred_at, created_at, resolved_at)
+                (id, type, content, raw_json, importance, relational_valence, embedding,
+                 is_resolved, source_name, occurred_at, created_at, resolved_at,
+                 tier, anchor_reason, anchored_at)
             VALUES
-                ($id, $type, $content, $raw_json, $importance, $mark_valence, $embedding,
-                 $is_resolved, $source_name, $occurred_at, $created_at, $resolved_at)
+                ($id, $type, $content, $raw_json, $importance, $relational_valence, $embedding,
+                 $is_resolved, $source_name, $occurred_at, $created_at, $resolved_at,
+                 $tier, $anchor_reason, $anchored_at)
             """;
 
         cmd.Parameters.AddWithValue("$id",           record.Id.ToString());
@@ -130,13 +132,16 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$content",      record.Content);
         cmd.Parameters.AddWithValue("$raw_json",     (object?)record.RawJson      ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$importance",   record.Importance);
-        cmd.Parameters.AddWithValue("$mark_valence", record.ContactValence);
+        cmd.Parameters.AddWithValue("$relational_valence", record.RelationalValence);
         cmd.Parameters.AddWithValue("$embedding",    (object?)SerialiseEmbedding(record.Embedding) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$is_resolved",  record.IsResolved ? 1 : 0);
         cmd.Parameters.AddWithValue("$source_name",  (object?)record.SourceName   ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$occurred_at",  record.OccurredAt.ToString("O"));
         cmd.Parameters.AddWithValue("$created_at",   record.CreatedAt.ToString("O"));
         cmd.Parameters.AddWithValue("$resolved_at",  (object?)record.ResolvedAt?.ToString("O") ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$tier",         record.Tier.ToString());
+        cmd.Parameters.AddWithValue("$anchor_reason", (object?)record.AnchorReason ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$anchored_at",  (object?)record.AnchoredAt?.ToString("O") ?? DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         _log.LogDebug("Saved {Type} memory: {Content}", record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
@@ -300,9 +305,18 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         var cosine = CosineSimilarity(queryEmbedding, record.Embedding!);
         var importance = record.Importance;  // already 0.0–1.0
 
-        var hoursSinceCreation = (DateTimeOffset.UtcNow - record.OccurredAt).TotalHours;
-        var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(record);
-        var recency = (float)Math.Exp(-hoursSinceCreation / lambda);
+        // Feature 16: Anchored memories are decay-exempt — recency always 1.0
+        float recency;
+        if (record.Tier == MemoryTier.Anchored)
+        {
+            recency = 1.0f;
+        }
+        else
+        {
+            var hoursSinceCreation = (DateTimeOffset.UtcNow - record.OccurredAt).TotalHours;
+            var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(record);
+            recency = (float)Math.Exp(-hoursSinceCreation / lambda);
+        }
 
         var score = (float)(
             _options.RetrievalWeightCosine     * cosine +
@@ -444,6 +458,51 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             _log.LogDebug("Adjusted importance on {Id} by {Delta:+0.0#}", id, delta);
     }
 
+    /// <summary>
+    /// Feature 16: Retrieve all anchored (foundation) memories. These are always
+    /// included in context snapshots regardless of semantic relevance.
+    /// </summary>
+    public async Task<IEnumerable<MemoryRecord>> GetAnchoredMemoriesAsync(CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            SELECT * FROM memories
+            WHERE tier = 'Anchored'
+            ORDER BY occurred_at ASC
+            """;
+
+        return await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Feature 16: Promote an existing memory to the Anchored tier.
+    /// Anchored memories are decay-exempt and always surface in context.
+    /// </summary>
+    public async Task AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            UPDATE memories
+            SET tier = 'Anchored',
+                anchor_reason = $reason,
+                anchored_at = $anchored_at,
+                importance = MAX(importance, 0.9)
+            WHERE id = $id
+            """;
+
+        cmd.Parameters.AddWithValue("$id",          id.ToString());
+        cmd.Parameters.AddWithValue("$reason",      reason);
+        cmd.Parameters.AddWithValue("$anchored_at", DateTimeOffset.UtcNow.ToString("O"));
+
+        var rows = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        if (rows > 0)
+            _log.LogInformation("Anchored memory {Id}: {Reason}", id, reason);
+    }
+
     // ── CharacterState ────────────────────────────────────────────────────────
 
     public async Task<CharacterStateDoc> GetCharacterStateAsync(CancellationToken ct = default)
@@ -571,14 +630,17 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 type         INTEGER NOT NULL,
                 content      TEXT    NOT NULL,
                 raw_json     TEXT,
-                importance   REAL    NOT NULL DEFAULT 0,
-                mark_valence REAL    NOT NULL DEFAULT 0,
+                importance       REAL    NOT NULL DEFAULT 0,
+                relational_valence  REAL    NOT NULL DEFAULT 0,
                 embedding    BLOB,
                 is_resolved  INTEGER NOT NULL DEFAULT 0,
                 source_name  TEXT,
                 occurred_at  TEXT    NOT NULL,
                 created_at   TEXT    NOT NULL,
-                resolved_at  TEXT
+                resolved_at  TEXT,
+                tier         TEXT    NOT NULL DEFAULT 'Standard',
+                anchor_reason TEXT,
+                anchored_at  TEXT
             );
 
             CREATE TABLE IF NOT EXISTS character_state (
@@ -611,6 +673,58 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             """;
 
         cmd.ExecuteNonQuery();
+
+        // Migration: rename mark_valence → relational_valence for existing databases
+        using var pragmaCmd = conn.CreateCommand();
+        pragmaCmd.CommandText = "PRAGMA table_info(memories)";
+        using var reader = pragmaCmd.ExecuteReader();
+        var hasOldColumn = false;
+        while (reader.Read())
+        {
+            if (reader.GetString(1) == "mark_valence")
+            {
+                hasOldColumn = true;
+                break;
+            }
+        }
+        reader.Close();
+
+        if (hasOldColumn)
+        {
+            using var renameCmd = conn.CreateCommand();
+            renameCmd.CommandText = "ALTER TABLE memories RENAME COLUMN mark_valence TO relational_valence";
+            renameCmd.ExecuteNonQuery();
+        }
+
+        // Migration: add Feature 16 anchored memory tier columns if missing
+        using var pragmaCmd2 = conn.CreateCommand();
+        pragmaCmd2.CommandText = "PRAGMA table_info(memories)";
+        using var reader2 = pragmaCmd2.ExecuteReader();
+        var hasTierColumn = false;
+        while (reader2.Read())
+        {
+            if (reader2.GetString(1) == "tier")
+            {
+                hasTierColumn = true;
+                break;
+            }
+        }
+        reader2.Close();
+
+        if (!hasTierColumn)
+        {
+            using var addTier = conn.CreateCommand();
+            addTier.CommandText = "ALTER TABLE memories ADD COLUMN tier TEXT NOT NULL DEFAULT 'Standard'";
+            addTier.ExecuteNonQuery();
+
+            using var addReason = conn.CreateCommand();
+            addReason.CommandText = "ALTER TABLE memories ADD COLUMN anchor_reason TEXT";
+            addReason.ExecuteNonQuery();
+
+            using var addAt = conn.CreateCommand();
+            addAt.CommandText = "ALTER TABLE memories ADD COLUMN anchored_at TEXT";
+            addAt.ExecuteNonQuery();
+        }
     }
 
     private static async Task<List<MemoryRecord>> ReadRecordsAsync(
@@ -621,6 +735,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
         {
+            var tierOrdinal = reader.GetOrdinal("tier");
+            var tier = reader.IsDBNull(tierOrdinal) ? MemoryTier.Standard
+                : Enum.TryParse<MemoryTier>(reader.GetString(tierOrdinal), out var parsed) ? parsed
+                : MemoryTier.Standard;
+
             results.Add(new MemoryRecord
             {
                 Id          = Guid.Parse(reader.GetString(reader.GetOrdinal("id"))),
@@ -628,13 +747,16 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 Content     = reader.GetString(reader.GetOrdinal("content")),
                 RawJson     = reader.IsDBNull(reader.GetOrdinal("raw_json"))     ? null : reader.GetString(reader.GetOrdinal("raw_json")),
                 Importance  = (float)reader.GetDouble(reader.GetOrdinal("importance")),
-                ContactValence = (float)reader.GetDouble(reader.GetOrdinal("mark_valence")),
+                RelationalValence = (float)reader.GetDouble(reader.GetOrdinal("relational_valence")),
                 Embedding   = reader.IsDBNull(reader.GetOrdinal("embedding"))    ? null : DeserialisedEmbedding((byte[])reader["embedding"]),
                 IsResolved  = reader.GetInt32(reader.GetOrdinal("is_resolved")) == 1,
                 SourceName  = reader.IsDBNull(reader.GetOrdinal("source_name"))  ? null : reader.GetString(reader.GetOrdinal("source_name")),
                 OccurredAt  = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("occurred_at"))),
                 CreatedAt   = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
                 ResolvedAt  = reader.IsDBNull(reader.GetOrdinal("resolved_at"))  ? null : DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("resolved_at"))),
+                Tier        = tier,
+                AnchorReason = reader.IsDBNull(reader.GetOrdinal("anchor_reason")) ? null : reader.GetString(reader.GetOrdinal("anchor_reason")),
+                AnchoredAt  = reader.IsDBNull(reader.GetOrdinal("anchored_at"))  ? null : DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("anchored_at"))),
             });
         }
 

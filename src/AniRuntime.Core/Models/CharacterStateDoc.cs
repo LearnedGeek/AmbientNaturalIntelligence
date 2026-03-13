@@ -52,6 +52,9 @@ public class CharacterStateDoc
     public Dictionary<string, float> TopicValence { get; set; } = new();
     public Dictionary<string, float> ToneValence  { get; set; } = new();
 
+    // Feature 19: Relationship-specific words that carry outsized emotional weight
+    public List<LexicalAnchor> LexicalAnchors { get; set; } = new();
+
     // Meta
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
     public int            Version     { get; set; } = 1;

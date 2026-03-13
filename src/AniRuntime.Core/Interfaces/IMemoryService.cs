@@ -17,4 +17,6 @@ public interface IMemoryService
     Task<EmotionalState>            GetEmotionalStateAsync(CancellationToken ct = default);
     Task                            SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default);
     Task                            AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default);
+    Task<IEnumerable<MemoryRecord>> GetAnchoredMemoriesAsync(CancellationToken ct = default);
+    Task                            AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default);
 }

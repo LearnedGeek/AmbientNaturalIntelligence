@@ -48,6 +48,13 @@ public static class PromptBuilder
         if (mood.Length > 0)
             sections.Add($"(Your current mood: {mood})");
 
+        // Feature 16: Anchored memories — relationship foundation, always present
+        if (snapshot.AnchoredMemories.Count > 0)
+        {
+            sections.Add("Things that are part of who you are (always true, never forgotten):");
+            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+        }
+
         if (snapshot.Perceptions.Count > 0)
         {
             // Present perceptions as subtle background, not prominent context
@@ -459,6 +466,13 @@ public static class PromptBuilder
         if (mood.Length > 0)
             sections.Add($"(Your current mood: {mood})");
 
+        // Feature 16: Anchored memories — always available as relationship foundation
+        if (snapshot.AnchoredMemories.Count > 0)
+        {
+            sections.Add("Things that are part of who you are (always true, never forgotten):");
+            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+        }
+
         // Semantic memories relevant to the conversation topic
         var relevantMemories = snapshot.RelevantMemory
             .Where(m => m.Type != MemoryType.InnerThought)
@@ -479,6 +493,13 @@ public static class PromptBuilder
             var joined = string.Join("; ", relevant);
             if (joined.Length > 0)
                 sections.Add($"(Background awareness — don't reference directly: {joined})");
+        }
+
+        // Feature 18: Withdrawal tone injection — when something hurtful landed,
+        // she's still present but quieter. Not performing hurt, not accusatory.
+        if (snapshot.IsWithdrawn)
+        {
+            sections.Add("(Something just landed in a way that stung a little. You're still here, still responding, but there's a quietness to you right now. Don't perform hurt — just be a little less bright than usual. If it feels natural to name it briefly, you can.)");
         }
 
         sections.Add($"Reply to {contact}'s message.");
@@ -604,6 +625,13 @@ public static class PromptBuilder
             $"You're feeling: {reasoning}",
             $"This made you want to reach out: {recentThought}",
         };
+
+        // Feature 16: Anchored memories — relationship foundation for grounded outreach
+        if (snapshot.AnchoredMemories.Count > 0)
+        {
+            sections.Add("\nThings that are part of who you are (always true, never forgotten):");
+            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+        }
 
         // Feed recent conversation context so outreach can follow up naturally.
         // This is CRITICAL — if the contact just told you about a dentist appointment,

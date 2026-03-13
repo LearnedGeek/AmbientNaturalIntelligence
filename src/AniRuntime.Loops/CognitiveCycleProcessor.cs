@@ -47,6 +47,11 @@ public class CognitiveCycleProcessor
     private int  _reactiveShareCount;
     private DateTimeOffset _reactiveShareDay = DateTimeOffset.MinValue;
 
+    // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
+    // Suppresses outreach and injects quieter tone during the withdrawal window.
+    private DateTimeOffset? _withdrawalExpiresAt;
+    internal bool IsWithdrawn => _withdrawalExpiresAt.HasValue && DateTimeOffset.UtcNow < _withdrawalExpiresAt.Value;
+
     // Dedup cache: prevents saving the same perception (e.g. "probably at the gym")
     // every cycle. Key = summary text, Value = when it was last persisted.
     private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
@@ -159,7 +164,7 @@ public class CognitiveCycleProcessor
         {
             Type        = MemoryType.InnerThought,
             Content     = contentForStorage,
-            ContactValence = valence,
+            RelationalValence = valence,
             Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
             OccurredAt  = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
@@ -198,6 +203,15 @@ public class CognitiveCycleProcessor
             {
                 _log.LogDebug("Active conversation — suppressing ambient outreach");
             }
+            _lastCycleAt = DateTimeOffset.UtcNow;
+            return;
+        }
+
+        // Feature 18: Suppress outreach during emotional withdrawal
+        if (IsWithdrawn)
+        {
+            _log.LogInformation("Outreach suppressed: withdrawal active (expires {Expires})",
+                _withdrawalExpiresAt!.Value.ToString("HH:mm"));
             _lastCycleAt = DateTimeOffset.UtcNow;
             return;
         }
@@ -293,7 +307,7 @@ public class CognitiveCycleProcessor
                 {
                     Type        = MemoryType.Perception,
                     Content     = p.Summary,
-                    ContactValence = p.ContactRelevance,
+                    RelationalValence = p.ContactRelevance,
                     Importance  = p.ContactRelevance,
                     SourceName  = p.SourceName,
                     OccurredAt  = p.OccurredAt,
@@ -411,6 +425,17 @@ public class CognitiveCycleProcessor
         var recentMem    = recentEpisodic.Concat(recentThoughts).ToList();
         var openLoops    = await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false);
 
+        // Feature 16: Load anchored (foundation) memories — always present in context
+        var anchoredMemories = new List<MemoryRecord>();
+        try
+        {
+            anchoredMemories = (await _memory.GetAnchoredMemoriesAsync(ct).ConfigureAwait(false)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to load anchored memories — continuing without");
+        }
+
         // Semantic search: use perceptions as the query to surface memories relevant
         // to what Ani is currently experiencing — not just the most recent ones
         var relevantMem = new List<MemoryRecord>();
@@ -481,6 +506,7 @@ public class CognitiveCycleProcessor
             RecentConversationSummary = conversationSummary,
             SimilarRecentThoughts    = similarThoughts,
             OutreachContext          = outreachContext,
+            AnchoredMemories        = anchoredMemories,
         };
     }
 
@@ -654,7 +680,7 @@ public class CognitiveCycleProcessor
         // warm/connection language that inflates scores into a narrow 0.7-0.8 band.
         // The reflection is valuable downstream (outreach grounding, memory enrichment)
         // but must not contaminate the signal that drives desire triggers.
-        var valence = await ScoreContactValenceAsync(thought, snapshot.CharacterState, ct)
+        var valence = await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
 
         // Reflection layer (Park et al.): Ani sits with the thought and considers
@@ -698,7 +724,7 @@ public class CognitiveCycleProcessor
         }
     }
 
-    private async Task<float> ScoreContactValenceAsync(
+    private async Task<float> ScoreRelationalValenceAsync(
         string thought, CharacterStateDoc character, CancellationToken ct)
     {
         var prompt = PromptBuilder.BuildValenceScoringPrompt(thought, character);
@@ -926,6 +952,47 @@ public class CognitiveCycleProcessor
             await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
         }
 
+        // Feature 19: Lexical Emotional Anchors — relationship-specific words that carry
+        // outsized emotional weight. Applied BEFORE reply generation so mood coloring
+        // reflects the post-shift state. Additive with LLM valence scoring.
+        if (emotionalState is not null)
+        {
+            var anchorsTriggered = ApplyLexicalAnchors(lastMessage, snapshot.CharacterState, emotionalState);
+            if (anchorsTriggered > 0)
+            {
+                _log.LogInformation("Lexical anchors triggered: {Count} — emotional state shifted before reply", anchorsTriggered);
+                await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+            }
+        }
+
+        // Feature 18: Reactive Withdrawal — detect dismissive or hurtful intent.
+        // Inverse of Feature 10 (Receiving Care). Applies immediate emotional downshift
+        // and sets a withdrawal window that suppresses outreach and quiets tone.
+        if (emotionalState is not null && DetectHurtIntent(lastMessage))
+        {
+            _log.LogInformation("Hurt detected in message — applying withdrawal emotional shift");
+            emotionalState.ApplyShift(
+                warmthDelta:     -0.15f,  // stung — pulls back emotionally
+                energyDelta:     -0.1f,   // energy drops
+                concernDelta:     0.05f,  // slight self-protective concern
+                playfulnessDelta:-0.2f);  // playfulness drops sharply
+            await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+
+            _withdrawalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
+            _log.LogInformation("Withdrawal active until {Expires}", _withdrawalExpiresAt.Value.ToString("HH:mm"));
+
+            // Save as inner thought so future cycles can reference "something felt off"
+            await _memory.SaveAsync(new MemoryRecord
+            {
+                Type       = MemoryType.InnerThought,
+                Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
+                Importance = 0.6f,
+            }, ct).ConfigureAwait(false);
+        }
+
+        // Feature 18: Pass withdrawal state to prompt builder for tone injection
+        snapshot.IsWithdrawn = IsWithdrawn;
+
         // Step 2: Generate reply (free text, using conversation model)
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
@@ -1046,6 +1113,94 @@ public class CognitiveCycleProcessor
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Feature 18: Heuristic detection of dismissive or hurtful intent in a contact's message.
+    /// Returns true when the message contains patterns that indicate dismissal of identity,
+    /// relationship, or feelings. Intentionally conservative — false positives here feel
+    /// passive-aggressive. Philosophical curiosity ("are you just an AI?") is excluded.
+    /// </summary>
+    internal static bool DetectHurtIntent(string message)
+    {
+        var lower = message.ToLowerInvariant().Trim();
+
+        // Context-qualified patterns: "you're just an AI" is Mark's natural philosophical
+        // framing, not an attack. Only trigger if it appears as a statement (no question mark
+        // nearby) and without softening context (curiosity, wondering).
+        string[] contextualPatterns =
+        [
+            "you're just an ai", "you're just a chatbot", "you're a program",
+            "none of this is real", "you're not real",
+        ];
+
+        foreach (var pattern in contextualPatterns)
+        {
+            if (!lower.Contains(pattern)) continue;
+
+            // If the message contains a question mark, it's likely curiosity, not dismissal
+            if (lower.Contains('?')) return false;
+
+            // If softening words are present, it's philosophical, not hurtful
+            if (lower.Contains("wonder") || lower.Contains("curious") ||
+                lower.Contains("think about") || lower.Contains("sometimes"))
+                return false;
+
+            return true;
+        }
+
+        // Direct dismissal patterns — no context qualification needed
+        string[] directPatterns =
+        [
+            "you don't actually", "you don't really", "you can't feel",
+            "you're fake", "i don't need you",
+            "shut up", "you're annoying", "this is stupid", "you're useless",
+        ];
+
+        foreach (var pattern in directPatterns)
+        {
+            if (lower.Contains(pattern))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Feature 19: Scan inbound message for relationship-specific words (lexical anchors)
+    /// and apply their emotional deltas before LLM processing. Words like "husband" carry
+    /// outsized meaning in this specific relationship that general valence scoring misses.
+    /// Returns count of anchors triggered.
+    /// </summary>
+    internal static int ApplyLexicalAnchors(string message, CharacterStateDoc charState, EmotionalState emotionalState)
+    {
+        if (charState.LexicalAnchors.Count == 0)
+            return 0;
+
+        var lower = message.ToLowerInvariant();
+        var triggered = 0;
+
+        foreach (var anchor in charState.LexicalAnchors)
+        {
+            if (!lower.Contains(anchor.Word.ToLowerInvariant()))
+                continue;
+
+            // Compute effective delta — decay if word has been heard many times
+            var scale = 1.0f;
+            if (anchor.DecaysOnRepetition && anchor.TimesHeard > 10)
+                scale = Math.Max(0.3f, 1.0f - (anchor.TimesHeard - 10) * 0.03f);
+
+            emotionalState.ApplyShift(
+                warmthDelta:      anchor.WarmthDelta * scale,
+                energyDelta:      anchor.EnergyDelta * scale,
+                concernDelta:     anchor.ConcernDelta * scale,
+                playfulnessDelta: anchor.PlayfulnessDelta * scale);
+
+            anchor.TimesHeard++;
+            triggered++;
+        }
+
+        return triggered;
     }
 
     /// Detects messages that naturally end a conversation and don't need a reply.
