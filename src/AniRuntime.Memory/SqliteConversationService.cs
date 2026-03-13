@@ -140,6 +140,30 @@ public class SqliteConversationService : IConversationService, IDisposable
         updateCmd.Parameters.AddWithValue("$sent_at",   message.SentAt.ToString("o"));
 
         await updateCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Save each message as episodic memory with auto-embedding so it survives
+        // thread expiration and is findable via semantic search. Fixes BUG-010:
+        // without this, expired conversation context is lost and re-engagement
+        // on the same topic triggers confabulation (Michigan incident).
+        try
+        {
+            var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+            var speakerName = message.Role == "ani" ? character.Name : character.PrimaryContactName;
+
+            await _memory.SaveAsync(new MemoryRecord
+            {
+                Type           = MemoryType.Episodic,
+                Content        = $"{speakerName} said: \"{message.Content}\"",
+                Importance     = 0.6f,
+                ContactValence = message.Role == "mark" ? 0.7f : 0.5f,
+                SourceName     = "conversation",
+                OccurredAt     = message.SentAt,
+            }, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to save conversation message as episodic memory — conversation still recorded");
+        }
     }
 
     public async Task CloseThreadAsync(Guid threadId, CancellationToken ct = default)

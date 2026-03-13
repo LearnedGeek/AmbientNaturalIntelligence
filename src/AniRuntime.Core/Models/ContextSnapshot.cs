@@ -27,4 +27,10 @@ public class ContextSnapshot
     /// Used to detect thought loops and steer toward diversity.
     /// </summary>
     public List<MemoryRecord> SimilarRecentThoughts { get; set; } = new();
+
+    /// <summary>
+    /// Feature 27: Recent outreach context — what Ani has sent, when, and whether
+    /// it was answered. Assembled once per cycle for outreach continuity awareness.
+    /// </summary>
+    public RecentOutreachContext? OutreachContext { get; set; }
 }

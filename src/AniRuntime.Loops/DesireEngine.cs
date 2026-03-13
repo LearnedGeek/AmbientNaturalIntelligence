@@ -131,6 +131,14 @@ public class DesireEngine
     /// <summary>
     /// Applies temporal drift and refreshes the circadian modifier.
     /// Called once per cognitive cycle after the inner thought completes.
+    ///
+    /// Drift is dampened by a composite satisfaction score derived from:
+    ///   - Conversation recency (exponential decay with configurable half-life)
+    ///   - Emotional warmth (high warmth = connection need partly met)
+    ///   - Inner life engagement (energy + playfulness = rich inner life)
+    ///
+    /// Formula: effectiveDrift = baseDrift × (1 - satisfaction × dampeningFactor)
+    /// This provides natural downward pressure — satisfied Ani doesn't escalate desire.
     /// </summary>
     public async Task ApplyDriftAsync(CancellationToken ct = default)
     {
@@ -142,16 +150,26 @@ public class DesireEngine
             ? state.LastContactInbound : state.LastOutreach;
         var elapsed = DateTimeOffset.UtcNow - lastConnection;
 
+        // Compute satisfaction from available signals
+        var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var satisfaction = ComputeSatisfaction(state, emotionalState, elapsed);
+
         var previousDesire = state.DesireToConnect;
-        var drift = (float)Math.Min(elapsed.TotalHours * _options.DriftPerHour, _options.DriftCapPerCycle);
+        var baseDrift = (float)Math.Min(elapsed.TotalHours * _options.DriftPerHour, _options.DriftCapPerCycle);
+
+        // Dampen drift by satisfaction — high satisfaction = less upward pressure
+        var dampening = 1.0f - (float)(satisfaction * _options.SatisfactionDampeningFactor);
+        var drift = baseDrift * dampening;
+
         state.DesireToConnect   = Math.Min(1.0f, state.DesireToConnect + drift);
         state.LastInnerThought  = DateTimeOffset.UtcNow;
 
         // Circadian hour uses local time intentionally — we want Ani's clock, not UTC
         state.CircadianModifier = ComputeCircadianModifier();
 
-        _log.LogInformation("Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (elapsed={Hours:F1}h, circadian={Circadian:F2})",
-            previousDesire, drift, state.DesireToConnect, elapsed.TotalHours, state.CircadianModifier);
+        _log.LogInformation(
+            "Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (base={BaseDrift:F2}, satisfaction={Satisfaction:F2}, dampening={Dampening:F2}, elapsed={Hours:F1}h, circadian={Circadian:F2})",
+            previousDesire, drift, state.DesireToConnect, baseDrift, satisfaction, dampening, elapsed.TotalHours, state.CircadianModifier);
 
         await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
@@ -233,6 +251,21 @@ public class DesireEngine
         await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Partial desire decay — reduces desire by a fraction without full reset.
+    /// Used by Feature 28 (Dispatch Coherence Gate) when Door C suppresses a message:
+    /// the desire to connect is real, but the composed message wasn't coherent enough to send.
+    /// </summary>
+    public async Task DecayDesireAsync(float fraction, string reason, CancellationToken ct = default)
+    {
+        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var previous = state.DesireToConnect;
+        state.DesireToConnect *= (1.0f - fraction);
+        _log.LogInformation("Desire decay: {Previous:F2} → {New:F2} ({Fraction:P0} reduction) — {Reason}",
+            previous, state.DesireToConnect, fraction, reason);
+        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+    }
+
     // ── Private ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -246,6 +279,42 @@ public class DesireEngine
         return _options.NightStartHour > _options.NightEndHour
             ? hour >= _options.NightStartHour || hour < _options.NightEndHour
             : hour >= _options.NightStartHour && hour < _options.NightEndHour;
+    }
+
+    /// <summary>
+    /// Composite satisfaction score (0.0–1.0) derived from existing signals.
+    /// High satisfaction = connection need is being met, desire should drift slower.
+    ///
+    /// Three components weighted equally:
+    ///   1. Conversation recency — exponential decay from last contact (half-life configurable)
+    ///   2. Emotional warmth — how warm Ani feels relative to baseline
+    ///   3. Inner life engagement — energy + playfulness indicate a rich inner life
+    ///      that partially satisfies the need for connection
+    /// </summary>
+    public float ComputeSatisfaction(DesireState desire, EmotionalState emotions, TimeSpan sinceLastContact)
+    {
+        // 1. Conversation recency: exponential decay — recently talked = high satisfaction
+        //    At half-life hours, recency = 0.5. At 2× half-life, recency ≈ 0.25.
+        var halfLife = _options.SatisfactionRecencyHalfLifeHours;
+        var recency = (float)Math.Exp(-0.693 * sinceLastContact.TotalHours / halfLife);
+
+        // 2. Emotional warmth relative to baseline — warmth above baseline means
+        //    the connection need is partly met through recent emotional experiences
+        var warmthExcess = Math.Max(0f, emotions.Warmth - emotions.WarmthBaseline);
+        var warmthRange = 1f - emotions.WarmthBaseline;
+        var warmthSatisfaction = warmthRange > 0 ? warmthExcess / warmthRange : 0f;
+
+        // 3. Inner life engagement — rich inner life (high energy + playfulness)
+        //    partially satisfies the need for external connection
+        var energyAbove = Math.Max(0f, emotions.Energy - emotions.EnergyBaseline);
+        var playAbove = Math.Max(0f, emotions.Playfulness - emotions.PlayfulnessBaseline);
+        var engagement = (energyAbove + playAbove) / 2f;
+        // Normalize: max possible is ~0.5 each above baseline
+        var engagementSatisfaction = Math.Min(1f, engagement * 2f);
+
+        // Equal-weight composite
+        var satisfaction = (recency + warmthSatisfaction + engagementSatisfaction) / 3f;
+        return Math.Clamp(satisfaction, 0f, 1f);
     }
 
     // Local time is intentional here — circadian rhythm maps to Ani's (contact's) timezone

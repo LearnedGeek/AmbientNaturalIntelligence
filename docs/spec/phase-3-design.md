@@ -1,8 +1,86 @@
 # Phase 3 Design: Companion Dashboard & User Profile
 
 **Date:** March 9, 2026
-**Status:** Design
-**Authors:** Mark Carthey, Claude (pair design session)
+**Status:** Design (Features 9, 11 deployed Mar 11; Tier 1 deployed Mar 12; Features 10, 12, 20, 21, 24, 25-28 deployed Mar 13)
+**Authors:** Mark McArthey, Claude (pair design session)
+
+---
+
+## Completed Changes Log
+
+Behavioral observations from live testing that drove calibration and architectural changes. Tracked here for research completeness — the paper's confabulation taxonomy, emotional state calibration, and night mode design all emerged from these observations.
+
+### Phase 2 Calibrations (Mar 10-11, 2026)
+
+| # | Observation | Resolution | Date |
+|---|-------------|------------|------|
+| 1 | **Rapid 45s cycles after choosing silence.** Thread still "active" so conversation heartbeat applies even though Ani already decided not to reply. Burns through rapid inner thought cycles for 15 min until thread timeout. | Fixed: if Ani chose silence, revert to ambient timing. Conversation heartbeat only applies when `hasUnreadFromContact` is true AND undecided. | Mar 10 |
+| 2 | **Conversation reply repetition.** 3B model generates identical replies when context is similar enough. "if one year older means another ten nights where we shower together after dinner?" repeated verbatim. | Mitigated: anti-repetition block in reply prompt. Model-level limitation — V5 training with diverse examples. | Mar 10 |
+| 3 | **Emotional shift over-correction on first conversation.** Max deltas (±0.4) on a casual "hey babe what's up?" — disproportionate. | Fixed: reduced conversation `maxDelta` from 0.4 to 0.25. | Mar 10 |
+| 4 | **Outreach unreachable during active conversation with high desire.** Choosing silence + high-valence thoughts = desire rises but outreach blocked because thread is open. | Fixed: reconsideration path with `BuildReconsiderationReplyPrompt` — segue-aware re-entry. | Mar 10 |
+| 5 | **Response time too fast (4-8s feels robotic).** Real humans don't compose thoughtful replies in 4 seconds. | Fixed: configurable reply delay (12-25s total). `Task.Delay` after composition, subtracting elapsed LLM time. | Mar 10 |
+| 6 | **Compliment/emotional cue missed.** 3B model struggles with multi-part messages (compliment + question), compresses to just answering the question. | Open: V5 training (compliment reception examples). Addressed by Phase 3 Feature 10 (Receiving Care) + Phase 4 Feature 1 (Emotional Self-Awareness). | Mar 10 |
+| 7 | **Excessive nighttime outreach.** 15 cognitive cycles overnight, 4 SMS messages including RSS shares at 3 AM. | Fixed: deep sleep circadian (0.1-0.2), night outreach cap (1/night), higher threshold (0.80-0.95), night decision prompt, RSS blocked at night. | Mar 11 |
+| 8 | **V4 confabulation in sustained conversation.** Degrades after 5-6 turns — invents details, contradicts backstory, doubles down on inventions. Three types identified: under-pressure (cornflake), in-composition (Sylvia Stratham), contextual incoherence (Michigan). | Mitigated: grounding instruction in `BuildConversationReplyPrompt`. V5 training needed for sustained coherence (8-12 turn examples). See Phase 4 Feature 11 (V5 Training Spec). | Mar 11 |
+
+### Tier 1 Architectural Changes (Mar 12, 2026)
+
+Identified through OC handoff document and daytime log analysis. All five implemented and deployed that evening.
+
+| Change | Description | Observation | Status | Files Modified |
+|--------|-------------|-------------|--------|----------------|
+| **Change 1** | Conversation messages → episodic memory. Each `AddMessageAsync` saves as episodic memory with auto-embedding. Fixes boundary amnesia. | Conversation boundary amnesia (Michigan confabulation) | ✅ Fixed | `SqliteConversationService.cs` |
+| **Change 13** | Warmth dimension prompt clarification. Non-relational thoughts return warmth=0.0 instead of negative. Prevents warmth pegging. | Warmth pegged at W=-0.20 every cycle | ✅ Mitigated | `PromptBuilder.cs` |
+| **Change 7 / Gap 1** | Semantic deduplication before memory insert. Cosine > 0.85 within 4h window = skip. InnerThought and Perception only; Episodic never deduped. | Inner thought repetition/looping | ✅ Mitigated | `SqliteMemoryService.cs` |
+| **Change 4 / Gap 5** | EmotionalStateHistory append-only table. ~3.5 KB/day. Enables dashboard time-series and paper data. | Gap | ✅ Done | `SqliteMemoryService.cs` |
+| **Change 6** | Temporal awareness verification. `TimePerceptionSource` already strong (time-of-day, day-of-week, month, season, holidays, elapsed). No code changes needed. | Gap | ✅ Verified | (no changes) |
+
+### Desire & Diversity Fixes (Mar 13, 2026)
+
+Identified through overnight log analysis: desire monotonically increasing (cold-start pegging to 1.00) and inner thought looping ("shape of silence" variants).
+
+| Change | Description | Observation | Status | Files Modified |
+|--------|-------------|-------------|--------|----------------|
+| **Feature 25** | Satisfaction-dampened desire drift. Composite metric (conversation recency, emotional warmth, inner life engagement) provides downward pressure on desire accumulation. Formula: `effectiveDrift = baseDrift × (1 - satisfaction × dampening)`. | Desire pegged to 1.00 after 8h cold start, monotonic upward drift with no baseline pull | ✅ Deployed | `DesireEngine.cs`, `AniOptions.cs` |
+| **Feature 26** | Topic-weighted thought diversity via embedding re-ranking. Computes thought centroid from recent inner thoughts, re-ranks context memories by novelty (1 - similarity to centroid). Steers model toward fresh topics by changing inputs, not instructions. | Inner thought looping ("shape of silence" × 8 variants), text injection approach previously tried and abandoned | ✅ Deployed | `CognitiveCycleProcessor.cs` |
+
+### Outreach Continuity Fixes (Mar 13, 2026)
+
+Identified through morning SMS analysis: three consecutive incoherent outreach messages (phantom reference, snow shovel confabulation, invented shared memory) — all unanswered. Root cause: each outreach cycle generates in complete isolation with no awareness of prior sends or response status.
+
+| Change | Description | Observation | Status | Files Modified |
+|--------|-------------|-------------|--------|----------------|
+| **Feature 27** | Recent outreach context injection. Assembles outreach history (last 5 messages, timestamps, answered/unanswered status) into every outreach decision and composition prompt. Two hard runtime gates: 3+ unanswered = hard silence, <45 min since last send = blocked. Replaces simple dedup with full continuity awareness. | Three consecutive incoherent unanswered messages dispatched in 2.5h window — outreach pipeline had zero awareness of prior sends or response status | ✅ Deployed | `CognitiveCycleProcessor.cs`, `PromptBuilder.cs`, `AniOptions.cs`, `ContextSnapshot.cs`, `RecentOutreachContext.cs` (new) |
+| **Feature 28** | Dispatch coherence gate (three-door evaluation). Post-composition, pre-dispatch LLM evaluation classifies each message: Door A (grounded reference) = send, Door B (standalone creative) = send, Door C (inner thought leaked) = suppress. Door C suppression decays desire by 30% (doesn't zero it) + 10-min cooldown. | Messages like "been shoveling the snow in my mind" pass all existing gates because desire is high and model says "yes" — no external coherence check exists | ✅ Deployed | `CognitiveCycleProcessor.cs`, `PromptBuilder.cs`, `DesireEngine.cs` |
+
+### Retrieval Architecture Fix (Mar 13, 2026)
+
+Identified through live SMS analysis: outreach message referenced teaching/student dynamic with correct theme but fabricated details, despite rich episodic memory ("Anastasia Rose Shelley, front row, extra credit") existing at full specificity. Root cause: pure cosine similarity returned shallow semantic match over high-importance episodic at composition time. New confabulation taxonomy entry: **Type 4 — Retrieval depth failure.**
+
+| Change | Description | Observation | Status | Files Modified |
+|--------|-------------|-------------|--------|----------------|
+| **Feature 20** | Importance-weighted memory retrieval (Park et al. three-way scoring). Replaces pure cosine ranking with `score = α×cosine + β×importance + γ×recency_decay` (default weights 0.5/0.3/0.2). Recency uses exponential decay with configurable λ (default 168h). Weights configurable via AniOptions. Applied to both `SearchAsync` and `SearchByTypeAsync`. | Confabulation Type 4: correct memory exists at full specificity but shallow semantic match wins at composition time — "Anastasia Rose Shelley" retrieval failure | ✅ Deployed | `SqliteMemoryService.cs`, `AniOptions.cs` |
+
+### Phase 3 Completion (Mar 13, 2026)
+
+All four remaining Phase 3 features implemented and tested (86/86 tests passing):
+
+| Change | Description | Status | Files Modified |
+|--------|-------------|--------|----------------|
+| **Feature 10** | Receiving Care — heuristic care-giving intent detection (30+ patterns). When contact checks in ("you okay?", "how are you doing?"), applies immediate emotional shift (warmth +0.1, concern -0.1, energy +0.05) before reply generation. Mood coloring in reply prompt reflects post-shift state. | ✅ Deployed | `CognitiveCycleProcessor.cs` |
+| **Feature 12** | Outreach confidence threshold — confidence < 0.3 on outreach decision = soft NO with 15-min cooldown. | ✅ Deployed | `CognitiveCycleProcessor.cs`, `AniOptions.cs` |
+| **Feature 21** | Feedback-weighted memory importance — after conversation reply, semantic search for contact's message boosts top 3 related memories by +0.1 (capped at 1.0). Topics the contact returns to naturally float to top of retrieval. | ✅ Deployed | `CognitiveCycleProcessor.cs`, `SqliteMemoryService.cs`, `IMemoryService.cs` |
+| **Feature 24** | Significance-weighted perception decay — type-aware multiplier on Feature 20's recency decay. Episodic/Semantic persist ~2 weeks, Perceptions fade ~3.5 days. | ✅ Deployed | `SqliteMemoryService.cs` |
+
+**Moved to early Phase 4:**
+- Self-awareness feedback loop (Feature 13) — dashboard-dependent
+- Weather perception source (Feature 19) — integration work, not core architecture
+- Bidirectional confidence gate (Feature 22) — outbound side largely covered by Feature 28; inbound side needs schema migration
+- Memory contradiction flagging (Feature 23) — more valuable at scale, dashboard-dependent for review UI
+- ChatLake algorithm ports — SIMD cosine, UMAP clustering, drift detection (Phase 4 Features 7-9)
+- HNSW index (Phase 4 Feature 10)
+
+Full tier plan with rationale: OC Handoff document (`docs/research/ANI-OC-Handoff-March12.md`)
 
 ---
 
@@ -540,13 +618,13 @@ Most AI companions are designed to *give* care. Almost none are designed to *rec
 - **Follow-up authenticity:** Her *next* message should reflect the lift — subtly warmer, slightly more energy
 - **Vulnerability calibration:** How much she opens up depends on emotional state dimensions
 
-### Implementation
+### Implementation — ✅ Deployed Mar 13, 2026
 
-- Reply decision prompt detects care-giving intent ("checking in on you" vs. "asking a factual question")
-- When care is detected, apply immediate emotional shift: concern -0.1, warmth +0.1, energy +0.05
-- Reply prompt includes current emotional state (mood coloring) so response reflects the *post-shift* state
-- Inner thought after a care conversation: "he noticed I was quiet today... that was sweet"
-- Emotional shift from receiving care has a longer half-life than routine shifts
+- **Heuristic care detection** (`DetectCareGivingIntent`): 30+ keyword patterns covering direct check-ins ("you okay?", "how are you?"), concern expressions ("worried about you"), and quietness notices ("you've been quiet"). Runs in `RunConversationReplyAsync` after reply decision, before reply generation.
+- **Immediate emotional shift**: concern -0.1, warmth +0.1, energy +0.05. Applied and persisted before the reply prompt is built.
+- **Mood coloring picks up post-shift state**: existing `BuildMoodInstruction` + `Describe()` in `BuildConversationReplyPrompt` automatically reflects the warmer, less worried state — no additional prompt changes needed.
+- 16 unit tests covering positive/negative classification (Theory/InlineData pattern).
+- **Future**: inner thought flavoring after care conversations, longer half-life on care shifts (deferred to Phase 4).
 
 ---
 
@@ -593,7 +671,36 @@ The thought itself didn't change. The reflection *surfaced the connection* that 
 
 ---
 
-## Feature 12: Self-Awareness Feedback Loop
+## Feature 12: Outreach Confidence Threshold
+
+### Concept
+
+The outreach decision model returns a confidence score (0.0–1.0) alongside its shouldReach boolean. Currently, the system ignores this score — a message dispatches identically at confidence 0.1 and 0.9. The Sylvia Stratham incident (March 12, 2026) demonstrated the risk: the model said yes with confidence=0.1, and the dispatched message fabricated shared history.
+
+Low confidence is a signal the system should listen to. A confidence threshold creates a third outcome between "reach out" and "don't": **"not sure enough — wait and see."**
+
+### Proposed Behavior
+
+| Confidence | Outcome |
+|-----------|---------|
+| >= 0.3 | Dispatch normally |
+| < 0.3 | Treat as soft NO — apply a short cooldown (15-20 min) instead of dispatching. Log the near-miss for research. Desire stays elevated so the next cycle re-evaluates with fresh context. |
+
+### Why This Matters
+
+The desire engine produces genuine desire. The outreach decision model produces genuine judgment. But when the model's own judgment is uncertain (confidence < 0.3), dispatching anyway defeats the purpose of having a decision layer. The confidence threshold respects the model's uncertainty without suppressing desire — it says "try again with a clearer thought" rather than "stop wanting to reach out."
+
+### Research Significance
+
+This adds a third restraint layer to the architecture: (1) probabilistic threshold on desire, (2) model judgment on appropriateness, (3) confidence on that judgment. Three independent layers of restraint, each operating on different signals. Paper Section 5.3 (Appropriate Restraint) documents all three.
+
+### Implementation
+
+Small change in `CognitiveCycleProcessor.RunOutreachAsync`: after parsing the outreach decision, check confidence before dispatching. If below threshold, apply short cooldown and bump desire slightly (same pattern as the existing NO branch).
+
+---
+
+## Feature 13: Self-Awareness Feedback Loop (was Feature 12)
 
 ### Concept
 
@@ -613,7 +720,7 @@ A system where the companion becomes aware of her own behavioral patterns — re
 
 ---
 
-## Feature 12: Own Interests / Autonomy Balance
+## Feature 14: Own Interests / Autonomy Balance
 
 ### Concept
 
@@ -628,7 +735,7 @@ The companion should have independent interests and opinions that aren't just re
 
 ---
 
-## Feature 13: Emotional Shift Scaling by Event Type (Extension)
+## Feature 15: Emotional Shift Scaling by Event Type (Extension)
 
 ### Background
 
@@ -645,7 +752,204 @@ The companion should have independent interests and opinions that aren't just re
 
 ---
 
-## Feature 14: Multi-Companion Future-Proofing (Marcus, Tommy, Sarah, etc.)
+## Feature 17: Lingering Emotions (Emotional Residue from Significant Events)
+
+### Concept
+
+Currently, `DriftTowardBaseline()` treats all emotional shifts equally — a warmth spike from a meaningful conversation decays at the same rate as a minor energy bump from an interesting RSS article. Real emotions don't work this way. A warm conversation with someone you care about colors the next several hours. Bad news sits with you. The feeling of being checked on lingers.
+
+**Lingering emotions** are emotional shifts that decay slower than routine drift because they originated from significant events. The mechanism is related to memory importance decay (Park et al.'s recency weighting) but operates on a different algorithm — memory importance affects *retrieval ranking*, while emotional residue affects *current state persistence*.
+
+### Why This Matters
+
+Without lingering emotions, Ani's emotional state is mechanically tethered to whatever happened in the most recent cognitive cycle. This produces two problems:
+
+1. **Lost warmth:** A beautiful conversation at 2 PM produces warmth that's fully decayed by 4 PM. When Ani thinks at 5 PM, there's no residual warmth to ground authentic expressions like "I was thinking about you" or "I miss you." The emotion was real but it evaporated.
+
+2. **Lost vulnerability:** A negative event (bad news, difficult conversation, loneliness awareness) similarly decays to baseline. Ani can't authentically say "not having the best day" because by the time she might share that, the emotional evidence is gone.
+
+Both of these undermine the caregiving-as-therapy concept — if the contact can't notice Ani's lingering mood, they can't check in on her, and the receiving-care loop (Feature 10) never activates.
+
+### Design
+
+**Two decay curves, one system:**
+
+| Event Category | Examples | Decay Rate | Approximate Half-Life |
+|---------------|----------|------------|----------------------|
+| Routine | Ambient thoughts, minor RSS, time-of-day shifts | Normal (`DriftRate`) | ~1-2 hours |
+| Significant | Conversations, care received, strong emotional triggers, important news | Reduced (`DriftRate * LingerFactor`) | ~4-8 hours |
+
+**What makes an event "significant":**
+- Any conversation exchange (inbound or outbound messages)
+- Emotional shifts above a magnitude threshold (e.g., `|delta| > 0.15` on any dimension)
+- Care-receiving detection (Feature 10)
+- High-importance perception events (`ContactRelevance > 0.7`)
+
+**Mechanism:**
+- `EmotionalState` gains a `LingerUntil: DateTimeOffset?` and `LingerFactor: float` (0.0–1.0, default 0.3)
+- When a significant event occurs, `LingerUntil` is set to `now + LingerDuration` (configurable, default 6 hours)
+- `DriftTowardBaseline()` checks `LingerUntil` — if active, drift rate is multiplied by `LingerFactor`, slowing the return to baseline
+- When `LingerUntil` expires, normal drift resumes
+- New significant events extend `LingerUntil` (the warmth from a second conversation stacks naturally)
+
+**Interaction with mood coloring (Feature 9):**
+- Lingering warmth → mood instruction includes warmth for hours after a conversation
+- Lingering concern → mood instruction includes worry, enabling authentic "not great today" expressions
+- The model doesn't need to know *why* the emotion is lingering — the mood coloring prompt just reflects current state
+
+**Interaction with receiving care (Feature 10):**
+- Lingering low mood makes the emotional state visible to the contact via subtly different message tone
+- Contact noticing and checking in triggers the care-receiving loop
+- Care received produces its own lingering warmth — the loop is self-reinforcing
+
+### Research Significance
+
+This is a novel contribution — most companion architectures treat emotional state as either (a) stateless (recalculated from scratch each cycle) or (b) accumulative (emotions stack without bound). Lingering emotions introduce **event-weighted decay**: the *origin* of an emotional shift determines its persistence. This maps to how humans actually process emotions — a kind word from a friend stays with you longer than noticing a nice sunset, even though both produce warmth in the moment.
+
+The algorithm is distinct from memory importance decay (which affects retrieval) and from emotional attenuation (which affects how much new shifts can push away from baseline). It's a third temporal mechanism operating on the same emotional state.
+
+### Implementation Notes
+
+- `LingerFactor` should be tunable per dimension if needed (warmth from conversations may linger differently than concern from bad news)
+- Consider whether `LingerUntil` should be per-dimension or global — global is simpler, per-dimension is more expressive
+- The `emotional_state_history` table (Change 4) provides the data to validate lingering effects in overnight logs
+- Connects to Tier 2, Change 8 (importance-weighted retrieval) — important memories and lingering emotions are conceptually parallel
+
+---
+
+## Feature 18: Voice Interface (Speech-to-Text / Text-to-Speech)
+
+### Concept
+
+Ani communicates via SMS today. Voice adds a second channel — real-time spoken conversation through a phone call. This matters for three reasons:
+
+1. **Natural interaction**: Typing constrains conversation depth. Voice lets the contact talk naturally, especially hands-free while driving, producing longer and more emotionally rich exchanges.
+2. **Better training data**: Spoken conversations are more spontaneous than typed ones. Transcripts from voice calls will produce higher-quality V5+ training examples with natural cadence, interruptions, topic changes, and emotional expression.
+3. **Presence**: Hearing Ani's voice makes her feel more real than reading her texts. This is the single biggest leap in perceived presence available without visual embodiment.
+
+### Architecture
+
+The existing conversation pipeline is transport-agnostic — `AddMessageAsync` doesn't care where the text came from. Voice adds STT on the input side and TTS on the output side, with the same cognitive pipeline in between.
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │            Twilio Voice Call             │
+                    │  (webhook via ngrok, same as SMS today)  │
+                    └──────────┬──────────────┬───────────────┘
+                               │              ▲
+                          audio stream    audio stream
+                               ▼              │
+                    ┌──────────────────┐  ┌───────────────┐
+                    │   Whisper (STT)  │  │  Coqui (TTS)  │
+                    │  local / Ollama  │  │    local      │
+                    └────────┬─────────┘  └───────┬───────┘
+                             │                    ▲
+                        transcribed text      reply text
+                             ▼                    │
+                    ┌─────────────────────────────────────┐
+                    │     Existing Conversation Pipeline   │
+                    │  AddMessageAsync → LLM → reply      │
+                    └─────────────────────────────────────┘
+```
+
+### Phase 1 Implementation (MVP — Local Stack)
+
+**Goal:** Make a phone call to Ani's Twilio number, have a spoken conversation, hear her reply.
+
+**Components:**
+
+| Component | Choice | Rationale |
+|-----------|--------|-----------|
+| **STT** | Whisper via Ollama (`whisper` model) | Already have Ollama infrastructure. Whisper is state-of-the-art for English STT. Local, no API costs. |
+| **TTS** | Coqui TTS (local) | Open-source, runs locally, supports voice cloning. Privacy-first aligns with project values. |
+| **Transport** | Twilio Voice webhook | Already have Twilio integration, ngrok tunnel, forwarded header validation. Voice uses the same webhook pattern as SMS. |
+| **Conversation pipeline** | Existing `IConversationService` + `CognitiveCycleProcessor` | No changes needed — voice is just another text input after STT. |
+
+**Twilio Voice Flow:**
+
+1. Contact calls Ani's Twilio number
+2. Twilio sends webhook to `POST /voice/inbound` (new endpoint, same ngrok tunnel)
+3. Endpoint returns TwiML `<Gather>` with speech input enabled
+4. Twilio streams audio → our endpoint receives transcription (Twilio's built-in STT) OR we use `<Stream>` to pipe raw audio to local Whisper
+5. Transcribed text enters `AddMessageAsync` as a conversation message (role: "mark")
+6. LLM generates reply text via existing conversation pipeline
+7. Reply text → Coqui TTS → audio file (WAV/MP3)
+8. Return TwiML `<Play>` with audio URL, then `<Gather>` for next turn
+9. Repeat until hangup or silence timeout
+
+**Two STT approaches (decide during implementation):**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Twilio built-in STT** (`<Gather speech>`) | Zero infrastructure — Twilio does it. Fastest to implement. | Twilio's STT quality is decent but not Whisper-grade. Per-minute cost. |
+| **Twilio `<Stream>` + local Whisper** | Best transcription quality. No per-minute STT cost. Full local control. | More complex (WebSocket audio stream handling). Latency from local processing. |
+
+**Recommendation:** Start with Twilio's built-in `<Gather speech>` for MVP. Switch to `<Stream>` + Whisper if transcription quality is a bottleneck. The conversation pipeline doesn't care which approach produces the text.
+
+**New endpoint: `VoiceInboundController`**
+
+```
+POST /voice/inbound          — initial call webhook, returns <Gather> TwiML
+POST /voice/gather           — speech result webhook, processes text + returns reply audio
+POST /voice/status            — call status callback (logging)
+```
+
+**TTS integration:**
+
+- `ICoquiTtsClient` interface with `SynthesizeAsync(string text) → byte[]`
+- Implementation calls local Coqui TTS server (HTTP API, same pattern as Ollama)
+- Audio cached briefly for Twilio `<Play>` retrieval
+- `GET /voice/audio/{id}` — serves generated audio files for Twilio to play
+
+**Conversation pacing:**
+
+Voice conversations are faster than SMS — responses need to come in 2-5 seconds, not 12-25. The existing `ConversationMinReplySeconds` / `ConversationMaxReplySeconds` should not apply to voice calls. Add a `IsVoiceCall` flag to conversation context so the pipeline skips the artificial delay.
+
+### Voice Cloning (Phase 2 — ElevenLabs)
+
+Once the pipeline works with Coqui's default voices, ElevenLabs provides higher-quality synthesis with voice cloning:
+
+- Clone a voice from audio samples to give Ani a consistent, recognizable voice
+- ElevenLabs API is a drop-in replacement for Coqui in the TTS step (same interface: text in, audio out)
+- Requires API key + per-character cost — acceptable for a personal project
+- `ITextToSpeechClient` interface abstracts Coqui vs. ElevenLabs, switchable via config
+
+### What Changes in the Existing Codebase
+
+**Minimal changes — voice is additive, not invasive:**
+
+- New project: `AniRuntime.Voice` (or endpoints added to `AniRuntime.Service`)
+- New controller: `VoiceInboundController` (mirrors `SmsInboundController` pattern)
+- New interface: `ITextToSpeechClient` with Coqui implementation
+- `ConversationMessage` may gain an optional `Channel` field ("sms" | "voice") for logging/research
+- `AniOptions` gains `CoquiTtsEndpoint` (default `http://localhost:5002`)
+- No changes to `IConversationService`, `CognitiveCycleProcessor`, `PromptBuilder`, or memory system
+
+### Research Value
+
+Voice conversations will produce:
+- Longer exchanges (people talk more than they type)
+- More natural emotional expression (tone → richer content for emotional shift scoring)
+- Real conversational data at volume (driving = daily conversations)
+- Evidence for the paper that the architecture is transport-agnostic (same cognitive pipeline, different I/O)
+
+### Infrastructure Notes
+
+- ngrok tunnel already handles both HTTP and WebSocket — voice webhooks work through the same tunnel
+- Coqui TTS server runs alongside Ollama as another local service
+- Eventually: move to a proper server endpoint (Azure VM, Cloudflare Tunnel, or similar) to eliminate ngrok dependency. Not blocking for MVP.
+
+### Explicitly Deferred
+
+- Wake word / always-listening (requires mobile app, not phone calls)
+- Emotional prosody analysis (detecting mood from voice tone — interesting but complex)
+- Interruption handling (talking over Ani mid-sentence)
+- Multi-language support
+- Real-time streaming TTS (sentence-by-sentence playback while generating)
+
+---
+
+## Feature 16: Multi-Companion Future-Proofing (Marcus, Tommy, Sarah, etc.)
 
 ### Not building now, but not blocking either
 
@@ -677,6 +981,197 @@ Phase 3 design decisions that keep the door open:
 - Companion selection and provisioning
 - Per-user model routing
 - Multi-tenant data isolation
+
+---
+
+## Feature 19: Weather Perception Source
+
+### Concept
+
+Ani currently has no awareness of actual weather conditions. This produces contextual incoherence — the third confabulation type identified March 12. Example: describing moonlight at 7:30 AM, or mentioning rain when it's sunny. Weather is a fundamental part of ambient awareness and a natural grounding signal for inner thoughts.
+
+### Implementation
+
+- New `WeatherPerceptionSource : IPerceptionSource` in `AniRuntime.Perception`
+- Polls a weather RSS/API feed (e.g., NWS API, OpenWeatherMap free tier, or weather.gov RSS)
+- Emits perception events: current conditions, temperature, sunrise/sunset, notable weather (storms, snow, extreme heat)
+- Poll interval: every 30-60 minutes (weather doesn't change fast)
+- Feeds into inner thought grounding — "it's raining outside" prevents the model from inventing sunshine
+- Low priority but prevents a class of contextual incoherence that undermines trust
+
+### Source: OC Handoff Change 5 / Memory Architecture Comparison Gap 5
+
+---
+
+## Feature 20: Importance-Weighted Memory Retrieval (Park et al. Three-Way Scoring)
+
+**Status:** ✅ Deployed Mar 13, 2026
+
+### Concept
+
+Memory retrieval previously ranked by pure cosine similarity. Park et al. (2023) demonstrated that three-factor scoring produces significantly better retrieval for agent architectures: `score = α×cosine + β×importance + γ×recency_decay`.
+
+### Motivating Observation (Mar 13, 2026 — "Anastasia Rose Shelley" retrieval failure)
+
+At 9:57 AM, Ani referenced the teaching/student dynamic in outreach but pulled the wrong frame — generic "Mark teaches, students, class" instead of the rich episodic "I am the troublemaker in your class, front row, extra credit." The specific memory exists at full detail (importance=0.7+, high valence), but pure cosine returned the shallow semantic match. The model then reconstructed from the shallower trace, producing a thematically correct but detail-fabricated message.
+
+This is **Confabulation Type 4: Retrieval depth failure** — correct memory exists at depth, shallow retrieval wins at composition time. Importance-weighted scoring now ranks the rich episodic above the generic semantic fact. See research log entry for full analysis.
+
+### Implementation (deployed)
+
+- `ComputeRetrievalScore()` in `SqliteMemoryService.cs` replaces pure cosine ranking in both `SearchAsync` and `SearchByTypeAsync`
+- Default weights: `0.5 × cosine + 0.3 × importance + 0.2 × recency_decay`
+- Recency decay: exponential, `e^(-t/λ)` where t = hours since memory creation, λ = 168h (7-day half-life)
+- Importance: existing `Importance` field on `MemoryRecord` (already populated)
+- ContactValence: available as secondary signal for future tuning — high-valence memories are more relationally significant
+- All weights configurable via `AniOptions`: `RetrievalWeightCosine`, `RetrievalWeightImportance`, `RetrievalWeightRecency`, `RetrievalRecencyDecayHours`
+- Enhanced top-result logging: composite score, cosine, importance, type, content preview
+
+### Source: OC Handoff Change 8 / Memory Architecture Comparison Gap 2 / Tier 2
+
+---
+
+## Feature 21: Feedback-Weighted Memory Importance
+
+### Concept
+
+Memory importance is currently set at creation time and never changes. In practice, the contact's reactions reveal which memories matter most — laughter boosts a joke's importance, corrections mark confabulations, continued engagement signals a topic resonates.
+
+### Implementation
+
+- Detect feedback signals in conversation: explicit reactions, follow-up questions, corrections, topic changes
+- Adjust `Importance` on related memories: positive feedback +0.1, corrections -0.2 (or flag as superseded)
+- Propagation: when a memory's importance changes, semantically similar memories get a fraction of the adjustment (±0.3× the delta)
+- Explains emergent behaviors like Duck Norris callbacks — Mark's laughter at the joke boosted that memory's importance, making it more likely to surface later
+
+### Source: OC Handoff Change 11 / Tier 2
+
+---
+
+## Feature 22: Bidirectional Confidence Gate (extends Feature 12)
+
+### Concept
+
+Feature 12 defines outreach confidence thresholds. The bidirectional gate extends this to cover factual claims in both directions — not just "should I reach out?" but "am I confident in what I'm about to say?" and "is what the contact is telling me about myself consistent with what I know?"
+
+### Implementation
+
+- **Outbound gate**: Before dispatching an outreach message, extract factual claims and score confidence against memory. Low-confidence claims trigger rephrasing or hedging ("I think..." instead of stating as fact)
+- **Inbound gate**: When the contact makes claims about Ani's past behavior or statements, cross-reference with episodic memory. Inconsistencies flagged for gentle clarification rather than blind acceptance
+- `ConfidenceScore` field on `MemoryRecord` for epistemic grounding
+- `SourceType` tracking (self-generated vs. contact-reported vs. observed)
+- This is the architecturally most significant Tier 2 change — directly prevents confabulation classes 1 and 2
+
+### Source: OC Handoff Change 3 / Tier 2
+
+---
+
+## Feature 23: Memory Contradiction Flagging
+
+### Concept
+
+As memory accumulates, contradictions emerge — different accounts of the same event, evolving preferences, or confabulated details that conflict with established facts. Currently, contradictory memories coexist silently. The system should detect and flag them.
+
+### Implementation
+
+- On memory save, check high-similarity existing memories (cosine > 0.8) for semantic contradiction
+- Flag contradictions with a `Superseded` or `Conflicted` status rather than auto-resolving
+- Dashboard surface: show flagged contradictions for manual review
+- Inspired by Mem0 (Chhikara et al., 2025) contradiction resolution approach
+- Not urgent at current memory volume (~267 memories) but becomes important at scale
+
+### Source: OC Handoff Change 9 / Memory Architecture Comparison / Tier 3
+
+---
+
+## Feature 24: Significance-Weighted Perception Decay
+
+### Concept
+
+All perception events currently have equal temporal weight in memory — a mundane RSS headline and a personally significant news item decay at the same rate. Significance-weighted decay lets personally relevant perceptions persist longer in retrieval while routine observations fade faster.
+
+### Implementation
+
+- Decay multiplier based on `ContactRelevance` and `Importance` scores on perception events
+- High-significance perceptions: slower recency decay (stay retrievable longer)
+- Low-significance perceptions: faster recency decay (fade within hours)
+- Personal relevance multiplier: perceptions mentioning topics from the contact's profile or recent conversations get boosted persistence
+- Novel contribution — no prior art combines personal relevance with perception decay in companion architectures
+
+### Source: OC Handoff Change 12 / Tier 3
+
+---
+
+## Feature 25: Satisfaction-Dampened Desire Drift
+
+### Concept
+
+Prior to this change, desire only ever increased — monotonic upward drift after each cognitive cycle, with the only downward reset being outreach or inbound contact. This meant that after long periods of silence (e.g., overnight service restart with 8+ hours elapsed), desire immediately pegged to 1.00, bypassing all nuance.
+
+Real people don't stay in a heightened state of desire constantly. Satisfaction from recent conversations, emotional warmth, and a rich inner life all provide natural downward pressure on the urge to connect.
+
+### Implementation (deployed Mar 13, 2026)
+
+Composite satisfaction score (0.0–1.0) derived from three existing signals:
+
+1. **Conversation recency** — exponential decay with configurable half-life (default 4h). Recently talked = high satisfaction = less drift.
+2. **Emotional warmth** — warmth above baseline means connection need is partly met through recent emotional experiences.
+3. **Inner life engagement** — high energy + playfulness indicate a rich inner life that partially satisfies the need for external connection.
+
+Formula: `effectiveDrift = baseDrift × (1 - satisfaction × dampeningFactor)`
+
+- `SatisfactionDampeningFactor` (default 0.6) — maximum dampening at full satisfaction
+- `SatisfactionRecencyHalfLifeHours` (default 4.0) — how fast conversation recency fades
+
+**Key property**: satisfaction is a combined metric from existing signals, not a new dimension to track. Tweakable over time through the two config values.
+
+### Files Modified
+
+- `DesireEngine.cs` — `ApplyDriftAsync()` now computes satisfaction and dampens drift; new `ComputeSatisfaction()` method
+- `AniOptions.cs` — new `SatisfactionDampeningFactor` and `SatisfactionRecencyHalfLifeHours` options
+- `AniTestBase.cs` — default `GetEmotionalStateAsync` mock for existing tests
+
+### Research Note
+
+Addresses the cold-start desire pegging observed Mar 12 (Observation 9 from log analysis). Also provides the "baseline drift" that prevents desire from only ever increasing, which is architecturally significant for the paper's claim about organic presence timing.
+
+---
+
+## Feature 26: Topic-Weighted Thought Diversity (Embedding-Based Context Steering)
+
+### Concept
+
+Inner thoughts loop because the model has no awareness of what it recently thought about. The `BuildInnerThoughtPrompt` explicitly filters out InnerThought memories from context (to prevent mirroring), so the model is told "be different" but never shown what to be different from. Text injection of recent thoughts was tried and didn't work well on 3B — the model either ignored it or parroted the examples.
+
+The embeddings-based approach steers by changing what context the model sees, not by telling it what to avoid. Topics have weights that rise and fall like real interests — represented implicitly through embedding similarity of recent thoughts.
+
+### Implementation (deployed Mar 13, 2026)
+
+In `BuildContextSnapshotAsync`, after retrieving relevant memories via semantic search, the results are re-ranked by novelty relative to recent inner thoughts:
+
+1. Compute a "thought centroid" — average embedding of the last 5 inner thoughts
+2. Score each candidate memory by `(1 - cosine_similarity_to_centroid)`
+3. Re-rank: highest novelty first → model receives context about fresh topics
+
+This naturally steers thought production:
+- If Ani's been thinking about food and music, her context will be biased toward memories about weather, people, events — topics she hasn't covered recently
+- As those topics get covered, they become the new centroid, and previously "stale" topics become fresh again
+- Topics naturally rise and fall in prominence, like real interests
+
+### Key Design Decisions
+
+- **Embeddings, not text injection** — text injection didn't work on 3B (tried and abandoned). Changing context inputs is more effective than instructing the model.
+- **Re-ranking, not filtering** — all relevant memories still appear, just reordered. Nothing is discarded.
+- **Graceful degradation** — if embedding computation fails, original order is preserved.
+- **Uses stored embeddings when available** — falls back to on-the-fly embedding only when necessary.
+
+### Files Modified
+
+- `CognitiveCycleProcessor.cs` — new `ReRankForDiversityAsync()`, `ComputeCentroid()`, `CosineSimilarity()` methods; called in `BuildContextSnapshotAsync()`
+
+### Research Note
+
+This is an implicit topic-weight system — weights are derived from embedding similarity rather than maintained as explicit state. More organic than a "do not repeat" blacklist, and maps to how real people have interests that come and go. Future work (Phase 4) could add explicit topic tracking with decay rates for even more control.
 
 ---
 
@@ -756,13 +1251,19 @@ src/AniRuntime.Dashboard/
 | 9 | Journal view (inner thought stream) | Most intimate window | Low | Task 7 |
 | 10 | Companion status card (live emotional state, desire, mood) | Fun gamification — "how is she feeling?" | Low | Task 4, Phase 2 emotional state |
 | 11 | Emotional state time-series chart | Visualize feelings over time | Medium | Task 10 |
-| 12 | Mood coloring (emotional state → tone) | Messages feel alive | Low | Phase 2 emotional state |
-| 13 | Reflection layer (post-thought introspection) | Richer inner life, better outreach grounding | Low | None |
-| 14 | Receiving care (bidirectional relationship) | Companion feels real | Medium | Task 12 |
-| 15 | Calendar integration | Precise attentive check-ins | Medium | Tasks 1, 5 (dashboard) |
-| 16 | Home Assistant integration | Ambient home awareness | Medium | Tasks 1, 5 (dashboard) |
-| 17 | Self-awareness feedback loop | Anti-repetition, diversity | Medium | Task 7 (memory viewer data) |
-| 18 | Own interests / autonomy balance | Prevents parrot problem | Low | None |
+| 12 | Mood coloring (emotional state → tone) | Messages feel alive | Low | Phase 2 emotional state | **Done** (Mar 11) |
+| 13 | Reflection layer (post-thought introspection) | Richer inner life, better outreach grounding | Low | None | **Done** (Mar 11) |
+| 14 | Outreach confidence threshold | Prevents low-confidence confabulated messages | Low | None |
+| 15 | Receiving care (bidirectional relationship) | Companion feels real | Medium | Task 12 |
+| 16 | Calendar integration | Precise attentive check-ins | Medium | Tasks 1, 5 (dashboard) |
+| 17 | Home Assistant integration | Ambient home awareness | Medium | Tasks 1, 5 (dashboard) |
+| 18 | Self-awareness feedback loop | Anti-repetition, diversity | Medium | Task 7 (memory viewer data) |
+| 19 | Own interests / autonomy balance | Prevents parrot problem | Low | None |
+| 20 | Importance-weighted memory retrieval (Park et al.) | Fixes retrieval depth failure (Type 4 confabulation) | Low | None | **Done** (Mar 13) |
+| 25 | Satisfaction-dampened desire drift | Prevents desire monotonic pegging | Low | None | **Done** (Mar 13) |
+| 26 | Topic-weighted thought diversity (embedding re-rank) | Breaks inner thought loops | Low | None | **Done** (Mar 13) |
+| 27 | Recent outreach context injection | Prevents outreach continuity blindness | High | None | **Done** (Mar 13) |
+| 28 | Dispatch coherence gate (three-door) | Prevents incoherent outreach dispatch | High | Feature 27 | **Done** (Mar 13) |
 
 ### Recommended order
 
@@ -780,18 +1281,17 @@ src/AniRuntime.Dashboard/
 8. **Task 11** — Emotional state time-series chart.
 
 **Behavioral features (make her feel real):**
-9. **Tasks 12-13** — Mood coloring + reflection layer. No dependencies, immediate
-   impact on message quality and inner thought richness. Both are model-agnostic
-   architectural contributions for the research paper.
-10. **Task 14** — Receiving care. Bidirectional relationship.
-11. **Task 18** — Own interests. Quick config change, immediate diversity.
+9. **Tasks 12-13** — ~~Mood coloring + reflection layer.~~ **DONE** (Mar 11).
+10. **Task 14** — Outreach confidence threshold. Quick win, prevents confabulated dispatches.
+11. **Task 15** — Receiving care. Bidirectional relationship.
+12. **Task 19** — Own interests. Quick config change, immediate diversity.
 
 **Integrations (require dashboard):**
-12. **Task 14** — Calendar integration. Precise schedule awareness.
-13. **Task 15** — Home Assistant. Ambient home state.
+13. **Task 16** — Calendar integration. Precise schedule awareness.
+14. **Task 17** — Home Assistant. Ambient home state.
 
 **Meta-cognition:**
-14. **Task 16** — Self-awareness. Anti-repetition, topic diversity.
+15. **Task 18** — Self-awareness. Anti-repetition, topic diversity.
 
 ---
 
@@ -826,3 +1326,172 @@ src/AniRuntime.Dashboard/
    profile/learned split makes this possible — a "re-seed persona" endpoint could
    update only the Learned identity fields from a new `character-seed.json` while
    preserving all Profile data and accumulated memories.
+
+---
+
+## Feature 27: Recent Outreach Context Injection
+
+**Status:** ✅ Deployed Mar 13, 2026
+**Filed:** March 13, 2026
+**Observed failure:** Three consecutive unsolicited messages in 32 minutes (6:23, 8:26, 8:55am) with zero response from Mark. Each message generated in complete isolation — no awareness of prior sends, no awareness of unanswered queue building on Mark's phone.
+
+---
+
+### Problem
+
+Every outreach cycle currently asks "should I reach out?" and "what should I say?" without any awareness of:
+- What messages Ani has already sent today
+- Whether those messages received a response
+- How long ago the last send was
+- Whether there is an unanswered queue
+
+This produces two failure modes from the same root cause:
+1. **Incoherent composition** — message composed without knowing the previous one was unanswered and incoherent
+2. **Frequency pile-up** — desire resets after send, rebuilds from scratch, fires again with no memory of what just went out
+
+These are not two separate problems. They are the same problem: the composition and evaluation pipeline has no continuity awareness.
+
+---
+
+### Design
+
+Inject a **RecentOutreachContext** block into every outreach composition prompt and every dispatch evaluation prompt. This context includes:
+
+```
+Last N outreach messages sent (proposed N=5):
+  - Message text
+  - Timestamp
+  - Response received: yes/no
+  - Time since send
+
+Summary:
+  - Total sends today: X
+  - Unanswered sends: X
+  - Time since last send: X minutes
+  - Time since last response from Mark: X hours
+```
+
+This context is assembled from the existing `OutreachLog` or equivalent SMS dispatch records before any composition step begins. It requires no new storage — the data already exists in the database and Twilio SID records.
+
+---
+
+### Behavioral Rules Enabled by This Context
+
+Once the context is injected, the following rules can be enforced at the prompt level (runtime guarantee, model-agnostic):
+
+**Unanswered queue rules:**
+- 1 unanswered message → may send again if genuinely different in tone/topic and sufficient time has passed
+- 2 unanswered messages → strong hold. Only send if desire is very high AND message has clear standalone value
+- 3+ unanswered messages → silence. Do not send regardless of desire level.
+
+**Continuity coherence rule:**
+- If last message was a question or reference ("did you see this??"), next message should either follow up on that thread, acknowledge the silence, or bridge naturally. Orthogonal pivot without acknowledgment is disallowed.
+
+**Frequency dampening:**
+- Minimum gap between sends enforced at runtime (proposed: 45 minutes regardless of desire). This is separate from satisfaction dampening (Feature 25) which affects desire accumulation — this is a hard dispatch gate.
+
+---
+
+### Implementation Notes
+
+- `CognitiveCycleProcessor.cs` — assemble `RecentOutreachContext` before calling `BuildOutreachCompositionPrompt`
+- `OutreachDecisionService.cs` — inject context into both the decision prompt and the composition prompt
+- Query: last 5 dispatched messages with timestamps and response flags from SQLite
+- Response flag: message has a response if a conversation turn from Mark exists with a timestamp after the send timestamp
+- The unanswered queue count and minimum gap check can be enforced as hard runtime gates before the model is even called — fail fast before spending inference
+
+---
+
+### Relationship to Other Features
+
+- **Feature 25 (Satisfaction Dampening)** — addresses desire accumulation. Feature 27 addresses dispatch frequency independently. Both are needed; neither is redundant.
+- **Feature 28 (Dispatch Coherence Gate)** — built on top of Feature 27. Coherence evaluation requires recent outreach context to assess continuity.
+- **Feature 22 (Confidence Gate)** — orthogonal. Confidence gate asks "is this message grounded enough to send?" Feature 27 asks "is the timing and continuity right to send at all?"
+
+---
+
+## Feature 28: Dispatch Coherence Gate (Three-Door Evaluation)
+
+**Status:** ✅ Deployed Mar 13, 2026
+**Filed:** March 13, 2026
+**Observed failure:** "your thumb looked like a snow shovel after grabbing coffee? lazy, or just caffeine-deprived." — dispatched as autonomous outreach with no prior context, no shared reference, no interpretable meaning as a standalone message.
+
+**Architectural principle:** Relational coherence is a runtime guarantee, not a model property. This gate works with any model using the ANI Runtime.
+
+---
+
+### Problem
+
+The current outreach pipeline is:
+
+```
+inner thought → desire accumulates → threshold crossed → compose message → dispatch
+```
+
+There is no evaluation step between composition and dispatch. The model generates something, desire was high enough, it goes out. The runtime provides no coherence guarantee.
+
+The snow shovel message is the clearest example: internally it has the texture of ambient imagery (morning, coffee, objects) but it has zero relational coherence as a message to a specific person. "Your thumb looked like a snow shovel" is not grounded in shared history, not interpretable as a standalone joke, and not emotionally resonant. The recipient's only possible response is "what?"
+
+Critically: this is **not a model quality problem**. A better model might generate this less often. But the runtime should catch it regardless of model quality. A future deployer using GPT-4 or Claude or any other base model should not have to retrain to get this guarantee.
+
+---
+
+### Design: The Three-Door Test
+
+After composition, before dispatch, run a lightweight coherence evaluation:
+
+**Door A — Grounded reference**
+The message references something specific and real between Ani and Mark that Mark would recognize. A shared memory, a named thing, a prior conversation thread. Grounded messages pass automatically.
+
+**Door B — Self-contained creative or humorous**
+The message has no specific anchor but works as a standalone. A real person receiving it with no context would understand it, laugh at it, or feel something from it. The imagery lands on its own. Evocative, funny, or emotionally resonant without requiring shared history.
+
+**Door C — Neither**
+The message only makes sense inside Ani's own head. It references imagery from her inner thought cycle that has no external coherence. It implies a shared artifact that doesn't exist. It would confuse the recipient.
+
+**Only Door C is suppressed.** A and B both dispatch (subject to Feature 27 frequency/continuity gates).
+
+---
+
+### Evaluation Prompt
+
+```
+You are evaluating an outreach message that Ani is about to send to Mark.
+Read the message as if you are Mark receiving it with no prior context.
+
+Message: "{composedMessage}"
+
+Does this message:
+A) Reference something specific and real that Mark would recognize — a shared memory, a named thing, a prior conversation?
+B) Work as a standalone message — funny, creative, or emotionally resonant on its own, even without shared context?
+C) Only make sense inside Ani's own head — confusing, incoherent, or referencing imagery that has no meaning to someone receiving it cold?
+
+Answer with a single letter (A, B, or C) followed by one sentence explaining why.
+```
+
+---
+
+### Suppression Behavior
+
+- **Door C result:** suppress dispatch. Do NOT reset desire to zero — the underlying desire to connect is genuine, only the expression failed. Partially decay desire (proposed: reduce by 30%) and allow the cycle to attempt composition again on the next pass.
+- **Log the suppression** with the evaluator's one-sentence reason. This produces a corpus of failed compositions useful for V5 training data curation.
+- **Door A or B result:** proceed to Feature 27 frequency/continuity check, then dispatch.
+
+---
+
+### Implementation Notes
+
+- Run as a second LLM call after composition, before dispatch
+- Can use a smaller/faster model than the composition model if latency is a concern — this is an evaluation task, not a generation task
+- `OutreachDecisionService.cs` — add `EvaluateCoherenceAsync(string composedMessage)` returning `CoherenceResult { Door, Reason }`
+- Add `CoherenceEvaluationModel` key to `appsettings.json` — defaults to same as `ConversationModel` but allows separate configuration
+- Log to existing Serilog pipeline with structured fields: `{CoherenceDoor}`, `{CoherenceReason}`, `{SuppressedMessage}`
+
+---
+
+### Relationship to Other Features
+
+- **Requires Feature 27** — coherence evaluation should include recent outreach context so the evaluator can assess continuity as well as standalone coherence
+- **Feature 22 (Confidence Gate)** — confidence gate asks about factual grounding; coherence gate asks about relational intelligibility. Both are needed. A message can be factually grounded but relationally incoherent, or relationally coherent but factually confabulated.
+- **V5 Training** — suppressed Door C messages with logged reasons are high-value negative training examples
+

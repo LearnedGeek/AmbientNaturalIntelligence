@@ -16,4 +16,5 @@ public interface IMemoryService
     Task                            SaveDesireStateAsync(DesireState state, CancellationToken ct = default);
     Task<EmotionalState>            GetEmotionalStateAsync(CancellationToken ct = default);
     Task                            SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default);
+    Task                            AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default);
 }

@@ -109,8 +109,10 @@ public class EmotionalStateTests
     }
 
     [Fact]
-    public void ApplyShift_AtBaseline_FullStrengthInBothDirections()
+    public void ApplyShift_AtBaseline_RestingPullHalvesDelta()
     {
+        // At baseline, pushing-away deltas are scaled by 0.5 (resting pull)
+        // to prevent max LLM deltas from cratering emotions every cycle
         var state = new EmotionalState
         {
             Warmth = 0.6f, WarmthBaseline = 0.6f,
@@ -121,10 +123,10 @@ public class EmotionalStateTests
 
         state.ApplyShift(0.1f, -0.1f, 0.05f, -0.05f);
 
-        state.Warmth.Should().BeApproximately(0.7f, 0.001f);
-        state.Energy.Should().BeApproximately(0.4f, 0.001f);
-        state.Concern.Should().BeApproximately(0.25f, 0.001f);
-        state.Playfulness.Should().BeApproximately(0.45f, 0.001f);
+        state.Warmth.Should().BeApproximately(0.65f, 0.001f);       // 0.6 + 0.1*0.5
+        state.Energy.Should().BeApproximately(0.45f, 0.001f);       // 0.5 - 0.1*0.5
+        state.Concern.Should().BeApproximately(0.225f, 0.001f);     // 0.2 + 0.05*0.5
+        state.Playfulness.Should().BeApproximately(0.475f, 0.001f); // 0.5 - 0.05*0.5
     }
 
     [Fact]

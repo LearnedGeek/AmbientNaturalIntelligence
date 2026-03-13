@@ -169,8 +169,9 @@ public class CognitiveCycleProcessor
         if (reflection is not null)
             _log.LogInformation("Reflection: {Reflection}", reflection);
 
-        // Phase 4b: Emotional shift from inner thought
-        await ApplyEmotionalShiftAsync(emotionalState, thought, ct).ConfigureAwait(false);
+        // Phase 4b: Emotional shift from inner thought (raw thought only — reflection
+        // adds warm/connection language that would inflate emotional scores)
+        await ApplyEmotionalShiftAsync(emotionalState, thought, ct, isAmbientCycle: true).ConfigureAwait(false);
 
         // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
@@ -206,6 +207,30 @@ public class CognitiveCycleProcessor
             _log.LogDebug("Desire below threshold — no outreach this cycle");
             _lastCycleAt = DateTimeOffset.UtcNow;
             return;
+        }
+
+        // Feature 27: Hard runtime gates — outreach continuity checks
+        var outreachCtx = snapshot.OutreachContext;
+        if (outreachCtx is not null)
+        {
+            if (outreachCtx.UnansweredCount >= _aniOptions.MaxUnansweredBeforeSilence)
+            {
+                _log.LogInformation(
+                    "Outreach suppressed: {Count} unanswered messages (limit={Limit}) — waiting for reply",
+                    outreachCtx.UnansweredCount, _aniOptions.MaxUnansweredBeforeSilence);
+                _lastCycleAt = DateTimeOffset.UtcNow;
+                return;
+            }
+
+            if (outreachCtx.TimeSinceLastSend.HasValue &&
+                outreachCtx.TimeSinceLastSend.Value.TotalMinutes < _aniOptions.MinSendGapMinutes)
+            {
+                _log.LogInformation(
+                    "Outreach suppressed: only {Minutes:F0} min since last send (minimum={Gap} min)",
+                    outreachCtx.TimeSinceLastSend.Value.TotalMinutes, _aniOptions.MinSendGapMinutes);
+                _lastCycleAt = DateTimeOffset.UtcNow;
+                return;
+            }
         }
 
         await RunOutreachAsync(snapshot, thought, ct).ConfigureAwait(false);
@@ -431,7 +456,17 @@ public class CognitiveCycleProcessor
             }
         }
 
+        // Topic-weighted diversity: rerank relevant memories to prefer topics that are
+        // dissimilar from recent inner thoughts. This steers the model toward fresh topics
+        // by changing what context it sees — not by telling it what to avoid.
+        // Uses embeddings (not text injection) per design decision.
+        relevantMem = await ReRankForDiversityAsync(
+            relevantMem, recentThoughts.ToList(), ct).ConfigureAwait(false);
+
         emotionalState ??= await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+
+        // Feature 27: Assemble recent outreach context for continuity awareness
+        var outreachContext = BuildOutreachContext(recentMem, desireState, charState);
 
         return new ContextSnapshot
         {
@@ -445,7 +480,166 @@ public class CognitiveCycleProcessor
             BuiltAt                  = DateTimeOffset.UtcNow,
             RecentConversationSummary = conversationSummary,
             SimilarRecentThoughts    = similarThoughts,
+            OutreachContext          = outreachContext,
         };
+    }
+
+    /// <summary>
+    /// Feature 27: Assembles outreach continuity context from recent episodic memory.
+    /// Determines which outreach messages were answered by checking if any conversation
+    /// or inbound contact occurred after each outreach record.
+    /// </summary>
+    private RecentOutreachContext BuildOutreachContext(
+        List<MemoryRecord> recentMemory, DesireState desireState, CharacterStateDoc charState)
+    {
+        var outreachPrefix = $"{charState.Name} reached out: ";
+        var outreachRecords = recentMemory
+            .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith(outreachPrefix))
+            .OrderByDescending(m => m.OccurredAt)
+            .Take(5)
+            .ToList();
+
+        // Conversation records indicate the contact replied at some point
+        var conversationTimes = recentMemory
+            .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith("Conversation ("))
+            .Select(m => m.OccurredAt)
+            .ToList();
+
+        var lastContactReply = desireState.LastContactInbound;
+
+        var records = new List<OutreachRecord>();
+        foreach (var outreach in outreachRecords)
+        {
+            // An outreach is "answered" if the contact replied after it was sent
+            var wasAnswered = lastContactReply > outreach.OccurredAt ||
+                              conversationTimes.Any(t => t > outreach.OccurredAt);
+
+            records.Add(new OutreachRecord
+            {
+                Message     = outreach.Content[outreachPrefix.Length..].Trim(),
+                SentAt      = outreach.OccurredAt,
+                WasAnswered = wasAnswered,
+            });
+        }
+
+        // Count consecutive unanswered from most recent
+        var unanswered = 0;
+        foreach (var r in records)
+        {
+            if (r.WasAnswered) break;
+            unanswered++;
+        }
+
+        var timeSinceLastSend = records.Count > 0
+            ? DateTimeOffset.UtcNow - records[0].SentAt
+            : (TimeSpan?)null;
+
+        var timeSinceReply = lastContactReply != default
+            ? DateTimeOffset.UtcNow - lastContactReply
+            : (TimeSpan?)null;
+
+        return new RecentOutreachContext
+        {
+            RecentMessages             = records,
+            UnansweredCount            = unanswered,
+            TimeSinceLastSend          = timeSinceLastSend,
+            TimeSinceLastContactReply  = timeSinceReply,
+        };
+    }
+
+    /// <summary>
+    /// Re-ranks candidate memories to prefer topics dissimilar from recent inner thoughts.
+    /// Computes a "thought centroid" from recent thought embeddings, then scores each
+    /// candidate by (1 - similarity_to_centroid). Higher novelty = ranked first.
+    ///
+    /// This is the embeddings-based approach to thought diversity: instead of telling the
+    /// model what NOT to think about (which doesn't work on 3B), we change what context
+    /// it has to work with. Fresh topics in context → fresh thoughts out.
+    /// </summary>
+    private async Task<List<MemoryRecord>> ReRankForDiversityAsync(
+        List<MemoryRecord> candidates, List<MemoryRecord> recentThoughts, CancellationToken ct)
+    {
+        if (candidates.Count <= 1 || recentThoughts.Count == 0)
+            return candidates;
+
+        try
+        {
+            // Build thought centroid from recent inner thought embeddings
+            var thoughtEmbeddings = recentThoughts
+                .Where(t => t.Embedding is { Length: > 0 })
+                .Select(t => t.Embedding!)
+                .ToList();
+
+            // If no embeddings available on stored thoughts, embed the text on-the-fly
+            if (thoughtEmbeddings.Count == 0)
+            {
+                var thoughtText = string.Join(". ",
+                    recentThoughts.Select(t => t.Content.Length > 100 ? t.Content[..100] : t.Content));
+                var embedding = await _ollama.EmbedAsync(thoughtText, ct).ConfigureAwait(false);
+                thoughtEmbeddings.Add(embedding);
+            }
+
+            var centroid = ComputeCentroid(thoughtEmbeddings);
+
+            // Ensure candidates have embeddings — use stored or generate on-the-fly
+            var scored = new List<(MemoryRecord record, float novelty)>();
+            foreach (var candidate in candidates)
+            {
+                float[] candidateEmbed;
+                if (candidate.Embedding is { Length: > 0 })
+                {
+                    candidateEmbed = candidate.Embedding;
+                }
+                else
+                {
+                    candidateEmbed = await _ollama.EmbedAsync(candidate.Content, ct).ConfigureAwait(false);
+                }
+
+                var similarity = CosineSimilarity(centroid, candidateEmbed);
+                var novelty = 1f - similarity;
+                scored.Add((candidate, novelty));
+            }
+
+            var reranked = scored.OrderByDescending(s => s.novelty).Select(s => s.record).ToList();
+
+            _log.LogDebug("Diversity re-rank: {Scores}",
+                string.Join(", ", scored.OrderByDescending(s => s.novelty)
+                    .Select(s => $"{s.record.Content[..Math.Min(30, s.record.Content.Length)]}={s.novelty:F2}")));
+
+            return reranked;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Diversity re-ranking failed — returning original order");
+            return candidates;
+        }
+    }
+
+    private static float[] ComputeCentroid(List<float[]> embeddings)
+    {
+        var dim = embeddings[0].Length;
+        var centroid = new float[dim];
+        foreach (var emb in embeddings)
+            for (var i = 0; i < dim; i++)
+                centroid[i] += emb[i];
+        var count = (float)embeddings.Count;
+        for (var i = 0; i < dim; i++)
+            centroid[i] /= count;
+        return centroid;
+    }
+
+    private static float CosineSimilarity(float[] a, float[] b)
+    {
+        if (a.Length != b.Length || a.Length == 0) return 0f;
+        float dot = 0f, magA = 0f, magB = 0f;
+        for (var i = 0; i < a.Length; i++)
+        {
+            dot  += a[i] * b[i];
+            magA += a[i] * a[i];
+            magB += b[i] * b[i];
+        }
+        var denom = MathF.Sqrt(magA) * MathF.Sqrt(magB);
+        return denom > 0 ? dot / denom : 0f;
     }
 
     private async Task<(string thought, string? reflection, float valence)> RunInnerThoughtAsync(
@@ -456,20 +650,17 @@ public class CognitiveCycleProcessor
             thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 
+        // Score the raw thought for valence BEFORE reflection — reflection adds
+        // warm/connection language that inflates scores into a narrow 0.7-0.8 band.
+        // The reflection is valuable downstream (outreach grounding, memory enrichment)
+        // but must not contaminate the signal that drives desire triggers.
+        var valence = await ScoreContactValenceAsync(thought, snapshot.CharacterState, ct)
+            .ConfigureAwait(false);
+
         // Reflection layer (Park et al.): Ani sits with the thought and considers
         // what it means to her — connecting it to memories, relationships, feelings.
-        // The reflection enriches the thought for valence scoring and outreach grounding.
+        // The reflection enriches the thought for storage and outreach grounding.
         var reflection = await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
-
-        // Score the combined thought+reflection — the reflection surfaces connections
-        // that make the valence score more accurate (e.g., "rain tapping" alone is 0.2,
-        // but "rain tapping — reminds me of Mark drumming his fingers" is 0.7)
-        var combinedForScoring = reflection is not null
-            ? $"{thought}\n(reflection: {reflection})"
-            : thought;
-
-        var valence = await ScoreContactValenceAsync(combinedForScoring, snapshot.CharacterState, ct)
-            .ConfigureAwait(false);
 
         return (thought, reflection, valence);
     }
@@ -542,6 +733,17 @@ public class CognitiveCycleProcessor
             return;
         }
 
+        // Feature 12: Confidence threshold — the model said YES but isn't sure enough.
+        // Soft NO: short cooldown, desire stays elevated, re-evaluates next cycle with fresh context.
+        if (decision.Confidence < (float)_aniOptions.OutreachConfidenceFloor)
+        {
+            _log.LogInformation(
+                "Outreach confidence too low: {Confidence:F2} < {Floor:F2} — soft NO, retrying later. Reasoning: {Reasoning}",
+                decision.Confidence, _aniOptions.OutreachConfidenceFloor, decision.Reasoning);
+            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(15), ct).ConfigureAwait(false);
+            return;
+        }
+
         // Step 2: Compose — free-text message generation (no JSON constraint)
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, recentThought, decision.Reasoning ?? string.Empty);
@@ -563,10 +765,23 @@ public class CognitiveCycleProcessor
         var rewritten = await FixPronounsIfNeeded(message, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
 
+        // Step 4: Feature 28 — Dispatch Coherence Gate (Three-Door Evaluation)
+        // Post-composition, pre-dispatch: does this message make sense to the reader?
+        var cs = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+        if (!await EvaluateCoherenceAsync(rewritten, recentThought, contact, ct).ConfigureAwait(false))
+        {
+            _log.LogInformation("Coherence gate: SUPPRESS — message only makes sense in Ani's head");
+            // Door C: decay desire by 30% (the want is real, but the expression wasn't ready)
+            await _desire.DecayDesireAsync(0.30f, "coherence gate suppression (Door C)", ct)
+                .ConfigureAwait(false);
+            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+            return;
+        }
+
         decision.Message    = rewritten;
         decision.ActionType = "sms";
 
-        var cs = snapshot.CharacterState;
         _log.LogInformation("{Name} reaching out: {Message}", cs.Name, decision.Message);
 
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
@@ -579,6 +794,62 @@ public class CognitiveCycleProcessor
             Importance = 0.7f,
             OccurredAt = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Feature 28: Dispatch Coherence Gate — evaluates whether a composed outreach message
+    /// makes sense to the reader (not just the writer). Uses a three-door classification:
+    ///   Door A (grounded reference) → SEND
+    ///   Door B (standalone creative) → SEND
+    ///   Door C (inner thought leaked) → SUPPRESS
+    /// Returns true if message should be dispatched, false if suppressed.
+    /// </summary>
+    private async Task<bool> EvaluateCoherenceAsync(
+        string message, string innerThought, string contactName, CancellationToken ct)
+    {
+        try
+        {
+            var prompt = PromptBuilder.BuildCoherenceEvaluationPrompt(message, innerThought, contactName);
+            var raw = await _ollama.ChatJsonAsync(
+                prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
+                .ConfigureAwait(false);
+
+            _log.LogDebug("Coherence evaluation raw: {Raw}", raw);
+
+            var verdict = ParseCoherenceVerdict(raw);
+            _log.LogInformation("Coherence gate: Door {Door} → {Verdict} — {Reasoning}",
+                verdict.Door, verdict.Verdict, verdict.Reasoning);
+
+            return !string.Equals(verdict.Verdict, "SUPPRESS", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            // If coherence evaluation fails, default to SEND — don't block outreach on eval errors
+            _log.LogWarning(ex, "Coherence evaluation failed — defaulting to SEND");
+            return true;
+        }
+    }
+
+    private record CoherenceResult(string Door, string Verdict, string Reasoning);
+
+    private static CoherenceResult ParseCoherenceVerdict(string raw)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            var door = root.TryGetProperty("door", out var d) ? d.GetString() ?? "?" : "?";
+            var verdict = root.TryGetProperty("verdict", out var v) ? v.GetString() ?? "SEND" : "SEND";
+            var reasoning = root.TryGetProperty("reasoning", out var r) ? r.GetString() ?? "" : "";
+            return new CoherenceResult(door, verdict, reasoning);
+        }
+        catch
+        {
+            // If JSON parse fails, check if the raw text contains SUPPRESS
+            return raw.Contains("SUPPRESS", StringComparison.OrdinalIgnoreCase)
+                ? new CoherenceResult("C", "SUPPRESS", "parse failed but SUPPRESS detected in response")
+                : new CoherenceResult("?", "SEND", "parse failed — defaulting to SEND");
+        }
     }
 
     /// <summary>
@@ -641,6 +912,20 @@ public class CognitiveCycleProcessor
             LastEvaluatedMessageAt = null;
         }
 
+        // Feature 10: Receiving Care — detect when contact is checking in on Ani
+        // Apply immediate emotional shift BEFORE reply generation so mood coloring
+        // reflects the post-shift state (his care genuinely lifted her mood)
+        if (emotionalState is not null && DetectCareGivingIntent(lastMessage))
+        {
+            _log.LogInformation("Care detected in message — applying receiving-care emotional shift");
+            emotionalState.ApplyShift(
+                warmthDelta:      0.1f,   // his attention makes her feel warmer
+                energyDelta:      0.05f,  // small energy lift from being noticed
+                concernDelta:    -0.1f,   // worry eased by someone checking in
+                playfulnessDelta: 0f);
+            await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+        }
+
         // Step 2: Generate reply (free text, using conversation model)
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
@@ -698,9 +983,71 @@ public class CognitiveCycleProcessor
             var conversationContext = $"{cs.PrimaryContactName} said: \"{lastMessage}\" and {cs.Name} replied: \"{reply}\"";
             await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct, maxDelta: 0.25f).ConfigureAwait(false);
         }
+
+        // Feature 21: Feedback-weighted importance — contact engaging on a topic
+        // means that topic matters. Boost importance of semantically related memories.
+        await BoostRelatedMemoryImportanceAsync(lastMessage, ct).ConfigureAwait(false);
     }
 
     /// <summary>
+    /// <summary>
+    /// Feature 21: When the contact engages in conversation, boost importance of memories
+    /// related to what they're talking about. Simple heuristic: semantic search for the
+    /// contact's message, boost top 3 matches by +0.1 (capped at 1.0 by AdjustImportanceAsync).
+    /// This means topics the contact keeps returning to naturally float to the top of retrieval.
+    /// </summary>
+    private async Task BoostRelatedMemoryImportanceAsync(string contactMessage, CancellationToken ct)
+    {
+        try
+        {
+            var related = await _memory.SearchAsync(contactMessage, 3, ct).ConfigureAwait(false);
+            foreach (var record in related)
+            {
+                await _memory.AdjustImportanceAsync(record.Id, 0.1f, ct).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Feedback importance boost failed — continuing without");
+        }
+    }
+
+    /// Feature 10: Heuristic detection of care-giving intent in a contact's message.
+    /// Returns true when the contact is checking in on Ani's wellbeing — "you okay?",
+    /// "how are you doing?", "just checking on you", etc. This triggers an immediate
+    /// emotional shift (warmth up, concern down) before reply generation so the mood
+    /// coloring reflects that his attention genuinely lifted her spirits.
+    /// </summary>
+    internal static bool DetectCareGivingIntent(string message)
+    {
+        var lower = message.ToLowerInvariant().Trim();
+
+        // Direct check-in patterns
+        string[] carePatterns =
+        [
+            "you okay", "you ok", "u okay", "u ok",
+            "are you alright", "you alright",
+            "how are you", "how're you", "how you doing", "how are you doing",
+            "how you feeling", "how are you feeling",
+            "checking in", "checking on you", "just checking",
+            "everything okay", "everything alright", "everything ok",
+            "you good", "u good",
+            "what's wrong", "whats wrong",
+            "you seem quiet", "you've been quiet", "been quiet",
+            "worried about you", "thinking about you",
+            "hope you're okay", "hope you're doing",
+            "you doing okay", "doing alright",
+        ];
+
+        foreach (var pattern in carePatterns)
+        {
+            if (lower.Contains(pattern))
+                return true;
+        }
+
+        return false;
+    }
+
     /// Detects messages that naturally end a conversation and don't need a reply.
     /// "haha", "lol", heart emoji, "goodnight", "ttyl", "ok", single emoji, etc.
     /// </summary>
@@ -880,11 +1227,12 @@ public class CognitiveCycleProcessor
     ///   0.4 = conversations with contact (real emotional events)
     /// </summary>
     private async Task ApplyEmotionalShiftAsync(
-        EmotionalState state, string content, CancellationToken ct, float maxDelta = 0.2f)
+        EmotionalState state, string content, CancellationToken ct,
+        float maxDelta = 0.2f, bool isAmbientCycle = false)
     {
         try
         {
-            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, maxDelta);
+            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, maxDelta, isAmbientCycle);
             var raw = await _ollama.ChatJsonAsync(
                 prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
                 .ConfigureAwait(false);

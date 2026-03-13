@@ -236,6 +236,114 @@ public class SqliteMemoryServiceTests : AniTestBase
         loaded.Warmth.Should().BeApproximately(0.9f, 0.001f);
     }
 
+    // ── Semantic Deduplication (BUG-011) ──────────────────────────────────────
+
+    [Fact]
+    public async Task SaveAsync_SkipsDuplicateInnerThoughts_WhenEmbeddingsMatch()
+    {
+        // Two "thoughts" with identical embeddings should dedup — only the first is stored
+        var embedding = new float[] { 0.9f, 0.1f, 0.0f };
+
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type      = MemoryType.InnerThought,
+            Content   = "the shape of silence in small rooms",
+            Embedding = embedding,
+        });
+
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type      = MemoryType.InnerThought,
+            Content   = "the weight of quiet in small spaces",
+            Embedding = embedding, // identical embedding = cosine 1.0 > 0.85 threshold
+        });
+
+        var results = await _svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10);
+        results.Should().HaveCount(1, "semantically duplicate thoughts should be deduped");
+    }
+
+    [Fact]
+    public async Task SaveAsync_AllowsDifferentInnerThoughts_WhenEmbeddingsDiffer()
+    {
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type      = MemoryType.InnerThought,
+            Content   = "old paper and worn leather",
+            Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+        });
+
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type      = MemoryType.InnerThought,
+            Content   = "Mark probably just got home from work",
+            Embedding = new float[] { 0.0f, 1.0f, 0.0f }, // orthogonal = cosine 0.0
+        });
+
+        var results = await _svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10);
+        results.Should().HaveCount(2, "semantically different thoughts should both be stored");
+    }
+
+    [Fact]
+    public async Task SaveAsync_NeverDedupesEpisodicMemories()
+    {
+        // Episodic records are distinct events even if content is similar
+        var embedding = new float[] { 0.8f, 0.2f, 0.0f };
+
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type      = MemoryType.Episodic,
+            Content   = "Ani reached out: hey babe",
+            Embedding = embedding,
+        });
+
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type      = MemoryType.Episodic,
+            Content   = "Ani reached out: hey babe again",
+            Embedding = embedding,
+        });
+
+        var results = await _svc.GetByTypeAsync(MemoryType.Episodic, limit: 10);
+        results.Should().HaveCount(2, "episodic memories should never be deduped");
+    }
+
+    // ── Emotional State History ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveEmotionalStateAsync_AppendsToHistoryTable()
+    {
+        var state1 = new EmotionalState { Warmth = 0.7f, Energy = 0.4f, Concern = 0.3f, Playfulness = 0.6f };
+        var state2 = new EmotionalState { Warmth = 0.5f, Energy = 0.8f, Concern = 0.1f, Playfulness = 0.9f };
+
+        await _svc.SaveEmotionalStateAsync(state1);
+        await _svc.SaveEmotionalStateAsync(state2);
+
+        // The current state should be the last write
+        var current = await _svc.GetEmotionalStateAsync();
+        current.Warmth.Should().BeApproximately(0.5f, 0.001f);
+
+        // History should have both entries — verify via raw SQL
+        var historyCount = await GetEmotionalHistoryCountAsync();
+        historyCount.Should().Be(2, "each save should append to the history table");
+    }
+
+    private async Task<int> GetEmotionalHistoryCountAsync()
+    {
+        // Access the underlying database to verify the history table
+        var dbName = _svc.GetType()
+            .GetField("_connectionString", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
+            .GetValue(_svc) as string;
+
+        if (dbName is null) return -1;
+
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(dbName);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM emotional_state_history";
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
     // ── Backstory seeding (SourceName filter) ────────────────────────────────
 
     [Fact]

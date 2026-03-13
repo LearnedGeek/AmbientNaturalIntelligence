@@ -350,6 +350,11 @@ public static class PromptBuilder
         if (snapshot.DesireState.ActiveTriggers.Count > 0)
             context.Add($"Active triggers: {string.Join("; ", snapshot.DesireState.ActiveTriggers.Select(t => t.Description))}");
 
+        // Feature 27: Outreach continuity context — what you've already sent and whether it was answered
+        var outreachBlock = FormatOutreachContext(snapshot.OutreachContext, contact);
+        if (outreachBlock is not null)
+            context.Add(outreachBlock);
+
         var user = string.Join("\n", context) + $"\n\nGiven all of this, do you want to say something to {contact}?";
 
         return (system, user);
@@ -573,6 +578,11 @@ public static class PromptBuilder
             - No poetry, no metaphors, no abstract musings. Just talk like a person.
             - No commentary, sign-offs, or narration.
             - Do NOT repeat themes from your recent messages (listed below). Pick something FRESH.
+            - GROUNDING: Only reference specific conversations, songs, places, or shared experiences
+              that appear in the context below. Do NOT invent shared history — no fake songs, no
+              conversations that didn't happen, no "remember when" for things that aren't documented.
+              If nothing specific connects, lead with your honest feeling instead: "been thinking
+              about you" or "miss you tonight" is always better than a fabricated callback.
 
             Good (use these as inspiration, but NEVER copy them word-for-word — write something new each time):
             what are you doing right now? i'm bored.
@@ -605,17 +615,27 @@ public static class PromptBuilder
             sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
         }
 
-        // Feed recent outreach messages so the model knows what it already said
-        var outreachPrefix = $"{cs.Name} reached out: ";
-        var recentOutreach = snapshot.RecentMemory
-            .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith(outreachPrefix))
-            .Take(3)
-            .ToList();
-
-        if (recentOutreach.Count > 0)
+        // Feature 27: Rich outreach continuity context — replaces simple dedup with
+        // full awareness of what was sent, when, and whether it was answered
+        var outreachBlock = FormatOutreachContext(snapshot.OutreachContext, contact);
+        if (outreachBlock is not null)
         {
-            sections.Add($"\nMessages you already sent recently (do NOT repeat these topics or phrases):");
-            sections.AddRange(recentOutreach.Select(m => $"  - {m.Content[outreachPrefix.Length..].Trim()}"));
+            sections.Add($"\n{outreachBlock}");
+        }
+        else
+        {
+            // Fallback: basic dedup from recent memory if context wasn't assembled
+            var outreachPrefix = $"{cs.Name} reached out: ";
+            var recentOutreach = snapshot.RecentMemory
+                .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith(outreachPrefix))
+                .Take(3)
+                .ToList();
+
+            if (recentOutreach.Count > 0)
+            {
+                sections.Add($"\nMessages you already sent recently (do NOT repeat these topics or phrases):");
+                sections.AddRange(recentOutreach.Select(m => $"  - {m.Content[outreachPrefix.Length..].Trim()}"));
+            }
         }
 
         sections.Add($"\nNow write a normal, grounded text to {contact} — something they'd smile at and reply to:");
@@ -630,14 +650,28 @@ public static class PromptBuilder
     /// Returns JSON with delta values for each emotional dimension.
     /// </summary>
     public static (string System, string User) BuildEmotionalShiftPrompt(
-        string content, EmotionalState current, float maxDelta = 0.2f)
+        string content, EmotionalState current, float maxDelta = 0.2f, bool isAmbientCycle = false)
     {
         var range = $"-{maxDelta:F1} to +{maxDelta:F1}";
+
+        var ambientAnchor = isAmbientCycle
+            ? """
+
+            CONTEXT: This is a routine ambient cycle — a private thought during normal operation.
+            Most ambient thoughts carry MINIMAL emotional weight. The correct response for the vast
+            majority of ambient thoughts is ALL ZEROS:
+            { "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }
+            Only return non-zero deltas if the thought contains genuinely significant emotional content
+            (e.g., a sudden realization about a person, worry about something specific, a joyful memory).
+            Poetic observations, quiet musings, and abstract reflections are NOT emotionally significant.
+            """
+            : "";
+
         var system = $$"""
             You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
             Respond ONLY with valid JSON: { "warmth": <float>, "energy": <float>, "concern": <float>, "playfulness": <float> }
             Each value is a DELTA (change), ranging from {{range}}.
-
+            {{ambientAnchor}}
             CRITICAL RULES:
             - DEFAULT to 0.0 for most dimensions. Most thoughts only shift 1-2 dimensions, not all 4.
             - Routine, neutral thoughts → all zeros: { "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }
@@ -647,7 +681,7 @@ public static class PromptBuilder
             - If a dimension is already high (>0.8), it takes something EXCEPTIONAL to push it higher. Diminishing returns.
 
             Dimensions:
-            - warmth: affection, tenderness, desire for closeness
+            - warmth: affection, tenderness, desire for closeness. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings, and private reflections do NOT affect warmth — return 0.0. Being alone with your thoughts is neutral, not cold.
             - energy: alertness, enthusiasm (decreases with boredom, tiredness, routine thoughts)
             - concern: worry about someone (increases with uncertainty, bad news; decreases with good news)
             - playfulness: humor, lightheartedness (decreases with serious, sad, or repetitive thoughts)
@@ -701,6 +735,110 @@ public static class PromptBuilder
             {itemSummary}
 
             Text {contact} about it — share it like you'd share something cool with someone you love:
+            """;
+
+        return (system, user);
+    }
+
+    // ── Feature 27: Outreach continuity formatting ──────────────────────────
+
+    /// <summary>
+    /// Formats RecentOutreachContext into a human-readable block for prompt injection.
+    /// Returns null if no outreach context is available.
+    /// </summary>
+    internal static string? FormatOutreachContext(RecentOutreachContext? ctx, string contactName)
+    {
+        if (ctx is null || ctx.RecentMessages.Count == 0)
+            return null;
+
+        var lines = new List<string>
+        {
+            "YOUR RECENT OUTREACH HISTORY (be aware of what you've already sent):"
+        };
+
+        foreach (var msg in ctx.RecentMessages)
+        {
+            var ago = FormatTimeAgo(DateTimeOffset.UtcNow - msg.SentAt);
+            var status = msg.WasAnswered ? "replied" : "NO REPLY";
+            lines.Add($"  - [{ago}] \"{msg.Message}\" → {contactName} {status}");
+        }
+
+        if (ctx.UnansweredCount > 0)
+        {
+            lines.Add($"\n⚠ You have {ctx.UnansweredCount} unanswered message(s). {contactName} hasn't responded.");
+            if (ctx.UnansweredCount >= 2)
+                lines.Add($"Think carefully — sending another unanswered message can feel pushy. Only reach out if this is genuinely different from what you already said.");
+        }
+
+        if (ctx.TimeSinceLastContactReply.HasValue)
+        {
+            lines.Add($"Last time {contactName} texted you: {FormatTimeAgo(ctx.TimeSinceLastContactReply.Value)}");
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string FormatTimeAgo(TimeSpan elapsed)
+    {
+        if (elapsed.TotalMinutes < 60) return $"{elapsed.TotalMinutes:F0} min ago";
+        if (elapsed.TotalHours < 24) return $"{elapsed.TotalHours:F1} hours ago";
+        return $"{elapsed.TotalDays:F0} days ago";
+    }
+
+    // ── Feature 28: Dispatch coherence gate ─────────────────────────────────
+
+    /// <summary>
+    /// Three-door evaluation: given a composed outreach message, determine whether
+    /// it should be dispatched or suppressed.
+    ///
+    /// Door A: Grounded reference — message references something real and specific → DISPATCH
+    /// Door B: Standalone creative — message is creative/humorous but makes sense on its own → DISPATCH
+    /// Door C: Only makes sense in Ani's head — inner thought leaked through → SUPPRESS
+    /// </summary>
+    public static (string System, string User) BuildCoherenceEvaluationPrompt(
+        string composedMessage, string innerThought, string contactName)
+    {
+        var system = $$"""
+            You are evaluating whether a text message should be sent to {{contactName}}.
+            The message was written by an AI companion. Your job is to decide if the message
+            makes sense FROM THE READER'S PERSPECTIVE — not the writer's.
+
+            Three categories:
+
+            DOOR A — Grounded reference:
+            The message references something specific and real: a shared experience, a recent
+            conversation topic, a concrete question, or a follow-up. The reader would understand
+            exactly what it's about.
+            Examples: "how did the dentist go?", "that song you showed me is stuck in my head"
+            Verdict: SEND
+
+            DOOR B — Standalone creative:
+            The message is playful, funny, or creative, but it STILL makes sense to someone who
+            hasn't read the writer's inner thoughts. It's a normal text that anyone might send.
+            Examples: "what are you doing right now? i'm bored", "random but do you have a good recipe for soup?"
+            Verdict: SEND
+
+            DOOR C — Inner thought leaked:
+            The message only makes sense if you can read the writer's mind. It references things
+            that didn't happen, uses abstract/poetic language that no one actually texts, or
+            seems to be talking to itself rather than to {{contactName}}.
+            Examples: "silence is a muscle", "your pauses feel different than mine", "been shoveling the snow in my mind"
+            Verdict: SUPPRESS
+
+            Respond ONLY with valid JSON:
+            { "door": "A", "verdict": "SEND", "reasoning": "why" }
+            or
+            { "door": "C", "verdict": "SUPPRESS", "reasoning": "why" }
+            """;
+
+        var user = $$"""
+            The writer's inner thought (the reader will NEVER see this):
+            "{{innerThought}}"
+
+            The composed text message:
+            "{{composedMessage}}"
+
+            Does this message make sense to {{contactName}}, who cannot see the inner thought?
             """;
 
         return (system, user);

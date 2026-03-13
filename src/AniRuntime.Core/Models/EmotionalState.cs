@@ -99,21 +99,34 @@ public class EmotionalState
 
     /// <summary>
     /// Attenuate deltas that push away from baseline using diminishing returns.
-    /// At baseline: full delta. At the limit (0 or 1): zero delta.
-    /// Linear interpolation between. Corrective deltas are unaffected.
+    /// Far from baseline: near-zero delta. At baseline: resting pull (0.5x).
+    /// Corrective deltas (toward baseline) are unaffected.
+    ///
+    /// The resting pull ensures that even the first push away from baseline is
+    /// dampened — preventing the oscillation pattern where max LLM deltas crater
+    /// emotions every cycle before drift can recover them.
     /// </summary>
     private static float AttenuateDelta(float current, float baseline, float delta)
     {
-        var distanceFromBaseline = current - baseline;
-        var pushingAway = (distanceFromBaseline > 0 && delta > 0) ||
-                          (distanceFromBaseline < 0 && delta < 0);
+        if (delta == 0f) return 0f;
 
-        if (!pushingAway) return delta;
+        var distanceFromBaseline = current - baseline;
+
+        // Corrective deltas (moving toward baseline) always apply at full strength
+        var corrective = (distanceFromBaseline > 0 && delta < 0) ||
+                         (distanceFromBaseline < 0 && delta > 0);
+        if (corrective) return delta;
 
         // Total range from baseline to the limit in this direction
         float range = delta > 0 ? (1f - baseline) : baseline;
         float used = Math.Abs(distanceFromBaseline);
         float scale = range > 0 ? Math.Max(0f, 1f - (used / range)) : 0f;
+
+        // Resting pull: even at baseline (scale=1.0), cap at 0.5x to dampen
+        // the first push. This prevents max-delta LLM outputs from immediately
+        // cratering emotions when starting near baseline.
+        const float restingPull = 0.5f;
+        scale = Math.Min(scale, restingPull + (1f - restingPull) * (1f - scale));
 
         return delta * scale;
     }

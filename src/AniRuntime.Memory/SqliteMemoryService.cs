@@ -26,6 +26,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 {
     private readonly string                          _connectionString;
     private readonly IOllamaClient?                  _ollama;
+    private readonly AniOptions                      _options;
     private readonly ILogger<SqliteMemoryService>    _log;
     // Keeps in-memory databases alive for the lifetime of this service instance.
     // For file-based databases this is unused but harmless.
@@ -36,9 +37,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         ILogger<SqliteMemoryService> log,
         IOllamaClient? ollama = null)
     {
-        _log    = log;
-        _ollama = ollama;
-        var dbPath = options.Value.MemoryDbPath;
+        _log     = log;
+        _ollama  = ollama;
+        _options = options.Value;
+        var dbPath = _options.MemoryDbPath;
 
         if (dbPath.Equals(":memory:", StringComparison.OrdinalIgnoreCase)
             || !dbPath.Contains(Path.DirectorySeparatorChar)
@@ -70,6 +72,19 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     // ── Public API ────────────────────────────────────────────────────────────
 
+    // Semantic deduplication threshold — records with cosine similarity above this
+    // within the dedup window are considered duplicates and skipped (BUG-011).
+    private const float SemanticDedupThreshold = 0.85f;
+    private static readonly TimeSpan SemanticDedupWindow = TimeSpan.FromHours(4);
+
+    // Memory types that should be deduped. Episodic events (conversations, outreach)
+    // should never be deduped — each one is a distinct event even if content is similar.
+    private static readonly HashSet<MemoryType> DedupableTypes = new()
+    {
+        MemoryType.InnerThought,
+        MemoryType.Perception,
+    };
+
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
     {
         // Auto-embed content if no embedding provided and Ollama is available
@@ -82,6 +97,19 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "Failed to generate embedding for {Type} record — saving without", record.Type);
+            }
+        }
+
+        // BUG-011: Semantic deduplication — if a semantically near-identical record of the
+        // same type was saved recently, skip this insert. Prevents thought loops from
+        // polluting memory with dozens of variations on "the shape of silence."
+        if (record.Embedding is not null && DedupableTypes.Contains(record.Type))
+        {
+            if (await IsSemanticallyDuplicateAsync(record, ct).ConfigureAwait(false))
+            {
+                _log.LogDebug("Semantic dedup: skipping {Type} — too similar to recent memory: {Content}",
+                    record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
+                return;
             }
         }
 
@@ -157,7 +185,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         if (queryEmbedding.Length == 0)
             return await FallbackRecentAsync(topK, ct).ConfigureAwait(false);
 
-        // Fetch all records with embeddings and rank by cosine similarity in C#.
+        // Fetch all records with embeddings and rank by three-way score (Feature 20).
+        // Park et al. (2023): score = α×cosine + β×importance + γ×recency_decay
         // Brute-force is correct at our expected data volume (thousands of records).
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
@@ -168,13 +197,20 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var ranked = candidates
             .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
-            .Select(r => (record: r, similarity: CosineSimilarity(queryEmbedding, r.Embedding!)))
-            .OrderByDescending(x => x.similarity)
+            .Select(r => (record: r, score: ComputeRetrievalScore(queryEmbedding, r)))
+            .OrderByDescending(x => x.score)
             .Take(topK)
             .ToList();
 
-        _log.LogDebug("Semantic search: {Candidates} candidates, top score={TopScore:F3}",
-            candidates.Count, ranked.Count > 0 ? ranked[0].similarity : 0f);
+        if (ranked.Count > 0)
+        {
+            var top = ranked[0];
+            var cosine = CosineSimilarity(queryEmbedding, top.record.Embedding!);
+            _log.LogDebug(
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}): {Content}",
+                candidates.Count, top.score, cosine, top.record.Importance, top.record.Type,
+                top.record.Content.Length > 80 ? top.record.Content[..80] + "..." : top.record.Content);
+        }
 
         return ranked.Select(x => x.record);
     }
@@ -209,13 +245,13 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var ranked = candidates
             .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
-            .Select(r => (record: r, similarity: CosineSimilarity(queryEmbedding, r.Embedding!)))
-            .OrderByDescending(x => x.similarity)
+            .Select(r => (record: r, score: ComputeRetrievalScore(queryEmbedding, r)))
+            .OrderByDescending(x => x.score)
             .Take(topK)
             .ToList();
 
         _log.LogDebug("Semantic search (type={Type}): {Candidates} candidates, top score={TopScore:F3}",
-            type, candidates.Count, ranked.Count > 0 ? ranked[0].similarity : 0f);
+            type, candidates.Count, ranked.Count > 0 ? ranked[0].score : 0f);
 
         return ranked.Select(x => x.record);
     }
@@ -248,6 +284,95 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var denom = MathF.Sqrt(normA) * MathF.Sqrt(normB);
         return denom == 0 ? 0f : dot / denom;
+    }
+
+    /// <summary>
+    /// Feature 20 + Feature 24: Park et al. three-way retrieval scoring with type-aware decay.
+    /// score = α×cosine + β×importance + γ×recency_decay
+    ///
+    /// Recency decay: e^(-t/λ') where t = hours since creation, λ' = base λ × type multiplier.
+    /// Feature 24: Episodic/Semantic memories decay slower (2× base λ), Perceptions decay faster (0.5×).
+    /// This means a personally relevant episodic memory stays retrievable ~2 weeks while
+    /// a routine RSS perception fades after ~3.5 days.
+    /// </summary>
+    private float ComputeRetrievalScore(float[] queryEmbedding, MemoryRecord record)
+    {
+        var cosine = CosineSimilarity(queryEmbedding, record.Embedding!);
+        var importance = record.Importance;  // already 0.0–1.0
+
+        var hoursSinceCreation = (DateTimeOffset.UtcNow - record.OccurredAt).TotalHours;
+        var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(record);
+        var recency = (float)Math.Exp(-hoursSinceCreation / lambda);
+
+        var score = (float)(
+            _options.RetrievalWeightCosine     * cosine +
+            _options.RetrievalWeightImportance * importance +
+            _options.RetrievalWeightRecency    * recency);
+
+        return score;
+    }
+
+    /// <summary>
+    /// Feature 24: Type-aware decay multiplier. High-significance memory types persist longer
+    /// in retrieval while routine observations fade faster.
+    /// </summary>
+    private static float GetDecayMultiplier(MemoryRecord record) => record.Type switch
+    {
+        MemoryType.Episodic     => 2.0f,   // conversations, outreach — persist ~2 weeks
+        MemoryType.Semantic     => 2.0f,   // facts, character knowledge — persist ~2 weeks
+        MemoryType.Commitment   => 2.0f,   // promises — persist ~2 weeks
+        MemoryType.OpenLoop     => 1.5f,   // unresolved threads — persist ~10 days
+        MemoryType.InnerThought => 1.0f,   // base rate — persist ~1 week
+        MemoryType.Perception   => 0.5f,   // RSS, time, weather — fade in ~3.5 days
+        _                       => 1.0f,
+    };
+
+    /// <summary>
+    /// Checks whether a semantically near-identical record of the same type was saved
+    /// recently. Uses cosine similarity against records from the last N hours.
+    /// Only called for dedupable types (InnerThought, Perception).
+    /// </summary>
+    private async Task<bool> IsSemanticallyDuplicateAsync(MemoryRecord record, CancellationToken ct)
+    {
+        try
+        {
+            var cutoff = (record.OccurredAt - SemanticDedupWindow).ToString("O");
+
+            await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+            await using var cmd  = conn.CreateCommand();
+
+            cmd.CommandText = """
+                SELECT embedding FROM memories
+                WHERE type = $type
+                  AND embedding IS NOT NULL
+                  AND occurred_at > $cutoff
+                ORDER BY occurred_at DESC
+                LIMIT 20
+                """;
+            cmd.Parameters.AddWithValue("$type", (int)record.Type);
+            cmd.Parameters.AddWithValue("$cutoff", cutoff);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                if (reader.IsDBNull(0)) continue;
+
+                var existingEmbedding = DeserialisedEmbedding((byte[])reader[0]);
+                if (existingEmbedding is null || existingEmbedding.Length != record.Embedding!.Length)
+                    continue;
+
+                var similarity = CosineSimilarity(record.Embedding!, existingEmbedding);
+                if (similarity >= SemanticDedupThreshold)
+                    return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Semantic dedup check failed — saving record to be safe");
+            return false;
+        }
     }
 
     public async Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default)
@@ -294,6 +419,29 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         _log.LogDebug("Resolved open loop {Id}", id);
+    }
+
+    /// <summary>
+    /// Feature 21: Adjusts a memory's importance by a delta, clamped to [0.0, 1.0].
+    /// Positive delta = contact engaged on this topic (boost). Negative = correction (demote).
+    /// </summary>
+    public async Task AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            UPDATE memories
+            SET importance = MIN(1.0, MAX(0.0, importance + $delta))
+            WHERE id = $id
+            """;
+
+        cmd.Parameters.AddWithValue("$id",    id.ToString());
+        cmd.Parameters.AddWithValue("$delta", delta);
+
+        var rows = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        if (rows > 0)
+            _log.LogDebug("Adjusted importance on {Id} by {Delta:+0.0#}", id, delta);
     }
 
     // ── CharacterState ────────────────────────────────────────────────────────
@@ -374,11 +522,25 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         var json = JsonSerializer.Serialize(state);
 
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
-        await using var cmd  = conn.CreateCommand();
+
+        await using var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT OR REPLACE INTO emotional_state (id, json) VALUES (1, $json)";
         cmd.Parameters.AddWithValue("$json", json);
-
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Append to history table — ~3.5 KB/day at typical cycle frequency.
+        // Enables dashboard time-series, drift detection, and research data for the paper.
+        await using var historyCmd = conn.CreateCommand();
+        historyCmd.CommandText = """
+            INSERT INTO emotional_state_history (warmth, energy, concern, playfulness, recorded_at)
+            VALUES ($warmth, $energy, $concern, $playfulness, $recorded_at)
+            """;
+        historyCmd.Parameters.AddWithValue("$warmth", state.Warmth);
+        historyCmd.Parameters.AddWithValue("$energy", state.Energy);
+        historyCmd.Parameters.AddWithValue("$concern", state.Concern);
+        historyCmd.Parameters.AddWithValue("$playfulness", state.Playfulness);
+        historyCmd.Parameters.AddWithValue("$recorded_at", state.LastUpdated.ToString("O"));
+        await historyCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -434,8 +596,18 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 json TEXT    NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS emotional_state_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                warmth      REAL NOT NULL,
+                energy      REAL NOT NULL,
+                concern     REAL NOT NULL,
+                playfulness REAL NOT NULL,
+                recorded_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
             CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_emotional_history_time ON emotional_state_history (recorded_at DESC);
             """;
 
         cmd.ExecuteNonQuery();

@@ -186,4 +186,28 @@ public class CognitiveCycleProcessorTests : AniTestBase
         await processor.Invoking(p => p.RunAsync(CancellationToken.None))
                         .Should().ThrowAsync<HttpRequestException>();
     }
+
+    // ── Feature 10: Care detection ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData("you okay?", true)]
+    [InlineData("hey, how are you doing?", true)]
+    [InlineData("just checking in on you", true)]
+    [InlineData("everything okay?", true)]
+    [InlineData("you seem quiet today", true)]
+    [InlineData("u ok?", true)]
+    [InlineData("you good?", true)]
+    [InlineData("hope you're okay", true)]
+    [InlineData("what's wrong?", true)]
+    [InlineData("how are you feeling?", true)]
+    [InlineData("what are you doing?", false)]
+    [InlineData("haha nice", false)]
+    [InlineData("can you recommend a restaurant?", false)]
+    [InlineData("goodnight!", false)]
+    [InlineData("tell me about your day", false)]
+    [InlineData("that's hilarious", false)]
+    public void DetectCareGivingIntent_CorrectlyClassifiesMessages(string message, bool expected)
+    {
+        CognitiveCycleProcessor.DetectCareGivingIntent(message).Should().Be(expected);
+    }
 }

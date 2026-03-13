@@ -18,6 +18,10 @@ public class AniOptions
     public double MinOutreachGapMinutes  { get; set; } = 60.0;
     public int    MaxOutreachPerDay      { get; set; } = 4;
 
+    // Outreach continuity — Feature 27: prevents outreach blindness
+    public int    MaxUnansweredBeforeSilence { get; set; } = 3;    // 3+ unanswered = hard silence
+    public double MinSendGapMinutes         { get; set; } = 45.0;  // hard floor between any two sends
+
     // Night mode — reduced activity and outreach during sleep hours
     public int    NightStartHour         { get; set; } = 23;   // 11 PM local
     public int    NightEndHour           { get; set; } = 6;    // 6 AM local
@@ -27,6 +31,9 @@ public class AniOptions
     public double OutreachThresholdFloor { get; set; } = 0.55;
     public double OutreachThresholdRange { get; set; } = 0.30;
 
+    // Outreach confidence — Feature 12: model's own uncertainty as a gate
+    public double OutreachConfidenceFloor { get; set; } = 0.3; // below this = soft NO, short cooldown
+
     // Desire drift — per-cycle accumulation rate and cap
     public double DriftPerHour           { get; set; } = 0.08;
     public double DriftCapPerCycle       { get; set; } = 0.4;
@@ -34,8 +41,20 @@ public class AniOptions
     // Trigger weight multiplier — how much a trigger raises desire
     public double TriggerDesireMultiplier { get; set; } = 0.15;
 
+    // Satisfaction dampening — composite metric that provides downward pressure on desire
+    // Without this, desire only ever increases (monotonic drift upward until outreach or reset)
+    public double SatisfactionDampeningFactor { get; set; } = 0.6;  // max dampening at full satisfaction
+    public double SatisfactionRecencyHalfLifeHours { get; set; } = 4.0; // conversation recency decay
+
     // Valence threshold — thoughts above this add a spontaneous trigger
     public double ValenceTriggerThreshold { get; set; } = 0.75;
+
+    // Memory retrieval — Feature 20: Park et al. three-way scoring
+    // score = α×cosine + β×importance + γ×recency_decay
+    public double RetrievalWeightCosine     { get; set; } = 0.5;
+    public double RetrievalWeightImportance { get; set; } = 0.3;
+    public double RetrievalWeightRecency    { get; set; } = 0.2;
+    public double RetrievalRecencyDecayHours { get; set; } = 168.0; // λ for e^(-t/λ), ~7 day half-life
 
     // Conversation mode — active back-and-forth with Mark
     public double ConversationHeartbeatSeconds  { get; set; } = 45.0;

@@ -16,6 +16,13 @@ public abstract class AniTestBase
     protected readonly Mock<IOllamaClient>   MockOllama  = new();
     protected readonly Mock<IAniAction>      MockAction  = new();
 
+    protected AniTestBase()
+    {
+        // Default emotional state mock — many tests need this since DesireEngine reads it
+        MockMemory.Setup(m => m.GetEmotionalStateAsync(It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new EmotionalState());
+    }
+
     protected IOptions<AniOptions> DefaultOptions => Options.Create(new AniOptions
     {
         DesireLambdaMinutes    = 8.0,
