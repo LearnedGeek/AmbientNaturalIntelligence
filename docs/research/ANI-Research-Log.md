@@ -57,6 +57,28 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 13, 2026 — Feature 20: Voice Channel Scaffold (ElevenLabs + Whisper + Twilio Voice)
+**Model version:** v4
+**Type:** System (new modality scaffold)
+**Source:** Phase 4 design doc, implementation session
+
+**What happened:**
+
+Voice channel scaffolded as a new `AniRuntime.Voice` project. Two abstraction interfaces added to Core: `ISpeechToTextService` (Whisper) and `ITextToSpeechService` (ElevenLabs). Three implementations: `ElevenLabsTextToSpeechService` with emotional state → voice parameter mapping (warmth → stability, playfulness → expressiveness, emotional intensity → style exaggeration), `WhisperSpeechToTextService` for OpenAI Whisper API transcription, and `TwilioVoiceHandler` orchestrating inbound transcription and outbound synthesis with automatic SMS fallback on failure.
+
+DI registration is conditional on `Voice:Enabled` config flag. Inbound voice webhook at `/voice/inbound` follows the same Twilio signature validation pattern as SMS. Inbound flow: Twilio records caller → webhook receives recording URL → Whisper transcribes → text enqueued into existing conversation pipeline (same `TwilioInboundPerceptionSource` queue as SMS). Outbound synthesis ready but not yet wired into the outreach dispatch pipeline.
+
+Configuration split: sensitive keys (ElevenLabs API key, Whisper API key) in gitignored `appsettings.Development.json`, non-sensitive defaults (model IDs, feature flags) in committed `appsettings.json`. Applied this pattern retroactively to Twilio credentials as well.
+
+**Why it matters:**
+- Voice is the highest-impact remaining Phase 4a feature — transforms the companion from text-only to multimodal.
+- The interface abstraction (`ISpeechToTextService`/`ITextToSpeechService`) maintains model-agnosticism: ElevenLabs and Whisper are interim providers, swappable without touching the conversation pipeline.
+- Emotional state → voice parameter mapping is a novel architectural element: Ani's mood affects not just *what* she says but *how she sounds*. This is a research-relevant design decision — voice prosody as an architectural output of the emotional state system.
+- The fallback-to-SMS design ensures voice is purely additive. No existing functionality is affected by enabling or disabling voice.
+- Phase 4a is now 8/8 features addressed (7 deployed, 1 scaffolded awaiting activation and voice quality validation).
+
+---
+
 ### March 13, 2026 — Phase 4a Inner Life Depth: Self-Awareness, Open Loops, Silence, Pronoun Audit (Features 1, 2, 3, 6)
 **Model version:** v4
 **Type:** System (four features deployed in parallel)

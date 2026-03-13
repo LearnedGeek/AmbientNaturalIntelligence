@@ -14,6 +14,10 @@ ollama-data/
 # Large model files — not tracked in git
 *.gguf
 
+# Environment-specific appsettings — secrets live here, not in source control
+**/appsettings.Development.json
+**/appsettings.Production.json
+
 # User-specific files
 *.rsuser
 *.suo

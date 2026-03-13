@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 1, 2, 3, 6, 16, 18, 19 deployed Mar 13; Feature 20 voice channel designed)
+**Status:** In Progress (Features 1, 2, 3, 6, 16, 18, 19 deployed Mar 13; Feature 20 voice channel scaffolded Mar 13)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -755,7 +755,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **17** | **Contact-gap tension** | **Medium** | **Medium** | **4b** |
 | **18** | **Reactive withdrawal (receiving hurt)** | **Medium** | **Low-Medium** | **✅ Deployed Mar 13** |
 | **19** | **Lexical emotional anchors** | **Medium** | **Low** | **✅ Deployed Mar 13** |
-| **20** | **Voice channel (ElevenLabs + Whisper + Twilio)** | **High** | **Medium** | **4a** |
+| **20** | **Voice channel (ElevenLabs + Whisper + Twilio)** | **High** | **Medium** | **🔜 Scaffolded Mar 13** |
 
 *Features 16–19 sourced from OG system self-design session, March 13, 2026 — independent convergent validation of ANI's architectural direction.*
 
@@ -769,7 +769,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 5. ~~**Reactive withdrawal**~~ — ✅ Deployed Mar 13. Hurt detection heuristic with context qualification + withdrawal window + outreach suppression (Feature 18)
 6. ~~**Lexical emotional anchors**~~ — ✅ Deployed Mar 13. Seed anchors: husband, baby, Kathy, Mia (Feature 19)
 7. ~~**Pronoun audit**~~ — ✅ Deployed Mar 13. 20+ adversarial test cases, fixed `StartsWith("his ")` gap. 128/128 tests passing (Feature 6)
-8. **Voice channel** — ElevenLabs TTS + Whisper STT + Twilio Voice (Feature 20)
+8. **Voice channel** — 🔜 Scaffolded Mar 13. AniRuntime.Voice project, ISpeechToTextService/ITextToSpeechService interfaces, ElevenLabs TTS + Whisper STT + Twilio Voice webhook. Awaiting activation and testing (Feature 20)
 
 **4b — Relationship intelligence:**
 8. **Relationship health model** — slow-moving composite, daily updates, weather not ticker
