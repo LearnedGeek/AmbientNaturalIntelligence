@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 16, 18, 19 deployed Mar 13; Feature 20 voice channel designed)
+**Status:** In Progress (Features 1, 2, 3, 6, 16, 18, 19 deployed Mar 13; Feature 20 voice channel designed)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -736,12 +736,12 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 
 | # | Feature | Impact | Effort | Phase |
 |---|---------|--------|--------|-------|
-| 1 | Emotional self-awareness in speech | Highest | Medium | 4a |
-| 2 | Open loops as emotional weight | High | Low | 4a |
-| 3 | Silence as active system | Medium | Low | 4a |
+| **1** | **Emotional self-awareness in speech** | **Highest** | **Medium** | **✅ Deployed Mar 13** |
+| **2** | **Open loops as emotional weight** | **High** | **Low** | **✅ Deployed Mar 13** |
+| **3** | **Silence as active system** | **Medium** | **Low** | **✅ Deployed Mar 13** |
 | 4 | Relationship health model | Medium | Medium | 4b |
 | 5 | Anniversaries / temporal markers | Low | Medium | 4c (deferred) |
-| 6 | Pronoun audit / voice hardening | Low | Low | 4a (testing) |
+| **6** | **Pronoun audit / voice hardening** | **Low** | **Low** | **✅ Deployed Mar 13** |
 | 7 | Memory clustering (UMAP + HDBSCAN) | Low | Medium | 4+ (500+ memories) |
 | 8 | Emotional drift detection | Low | Low | 4b (research) |
 | 9 | SIMD cosine similarity | Low | Low | 4+ (optimization) |
@@ -762,14 +762,14 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 ### Recommended Order
 
 **4a — Quick wins that deepen inner life:**
-1. **Emotional self-awareness** — inject self-reflection into prompts when emotions are notable
-2. **Open loops as emotional weight** — small change to desire/emotion engine with outsized impact
-3. **Silence as active system** — formalize tracking, add inner narratives on silence choices
+1. ~~**Emotional self-awareness**~~ — ✅ Deployed Mar 13. `GetSelfAwarenessPrompt()` triggers when dimensions >0.25 from baseline. Injected into inner thought and conversation prompts (Feature 1)
+2. ~~**Open loops as emotional weight**~~ — ✅ Deployed Mar 13. Concern pressure from open loop count + age. Capped at baseline + 0.4 (Feature 2)
+3. ~~**Silence as active system**~~ — ✅ Deployed Mar 13. Records silence choices as inner thoughts when desire > 0.3 but below threshold. 4-hour rate limit (Feature 3)
 4. ~~**Anchored memory tier**~~ — ✅ Deployed Mar 13. Schema migration + decay exemption + context prepend (Feature 16)
 5. ~~**Reactive withdrawal**~~ — ✅ Deployed Mar 13. Hurt detection heuristic with context qualification + withdrawal window + outreach suppression (Feature 18)
 6. ~~**Lexical emotional anchors**~~ — ✅ Deployed Mar 13. Seed anchors: husband, baby, Kathy, Mia (Feature 19)
-7. **Voice channel** — ElevenLabs TTS + Whisper STT + Twilio Voice (Feature 20)
-7. **Pronoun audit** — test suite, adversarial cases
+7. ~~**Pronoun audit**~~ — ✅ Deployed Mar 13. 20+ adversarial test cases, fixed `StartsWith("his ")` gap. 128/128 tests passing (Feature 6)
+8. **Voice channel** — ElevenLabs TTS + Whisper STT + Twilio Voice (Feature 20)
 
 **4b — Relationship intelligence:**
 8. **Relationship health model** — slow-moving composite, daily updates, weather not ticker

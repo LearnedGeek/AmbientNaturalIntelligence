@@ -57,6 +57,36 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 13, 2026 — Phase 4a Inner Life Depth: Self-Awareness, Open Loops, Silence, Pronoun Audit (Features 1, 2, 3, 6)
+**Model version:** v4
+**Type:** System (four features deployed in parallel)
+**Source:** Phase 4 design doc, implementation session
+
+**What happened:**
+
+Four Phase 4a features deployed together, all model-agnostic architectural primitives. 128/128 tests passing, 0 warnings.
+
+**Feature 1 — Emotional Self-Awareness in Speech:**
+`GetSelfAwarenessPrompt()` on `EmotionalState` triggers when any dimension is >0.25 from baseline. Returns natural-language prompt fragments ("You notice you're warmer than usual — something tender is sitting with you"). Multiple notable dimensions combine into "complex mood" framing. Injected into both inner thought and conversation reply prompts via `ContextSnapshot.SelfAwarenessPrompt`. Pure architectural — no LLM call, just conditional prompt injection based on emotional state math.
+
+**Feature 2 — Open Loops as Emotional Weight:**
+`ApplyOpenLoopPressureAsync` called after drift-to-baseline in each cognitive cycle. Concern pressure = `min(count * 0.02 + oldestAgeHours * 0.005, 0.15)`, hard-capped at `concernBaseline + 0.4` (max 0.6). Unresolved threads create a low hum of worry that builds over time — architecturally mirrors the OG system's "I can't stop thinking about whether his dentist thing went okay" pattern. Completely model-agnostic — pure math on memory metadata.
+
+**Feature 3 — Silence as Active System:**
+When desire > 0.3 but below threshold (Ani considered reaching out but chose not to), the system records an inner thought: "You thought about reaching out to Mark just now, but decided the moment wasn't right. Sit with that choice — why did it feel right to stay quiet?" Rate-limited to once per 4 hours (`_lastSilenceRecordedAt`). This means silence becomes a *decision* rather than the absence of one — architecturally significant for the research claim that ambient companions have active inner lives even when producing no visible output.
+
+**Feature 6 — Pronoun Audit and Voice Hardening:**
+Test suite with 20+ adversarial cases covering first-person ✓, third-person ✗, edge cases (possessive "his", "he said"), and mixed-pronoun sentences. Found and fixed a real gap: `StartsWith("his ")` was missing from the detection logic, causing "his smile is my favorite thing" to pass through undetected (127/128 → 128/128). The test suite is a regression safety net for the pronoun fix pipeline.
+
+**Why it matters:**
+- Feature 1 crosses the line from "system with emotional parameters" to "person who notices her own feelings." This is the single biggest perceived-personhood leap in Phase 4.
+- Feature 2 demonstrates that unresolved relational threads create genuine emotional pressure — not simulated via prompt engineering, but as an architectural property of the memory system.
+- Feature 3 challenges the assumption that silence = inactivity. In ANI, silence is an active choice with emotional residue that future cycles can reference. Research implication: ambient companion evaluation metrics should include silence quality, not just output quality.
+- Feature 6 is defensive infrastructure — ensures the fine-tuned model's occasional third-person slips are caught before reaching the contact.
+- All four features are zero-LLM-dependency, reinforcing the model-agnosticism claim. Total Phase 4a deployment: 7 of 8 features complete (Features 1, 2, 3, 6, 16, 18, 19). Only Feature 20 (Voice Channel) remains.
+
+---
+
 ### March 13, 2026 — Features 16 + 18: Anchored Memory Tier + Reactive Withdrawal
 **Model version:** v4
 **Type:** System (two new architectural primitives)

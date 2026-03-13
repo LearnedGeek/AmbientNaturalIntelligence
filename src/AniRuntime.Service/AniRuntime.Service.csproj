@@ -28,5 +28,6 @@
     <ProjectReference Include="..\AniRuntime.Perception\AniRuntime.Perception.csproj" />
     <ProjectReference Include="..\AniRuntime.Actions\AniRuntime.Actions.csproj" />
     <ProjectReference Include="..\AniRuntime.LLM\AniRuntime.LLM.csproj" />
+    <ProjectReference Include="..\AniRuntime.Voice\AniRuntime.Voice.csproj" />
   </ItemGroup>
 </Project>

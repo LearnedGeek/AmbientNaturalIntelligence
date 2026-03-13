@@ -7,6 +7,7 @@ using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
+using AniRuntime.Voice;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -49,6 +50,7 @@ try
     builder.Services.Configure<OllamaOptions>(config.GetSection("Ollama"));
     builder.Services.Configure<TwilioOptions>(config.GetSection("Twilio"));
     builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
+    builder.Services.Configure<VoiceOptions>(config.GetSection("Voice"));
 
     // ── Core services ─────────────────────────────────────────────────────────
     builder.Services.AddSingleton<IMemoryService, SqliteMemoryService>();
@@ -62,6 +64,15 @@ try
         client.BaseAddress = new Uri(opts.BaseUrl);
         client.Timeout     = TimeSpan.FromMinutes(2);
     });
+
+    // ── Voice (Feature 20) — conditional on Voice:Enabled ─────────────────────
+    var voiceEnabled = config.GetValue<bool>("Voice:Enabled");
+    if (voiceEnabled)
+    {
+        builder.Services.AddHttpClient<ITextToSpeechService, ElevenLabsTextToSpeechService>();
+        builder.Services.AddHttpClient<ISpeechToTextService, WhisperSpeechToTextService>();
+        builder.Services.AddSingleton<TwilioVoiceHandler>();
+    }
 
     // ── Actions ───────────────────────────────────────────────────────────────
     builder.Services.AddSingleton<AniActionDispatcher>();
@@ -138,6 +149,49 @@ try
         // Empty TwiML — no auto-reply, Ani will respond via the cognitive cycle
         return Results.Content("<Response></Response>", "application/xml");
     });
+
+    // ── Inbound Voice webhook (Feature 20) ─────────────────────────────────────
+    // Twilio POSTs here when a voice recording is ready. Transcribes via Whisper
+    // and enqueues the text into the same conversation pipeline as SMS.
+    if (voiceEnabled)
+    {
+        app.MapPost("/voice/inbound", async (HttpContext ctx, IOptions<TwilioOptions> twilioOpts) =>
+        {
+            var form = await ctx.Request.ReadFormAsync();
+
+            // Validate Twilio request signature
+            var authToken = twilioOpts.Value.AuthToken;
+            var signature = ctx.Request.Headers["X-Twilio-Signature"].FirstOrDefault() ?? "";
+            var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.Path}";
+            var parameters = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
+
+            var validator = new Twilio.Security.RequestValidator(authToken);
+            if (!string.IsNullOrWhiteSpace(authToken) && !validator.Validate(requestUrl, parameters, signature))
+            {
+                Log.Warning("Rejected inbound voice webhook — invalid Twilio signature");
+                return Results.StatusCode(403);
+            }
+
+            var recordingUrl = form["RecordingUrl"].ToString();
+            if (string.IsNullOrWhiteSpace(recordingUrl))
+            {
+                // Initial call — respond with TwiML to record
+                var twiml = "<Response><Say>Hey, leave me a message.</Say><Record maxLength=\"120\" action=\"/voice/inbound\" /></Response>";
+                return Results.Content(twiml, "application/xml");
+            }
+
+            // Recording ready — transcribe and enqueue
+            var voiceHandler = app.Services.GetRequiredService<TwilioVoiceHandler>();
+            var text = await voiceHandler.TranscribeInboundAsync(recordingUrl);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                twilioSource.EnqueueInbound($"voice-{Guid.NewGuid():N}", text, DateTimeOffset.UtcNow);
+                Log.Information("Voice webhook: transcribed and enqueued ({Chars} chars)", text.Length);
+            }
+
+            return Results.Content("<Response></Response>", "application/xml");
+        });
+    }
 
     // ── Seed character state on first run (idempotent) ────────────────────────
     await using (var scope = app.Services.CreateAsyncScope())
@@ -239,6 +293,7 @@ try
         Log.Information("║  Timing: {Min:F0}–{Max:F0} min (conversation: {Conv:F0}s)",
             aniOpts.MinWakeMinutes, aniOpts.MaxWakeMinutes, aniOpts.ConversationHeartbeatSeconds);
         Log.Information("║  Webhook: http://localhost:5100/sms/inbound");
+        Log.Information("║  Voice:   {Status}", voiceEnabled ? "enabled (http://localhost:5100/voice/inbound)" : "disabled");
         Log.Information("╚══════════════════════════════════════════╝");
     }
 

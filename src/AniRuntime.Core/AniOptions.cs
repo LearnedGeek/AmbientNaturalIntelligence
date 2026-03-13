@@ -108,3 +108,20 @@ public class RssFeed
     public string Name { get; set; } = string.Empty;
     public string Url  { get; set; } = string.Empty;
 }
+
+public class VoiceOptions
+{
+    public bool   Enabled              { get; set; } = false;
+
+    // ElevenLabs TTS
+    public string ElevenLabsApiKey     { get; set; } = string.Empty;
+    public string ElevenLabsVoiceId    { get; set; } = string.Empty;
+    public string ElevenLabsModelId    { get; set; } = "eleven_monolingual_v1";
+
+    // OpenAI Whisper STT
+    public string WhisperApiKey        { get; set; } = string.Empty;
+    public string WhisperModel         { get; set; } = "whisper-1";
+
+    // Twilio Voice
+    public bool   PreferVoiceOverSms   { get; set; } = false;  // future: voice-first mode
+}
