@@ -2,7 +2,7 @@
 
 **Date:** March 10, 2026
 **Status:** Design / Brainstorming
-**Authors:** Mark Carthey, Claude (pair design session)
+**Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
 ---
@@ -282,6 +282,131 @@ The risk of chatbot-feeling "happy anniversary!" behavior is high. The subtle ve
 
 ---
 
+## Feature 7: UMAP + HDBSCAN Memory Clustering
+
+**Priority:** Low (Phase 4+, useful at scale)
+**Effort:** Medium
+**Dependencies:** Memory system at 500+ records, emotional state history
+
+### Concept
+
+As memories grow, topic structure emerges that brute-force cosine search can't surface. Clustering memories by semantic similarity reveals topic groups, identifies thematic drift, and enables a memory viewer topic map on the dashboard.
+
+### Implementation
+
+- Background job: periodically run UMAP dimensionality reduction on memory embeddings, then HDBSCAN clustering
+- Output: topic labels per memory, cluster centroids, topic evolution over time
+- Dashboard: visual topic map showing memory clusters and how they shift
+- Ported from ChatLake's clustering approach (McArthey, 2025)
+- Not needed at current scale (~267 memories) — becomes valuable at 500+
+
+### Source: OC Handoff Change 10b / Memory Architecture Comparison Gap 3
+
+---
+
+## Feature 8: Cosine Drift Detection on Emotional State History
+
+**Priority:** Low (research/analytics)
+**Effort:** Low
+**Dependencies:** Emotional state history table (implemented Mar 12)
+
+### Concept
+
+Apply ChatLake's drift detection algorithm to the `emotional_state_history` table to identify slow-moving emotional trends — sustained warmth elevation, creeping concern, playfulness decline. These trends are invisible cycle-to-cycle but meaningful over days/weeks.
+
+### Implementation
+
+- Rolling window cosine similarity on emotional state vectors (W, E, C, P) across time
+- Detect significant drift: when the emotional "center of gravity" shifts beyond a threshold over 24-48 hours
+- Feed drift detection into relationship health model (Feature 3) as an input signal
+- Research value: validates whether the emotional architecture produces coherent long-term arcs or random walks
+
+### Source: OC Handoff Change 10c / Memory Architecture Comparison Gap 5
+
+---
+
+## Feature 9: SIMD-Accelerated Cosine Similarity
+
+**Priority:** Low (performance optimization, Phase 4+)
+**Effort:** Low
+**Dependencies:** None (drop-in replacement)
+
+### Concept
+
+Current cosine similarity is computed in plain C# loops. At scale (10K+ memory comparisons per retrieval), SIMD vectorization provides 4-8x speedup. ChatLake's `SimilarityService.cs` already has a tested SIMD implementation.
+
+### Implementation
+
+- Port ChatLake's SIMD cosine similarity using `System.Numerics.Vector<float>`
+- Drop-in replacement for current similarity computation in `SqliteMemoryService`
+- Benchmark before/after to quantify improvement
+- Not urgent at current memory volume — becomes important with semantic dedup (checking every save) and importance-weighted retrieval (scoring more candidates)
+
+### Source: OC Handoff Change 10a
+
+---
+
+## Feature 10: HNSW Approximate Nearest Neighbor Index
+
+**Priority:** Deferred (Phase 5, 10K+ memories)
+**Effort:** High
+**Dependencies:** Memory system at significant scale
+
+### Concept
+
+Brute-force cosine similarity is O(n) per query. At 10K+ memories, retrieval latency becomes noticeable in the cognitive cycle. HNSW (Hierarchical Navigable Small World) provides approximate nearest neighbor search at O(log n).
+
+### Implementation
+
+- Add HNSW index alongside SQLite embeddings (in-memory, rebuilt on startup)
+- Libraries: `Microsoft.ML` or `Annoy` .NET port
+- Index rebuilt periodically or on significant memory additions
+- Fallback to brute-force if index is stale or unavailable
+- The architecture decision to keep embeddings in SQLite (not a vector DB) is correct at current scale; HNSW is the scaling escape hatch
+
+### Source: Memory Architecture Comparison Gap 7
+
+---
+
+## Feature 11: Consolidated V5 Training Data Specification
+
+**Priority:** High (blocks model quality improvements)
+**Effort:** Medium (data curation, not code)
+**Dependencies:** Findings from BUG-008, BUG-009, BUG-011, overnight observations
+
+### Concept
+
+V5 training data requirements are scattered across bug reports, handoff docs, and research log entries. This feature consolidates them into a single actionable specification.
+
+### Required Training Data Categories
+
+| Category | Source | Examples Needed |
+|----------|--------|----------------|
+| Warmth variation | BUG-009 | 30-40 examples: warmth=0 for neutral thoughts, positive for connection thoughts |
+| Diverse inner monologue | BUG-011 | 30-40 examples: practical/mundane, seasonal, contact-specific, varied sensory anchors |
+| Sustained conversation coherence | BUG-008 | 8-12 turn conversation examples maintaining identity consistency |
+| Compliment reception | BUG-006 | 10-15 examples of gracefully receiving and responding to compliments |
+| Admitting uncertainty | BUG-008 | 10-15 examples: "I made that up", "I'm not sure", catching self-contradictions |
+| Emotional self-awareness | Feature 1 | Inner monologue noticing own mood, conversation referencing feelings naturally |
+| Open loop nagging | Feature 2 | Inner monologue where unresolved threads surface naturally |
+| Silence narratives | Feature 4 | Inner monologue about choosing not to speak |
+| Relationship awareness | Feature 3 | Inner monologue with relationship arc awareness |
+
+### Source: BUG-008, BUG-009, BUG-011, OC Handoff Changes 13-14, Phase 4 Features 1-4
+
+---
+
+## Deferred from Phase 3 (Mar 13, 2026)
+
+These features were originally planned for Phase 3 but deferred to early Phase 4 to close Phase 3 cleanly:
+
+| # | Feature | Original Phase 3 # | Reason Deferred |
+|---|---------|-------------------|-----------------|
+| 12 | Self-awareness feedback loop | Phase 3 Feature 13 | Dashboard-dependent |
+| 13 | Weather perception source | Phase 3 Feature 19 | Integration work, not core architecture |
+| 14 | Bidirectional confidence gate | Phase 3 Feature 22 | Outbound side covered by Feature 28; inbound needs schema migration |
+| 15 | Memory contradiction flagging | Phase 3 Feature 23 | More valuable at scale, dashboard-dependent for review UI |
+
 ## Implementation Priority
 
 | # | Feature | Impact | Effort | Phase |
@@ -292,6 +417,15 @@ The risk of chatbot-feeling "happy anniversary!" behavior is high. The subtle ve
 | 4 | Relationship health model | Medium | Medium | 4b |
 | 5 | Anniversaries / temporal markers | Low | Medium | 4c (deferred) |
 | 6 | Pronoun audit / voice hardening | Low | Low | 4a (testing) |
+| 7 | Memory clustering (UMAP + HDBSCAN) | Low | Medium | 4+ (500+ memories) |
+| 8 | Emotional drift detection | Low | Low | 4b (research) |
+| 9 | SIMD cosine similarity | Low | Low | 4+ (optimization) |
+| 10 | HNSW nearest neighbor index | Low | High | 5 (10K+ memories) |
+| 11 | V5 training data specification | High | Medium | 4a (data curation) |
+| 12 | Self-awareness feedback loop | Medium | Medium | 4a (from Phase 3) |
+| 13 | Weather perception source | Low | Low | 4b (from Phase 3) |
+| 14 | Bidirectional confidence gate | Medium | Medium | 4b (from Phase 3) |
+| 15 | Memory contradiction flagging | Medium | High | 4b (from Phase 3) |
 
 ### Recommended Order
 

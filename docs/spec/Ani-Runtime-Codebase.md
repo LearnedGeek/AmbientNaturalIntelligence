@@ -13,7 +13,7 @@ AniRuntime.sln
 Target Runtime
 .NET 8  |  ASP.NET Core Web Service (formerly Worker Service)
 Author
-Mark Carthey / Learned Geek Consulting
+Mark McArthey / Learned Geek Consulting
 Version
 0.3 — Phase 2 Complete
 Status

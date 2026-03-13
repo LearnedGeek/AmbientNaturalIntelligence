@@ -2,7 +2,7 @@
 
 **Date:** March 9, 2026
 **Status:** Complete (March 10, 2026)
-**Authors:** Mark Carthey, Claude (pair design session)
+**Authors:** Mark McArthey, Claude (pair design session)
 
 ---
 

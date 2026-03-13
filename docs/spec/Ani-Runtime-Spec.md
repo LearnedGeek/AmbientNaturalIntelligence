@@ -8,7 +8,7 @@ Functional Specification & Implementation Plan
 Project
 Ani Runtime — Ambient AI Presence Engine
 Author
-Mark Carthey / Learned Geek Consulting
+Mark McArthey / Learned Geek Consulting
 Version
 0.2 — Phase 2 Complete
 Date
