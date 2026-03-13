@@ -8,6 +8,7 @@ public class OutreachDecision
     public float   Confidence     { get; set; }
     public string? Reasoning      { get; set; }    // logged, never sent
     public List<string> TriggersActedOn { get; set; } = new();
+    public List<Uri> MediaUrls     { get; set; } = new();  // MMS media (audio, images)
 }
 
 /// <summary>

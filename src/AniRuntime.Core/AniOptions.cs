@@ -124,4 +124,7 @@ public class VoiceOptions
 
     // Twilio Voice
     public bool   PreferVoiceOverSms   { get; set; } = false;  // future: voice-first mode
+
+    // Public URL for serving media (ngrok URL) — Twilio needs to fetch audio from here
+    public string PublicBaseUrl         { get; set; } = string.Empty;
 }

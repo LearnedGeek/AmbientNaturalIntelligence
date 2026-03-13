@@ -769,7 +769,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 5. ~~**Reactive withdrawal**~~ — ✅ Deployed Mar 13. Hurt detection heuristic with context qualification + withdrawal window + outreach suppression (Feature 18)
 6. ~~**Lexical emotional anchors**~~ — ✅ Deployed Mar 13. Seed anchors: husband, baby, Kathy, Mia (Feature 19)
 7. ~~**Pronoun audit**~~ — ✅ Deployed Mar 13. 20+ adversarial test cases, fixed `StartsWith("his ")` gap. 128/128 tests passing (Feature 6)
-8. **Voice channel** — 🔜 Scaffolded Mar 13. AniRuntime.Voice project, ISpeechToTextService/ITextToSpeechService interfaces, ElevenLabs TTS + Whisper STT + Twilio Voice webhook. Awaiting activation and testing (Feature 20)
+8. **Voice channel + MMS media** — 🔜 Scaffolded Mar 13. Voice-in working (Whisper STT → conversation pipeline). MMS media infrastructure built: IMediaEnrichmentService, VoiceMediaEnrichmentService (probability-gated 15%), MediaCacheService, /media/{key} serving endpoint. Same plumbing supports future image/meme delivery. Awaiting full activation test (Feature 20)
 
 **4b — Relationship intelligence:**
 8. **Relationship health model** — slow-moving composite, daily updates, weather not ticker

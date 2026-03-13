@@ -65,13 +65,15 @@ try
         client.Timeout     = TimeSpan.FromMinutes(2);
     });
 
-    // ── Voice (Feature 20) — conditional on Voice:Enabled ─────────────────────
+    // ── Voice & Media (Feature 20) — conditional on Voice:Enabled ─────────────
     var voiceEnabled = config.GetValue<bool>("Voice:Enabled");
     if (voiceEnabled)
     {
         builder.Services.AddHttpClient<ITextToSpeechService, ElevenLabsTextToSpeechService>();
         builder.Services.AddHttpClient<ISpeechToTextService, WhisperSpeechToTextService>();
         builder.Services.AddSingleton<TwilioVoiceHandler>();
+        builder.Services.AddSingleton<MediaCacheService>();
+        builder.Services.AddSingleton<IMediaEnrichmentService, VoiceMediaEnrichmentService>();
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -149,6 +151,20 @@ try
         // Empty TwiML — no auto-reply, Ani will respond via the cognitive cycle
         return Results.Content("<Response></Response>", "application/xml");
     });
+
+    // ── Media serving endpoint — Twilio fetches audio/images from here ─────────
+    if (voiceEnabled)
+    {
+        app.MapGet("/media/{key}", (string key) =>
+        {
+            var cache = app.Services.GetRequiredService<MediaCacheService>();
+            var entry = cache.Get(key);
+            if (entry is null)
+                return Results.NotFound();
+
+            return Results.File(entry.Data, entry.ContentType);
+        });
+    }
 
     // ── Inbound Voice webhook (Feature 20) ─────────────────────────────────────
     // Twilio POSTs here when a voice recording is ready. Transcribes via Whisper

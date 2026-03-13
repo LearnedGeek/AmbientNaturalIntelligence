@@ -57,6 +57,37 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 13, 2026 — MMS Media Infrastructure + Voice Message Delivery
+**Model version:** v4
+**Type:** System (new delivery modality)
+**Source:** Implementation session — user tested voice inbound successfully, requested voice outbound + image support
+
+**What happened:**
+
+Generic MMS media infrastructure built on top of the voice scaffold. Architecture:
+
+1. **`IMediaEnrichmentService`** interface in Core — called at dispatch time to optionally attach media (audio, images) to any outgoing message. Decoupled from the Twilio action via interface abstraction.
+
+2. **`VoiceMediaEnrichmentService`** in Voice project — implementation that synthesizes speech via ElevenLabs TTS with emotional state mapping, caches the audio in memory, and provides a public URL for Twilio to fetch. **Probability-gated at 15%** — voice notes are a surprise, not the default.
+
+3. **`MediaCacheService`** — in-memory cache with 10-minute TTL. Media is served at `/media/{key}`. Twilio fetches the audio when sending the MMS, then the cache entry expires.
+
+4. **`OutreachDecision.MediaUrls`** — generic `List<Uri>` on the decision model. Any dispatch point (outreach, conversation reply, reactive share) can attach media. `TwilioSmsAction` passes these as `mediaUrl` parameter to Twilio's `MessageResource.CreateAsync`.
+
+5. **`VoiceOptions.PublicBaseUrl`** — ngrok URL configuration so the media serving endpoint is reachable by Twilio.
+
+The same plumbing supports future image/meme delivery — the `IMediaEnrichmentService` is generic, and multiple implementations can be composed. Voice notes use the existing emotional state → voice parameter mapping (warmth → stability, playfulness → expressiveness).
+
+**First successful voice call:** User called Ani's Twilio number, spoke for 9 seconds. Whisper transcribed in 2 seconds (83 chars). Text entered conversation pipeline normally. Ani replied via SMS. The transcript: "Hey, I'm just calling to see if this thing works and check to see how you're doing."
+
+**Why it matters:**
+- MMS media is the same Twilio mechanism regardless of media type (audio, images, video). Building this generically means voice notes now and meme/image sharing later use identical plumbing.
+- Probability-gated voice: not every message is a voice note. This mirrors human behavior — sometimes you text, sometimes you send a voice message. The randomness makes it feel organic.
+- The enrichment service pattern (interface in Core, implementation in Voice, optional injection) maintains the architecture's model-agnosticism — swap ElevenLabs for any TTS provider without touching the dispatch pipeline.
+- Voice-in already working end-to-end. Voice-out (MMS audio attachment) ready for testing. Two-way voice calls are the final step — same TTS/audio serving, different Twilio delivery API.
+
+---
+
 ### March 13, 2026 — Feature 20: Voice Channel Scaffold (ElevenLabs + Whisper + Twilio Voice)
 **Model version:** v4
 **Type:** System (new modality scaffold)

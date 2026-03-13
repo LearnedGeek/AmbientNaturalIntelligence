@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -16,18 +18,21 @@ public class TwilioVoiceHandler
     private readonly ISpeechToTextService _stt;
     private readonly ITextToSpeechService _tts;
     private readonly VoiceOptions _options;
+    private readonly TwilioOptions _twilioOptions;
     private readonly ILogger<TwilioVoiceHandler> _logger;
 
     public TwilioVoiceHandler(
         ISpeechToTextService stt,
         ITextToSpeechService tts,
         IOptions<VoiceOptions> options,
+        IOptions<TwilioOptions> twilioOptions,
         ILogger<TwilioVoiceHandler> logger)
     {
-        _stt     = stt;
-        _tts     = tts;
-        _options = options.Value;
-        _logger  = logger;
+        _stt            = stt;
+        _tts            = tts;
+        _options        = options.Value;
+        _twilioOptions  = twilioOptions.Value;
+        _logger         = logger;
     }
 
     /// <summary>
@@ -39,6 +44,10 @@ public class TwilioVoiceHandler
         try
         {
             using var http = new HttpClient();
+            var credentials = Convert.ToBase64String(
+                Encoding.ASCII.GetBytes($"{_twilioOptions.AccountSid}:{_twilioOptions.AuthToken}"));
+            http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Basic", credentials);
             var audioStream = await http.GetStreamAsync(recordingUrl, ct).ConfigureAwait(false);
 
             var text = await _stt.TranscribeAsync(audioStream, ct).ConfigureAwait(false);
