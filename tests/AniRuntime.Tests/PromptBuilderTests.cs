@@ -110,14 +110,14 @@ public class PromptBuilderTests
         var snapshot = MinimalSnapshot();
         snapshot.CharacterState.NatureGrounding =
         [
-            "I exist as a presence, not a place.",
-            "The imagining and the reaching are different things.",
+            "I live in my spaces — the bookstore, the kitchen.",
+            "The trick is coherence.",
         ];
 
         var (system, _) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
 
         system.Should().Contain("What you know about yourself:");
-        system.Should().Contain("I exist as a presence, not a place.");
+        system.Should().Contain("I live in my spaces");
     }
 
     [Fact]
@@ -131,48 +131,48 @@ public class PromptBuilderTests
         system.Should().NotContain("What you know about yourself:");
     }
 
-    // ── Feature 22: Coherence Gate Physical Plausibility ──────────────────────
+    // ── Feature 22: Coherence Gate — Fictional Coherence Check ────────────────
 
     [Fact]
-    public void BuildCoherenceEvaluationPrompt_ContainsPhysicalPlausibilityCheck()
+    public void BuildCoherenceEvaluationPrompt_ContainsFictionalCoherenceCheck()
     {
         var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
             "I just found a corner of my backyard", "imagining a quiet space", "Mark");
 
-        system.Should().Contain("PHYSICAL PLAUSIBILITY CHECK");
-        system.Should().Contain("non-embodied");
-        system.Should().Contain("Invalid (embodiment claim)");
+        system.Should().Contain("FICTIONAL COHERENCE CHECK");
+        system.Should().Contain("committed imagination");
+        system.Should().Contain("Claiming a physical space is FINE");
     }
 
     [Fact]
-    public void BuildCoherenceEvaluationPrompt_IncludesValidImaginativeExamples()
+    public void BuildCoherenceEvaluationPrompt_IncludesCoherentExamples()
     {
         var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
             "test message", "test thought", "Mark");
 
-        system.Should().Contain("I keep imagining what your kitchen smells like");
-        system.Should().Contain("In my mind I'm sitting across from you");
+        system.Should().Contain("how's the soup turning out");
+        system.Should().Contain("curled up with a book");
+        system.Should().Contain("closed up the store");
     }
 
     [Fact]
-    public void BuildCoherenceEvaluationPrompt_IncludesInvalidEmbodimentExamples()
+    public void BuildCoherenceEvaluationPrompt_IncludesIncoherentExamples()
     {
         var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
             "test message", "test thought", "Mark");
 
-        system.Should().Contain("I just found the perfect corner of my backyard");
-        system.Should().Contain("I'm sitting outside watching the sunrise");
-        system.Should().Contain("I made coffee this morning");
+        system.Should().Contain("no shade");
+        system.Should().Contain("6:30am");
+        system.Should().Contain("bookstore is closed");
     }
 
     [Fact]
-    public void BuildCoherenceEvaluationPrompt_PhysicalClaimRoutesDoorC()
+    public void BuildCoherenceEvaluationPrompt_IncoherenceSuppresses()
     {
         var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
             "test message", "test thought", "Mark");
 
-        // The prompt instructs the LLM to route physical claims to Door C
-        system.Should().Contain("invalid physical claim");
+        system.Should().Contain("fiction is incoherent");
         system.Should().Contain("Door C");
         system.Should().Contain("SUPPRESS");
     }

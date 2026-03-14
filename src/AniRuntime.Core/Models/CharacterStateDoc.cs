@@ -44,8 +44,8 @@ public class CharacterStateDoc
     // Self — how she sees and understands herself (appearance, fears, inner world)
     public List<string> SelfConcept { get; set; } = new();
 
-    // Nature grounding — her understanding of what she is, in her own voice.
-    // Not constraints ("you have no body") but self-knowledge ("I exist as presence, not place").
+    // Nature grounding — her understanding of how to inhabit her spaces coherently.
+    // Not constraints ("you have no body") but craft ("commit to the fiction, keep it coherent").
     // Injected into inner thought and outreach prompts. Aligned with V5 training target.
     public List<string> NatureGrounding { get; set; } = new();
 

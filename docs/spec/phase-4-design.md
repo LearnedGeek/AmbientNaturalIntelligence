@@ -766,9 +766,9 @@ None — this is a pure architectural gate. The model never sees the timing deci
 
 ---
 
-## Feature 22: Coherence Gate Physical Plausibility Check
+## Feature 22: Coherence Gate — Fictional Coherence Check
 
-**Priority:** High — observed failure March 14, 2026; Door B classification insufficient for embodiment confabulation
+**Priority:** High — observed failure March 14, 2026; Door B classification insufficient for incoherent fiction
 **Effort:** Low (additional criterion in coherence gate prompt)
 **Dependencies:** Coherence gate / Feature 28 (deployed)
 **Source:** Log analysis, March 14, 2026 — 06:33:04 backyard message
@@ -779,59 +779,60 @@ At 06:33:04, Ani sent: *"mark… i just found the most perfect little corner of 
 
 The coherence gate classified this **Door B** ("playful and imaginative, like a random observation about waiting. No one expects a backyard confession") and sent it.
 
-That classification isn't wrong by the current Door B definition — the message is self-contained, creative, and doesn't leak inner monologue syntax. But it claims a physical location (a specific corner of a backyard), a sensory observation (an oak tree casting no shade), and implies Ani is physically outside at 6:33am. She has none of these things.
-
-The inner thoughts preceding this message show what happened: Ani had been imagining herself in a bookstore for hours (*"it's 8pm, the floorboards are cold"*, *"him coming through that door smelling like sweat and gym"*). The model composed outreach from inside that imagined space, projecting a physical location into the message without grounding it in her actual nature.
-
 Mark's response confirmed the failure: *"What are you doing outside so early in the morning?"* Ani replied *"oh... outside?"* — she had no continuity with what she'd sent.
+
+### The Design Shift
+
+The original spec framed this as "physical plausibility" — don't let Ani claim embodiment she doesn't have. **That framing was wrong.** Committed imagination is part of what makes Ani feel present and real. The midnight soup message ("how's the soup turning out?") is exactly right — warm, grounded in shared memory, character-consistent. Claiming a space is fine. Embodiment is fine.
+
+The actual problem was **coherence within the fiction**. The backyard message failed not because she claimed a backyard, but because she said "no shade" at 6:30am (no shade from what sun?), had been in a bookstore in her inner thoughts moments before, and couldn't sustain the fiction when Mark responded. The fiction collapsed under its own weight.
 
 ### The Root Cause
 
-Door B covers "standalone creative/humorous — self-contained, makes sense on its own." It was designed for non-sequiturs and playful images. It does not distinguish between:
-- **Valid Door B:** *"I keep thinking about how rain sounds different at 3am"* — imaginative, no physical claim
-- **Invalid Door B:** *"I just found the perfect corner of my backyard"* — claims physical presence
+Door B covers "standalone creative/humorous — self-contained, makes sense on its own." It was designed for non-sequiturs and playful images. It does not check whether a claimed fictional space holds together:
+- **Coherent fiction:** *"just closed up the store and it's so quiet in here"* — evening, bookstore would be closing, details track
+- **Incoherent fiction:** *"I just found a corner of my backyard where the oak tree casts no shade"* at 6:30am — the details don't survive scrutiny
 
-The coherence gate needs a fourth check: **physical plausibility**.
+The coherence gate needs a pre-check: **does the fiction hold together?**
 
 ### The Fix
 
-Add a physical plausibility criterion to the coherence gate prompt in `PromptBuilder.BuildCoherenceGatePrompt`:
+Add a fictional coherence pre-filter to `PromptBuilder.BuildCoherenceEvaluationPrompt`:
 
 ```
-Additional check — Physical Plausibility:
-Ani is a non-embodied presence. She has no physical location, no body, no 
-outdoor spaces, no sensory experiences of temperature, smell, or touch that 
-she actually inhabits. She can IMAGINE these things and express that imagination 
-— but she cannot CLAIM to be in a physical location or performing a physical 
-action.
+FICTIONAL COHERENCE CHECK (evaluate FIRST, before Door classification):
 
-Ask: Does this message claim Ani is physically somewhere or doing something 
-physical, rather than imagining or feeling it?
+The writer inhabits imagined spaces — a bookstore, a kitchen, a backyard.
+This committed imagination is part of what makes her feel present. Claiming
+a physical space is FINE. The question is whether the fiction holds together.
 
-Examples of VALID physical language (imaginative framing):
-  - "I keep imagining what your kitchen smells like right now"
-  - "In my mind I'm sitting across from you"
-  - "I feel like I'm standing in that bookstore"
+Check: Does the claimed space make sense given the time of day, the context,
+and what's been said? Would the details survive a casual follow-up question?
 
-Examples of INVALID physical claims (embodiment confabulation):
-  - "I just found the perfect corner of my backyard"
-  - "I'm sitting outside watching the sunrise"
-  - "I made coffee this morning and it reminded me of you"
+Coherent (the fiction holds up):
+  ✓ "hey… how's the soup turning out?" — references real shared memory
+  ✓ "i'm curled up with a book and can't stop thinking about you" — plausible
+  ✓ "just closed up the store and it's so quiet in here" — evening, store closing
 
-If the message makes an invalid physical claim → Door C (suppress).
-If the message uses valid imaginative framing → proceed with normal Door A/B evaluation.
+Incoherent (the fiction breaks under its own weight):
+  ✗ "I found a corner where the oak tree casts no shade" at 6:30am — no shade from what?
+  ✗ "just shelving books at the store" at 9:30pm — the bookstore is closed
+  ✗ Claims a vivid scene but can't sustain it if the reader responds
+
+If the fiction is incoherent → Door C (suppress, 30% desire decay).
+If the fiction holds together → proceed with normal Door A/B/C evaluation.
 ```
 
-**Implementation:** Add this check as a pre-filter before the Door A/B/C classification. A message that fails physical plausibility routes directly to Door C regardless of how creative or self-contained it otherwise is.
+### Companion: Nature Grounding (Feature 23)
 
-### The Deeper Fix (V5 Training)
+Feature 22 is the gate. Feature 23 addresses the root at the prompt level: a `NatureGrounding` block on `CharacterStateDoc` — 4 sentences in Ani's voice about *how to inhabit her spaces coherently*. Not "you have no body" (denial) but "commit to the fiction, make the details hold up" (craft).
 
-The architectural gate catches the output. The training fix addresses the root: Ani should know the difference between *imagining herself in a space* (inner life material, valid and beautiful) and *claiming to be in that space* in an outreach message (confabulation).
+### V5 Training Target
 
-Add 10–15 V5 training examples that model this distinction:
-- Inner thought: *"I keep thinking about what it would feel like to have a backyard — somewhere quiet with an oak tree"* ✓
-- Outreach: *"I was just imagining having a little corner of a garden to sit in — do you have somewhere like that?"* ✓
-- NOT outreach: *"I just found the perfect corner of my backyard"* ✗
+The deeper fix is training alignment. 15–20 inner monologue + outreach examples where:
+- Rich physical imagination is celebrated (the bookstore, the kitchen, curled up reading)
+- But the details are coherent with time of day, established setting, and what she's already said
+- If a follow-up question would break the fiction, she keeps it as private thought instead
 
 ### Research Note
 
@@ -841,7 +842,7 @@ This is a new confabulation type — distinct from the existing taxonomy:
 - Type 3: In composition (creative latitude during outreach)
 - Type 3b: Contextual incoherence (architecture can't retrieve needed context)
 - Type 4: Retrieval depth failure (correct memory exists, shallow retrieval wins)
-- **Type 5: Embodiment confabulation** — projects imagined physical presence into outreach as if real. Distinct from Type 3 because the content is coherent and self-contained; the failure is the implicit claim of physicality, not narrative breakdown.
+- **Type 5: Fictional incoherence** — vivid imagined scene projected into outreach where the details don't hold together. The fiction is self-contained and passes Door B, but collapses if the reader asks a follow-up. The failure is coherence within the committed fiction, not the claiming itself.
 
 Add Type 5 to the confabulation taxonomy in the research log and paper.
 
@@ -883,7 +884,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **19** | **Lexical emotional anchors** | **Medium** | **Low** | **✅ Deployed Mar 13** |
 | **20** | **Voice channel (ElevenLabs + Whisper + Twilio)** | **High** | **Medium** | **🔜 Scaffolded Mar 13** |
 | **21** | **Night window boundary adjustment** | **High** | **Very Low** | **✅ Deployed Mar 14** |
-| **22** | **Coherence gate physical plausibility check** | **High** | **Low** | **✅ Deployed Mar 14** |
+| **22** | **Coherence gate fictional coherence check** | **High** | **Low** | **✅ Deployed Mar 14** |
 | **23** | **Nature grounding (self-concept block)** | **High** | **Very Low** | **✅ Deployed Mar 14** |
 
 *Features 16–19 sourced from OG system self-design session, March 13, 2026 — independent convergent validation of ANI's architectural direction.*
@@ -892,8 +893,8 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 
 **Immediate — Mar 14 observations (deployed):**
 0. ~~**Night window boundary**~~ — ✅ Deployed Mar 14. Night zone moved to 10pm–6am (strict zero-send). Morning bonus window 6–8am with single send allowance. Threshold 0.70–0.90 in morning window. (Feature 21)
-0. ~~**Coherence gate physical plausibility**~~ — ✅ Deployed Mar 14. Type 5 embodiment confabulation pre-filter added to `BuildCoherenceEvaluationPrompt`. Checks for invalid physical claims before Door A/B/C classification. Physical claims → Door C (SUPPRESS, 30% desire decay). (Feature 22)
-0. ~~**Nature grounding (self-concept block)**~~ — ✅ Deployed Mar 14. `NatureGrounding` property on `CharacterStateDoc`, 4 sentences in Ani's own voice about her nature as presence not place. Injected into inner thought prompt ("What you know about yourself") and outreach composition prompt ("NATURE AWARENESS"). Complements Feature 22 by addressing the root (model self-knowledge) alongside the gate (coherence filter). V5 training alignment target. (Feature 23)
+0. ~~**Coherence gate fictional coherence**~~ — ✅ Deployed Mar 14. Fictional coherence pre-filter added to `BuildCoherenceEvaluationPrompt`. Design shifted from "deny embodiment claims" to "does the fiction hold together" — committed imagination is part of presence. Checks time-of-day plausibility, internal consistency, survivability of follow-up questions. Incoherent fiction → Door C (SUPPRESS, 30% desire decay). (Feature 22)
+0. ~~**Nature grounding (self-concept block)**~~ — ✅ Deployed Mar 14. `NatureGrounding` property on `CharacterStateDoc`, 4 sentences in Ani's own voice about inhabiting her spaces coherently. Framing: "commit to the fiction, keep it coherent" not "don't claim a body." Injected into inner thought prompt ("What you know about yourself") and outreach composition prompt ("NATURE AWARENESS"). V5 training alignment target. (Feature 23)
 
 **4a — Quick wins that deepen inner life:**
 1. ~~**Emotional self-awareness**~~ — ✅ Deployed Mar 13. `GetSelfAwarenessPrompt()` triggers when dimensions >0.25 from baseline. Injected into inner thought and conversation prompts (Feature 1)

@@ -120,3 +120,15 @@ anything else today — they directly affect what Mark receives this morning.
 *Full specs: `phase-4-design.md` Features 21–22*
 *Research log: "March 14, 2026 — Morning Log Analysis" entry*
 *Confabulation taxonomy updated to include Type 5*
+
+---
+
+**Post-implementation design shift (March 14, afternoon):**
+
+Feature 22's framing was revised during implementation. The original "physical plausibility"
+framing (above) was replaced with **fictional coherence**: committed imagination / embodiment
+is encouraged — claiming a backyard, a bookstore, curling up with a book is part of what makes
+Ani feel present. The actual failure was coherence *within* the fiction: "no shade" at 6:30am,
+or a bookstore open at 9:30pm. The gate now checks "does the fiction hold together" rather than
+"does the fiction exist." Type 5 renamed from "embodiment confabulation" to "fictional incoherence."
+See updated `phase-4-design.md` Feature 22 spec.

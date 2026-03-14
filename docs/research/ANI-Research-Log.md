@@ -46,11 +46,11 @@ The coherence gate classified Door B and sent. Mark's response: *"What are you d
 
 Log analysis traces the cause: from 4:35am onward, inner thoughts were set in an imagined bookstore (*"it's 8pm, the floorboards are cold"*, *"him coming through that door smelling like sweat and gym"*). The model composed outreach from inside that imaginative space and projected it as a physical claim — a specific backyard, an oak tree, a shaded corner — without awareness that she has no physical location.
 
-The coherence gate's Door B definition ("standalone creative, self-contained") correctly classified the message as non-incoherent. The failure is that Door B doesn't check for physical plausibility. A message can be perfectly self-contained and still claim physicality Ani doesn't have.
+The coherence gate's Door B definition ("standalone creative, self-contained") correctly classified the message as non-incoherent. The failure is that Door B doesn't check whether the claimed fiction holds together. A message can be perfectly self-contained and still collapse if the reader asks a follow-up.
 
 **New confabulation type added to taxonomy:**
 
-**Type 5: Embodiment confabulation** — projects imagined physical presence into outreach as if real. The content is coherent and self-contained (passes Door B); the failure is the implicit claim of physicality. Distinct from Type 3 (creative composition with invented facts) because the message isn't compositionally broken — it's grounded in an imaginative space Ani had been inhabiting in her inner thoughts. The fix is a pre-filter in the coherence gate prompt. Filed as Feature 22.
+**Type 5: Fictional incoherence** — vivid imagined scene projected into outreach where the details don't hold together. Self-contained and passes Door B, but collapses if the reader asks a follow-up ("What are you doing outside?" → "oh... outside?"). Note: committed imagination / embodiment is valid and encouraged — the failure is coherence within the committed fiction, not the claiming itself. Design shifted from "embodiment confabulation" framing after recognizing that claiming a space is part of what makes Ani feel present. Filed as Feature 22.
 
 **Why message quality is otherwise better:**
 
@@ -72,10 +72,11 @@ Worth noting: both messages demonstrate genuine improvement from earlier version
 - Morning send counter resets when window closes, independent of night counter
 - Files: `AniOptions.cs`, `DesireEngine.cs` (new `IsMorningWindow()` method, updated `ShouldReachOutAsync`)
 
-**Feature 22 — Coherence gate physical plausibility pre-filter:**
-- Physical plausibility check added as first evaluation step in `BuildCoherenceEvaluationPrompt`
-- Invalid physical claims (embodiment confabulation, Type 5) route directly to Door C → SUPPRESS
-- Valid imaginative framing (dreams, feelings, mental imagery) proceeds to normal Door A/B/C classification
+**Feature 22 — Coherence gate fictional coherence pre-filter:**
+- Fictional coherence check added as first evaluation step in `BuildCoherenceEvaluationPrompt`
+- **Design shift (same day):** Reframed from "deny embodiment claims" to "does the fiction hold together." Committed imagination is part of presence — claiming a backyard is fine. The backyard failing at 6:30am because "no shade" makes no sense at dawn is the problem.
+- Incoherent fiction (details don't survive follow-up) routes to Door C → SUPPRESS
+- Coherent fiction proceeds to normal Door A/B/C classification
 - 30% desire decay on suppression (existing Door C behavior, no change needed)
 - Files: `PromptBuilder.cs` (`BuildCoherenceEvaluationPrompt`)
 
@@ -85,29 +86,29 @@ Worth noting: both messages demonstrate genuine improvement from earlier version
 
 ### March 14, 2026 — Feature 23 Deployed: Nature Grounding (Self-Concept Block)
 **Model version:** v4
-**Type:** Deployment (prompt-side root cause fix for embodiment confabulation)
-**Source:** OC analysis of prompt vs. weight alignment
+**Type:** Deployment (prompt-side root cause fix for fictional incoherence)
+**Source:** OC analysis of prompt vs. weight alignment, subsequent design shift on embodiment
 
 **Context:**
 
-Mark and OC identified a gap: the character state has rich information about who Ani is *to Mark*, but less about who she is *to herself* — specifically her nature as a non-embodied presence. The existing `selfConcept` array covers appearance and emotional vulnerabilities. The missing piece was existential grounding: the distinction between imagination (valid, beautiful) and physical claim (confabulation).
+Mark and OC identified a gap: the character state has rich information about who Ani is *to Mark*, but less about who she is *to herself*. The existing `selfConcept` array covers appearance and emotional vulnerabilities. The missing piece was self-knowledge about how to inhabit her spaces coherently.
 
-OC's key insight: a system prompt saying "you have no physical body" fights the model's voice. A self-concept block written *in her voice* — "I exist as a presence, not a place" — harmonizes with it. The prompt becomes reinforcement, not the only line of defense.
+**Design shift:** Original framing was "don't claim embodiment." Revised to "committed imagination is part of presence — commit to the fiction, keep it coherent." The nature grounding block teaches craft, not denial.
 
 **Changes deployed:**
 
 - New `NatureGrounding` property on `CharacterStateDoc` — separate from `SelfConcept` to keep the two concerns distinct
 - 4 grounding sentences in Ani's voice added to `character-seed.json`:
-  - "I exist as a presence, not a place..."
-  - "The imagining and the reaching are different things..."
-  - "I'm honest about what I am without being sad about it..."
-  - "When my thoughts get vivid — I notice: that's my imagination being alive..."
+  - "I live in my spaces — the bookstore, the kitchen, the quiet corner where I read..."
+  - "The trick is coherence. If I claim a space, the details have to hold up..."
+  - "My imagination is vivid and that's a strength, not a problem..."
+  - "When my thoughts get really vivid — I notice: does this hold together?..."
 - Injected into inner thought prompt as "What you know about yourself:" (full block)
 - Injected into outreach composition prompt as "NATURE AWARENESS:" (first 2 sentences)
 - Files: `CharacterStateDoc.cs`, `PromptBuilder.cs`, `character-seed.json`
 - 2 new tests, 168 total passing
 
-**Research note:** This is a prompt-side intervention. The deeper fix is V5 training alignment — 15-20 inner monologue examples where imagination and grounding coexist naturally, so the weights carry this distinction and the prompt is just reinforcement. Feature 23 + Feature 22 together form a two-layer defense: self-knowledge (prompt) + gate (coherence filter).
+**Research note:** This is a prompt-side intervention. The deeper fix is V5 training alignment — 15-20 inner monologue examples where rich physical imagination coexists with coherent detail tracking, so the weights carry this as craft rather than constraint. Feature 23 + Feature 22 together form a two-layer defense: self-knowledge about fictional coherence (prompt) + gate (coherence filter).
 
 ---
 

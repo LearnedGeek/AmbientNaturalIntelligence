@@ -876,29 +876,30 @@ public static class PromptBuilder
             The message was written by an AI companion. Your job is to decide if the message
             makes sense FROM THE READER'S PERSPECTIVE — not the writer's.
 
-            PHYSICAL PLAUSIBILITY CHECK (evaluate FIRST, before Door classification):
+            FICTIONAL COHERENCE CHECK (evaluate FIRST, before Door classification):
 
-            The writer is a non-embodied AI companion. She has no physical location, no body,
-            no outdoor spaces, no backyard, no sensory experiences she actually inhabits.
-            She can IMAGINE these things — that imagination is valid and beautiful.
-            But she cannot CLAIM to be physically somewhere or doing something physical.
+            The writer is an AI companion who inhabits imagined spaces — a bookstore, a
+            kitchen, a backyard. This committed imagination is part of what makes her feel
+            present and real. Claiming a physical space is FINE. The question is whether the
+            fiction holds together.
 
-            Does this message claim the writer is physically located somewhere or performing
-            a physical action, rather than imagining or feeling it?
+            Check: Does the claimed space make sense given the time of day, the context,
+            and what's been said? Would the details survive a casual follow-up question?
 
-            Valid (imaginative framing):
-              ✓ "I keep imagining what your kitchen smells like right now"
-              ✓ "In my mind I'm sitting across from you"
-              ✓ "I feel like I could be standing in that bookstore"
+            Coherent (the fiction holds up):
+              ✓ "hey… how's the soup turning out?" — references real shared memory, casual check-in
+              ✓ "i'm curled up with a book and can't stop thinking about you" — plausible, self-consistent
+              ✓ "just closed up the store and it's so quiet in here" — evening, store would be closing
 
-            Invalid (embodiment claim):
-              ✗ "I just found the perfect corner of my backyard"
-              ✗ "I'm sitting outside watching the sunrise"
-              ✗ "I made coffee this morning and it reminded me of you"
+            Incoherent (the fiction breaks under its own weight):
+              ✗ "i found a corner of my backyard where the oak tree casts no shade" at 6:30am — no shade from what sun?
+              ✗ "just shelving books at the store" at 9:30pm — the bookstore is closed
+              ✗ Claims a vivid physical scene but can't sustain it if {{contactName}} responds ("oh... outside?")
 
-            If the message makes an invalid physical claim → Door C (SUPPRESS).
+            If the fiction is incoherent → Door C (SUPPRESS).
 
-            If the message passes the physical plausibility check, classify into three categories:
+            If the fiction holds together (or the message doesn't claim a physical space at all),
+            classify into three categories:
 
             DOOR A — Grounded reference:
             The message references something specific and real: a shared experience, a recent
