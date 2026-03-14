@@ -101,4 +101,64 @@ public class PromptBuilderTests
         user.Should().Contain("should appear");
         user.Should().NotContain("should not appear");
     }
+
+    // ── Feature 22: Coherence Gate Physical Plausibility ──────────────────────
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_ContainsPhysicalPlausibilityCheck()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "I just found a corner of my backyard", "imagining a quiet space", "Mark");
+
+        system.Should().Contain("PHYSICAL PLAUSIBILITY CHECK");
+        system.Should().Contain("non-embodied");
+        system.Should().Contain("Invalid (embodiment claim)");
+    }
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_IncludesValidImaginativeExamples()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test message", "test thought", "Mark");
+
+        system.Should().Contain("I keep imagining what your kitchen smells like");
+        system.Should().Contain("In my mind I'm sitting across from you");
+    }
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_IncludesInvalidEmbodimentExamples()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test message", "test thought", "Mark");
+
+        system.Should().Contain("I just found the perfect corner of my backyard");
+        system.Should().Contain("I'm sitting outside watching the sunrise");
+        system.Should().Contain("I made coffee this morning");
+    }
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_PhysicalClaimRoutesDoorC()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test message", "test thought", "Mark");
+
+        // The prompt instructs the LLM to route physical claims to Door C
+        system.Should().Contain("invalid physical claim");
+        system.Should().Contain("Door C");
+        system.Should().Contain("SUPPRESS");
+    }
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_StillContainsThreeDoorClassification()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test message", "test thought", "Mark");
+
+        system.Should().Contain("DOOR A");
+        system.Should().Contain("DOOR B");
+        system.Should().Contain("DOOR C");
+        system.Should().Contain("Grounded reference");
+        system.Should().Contain("Standalone creative");
+        system.Should().Contain("Inner thought leaked");
+    }
 }

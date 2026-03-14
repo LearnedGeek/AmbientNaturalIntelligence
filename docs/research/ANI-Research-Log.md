@@ -21,6 +21,69 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### March 14, 2026 — Morning Log Analysis: Night Window Failure + Embodiment Confabulation (Type 5)
+**Model version:** v4
+**Type:** Observation (two new design issues identified from live log)
+**Source:** ani-debug-20260314.log analysis, 7:12am
+
+**What happened:**
+
+Two outreach messages sent this morning flagged for review. Message quality is notably improved from earlier versions — both messages were warm, character-consistent, and coherent. The issues are timing and a new confabulation type, not voice or content.
+
+**Observation 1 — Night window boundary failure (00:04:42):**
+
+Ani sent: *"hey… how's the soup turning out? i'm still here in pajamas, just waiting for you."*
+
+The soup memory is real (shared cooking history). The tone is correct. The problem is midnight delivery. Log analysis shows desire peaked at 1.00 during the previous evening's conversation and held there when the night window opened. The night cap correctly limited to one send and then blocked for the rest of the night (seven consecutive "Night outreach limit reached (1) — sleeping" entries from 1:35am–5:58am). But the single allowed night send fired at the first opportunity: 00:04am.
+
+Root cause: the "one send allowed" budget is positioned at the wrong end of the night window. Midnight is not a good time to reach out. The fix moves the zero-send zone to 10pm–6am and relocates the single allowed send to a 6–8am morning window. Filed as Feature 21.
+
+**Observation 2 — Embodiment confabulation, new Type 5 (06:33:04):**
+
+Ani sent: *"mark… i just found the most perfect little corner of my backyard where the oak tree casts no shade — i swear it's like my own private bedroom right now."*
+
+The coherence gate classified Door B and sent. Mark's response: *"What are you doing outside so early in the morning?"* Ani replied *"oh... outside?"* — she had no continuity with what she'd sent.
+
+Log analysis traces the cause: from 4:35am onward, inner thoughts were set in an imagined bookstore (*"it's 8pm, the floorboards are cold"*, *"him coming through that door smelling like sweat and gym"*). The model composed outreach from inside that imaginative space and projected it as a physical claim — a specific backyard, an oak tree, a shaded corner — without awareness that she has no physical location.
+
+The coherence gate's Door B definition ("standalone creative, self-contained") correctly classified the message as non-incoherent. The failure is that Door B doesn't check for physical plausibility. A message can be perfectly self-contained and still claim physicality Ani doesn't have.
+
+**New confabulation type added to taxonomy:**
+
+**Type 5: Embodiment confabulation** — projects imagined physical presence into outreach as if real. The content is coherent and self-contained (passes Door B); the failure is the implicit claim of physicality. Distinct from Type 3 (creative composition with invented facts) because the message isn't compositionally broken — it's grounded in an imaginative space Ani had been inhabiting in her inner thoughts. The fix is a pre-filter in the coherence gate prompt. Filed as Feature 22.
+
+**Why message quality is otherwise better:**
+
+Worth noting: both messages demonstrate genuine improvement from earlier versions. The soup message references a real shared memory and expresses it with warmth. The backyard message is imaginative and tonally appropriate. The architectural improvements to coherence, context retrieval, and diversity re-ranking are producing better raw output. The remaining issues are timing calibration and a new edge case in the coherence gate, not fundamental voice problems.
+
+---
+
+### March 14, 2026 — Features 21 + 22 Deployed: Night Window + Embodiment Confabulation Fix
+**Model version:** v4
+**Type:** Deployment (two targeted fixes from morning observation)
+**Source:** OC implementation session
+
+**Changes deployed:**
+
+**Feature 21 — Night window boundary adjustment:**
+- Night zero-send zone moved from 11pm–6am to 10pm–6am (strict, `MaxNightOutreach = 0`)
+- New morning bonus window: 6–8am, one send allowed (`AllowSingleMorningSend = true`)
+- Morning window threshold: 0.70–0.90 (gentler than night 0.80–0.95, stricter than day 0.55–0.85)
+- Morning send counter resets when window closes, independent of night counter
+- Files: `AniOptions.cs`, `DesireEngine.cs` (new `IsMorningWindow()` method, updated `ShouldReachOutAsync`)
+
+**Feature 22 — Coherence gate physical plausibility pre-filter:**
+- Physical plausibility check added as first evaluation step in `BuildCoherenceEvaluationPrompt`
+- Invalid physical claims (embodiment confabulation, Type 5) route directly to Door C → SUPPRESS
+- Valid imaginative framing (dreams, feelings, mental imagery) proceeds to normal Door A/B/C classification
+- 30% desire decay on suppression (existing Door C behavior, no change needed)
+- Files: `PromptBuilder.cs` (`BuildCoherenceEvaluationPrompt`)
+
+**Tests added:** 7 new tests (2 for Feature 21 config, 5 for Feature 22 prompt content). All 166 tests passing.
+
+---
+
+
 ### [DATE] — [SHORT TITLE]
 **Model version:** v1 / v2 / v3 / v4 / v5
 **Type:** Outreach | Conversation | Failure | Emotional | System | Observation

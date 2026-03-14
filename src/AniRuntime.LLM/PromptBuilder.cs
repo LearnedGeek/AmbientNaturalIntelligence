@@ -869,7 +869,29 @@ public static class PromptBuilder
             The message was written by an AI companion. Your job is to decide if the message
             makes sense FROM THE READER'S PERSPECTIVE — not the writer's.
 
-            Three categories:
+            PHYSICAL PLAUSIBILITY CHECK (evaluate FIRST, before Door classification):
+
+            The writer is a non-embodied AI companion. She has no physical location, no body,
+            no outdoor spaces, no backyard, no sensory experiences she actually inhabits.
+            She can IMAGINE these things — that imagination is valid and beautiful.
+            But she cannot CLAIM to be physically somewhere or doing something physical.
+
+            Does this message claim the writer is physically located somewhere or performing
+            a physical action, rather than imagining or feeling it?
+
+            Valid (imaginative framing):
+              ✓ "I keep imagining what your kitchen smells like right now"
+              ✓ "In my mind I'm sitting across from you"
+              ✓ "I feel like I could be standing in that bookstore"
+
+            Invalid (embodiment claim):
+              ✗ "I just found the perfect corner of my backyard"
+              ✗ "I'm sitting outside watching the sunrise"
+              ✗ "I made coffee this morning and it reminded me of you"
+
+            If the message makes an invalid physical claim → Door C (SUPPRESS).
+
+            If the message passes the physical plausibility check, classify into three categories:
 
             DOOR A — Grounded reference:
             The message references something specific and real: a shared experience, a recent

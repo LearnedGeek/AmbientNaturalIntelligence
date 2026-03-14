@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Models;
 using AniRuntime.Loops;
 using AniRuntime.Tests.Infrastructure;
@@ -158,6 +159,29 @@ public class DesireEngineTests : AniTestBase
             if (await engine.ShouldReachOutAsync()) trueCount++;
 
         trueCount.Should().BeGreaterThan(0, "desire of 1.0 should regularly cross threshold");
+    }
+
+    // ── Feature 21: Night Window and Morning Window ───────────────────────────
+
+    [Fact]
+    public void IsNightHours_DefaultConfig_CoversExpectedRange()
+    {
+        // Default: 22 (10pm) to 6am — this is a structural test of the config defaults
+        var engine = CreateEngine();
+        // IsNightHours depends on system clock, so we test the config shape instead
+        var options = new AniOptions();
+        options.NightStartHour.Should().Be(22, "night should start at 10pm");
+        options.NightEndHour.Should().Be(6, "night should end at 6am");
+        options.MaxNightOutreach.Should().Be(0, "no sends allowed during strict night zone");
+    }
+
+    [Fact]
+    public void MorningWindowConfig_DefaultValues()
+    {
+        var options = new AniOptions();
+        options.AllowSingleMorningSend.Should().BeTrue();
+        options.MorningWindowStartHour.Should().Be(6);
+        options.MorningWindowEndHour.Should().Be(8);
     }
 
     // ── ApplyDriftAsync ───────────────────────────────────────────────────────

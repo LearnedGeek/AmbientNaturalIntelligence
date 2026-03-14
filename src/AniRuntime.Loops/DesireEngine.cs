@@ -27,6 +27,10 @@ public class DesireEngine
     private int  _nightOutreachCount;
     private bool _wasNight;
 
+    // Morning window send counter — resets when morning window ends
+    private int  _morningSendCount;
+    private bool _wasMorningWindow;
+
     public DesireEngine(IMemoryService memory, IOptions<AniOptions> options, ILogger<DesireEngine> log)
     {
         _memory  = memory;
@@ -101,7 +105,7 @@ public class DesireEngine
             return false;
         }
 
-        // Enforce night outreach limit — at most 1 "can't sleep" text
+        // Enforce night outreach limit — Feature 21: strict zero-send zone 10pm–6am
         var isNight = IsNightHours();
         if (!isNight && _wasNight) _nightOutreachCount = 0;  // reset on transition to day
         _wasNight = isNight;
@@ -111,9 +115,34 @@ public class DesireEngine
             return false;
         }
 
-        // Night: higher threshold (0.80–0.95) so only strong desire breaks through
-        var floor = isNight ? 0.80 : _options.OutreachThresholdFloor;
-        var range = isNight ? 0.15 : _options.OutreachThresholdRange;
+        // Feature 21: Morning window — one allowed send between 6–8am
+        var isMorning = IsMorningWindow();
+        if (!isMorning && _wasMorningWindow) _morningSendCount = 0;  // reset when window closes
+        _wasMorningWindow = isMorning;
+        if (isMorning && _options.AllowSingleMorningSend && _morningSendCount >= 1)
+        {
+            _log.LogInformation("Morning window send already used — waiting for normal hours");
+            return false;
+        }
+
+        // Night (non-morning): higher threshold (0.80–0.95) so only strong desire breaks through
+        // Morning window: slightly elevated threshold (0.70–0.90) — a gentler gate
+        double floor, range;
+        if (isNight && !isMorning)
+        {
+            floor = 0.80;
+            range = 0.15;
+        }
+        else if (isMorning)
+        {
+            floor = 0.70;
+            range = 0.20;
+        }
+        else
+        {
+            floor = _options.OutreachThresholdFloor;
+            range = _options.OutreachThresholdRange;
+        }
         var threshold = floor + (Random.Shared.NextDouble() * range);
         var passes = state.DesireToConnect >= threshold;
         _log.LogInformation("Outreach gate: desire={Desire:F2} threshold={Threshold:F2} → {Result}",
@@ -238,9 +267,10 @@ public class DesireEngine
         state.LastOutreach    = DateTimeOffset.UtcNow;
         state.ActiveTriggers.Clear();
 
-        // Track daily and night outreach counts
+        // Track daily, night, and morning outreach counts
         _outreachCountToday++;
         if (IsNightHours()) _nightOutreachCount++;
+        if (IsMorningWindow()) _morningSendCount++;
 
         // Activate cooldown — prevents rapid-fire messages
         state.CooldownActive = true;
@@ -275,10 +305,21 @@ public class DesireEngine
     public bool IsNightHours()
     {
         var hour = DateTimeOffset.Now.Hour;
-        // Handle wrap-around (e.g., 23–6 spans midnight)
+        // Handle wrap-around (e.g., 22–6 spans midnight)
         return _options.NightStartHour > _options.NightEndHour
             ? hour >= _options.NightStartHour || hour < _options.NightEndHour
             : hour >= _options.NightStartHour && hour < _options.NightEndHour;
+    }
+
+    /// <summary>
+    /// Feature 21: Morning window check — the 6–8am window where one send is allowed.
+    /// This is a sub-window within night hours, so a morning hour is both "night" and "morning".
+    /// The morning send is the right instinct — Ani reaching out as Mark starts his day.
+    /// </summary>
+    public bool IsMorningWindow()
+    {
+        var hour = DateTimeOffset.Now.Hour;
+        return hour >= _options.MorningWindowStartHour && hour < _options.MorningWindowEndHour;
     }
 
     /// <summary>

@@ -22,10 +22,15 @@ public class AniOptions
     public int    MaxUnansweredBeforeSilence { get; set; } = 3;    // 3+ unanswered = hard silence
     public double MinSendGapMinutes         { get; set; } = 45.0;  // hard floor between any two sends
 
-    // Night mode — reduced activity and outreach during sleep hours
-    public int    NightStartHour         { get; set; } = 23;   // 11 PM local
+    // Night mode — zero sends during sleep hours, one allowed in morning window
+    public int    NightStartHour         { get; set; } = 22;   // 10 PM local — strict zero-send zone
     public int    NightEndHour           { get; set; } = 6;    // 6 AM local
-    public int    MaxNightOutreach       { get; set; } = 1;    // at most 1 "can't sleep" text
+    public int    MaxNightOutreach       { get; set; } = 0;    // no sends during night hours
+
+    // Morning window — Ani's one allowed early send (Feature 21)
+    public bool   AllowSingleMorningSend { get; set; } = true;
+    public int    MorningWindowStartHour { get; set; } = 6;    // 6 AM local
+    public int    MorningWindowEndHour   { get; set; } = 8;    // 8 AM local
 
     // Outreach threshold — randomized between Floor and Floor+Range each cycle
     public double OutreachThresholdFloor { get; set; } = 0.55;
