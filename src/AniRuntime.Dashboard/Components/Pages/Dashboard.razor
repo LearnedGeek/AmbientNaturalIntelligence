@@ -1,0 +1,71 @@
+@page "/"
+@using AniRuntime.Core.Interfaces
+@using AniRuntime.Core.Models
+@inject IMemoryService Memory
+@inject IConversationService Conversations
+
+<h1>ANI Dashboard</h1>
+
+<section>
+    <hgroup>
+        <h2>@_charState?.Name</h2>
+        <p>Persona v@(_charState?.PersonaVersion) | Contact: @_charState?.PrimaryContactName</p>
+    </hgroup>
+</section>
+
+@if (_emotional is not null)
+{
+    <section>
+        <h3>Emotional State</h3>
+        <div class="grid">
+            <EmotionalStateCard Label="Warmth" Value="@_emotional.Warmth" />
+            <EmotionalStateCard Label="Energy" Value="@_emotional.Energy" />
+            <EmotionalStateCard Label="Concern" Value="@_emotional.Concern" />
+            <EmotionalStateCard Label="Playfulness" Value="@_emotional.Playfulness" />
+        </div>
+        @if (!string.IsNullOrEmpty(_emotional.Describe()))
+        {
+            <p><em>@_emotional.Describe()</em></p>
+        }
+    </section>
+}
+
+@if (_recentThoughts.Count > 0)
+{
+    <section>
+        <h3>Recent Inner Thoughts</h3>
+        @foreach (var thought in _recentThoughts.Take(5))
+        {
+            <blockquote>
+                <p>@thought.Content</p>
+                <footer>@thought.CreatedAt.ToString("MMM d, h:mm tt")</footer>
+            </blockquote>
+        }
+    </section>
+}
+
+@if (_activeThread is not null)
+{
+    <section>
+        <h3>Active Conversation</h3>
+        @foreach (var msg in _activeThread.Messages.TakeLast(6))
+        {
+            <p><strong>@msg.Role:</strong> @msg.Content <small>@msg.SentAt.ToString("h:mm tt")</small></p>
+        }
+    </section>
+}
+
+@code {
+    private CharacterStateDoc? _charState;
+    private EmotionalState? _emotional;
+    private List<MemoryRecord> _recentThoughts = new();
+    private ConversationThread? _activeThread;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _charState = await Memory.GetCharacterStateAsync();
+        _emotional = await Memory.GetEmotionalStateAsync();
+        _recentThoughts = (await Memory.GetByTypeAsync(MemoryType.InnerThought, 5)).ToList();
+        _activeThread = await Conversations.GetActiveThreadAsync();
+    }
+}

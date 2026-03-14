@@ -1,0 +1,22 @@
+@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@namespace AniRuntime.Dashboard.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ANI Dashboard</title>
+    <base href="/" />
+    <link rel="stylesheet" href="https://unpkg.com/@@picocss/pico@@2/css/pico.min.css" />
+    <link rel="stylesheet" href="_content/AniRuntime.Dashboard/css/dashboard.css" />
+</head>
+<body>
+    <main class="container">
+        <component type="typeof(AniRuntime.Dashboard.Components.App)" render-mode="ServerPrerendered" />
+    </main>
+    <script src="_framework/blazor.server.js"></script>
+</body>
+</html>

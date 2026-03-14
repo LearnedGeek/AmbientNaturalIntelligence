@@ -1,0 +1,27 @@
+/* ANI Dashboard — minimal custom styles (Pico CSS handles most of it) */
+
+body {
+    padding-top: 1rem;
+}
+
+blockquote {
+    border-left-color: var(--pico-primary);
+}
+
+blockquote footer {
+    font-size: 0.8em;
+    color: var(--pico-muted-color);
+}
+
+.grid article {
+    text-align: center;
+}
+
+.grid article header {
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+progress {
+    width: 100%;
+}

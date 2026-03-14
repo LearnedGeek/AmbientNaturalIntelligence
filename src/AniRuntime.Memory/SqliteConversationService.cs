@@ -77,17 +77,55 @@ public class SqliteConversationService : IConversationService, IDisposable
         if (!await reader.ReadAsync(ct).ConfigureAwait(false))
             return null;
 
-        var thread = new ConversationThread
-        {
-            Id            = Guid.Parse(reader.GetString(0)),
-            StartedAt     = DateTimeOffset.Parse(reader.GetString(1)),
-            LastMessageAt = DateTimeOffset.Parse(reader.GetString(2)),
-            IsActive      = reader.GetInt32(3) == 1,
-            InitiatedBy   = reader.GetString(4),
-        };
-
+        var thread = ReadThread(reader);
         thread.Messages = await LoadMessagesAsync(conn, thread.Id, ct).ConfigureAwait(false);
         return thread;
+    }
+
+    public async Task<ConversationThread?> GetThreadAsync(Guid threadId, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            SELECT id, started_at, last_message_at, is_active, initiated_by
+            FROM conversation_threads
+            WHERE id = $id
+            """;
+        cmd.Parameters.AddWithValue("$id", threadId.ToString());
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await reader.ReadAsync(ct).ConfigureAwait(false))
+            return null;
+
+        var thread = ReadThread(reader);
+        thread.Messages = await LoadMessagesAsync(conn, thread.Id, ct).ConfigureAwait(false);
+        return thread;
+    }
+
+    public async Task<List<ConversationThread>> GetRecentThreadsAsync(int limit = 10, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            SELECT id, started_at, last_message_at, is_active, initiated_by
+            FROM conversation_threads
+            ORDER BY last_message_at DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var threads = new List<ConversationThread>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var thread = ReadThread(reader);
+            thread.Messages = await LoadMessagesAsync(conn, thread.Id, ct).ConfigureAwait(false);
+            threads.Add(thread);
+        }
+
+        return threads;
     }
 
     public async Task SaveThreadAsync(ConversationThread thread, CancellationToken ct = default)
@@ -202,6 +240,15 @@ public class SqliteConversationService : IConversationService, IDisposable
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private static ConversationThread ReadThread(SqliteDataReader reader) => new()
+    {
+        Id            = Guid.Parse(reader.GetString(0)),
+        StartedAt     = DateTimeOffset.Parse(reader.GetString(1)),
+        LastMessageAt = DateTimeOffset.Parse(reader.GetString(2)),
+        IsActive      = reader.GetInt32(3) == 1,
+        InitiatedBy   = reader.GetString(4),
+    };
 
     private async Task<List<ConversationMessage>> LoadMessagesAsync(
         SqliteConnection conn, Guid threadId, CancellationToken ct)

@@ -7,6 +7,7 @@ using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
+using AniRuntime.Dashboard;
 using AniRuntime.Voice;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
@@ -93,6 +94,9 @@ try
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 
+    // ── Dashboard (Blazor Server + REST API) ──────────────────────────────────
+    builder.Services.AddDashboard();
+
     // ── Cognitive cycle ───────────────────────────────────────────────────────
     builder.Services.AddSingleton<AdminCommandHandler>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
@@ -110,6 +114,10 @@ try
     var app = builder.Build();
 
     app.UseForwardedHeaders();
+    app.UseStaticFiles();
+
+    // ── Dashboard — REST API endpoints + Blazor Server ────────────────────
+    app.MapDashboard();
 
     // ── Wire early wake: Twilio webhook → heartbeat interrupt ─────────────────
     var twilioSource = app.Services.GetRequiredService<TwilioInboundPerceptionSource>();
@@ -309,6 +317,8 @@ try
         Log.Information("║  Timing: {Min:F0}–{Max:F0} min (conversation: {Conv:F0}s)",
             aniOpts.MinWakeMinutes, aniOpts.MaxWakeMinutes, aniOpts.ConversationHeartbeatSeconds);
         Log.Information("║  Webhook: http://localhost:5100/sms/inbound");
+        Log.Information("║  Dashboard: http://localhost:5100/");
+        Log.Information("║  API:    http://localhost:5100/api/v1/ani/status");
         Log.Information("║  Voice:   {Status}", voiceEnabled ? "enabled (http://localhost:5100/voice/inbound)" : "disabled");
         Log.Information("╚══════════════════════════════════════════╝");
     }

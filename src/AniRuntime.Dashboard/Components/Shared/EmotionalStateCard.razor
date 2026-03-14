@@ -1,0 +1,10 @@
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public float Value { get; set; }
+}
+
+<article>
+    <header>@Label</header>
+    <progress value="@Value" max="1"></progress>
+    <small>@Value.ToString("F2")</small>
+</article>
