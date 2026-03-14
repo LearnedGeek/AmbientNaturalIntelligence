@@ -404,13 +404,8 @@ public class CognitiveCycleProcessorTests : AniTestBase
     [InlineData("that's his favorite song", true)]        // his.
     public void PronounDetection_IdentifiesThirdPerson(string message, bool shouldDetect)
     {
-        // Replicate the detection logic from FixPronounsIfNeeded
-        var lower = message.ToLowerInvariant();
-        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
-                             lower.Contains(" he ") || lower.StartsWith("he ") ||
-                             lower.StartsWith("his ") || lower.Contains("him.") ||
-                             lower.Contains("his.");
-        hasThirdPerson.Should().Be(shouldDetect, $"'{message}' should {(shouldDetect ? "" : "not ")}detect third-person");
+        CognitiveCycleProcessor.ContainsThirdPersonReference(message, "Mark")
+            .Should().Be(shouldDetect, $"'{message}' should {(shouldDetect ? "" : "not ")}detect third-person");
     }
 
     [Theory]
@@ -422,12 +417,8 @@ public class CognitiveCycleProcessorTests : AniTestBase
         // "she"/"her" should NOT trigger the pronoun fix because Ani might be talking
         // about someone else (Kathy, Mia, etc.). Only "he"/"him"/"his" trigger it
         // because those would be Ani referring to Mark in third person.
-        var lower = message.ToLowerInvariant();
-        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
-                             lower.Contains(" he ") || lower.StartsWith("he ") ||
-                             lower.StartsWith("his ") || lower.Contains("him.") ||
-                             lower.Contains("his.");
-        hasThirdPerson.Should().BeFalse("she/her is valid when talking about others");
+        CognitiveCycleProcessor.ContainsThirdPersonReference(message, "Mark")
+            .Should().BeFalse("she/her is valid when talking about others");
     }
 
     [Theory]
@@ -437,12 +428,26 @@ public class CognitiveCycleProcessorTests : AniTestBase
     [InlineData("this rhythm is everything", false)]      // "this" contains "his" but not " his "
     public void PronounDetection_EdgeCases(string message, bool shouldDetect)
     {
-        var lower = message.ToLowerInvariant();
-        var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
-                             lower.Contains(" he ") || lower.StartsWith("he ") ||
-                             lower.StartsWith("his ") || lower.Contains("him.") ||
-                             lower.Contains("his.");
-        hasThirdPerson.Should().Be(shouldDetect, $"edge case: '{message}'");
+        CognitiveCycleProcessor.ContainsThirdPersonReference(message, "Mark")
+            .Should().Be(shouldDetect, $"edge case: '{message}'");
+    }
+
+    // ── Feature 6 extension: Name-as-subject detection ──
+
+    [Theory]
+    [InlineData("Mark can sit next to me", true)]         // name as subject — should flag
+    [InlineData("Mark said he'd be home late", true)]     // name starts sentence
+    [InlineData("Mark would love that", true)]            // name as subject
+    [InlineData("i bet Mark is tired", true)]             // name after comma-like position
+    [InlineData("Mark's smile is everything", true)]      // possessive name
+    [InlineData("i told Mark about it", true)]            // name mid-sentence — triggers rewrite
+    [InlineData("hey mark", false)]                       // name alone, no subject pattern
+    [InlineData("bookmark this page", false)]             // "mark" inside another word
+    [InlineData("you can sit next to me", false)]         // already second person
+    public void PronounDetection_NameAsSubject(string message, bool shouldDetect)
+    {
+        CognitiveCycleProcessor.ContainsThirdPersonReference(message, "Mark")
+            .Should().Be(shouldDetect, $"name-as-subject: '{message}'");
     }
 
     // ── Feature 14: Bidirectional confidence gate ──

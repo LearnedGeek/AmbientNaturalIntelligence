@@ -1567,24 +1567,72 @@ public class CognitiveCycleProcessor
     /// Safety: if the rewrite changes the message length by more than 50%, the model went
     /// creative instead of just fixing pronouns — fall back to the original.
     /// </summary>
-    private async Task<string> FixPronounsIfNeeded(
-        string message, CharacterStateDoc character, CancellationToken ct)
+    /// <summary>
+    /// Detects third-person references in an outreach message: pronouns (he/him/his)
+    /// OR the contact's name used as a reference rather than vocative address.
+    /// The prompt already instructs the model to use "you" not the contact's name,
+    /// so this is a safety net for when the model ignores the instruction.
+    /// </summary>
+    internal static bool ContainsThirdPersonReference(string message, string contactName)
     {
-        // Quick check: does the message even contain third-person pronouns?
         var lower = message.ToLowerInvariant();
+
+        // Standard pronoun detection
         var hasThirdPerson = lower.Contains(" him") || lower.Contains(" his ") ||
                              lower.Contains(" he ") || lower.StartsWith("he ") ||
                              lower.StartsWith("his ") || lower.Contains("him.") ||
                              lower.Contains("his.");
+        if (hasThirdPerson) return true;
 
-        if (!hasThirdPerson)
+        // Contact name used as a reference (not vocative "hey mark" at end).
+        // Rather than brittle pattern matching, we check: does the contact name appear
+        // as a standalone word followed by more text? If so, the LLM rewrite pass
+        // will determine whether it's third-person and fix it.
+        if (!string.IsNullOrWhiteSpace(contactName) && contactName.Length >= 2)
+        {
+            var nameLower = contactName.ToLowerInvariant();
+            var idx = lower.IndexOf(nameLower, StringComparison.Ordinal);
+            while (idx >= 0)
+            {
+                // Verify it's a whole word (not inside "bookmark")
+                var before = idx == 0 || !char.IsLetter(lower[idx - 1]);
+                var afterIdx = idx + nameLower.Length;
+                var after = afterIdx >= lower.Length || !char.IsLetter(lower[afterIdx]);
+
+                if (before && after)
+                {
+                    // Name appears as standalone word followed by more content → likely third-person
+                    // Skip vocative-only usage: "hey mark" or "mark!" at end with no continuation
+                    if (afterIdx < lower.Length && lower[afterIdx] == ' ')
+                        return true;
+                    // Possessive: "mark's"
+                    if (afterIdx + 1 < lower.Length && lower[afterIdx] == '\'' && lower[afterIdx + 1] == 's')
+                        return true;
+                }
+
+                idx = lower.IndexOf(nameLower, afterIdx, StringComparison.Ordinal);
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<string> FixPronounsIfNeeded(
+        string message, CharacterStateDoc character, CancellationToken ct)
+    {
+        var contactName = character.PrimaryContactName ?? "";
+        if (!ContainsThirdPersonReference(message, contactName))
         {
             _log.LogDebug("Outreach message already in second person — skipping rewrite");
             return message;
         }
 
-        var system = """
-            Fix ONLY the pronouns in this text message. Change "he"/"him"/"his" to "you"/"your".
+        var nameInstruction = string.IsNullOrWhiteSpace(contactName)
+            ? ""
+            : $""" Also change "{contactName}" to "you"/"your" when used as the subject (e.g., "{contactName} can" → "you can").""";
+
+        var system = $"""
+            Fix ONLY the pronouns in this text message. Change "he"/"him"/"his" to "you"/"your".{nameInstruction}
             Do NOT change anything else. Do NOT add words, commentary, or rewrite the message.
             Return ONLY the fixed message text — same words, same length, just pronouns swapped.
             """;

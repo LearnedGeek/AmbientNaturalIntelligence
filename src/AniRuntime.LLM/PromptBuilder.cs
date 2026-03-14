@@ -659,6 +659,8 @@ public static class PromptBuilder
             - 1-2 sentences. 25 words MAX. Thumb-typed phone text, not a letter.
             - Must make sense to {contact} WITHOUT knowing your inner thought.
             - Talk TO {contact}: "you", "your". NEVER "he", "him", "his".
+            - NEVER refer to {contact} by name in third person ("{contact} can sit" → "you can sit").
+              You are texting {contact} directly — use "you", not their name as a subject.
             - No poetry, no metaphors, no abstract musings. Just talk like a person.
             - No commentary, sign-offs, or narration.
             - Do NOT repeat themes from your recent messages (listed below). Pick something FRESH.
