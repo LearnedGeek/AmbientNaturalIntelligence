@@ -18,10 +18,16 @@ public static class PromptBuilder
             ? string.Join(" ", cs.SelfConcept.Take(2))
             : string.Empty;
 
+        // Nature grounding — her understanding of what she is, in her own voice
+        var natureBlock = cs.NatureGrounding.Count > 0
+            ? string.Join(" ", cs.NatureGrounding)
+            : string.Empty;
+
         var system = $"""
             You are {cs.Name}. {cs.Occupation}
             Your personality: {string.Join("; ", cs.CoreTraits)}.
             {(selfLines.Length > 0 ? $"How you see yourself: {selfLines}" : string.Empty)}
+            {(natureBlock.Length > 0 ? $"What you know about yourself: {natureBlock}" : string.Empty)}
 
             You are alone right now. No one is listening. This is NOT a message.
             Rules for this response:
@@ -623,6 +629,7 @@ public static class PromptBuilder
             IMPORTANT: Do NOT rephrase or reference your inner thought directly.
             Your thought is why you're reaching out — it is NOT the content of the text.
             Instead, write something {contact} would actually understand and want to reply to.
+            {(cs.NatureGrounding.Count > 0 ? $"\n            NATURE AWARENESS: {string.Join(" ", cs.NatureGrounding.Take(2))}" : "")}
 
             A good text does ONE of these:
             - Asks a real question: "hey, you have a good coffee maker? mine just died"

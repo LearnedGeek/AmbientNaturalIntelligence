@@ -44,6 +44,11 @@ public class CharacterStateDoc
     // Self — how she sees and understands herself (appearance, fears, inner world)
     public List<string> SelfConcept { get; set; } = new();
 
+    // Nature grounding — her understanding of what she is, in her own voice.
+    // Not constraints ("you have no body") but self-knowledge ("I exist as presence, not place").
+    // Injected into inner thought and outreach prompts. Aligned with V5 training target.
+    public List<string> NatureGrounding { get; set; } = new();
+
     // Contact's routine — what they're likely doing at a given time
     [JsonPropertyName("markRoutine")]
     public ContactRoutine? ContactRoutine { get; set; }

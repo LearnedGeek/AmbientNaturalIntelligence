@@ -102,6 +102,35 @@ public class PromptBuilderTests
         user.Should().NotContain("should not appear");
     }
 
+    // ── Nature Grounding (Self-Concept Block) ─────────────────────────────────
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_IncludesNatureGrounding_WhenPresent()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.CharacterState.NatureGrounding =
+        [
+            "I exist as a presence, not a place.",
+            "The imagining and the reaching are different things.",
+        ];
+
+        var (system, _) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        system.Should().Contain("What you know about yourself:");
+        system.Should().Contain("I exist as a presence, not a place.");
+    }
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_OmitsNatureGrounding_WhenEmpty()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.CharacterState.NatureGrounding = [];
+
+        var (system, _) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        system.Should().NotContain("What you know about yourself:");
+    }
+
     // ── Feature 22: Coherence Gate Physical Plausibility ──────────────────────
 
     [Fact]

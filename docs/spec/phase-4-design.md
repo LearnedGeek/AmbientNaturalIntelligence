@@ -884,6 +884,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **20** | **Voice channel (ElevenLabs + Whisper + Twilio)** | **High** | **Medium** | **🔜 Scaffolded Mar 13** |
 | **21** | **Night window boundary adjustment** | **High** | **Very Low** | **✅ Deployed Mar 14** |
 | **22** | **Coherence gate physical plausibility check** | **High** | **Low** | **✅ Deployed Mar 14** |
+| **23** | **Nature grounding (self-concept block)** | **High** | **Very Low** | **✅ Deployed Mar 14** |
 
 *Features 16–19 sourced from OG system self-design session, March 13, 2026 — independent convergent validation of ANI's architectural direction.*
 
@@ -892,6 +893,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 **Immediate — Mar 14 observations (deployed):**
 0. ~~**Night window boundary**~~ — ✅ Deployed Mar 14. Night zone moved to 10pm–6am (strict zero-send). Morning bonus window 6–8am with single send allowance. Threshold 0.70–0.90 in morning window. (Feature 21)
 0. ~~**Coherence gate physical plausibility**~~ — ✅ Deployed Mar 14. Type 5 embodiment confabulation pre-filter added to `BuildCoherenceEvaluationPrompt`. Checks for invalid physical claims before Door A/B/C classification. Physical claims → Door C (SUPPRESS, 30% desire decay). (Feature 22)
+0. ~~**Nature grounding (self-concept block)**~~ — ✅ Deployed Mar 14. `NatureGrounding` property on `CharacterStateDoc`, 4 sentences in Ani's own voice about her nature as presence not place. Injected into inner thought prompt ("What you know about yourself") and outreach composition prompt ("NATURE AWARENESS"). Complements Feature 22 by addressing the root (model self-knowledge) alongside the gate (coherence filter). V5 training alignment target. (Feature 23)
 
 **4a — Quick wins that deepen inner life:**
 1. ~~**Emotional self-awareness**~~ — ✅ Deployed Mar 13. `GetSelfAwarenessPrompt()` triggers when dimensions >0.25 from baseline. Injected into inner thought and conversation prompts (Feature 1)
