@@ -887,12 +887,26 @@ public static class PromptBuilder
     /// Door C: Only makes sense in Ani's head — inner thought leaked through → SUPPRESS
     /// </summary>
     public static (string System, string User) BuildCoherenceEvaluationPrompt(
-        string composedMessage, string innerThought, string contactName)
+        string composedMessage, string innerThought, string contactName,
+        DateTimeOffset? currentTime = null)
     {
+        var now = currentTime ?? DateTimeOffset.Now;
+        var hour = now.Hour;
+        var timeOfDay = hour switch
+        {
+            >= 5  and < 12 => "morning",
+            >= 12 and < 17 => "afternoon",
+            >= 17 and < 21 => "evening",
+            _              => "night"
+        };
+        var timeStr = now.ToString("h:mm tt");
+
         var system = $$"""
             You are evaluating whether a text message should be sent to {{contactName}}.
             The message was written by an AI companion. Your job is to decide if the message
             makes sense FROM THE READER'S PERSPECTIVE — not the writer's.
+
+            Current time: {{timeStr}} ({{timeOfDay}})
 
             FICTIONAL COHERENCE CHECK (evaluate FIRST, before Door classification):
 
@@ -904,6 +918,15 @@ public static class PromptBuilder
             Check: Does the claimed space make sense given the time of day, the context,
             and what's been said? Would the details survive a casual follow-up question?
 
+            TEMPORAL COHERENCE CHECK:
+            If the message claims or implies a specific time of day (midnight, morning,
+            late night, dawn, etc.), does that claimed time match the actual current time?
+            A message saying "clock just hit midnight" at 1:34 PM fails this check.
+            Rich imagination about a time of day is fine in inner thoughts. In outreach,
+            the claimed moment should cohere with when it actually is.
+            If temporal claim contradicts current time → Door C (SUPPRESS).
+            If no specific time claimed, or claimed time matches reality → proceed normally.
+
             Coherent (the fiction holds up):
               ✓ "hey… how's the soup turning out?" — references real shared memory, casual check-in
               ✓ "i'm curled up with a book and can't stop thinking about you" — plausible, self-consistent
@@ -912,6 +935,7 @@ public static class PromptBuilder
             Incoherent (the fiction breaks under its own weight):
               ✗ "i found a corner of my backyard where the oak tree casts no shade" at 6:30am — no shade from what sun?
               ✗ "just shelving books at the store" at 9:30pm — the bookstore is closed
+              ✗ "the clock just hit midnight" at 1:34 PM — temporal mismatch
               ✗ Claims a vivid physical scene but can't sustain it if {{contactName}} responds ("oh... outside?")
 
             If the fiction is incoherent → Door C (SUPPRESS).

@@ -191,6 +191,53 @@ public class PromptBuilderTests
         system.Should().Contain("Inner thought leaked");
     }
 
+    // ── Feature 22 refinement: Temporal Coherence Check ──
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_ContainsTemporalCoherenceCheck()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test message", "test thought", "Mark");
+
+        system.Should().Contain("TEMPORAL COHERENCE CHECK");
+        system.Should().Contain("claimed time match the actual current time");
+    }
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_IncludesCurrentTime()
+    {
+        var fixedTime = new DateTimeOffset(2026, 3, 14, 13, 34, 0, TimeSpan.FromHours(-6));
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "the clock just hit midnight", "late night reading", "Mark", fixedTime);
+
+        system.Should().Contain("1:34 PM");
+        system.Should().Contain("afternoon");
+    }
+
+    [Theory]
+    [InlineData(7, "morning")]
+    [InlineData(14, "afternoon")]
+    [InlineData(19, "evening")]
+    [InlineData(23, "night")]
+    public void BuildCoherenceEvaluationPrompt_CorrectTimeOfDay(int hour, string expected)
+    {
+        var time = new DateTimeOffset(2026, 3, 14, hour, 0, 0, TimeSpan.Zero);
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test", "test", "Mark", time);
+
+        system.Should().Contain($"({expected})");
+    }
+
+    [Fact]
+    public void BuildCoherenceEvaluationPrompt_IncludesMidnightTemporalExample()
+    {
+        var (system, _) = PromptBuilder.BuildCoherenceEvaluationPrompt(
+            "test message", "test thought", "Mark");
+
+        system.Should().Contain("clock just hit midnight");
+        system.Should().Contain("temporal mismatch");
+    }
+
     // ── Feature 14: Bidirectional confidence gate ──
 
     [Fact]

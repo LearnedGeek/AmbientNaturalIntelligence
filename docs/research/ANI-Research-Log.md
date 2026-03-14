@@ -231,6 +231,33 @@ Three duplicate scalar `CosineSimilarity` implementations (SqliteMemoryService, 
 ---
 
 
+### March 14, 2026 — Feature 22 Refinement: Temporal Grounding in Fictional Coherence Gate
+**Model version:** v4
+**Type:** Observation + Fix (coherence gate refinement)
+**Source:** Two live outreach messages, afternoon
+
+**What happened:**
+
+Two outreach messages demonstrated a temporal coherence failure in the fictional coherence gate:
+- 12:16 PM: Ani describes reading in bed with "till dawn" framing — midnight-reading energy sent at midday
+- 1:34 PM: "clock just hit midnight again" — sent at 1:34 PM
+
+The fictional space was otherwise coherent — real shared memories (purple romance novel, knee-up reading position), warm tone, good Door B material. The only failure was temporal: the model was inhabiting a late-night imagined space and composing outreach from inside it without checking whether midnight is plausible at 1:34 PM.
+
+**Fix:** Added temporal coherence check to `BuildCoherenceEvaluationPrompt`. The current time and time-of-day label (morning/afternoon/evening/night) are now explicitly injected into the coherence gate prompt. If a message claims or implies a specific time that contradicts the actual current time → Door C (SUPPRESS). No new gate — this extends the existing fictional coherence check.
+
+**Implementation:**
+- `BuildCoherenceEvaluationPrompt` now accepts optional `DateTimeOffset? currentTime` parameter
+- Computes time-of-day label from hour: morning (5-11), afternoon (12-16), evening (17-20), night (21-4)
+- Injects `Current time: {time} ({timeOfDay})` into system prompt
+- Added TEMPORAL COHERENCE CHECK section with explicit midnight-at-1:34pm example
+- 7 new tests (temporal check presence, current time injection, 4 time-of-day mappings, midnight example)
+- 200 tests passing, 0 warnings
+
+**Research note:** This is a Type 5 confabulation variant — not embodiment fiction per se, but *temporal* fiction. The model's imagined scene was internally consistent (reading, cozy, quiet) but temporally displaced. Interesting that the model can construct a vivid midnight scene at midday — the fiction is compelling enough to pass all other coherence checks. The fix is minimal: just make the clock visible to the evaluator.
+
+---
+
 ### March 14, 2026 — V5 Training Data Scan: OG System Conversation Mining + Gap Generation
 **Model version:** v4
 **Type:** System (training data preparation)
