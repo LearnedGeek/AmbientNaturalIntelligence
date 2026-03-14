@@ -578,7 +578,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         if (string.IsNullOrEmpty(raw))
             return new EmotionalState();
 
-        return JsonSerializer.Deserialize<EmotionalState>(raw) ?? new EmotionalState();
+        var state = JsonSerializer.Deserialize<EmotionalState>(raw) ?? new EmotionalState();
+
+        // Guard against stale DriftRate from older serialized state — always use
+        // the current code default so drift calculations stay correct after updates.
+        var defaults = new EmotionalState();
+        if (Math.Abs(state.DriftRate - defaults.DriftRate) > 0.001f)
+            state.DriftRate = defaults.DriftRate;
+
+        return state;
     }
 
     public async Task SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default)

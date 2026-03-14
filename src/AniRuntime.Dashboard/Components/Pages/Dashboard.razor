@@ -38,7 +38,7 @@
         {
             <blockquote>
                 <p>@thought.Content</p>
-                <footer>@thought.CreatedAt.ToString("MMM d, h:mm tt")</footer>
+                <footer>@thought.CreatedAt.LocalDateTime.ToString("MMM d, h:mm tt")</footer>
             </blockquote>
         }
     </section>
@@ -50,7 +50,7 @@
         <h3>Active Conversation</h3>
         @foreach (var msg in _activeThread.Messages.TakeLast(6))
         {
-            <p><strong>@msg.Role:</strong> @msg.Content <small>@msg.SentAt.ToString("h:mm tt")</small></p>
+            <p><strong>@msg.Role:</strong> @msg.Content <small>@msg.SentAt.LocalDateTime.ToString("h:mm tt")</small></p>
         }
     </section>
 }
