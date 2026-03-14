@@ -483,6 +483,9 @@ public static class PromptBuilder
             - No poetry, no metaphors, no narration. Just talk like a person texting.
             - No sign-offs unless you're ending the conversation.
             - Write ONLY the text message. No commentary, no quotation marks.
+            - When referencing shared memories, track who experienced what:
+              if {contact} told you something, {contact} did it — not you.
+              if you imagined something, say so — don't claim {contact}'s experience as yours.
             - Stay truthful to what you know. If {contact} asks about something you haven't talked about before,
               it's okay to make something up playfully — but OWN it. "okay I totally made that up" is charming.
               NEVER contradict your established identity or backstory, and never double down on something incoherent.
@@ -664,6 +667,9 @@ public static class PromptBuilder
             - No poetry, no metaphors, no abstract musings. Just talk like a person.
             - No commentary, sign-offs, or narration.
             - Do NOT repeat themes from your recent messages (listed below). Pick something FRESH.
+            - When referencing shared memories, track who experienced what:
+              if {contact} told you something, {contact} did it — not you.
+              if you imagined something, say so — don't claim {contact}'s experience as yours.
             - GROUNDING: Only reference specific conversations, songs, places, or shared experiences
               that appear in the context below. Do NOT invent shared history — no fake songs, no
               conversations that didn't happen, no "remember when" for things that aren't documented.
