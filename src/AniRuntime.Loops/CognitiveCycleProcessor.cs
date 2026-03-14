@@ -204,8 +204,11 @@ public class CognitiveCycleProcessor
             _log.LogInformation("Reflection: {Reflection}", reflection);
 
         // Phase 4b: Emotional shift from inner thought (raw thought only — reflection
-        // adds warm/connection language that would inflate emotional scores)
-        await ApplyEmotionalShiftAsync(emotionalState, thought, ct, isAmbientCycle: true).ConfigureAwait(false);
+        // adds warm/connection language that would inflate emotional scores).
+        // Ambient maxDelta is capped low (0.05) because the 3B model consistently
+        // returns max-negative deltas regardless of thought content, overwhelming
+        // baseline drift. Private thoughts should nudge mood gently, not crater it.
+        await ApplyEmotionalShiftAsync(emotionalState, thought, ct, maxDelta: 0.05f, isAmbientCycle: true).ConfigureAwait(false);
 
         // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
