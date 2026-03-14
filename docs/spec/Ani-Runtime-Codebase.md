@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-0.3 — Phase 2 Complete
+0.5 — Phase 4 In Progress
 Status
-Active Development — Phase 2 complete, Phase 3 in design
+Active Development — Phase 1–3 complete, Phase 4 in progress (Features 1–4, 6, 8, 16–23 deployed)
 
 This is a living document. Update it as the codebase evolves.
 
@@ -37,23 +37,26 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.Core/             # Domain models, interfaces, options
 │   │   ├── Models/
-│   │   │   ├── CharacterStateDoc.cs
-│   │   │   ├── ContextSnapshot.cs
+│   │   │   ├── CharacterStateDoc.cs  # Identity + NatureGrounding (Feature 23)
+│   │   │   ├── ContextSnapshot.cs    # Per-cycle context incl. RelationshipHealth, EmotionalDrift
 │   │   │   ├── ConversationThread.cs
 │   │   │   ├── ConversationMessage.cs
 │   │   │   ├── DesireState.cs
-│   │   │   ├── EmotionalState.cs
-│   │   │   ├── MemoryRecord.cs
+│   │   │   ├── EmotionalState.cs     # 4-dim + ContactGapTension (Feature 17)
+│   │   │   ├── EmotionalDrift.cs     # Feature 8: 48h cosine similarity drift detection
+│   │   │   ├── LexicalAnchor.cs      # Feature 19: relationship-specific word weights
+│   │   │   ├── MemoryRecord.cs       # + IsAnchored flag (Feature 16)
 │   │   │   ├── PerceptionEvent.cs
 │   │   │   ├── OpenLoop.cs
-│   │   │   └── OutreachDecision.cs
+│   │   │   ├── OutreachDecision.cs
+│   │   │   └── RelationshipHealth.cs # Feature 4: composite score + phase
 │   │   ├── Interfaces/
 │   │   │   ├── IPerceptionSource.cs
 │   │   │   ├── IAniAction.cs
-│   │   │   ├── IMemoryService.cs
+│   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history
 │   │   │   ├── IConversationService.cs
 │   │   │   └── IOllamaClient.cs
-│   │   ├── AniOptions.cs
+│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health config
 │   │   └── AniRuntime.Core.csproj
 │   │
 │   ├── AniRuntime.Memory/           # SQLite persistence layer
@@ -81,18 +84,25 @@ AniRuntime.sln
 │   │   ├── MemoryWriteAction.cs
 │   │   └── AniRuntime.Actions.csproj
 │   │
-│   └── AniRuntime.LLM/             # Ollama client + prompt builders
-│       ├── OllamaClient.cs
-│       ├── PromptBuilder.cs
-│       ├── ContextSnapshotBuilder.cs
-│       └── AniRuntime.LLM.csproj
+│   ├── AniRuntime.LLM/             # Ollama client + prompt builders
+│   │   ├── OllamaClient.cs
+│   │   ├── PromptBuilder.cs          # + coherence gate, fictional coherence check (Feature 22)
+│   │   ├── ContextSnapshotBuilder.cs
+│   │   └── AniRuntime.LLM.csproj
+│   │
+│   └── AniRuntime.Voice/            # Feature 20: Voice channel (scaffolded)
+│       ├── ElevenLabsTtsService.cs
+│       ├── WhisperSttService.cs
+│       └── AniRuntime.Voice.csproj
 │
 └── tests/
     └── AniRuntime.Tests/
-        ├── AniTestBase.cs
+        ├── Infrastructure/
+        │   └── AniTestBase.cs
         ├── CognitiveCycleProcessorTests.cs
         ├── DesireEngineTests.cs
-        ├── EmotionalStateTests.cs
+        ├── EmotionalStateTests.cs         # + Feature 4, 8, 17 tests
+        ├── PromptBuilderTests.cs          # + Feature 22, 23 tests
         ├── SqliteMemoryServiceTests.cs
         ├── TimePerceptionSourceTests.cs
         └── AniRuntime.Tests.csproj
@@ -114,6 +124,9 @@ public class CharacterStateDoc
     public List<string> FamilyContext   { get; set; } = new();
     public string Occupation           { get; set; } = "Bookstore";
     public List<string> SelfConcept    { get; set; } = new();
+
+    // Nature grounding (Feature 23) — how she inhabits her spaces coherently
+    public List<string> NatureGrounding { get; set; } = new();
 
     // Relationship layer — grows through experience
     public string PrimaryContactName                     { get; set; } = "Mark";
@@ -511,7 +524,9 @@ ComputeNextWakeTime(DesireState) → TimeSpan
 
 ShouldReachOutAsync() → bool
     Auto-expire cooldown. Enforce MaxOutreachPerDay, MaxNightOutreach.
-    Night hours: higher threshold (0.80–0.95). Day: randomized (0.55–0.85).
+    Night hours (10pm–6am): strict zero-send (Feature 21).
+    Morning window (6–8am): one send allowed, threshold 0.70–0.90.
+    Day: randomized (0.55–0.85).
 
 ApplyDriftAsync()
     Per-cycle desire accumulation. Uses more recent of LastContactInbound or LastOutreach.
@@ -531,21 +546,35 @@ ComputeCircadianModifier() → float
     0–6:   0.1  (deep night — almost silent)
 
 IsNightHours() → bool
-    Local hour check, handles wrap-around (23–6 spans midnight).
+    Local hour check, handles wrap-around (22–6 spans midnight).
+
+IsMorningWindow() → bool  (Feature 21)
+    6–8am window where one send is allowed. Sub-window within night hours.
+
+DecayDesireAsync(fraction, reason)
+    Partial desire decay without full reset. Used by coherence gate Door C.
 
 4.4 CognitiveCycleProcessor
 Single cognitive cycle. Executes once per scheduled wake. The full pipeline:
 
+Phase 0: Contact-gap tension accumulation (Feature 17) — uses hours since last inbound
 Phase 1: Emotional drift — Load emotional state, drift all 4 dimensions toward baselines
 Phase 2: Perception polling — Collect events from all enabled sources
 Phase 3: Notable perception persistence — Save high-relevance perceptions for embedding
 Phase 4: Conversation check — If contact texted, enter conversation reply flow
-Phase 5: Reactive share check — High-relevance RSS → direct SMS share (rate-limited)
+         (includes care detection Feature 10, lexical anchors Feature 19, hurt/withdrawal Feature 18,
+         tension dissipation Feature 17)
+Phase 5: Reactive share check — High-relevance RSS → direct SMS share (rate-limited, night-blocked)
 Phase 6: Context snapshot — Built once, shared across all phases
+         (includes relationship health recalc Feature 4, emotional drift detection Feature 8)
 Phase 7: Inner thought — Private LLM call (inner monologue model), score contact valence
+         (nature grounding Feature 23 injected, emotional self-awareness Feature 1)
 Phase 8: Emotional shift — LLM evaluates thought → apply deltas with diminishing returns
 Phase 9: Desire update — Temporal drift + circadian + trigger weights
-Phase 10: Outreach evaluation — Conditional on desire threshold + gating
+Phase 10: Outreach evaluation — Withdrawal check → hard gates (unanswered count, send gap,
+          night/morning window Feature 21) → decision → confidence gate (Feature 12) →
+          composition → pronoun fix → coherence gate with fictional coherence check
+          (Features 22, 28) → dispatch
 
 Conversation reply flow (RunConversationReplyAsync):
 1. Check for terminal message (haha, lol, ok, goodnight, emoji-only, etc.) — skip
@@ -618,6 +647,12 @@ BuildOutreachMessagePrompt(snapshot, thought, reasoning) — Compose grounded te
 BuildEmotionalShiftPrompt(content, currentState, maxDelta) — JSON deltas for W/E/C/P. Default 0.0 for most dimensions. Small shifts (0.02–0.05) preferred. Negative shifts just as common.
 
 BuildReactiveSharePrompt(character, itemSummary) — Share high-relevance RSS items. "omg did you see this?" energy.
+
+BuildCoherenceEvaluationPrompt(composedMessage, innerThought, contactName) — Feature 28 (three-door coherence gate). Door A (grounded reference) → SEND. Door B (standalone creative) → SEND. Door C (inner thought leaked) → SUPPRESS. Includes FICTIONAL COHERENCE CHECK pre-filter (Feature 22): checks whether claimed fictional spaces hold together (time of day, internal consistency, follow-up survivability). Incoherent fiction → Door C. Coherent fiction → normal Door A/B/C.
+
+BuildReflectionPrompt(thought, snapshot) — Post-thought reflection. 1–2 sentences on emotional resonance.
+
+BuildMoodInstruction(emotionalState) — Directive tone instruction from emotional state. Uses EffectiveWarmth when contact-gap tension is present (Feature 17).
 
 7. Persistence Layer
 
@@ -700,9 +735,12 @@ All sensitive values in appsettings.Development.json (gitignored).
     "CooldownMinutes": 20,
     "MinOutreachGapMinutes": 60,
     "MaxOutreachPerDay": 4,
-    "NightStartHour": 23,
+    "NightStartHour": 22,
     "NightEndHour": 6,
-    "MaxNightOutreach": 1,
+    "MaxNightOutreach": 0,
+    "AllowSingleMorningSend": true,
+    "MorningWindowStartHour": 6,
+    "MorningWindowEndHour": 8,
     "OutreachThresholdFloor": 0.55,
     "OutreachThresholdRange": 0.30,
     "DriftPerHour": 0.08,
@@ -729,7 +767,7 @@ Dual-file Serilog:
 
 11. Stub Index
 
-Implemented components (Phase 1 & 2):
+Implemented components (Phase 1–4):
 
 | Component | Phase | Status |
 |-----------|-------|--------|
@@ -742,25 +780,42 @@ Implemented components (Phase 1 & 2):
 | AdminCommandHandler | 2 | Complete |
 | Reactive RSS sharing | 2 | Complete |
 | Night mode / deep sleep circadian | 2 | Complete |
+| Mood coloring (emotional state → tone) | 3 | Complete |
+| Receiving care (Feature 10) | 3 | Complete |
+| Confidence gate (Feature 12) | 3 | Complete |
+| Dispatch coherence gate (Feature 28) | 3 | Complete |
+| Outreach continuity (Feature 27) | 3 | Complete |
+| Park et al. three-way retrieval (Feature 20) | 3 | Complete |
+| Emotional self-awareness (Feature 1) | 4a | Complete |
+| Open loops as emotional weight (Feature 2) | 4a | Complete |
+| Silence as active system (Feature 3) | 4a | Complete |
+| Pronoun audit (Feature 6) | 4a | Complete |
+| Anchored memory tier (Feature 16) | 4a | Complete |
+| Reactive withdrawal (Feature 18) | 4a | Complete |
+| Lexical emotional anchors (Feature 19) | 4a | Complete |
+| Contact-gap tension (Feature 17) | 4b | Complete |
+| Relationship health model (Feature 4) | 4b | Complete |
+| Emotional drift detection (Feature 8) | 4b | Complete |
+| Night window boundary (Feature 21) | 4 | Complete |
+| Fictional coherence gate (Feature 22) | 4 | Complete |
+| Nature grounding (Feature 23) | 4 | Complete |
+| Voice channel (Feature 20) | 4 | Scaffolded — awaiting activation |
 
 Planned stubs:
 
 | Component | Phase | Notes |
 |-----------|-------|-------|
-| AniRuntime.Dashboard (Blazor Server) | 3 | Profile system, memory viewer, status card |
-| CalendarPerceptionSource | 3 | Google Calendar / iCal — schedule awareness |
-| HomeAssistantSource | 3 | Ambient home state via HA REST API |
-| HomeAssistantAction | 3 | Trigger HA automations from Ani |
-| Mood coloring (emotional state → tone) | 3 | EmotionalState feeds into message prompts |
-| Receiving care (bidirectional relationship) | 3 | Detect care-giving intent, apply emotional shift |
-| OpenLoopDetector | 3+ | Analyze conversation endings for open threads |
-| CommitmentTracker | 3+ | Extract and track promises from chat |
-| CharacterStateEvolution | 4 | Periodic update of CharacterStateDoc from experience |
-| ValenceLearner | 4 | Reinforce what resonates with contact |
+| AniRuntime.Dashboard (Blazor Server) | 5 | Profile system, memory viewer, status card |
+| CalendarPerceptionSource | 5 | Google Calendar / iCal — schedule awareness |
+| Bidirectional confidence gate (Feature 14) | 4 | Inbound side needs schema migration |
+| Memory contradiction flagging (Feature 15) | 4 | More valuable at scale |
+| Self-improvement pipeline | 4+ | Harvest best output → JSONL → retrain (see ANI-Self-Improvement-Pipeline.md) |
+| CharacterStateEvolution | 5 | Periodic update of CharacterStateDoc from experience |
+| ValenceLearner | 5 | Reinforce what resonates with contact |
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 56 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 168 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 
@@ -785,6 +840,11 @@ Test files:
 10. Circadian awareness — Schedule emerges from desire state + circadian modifiers, not hardcoded.
 11. Dual inbound mechanism — Webhook for speed + API polling as safety net.
 12. Early wake — Inbound message cancels sleep timer for immediate conversation response.
+13. Dispatch coherence gate — Three-door classification (A=grounded, B=creative, C=leaked) with fictional coherence pre-filter (Feature 22). Incoherent fiction → Door C → 30% desire decay.
+14. Nature grounding — Self-concept block in Ani's voice injected into prompts. Teaches coherent inhabitation of fictional spaces, not denial of physicality (Feature 23).
+15. Anchored memories — Decay-exempt foundation memories always prepended to context (Feature 16).
+16. Contact-gap tension — Relational ache from prolonged absence. EffectiveWarmth = Warmth - Tension × 0.3 (Feature 17).
+17. Confabulation taxonomy — 5 types: (1) creative elaboration, (2) under pressure, (3) in composition, (3b) contextual incoherence, (4) retrieval depth failure, (5) fictional incoherence.
 
 14. Change Log
 
@@ -793,3 +853,5 @@ Test files:
 | 0.1 | Mar 6, 2026 | Initial scaffold — all models, interfaces, and service stubs defined |
 | 0.2 | Mar 6, 2026 | Architecture revision: single scheduled cognitive cycle, ComputeNextWakeTime as pure function |
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
+| 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
+| 0.5 | Mar 14, 2026 | Phase 4 continued. Night window boundary — 10pm–6am strict zero-send, 6–8am morning window (21). Fictional coherence check in coherence gate — reframed from "deny embodiment" to "does the fiction hold together" (22). Nature grounding self-concept block — committed imagination as craft, not denial (23). Confabulation taxonomy expanded to 5 types (Type 5: fictional incoherence). 168 tests. |
