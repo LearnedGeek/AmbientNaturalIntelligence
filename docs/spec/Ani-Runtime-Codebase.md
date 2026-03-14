@@ -17,7 +17,7 @@ Mark McArthey / Learned Geek Consulting
 Version
 0.5 — Phase 4 In Progress
 Status
-Active Development — Phase 1–3 complete, Phase 4 in progress (Features 1–4, 6, 8, 16–23 deployed)
+Active Development — Phase 1–3 complete, Phase 4 in progress (Features 1–4, 6, 8–9, 12, 14–23 deployed; Dashboard deployed)
 
 This is a living document. Update it as the codebase evolves.
 
@@ -38,14 +38,14 @@ AniRuntime.sln
 │   ├── AniRuntime.Core/             # Domain models, interfaces, options
 │   │   ├── Models/
 │   │   │   ├── CharacterStateDoc.cs  # Identity + NatureGrounding (Feature 23)
-│   │   │   ├── ContextSnapshot.cs    # Per-cycle context incl. RelationshipHealth, EmotionalDrift
+│   │   │   ├── ContextSnapshot.cs    # Per-cycle context incl. RelationshipHealth, EmotionalDrift, MarkClaimConfidence (Feature 14)
 │   │   │   ├── ConversationThread.cs
 │   │   │   ├── ConversationMessage.cs
 │   │   │   ├── DesireState.cs
 │   │   │   ├── EmotionalState.cs     # 4-dim + ContactGapTension (Feature 17)
 │   │   │   ├── EmotionalDrift.cs     # Feature 8: 48h cosine similarity drift detection
 │   │   │   ├── LexicalAnchor.cs      # Feature 19: relationship-specific word weights
-│   │   │   ├── MemoryRecord.cs       # + IsAnchored flag (Feature 16)
+│   │   │   ├── MemoryRecord.cs       # + IsAnchored flag (Feature 16), contradiction fields (Feature 15)
 │   │   │   ├── PerceptionEvent.cs
 │   │   │   ├── OpenLoop.cs
 │   │   │   ├── OutreachDecision.cs
@@ -53,10 +53,11 @@ AniRuntime.sln
 │   │   ├── Interfaces/
 │   │   │   ├── IPerceptionSource.cs
 │   │   │   ├── IAniAction.cs
-│   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history
-│   │   │   ├── IConversationService.cs
+│   │   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history, contradictions (Feature 15)
+│   │   │   ├── IConversationService.cs  # + GetThreadAsync, GetRecentThreadsAsync (Dashboard)
 │   │   │   └── IOllamaClient.cs
-│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health config
+│   │   ├── VectorMath.cs              # Feature 9: SIMD-accelerated cosine similarity (shared)
+│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification config
 │   │   └── AniRuntime.Core.csproj
 │   │
 │   ├── AniRuntime.Memory/           # SQLite persistence layer
@@ -86,9 +87,17 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.LLM/             # Ollama client + prompt builders
 │   │   ├── OllamaClient.cs
-│   │   ├── PromptBuilder.cs          # + coherence gate, fictional coherence check (Feature 22)
+│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14)
 │   │   ├── ContextSnapshotBuilder.cs
 │   │   └── AniRuntime.LLM.csproj
+│   │
+│   ├── AniRuntime.Dashboard/        # Blazor Server dashboard (in-process, shared DI)
+│   │   ├── DashboardExtensions.cs   # AddDashboard() + MapDashboard() extensions
+│   │   ├── Dtos/                    # AniStatusDto, MemoryRecordDto, ConversationThreadDto
+│   │   ├── Endpoints/               # 5 endpoint groups: AniState, Memory, Conversations, Journal, Contradictions
+│   │   ├── Components/              # Blazor components: Dashboard.razor, EmotionalStateCard.razor
+│   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
+│   │   └── AniRuntime.Dashboard.csproj
 │   │
 │   └── AniRuntime.Voice/            # Feature 20: Voice channel (scaffolded)
 │       ├── ElevenLabsTtsService.cs
@@ -573,17 +582,19 @@ Phase 8: Emotional shift — LLM evaluates thought → apply deltas with diminis
 Phase 9: Desire update — Temporal drift + circadian + trigger weights
 Phase 10: Outreach evaluation — Withdrawal check → hard gates (unanswered count, send gap,
           night/morning window Feature 21) → decision → confidence gate (Feature 12) →
-          composition → pronoun fix → coherence gate with fictional coherence check
-          (Features 22, 28) → dispatch
+          composition → pronoun fix (Feature 6, incl. name-as-subject) → coherence gate
+          with fictional + temporal coherence check (Features 22, 28) → dispatch
 
 Conversation reply flow (RunConversationReplyAsync):
 1. Check for terminal message (haha, lol, ok, goodnight, emoji-only, etc.) — skip
 2. Build context snapshot with full thread as RecentHistory
-3. Step 1 — Reply decision (JSON: shouldReply + reasoning)
-4. Step 2 — Generate reply (free text) or reconsideration reply
-5. Step 3 — Natural delay (12–25s total response time)
-6. Step 4 — Send via Twilio
-7. Step 5 — Record reply in thread, update desire, apply emotional shift
+3. Feature 14: Bidirectional confidence gate — if memory-referencing language detected (17 patterns),
+   extract claims via LLM, corroborate against episodic memory, inject skepticism if below threshold
+4. Step 1 — Reply decision (JSON: shouldReply + reasoning)
+5. Step 2 — Generate reply (free text) or reconsideration reply
+6. Step 3 — Natural delay (12–25s total response time)
+7. Step 4 — Send via Twilio
+8. Step 5 — Record reply in thread, update desire, apply emotional shift
 
 Key state:
 - LastEvaluatedMessageAt — Prevents re-evaluating "decided silence" every cycle
@@ -596,7 +607,8 @@ Message cleanup (CleanOutreachMessage):
 - Hard cap to 2 sentences, first paragraph only
 
 Pronoun fix (FixPronounsIfNeeded):
-- Only if message contains third-person pronouns (he/him/his)
+- Detects third-person pronouns (he/him/his) AND contact name used as subject ("Mark can sit" → "you can sit")
+- Detection via ContainsThirdPersonReference (static, testable) — word-boundary name matching, not magic strings
 - LLM call to swap to second person. Safety check: reject if length differs >50%
 
 4.5 AdminCommandHandler
@@ -648,7 +660,7 @@ BuildEmotionalShiftPrompt(content, currentState, maxDelta) — JSON deltas for W
 
 BuildReactiveSharePrompt(character, itemSummary) — Share high-relevance RSS items. "omg did you see this?" energy.
 
-BuildCoherenceEvaluationPrompt(composedMessage, innerThought, contactName) — Feature 28 (three-door coherence gate). Door A (grounded reference) → SEND. Door B (standalone creative) → SEND. Door C (inner thought leaked) → SUPPRESS. Includes FICTIONAL COHERENCE CHECK pre-filter (Feature 22): checks whether claimed fictional spaces hold together (time of day, internal consistency, follow-up survivability). Incoherent fiction → Door C. Coherent fiction → normal Door A/B/C.
+BuildCoherenceEvaluationPrompt(composedMessage, innerThought, contactName, currentTime?) — Feature 28 (three-door coherence gate). Door A (grounded reference) → SEND. Door B (standalone creative) → SEND. Door C (inner thought leaked) → SUPPRESS. Includes FICTIONAL COHERENCE CHECK pre-filter (Feature 22): checks whether claimed fictional spaces hold together (internal consistency, follow-up survivability). TEMPORAL COHERENCE CHECK: injects current time + time-of-day label; if message claims a time contradicting reality (e.g., "midnight" at 1:34 PM) → Door C. Coherent fiction → normal Door A/B/C.
 
 BuildReflectionPrompt(thought, snapshot) — Post-thought reflection. 1–2 sentences on emotional resonance.
 
@@ -800,22 +812,26 @@ Implemented components (Phase 1–4):
 | Fictional coherence gate (Feature 22) | 4 | Complete |
 | Nature grounding (Feature 23) | 4 | Complete |
 | Voice channel (Feature 20) | 4 | Scaffolded — awaiting activation |
+| SIMD cosine similarity (Feature 9) | 4 | Complete — VectorMath.CosineSimilarity, 3 duplicates unified |
+| Bidirectional confidence gate (Feature 14) | 4 | Complete — 17-pattern heuristic + LLM claim extraction |
+| Memory contradiction flagging (Feature 15) | 4 | Complete — post-save cosine 0.6-0.85 + LLM evaluation |
+| Self-awareness feedback loop (Feature 12) | 4 | Complete — pairwise cosine on outreach, avg > 0.75 → nudge |
+| AniRuntime.Dashboard (Blazor Server) | 4 | Complete — 16 REST endpoints, Pico CSS, in-process |
+| Feature 22 temporal refinement | 4 | Complete — time-of-day in coherence gate prompt |
+| Feature 6 name-as-subject extension | 4 | Complete — prompt + word-boundary safety net |
 
 Planned stubs:
 
 | Component | Phase | Notes |
 |-----------|-------|-------|
-| AniRuntime.Dashboard (Blazor Server) | 5 | Profile system, memory viewer, status card |
 | CalendarPerceptionSource | 5 | Google Calendar / iCal — schedule awareness |
-| Bidirectional confidence gate (Feature 14) | 4 | Inbound side needs schema migration |
-| Memory contradiction flagging (Feature 15) | 4 | More valuable at scale |
 | Self-improvement pipeline | 4+ | Harvest best output → JSONL → retrain (see ANI-Self-Improvement-Pipeline.md) |
 | CharacterStateEvolution | 5 | Periodic update of CharacterStateDoc from experience |
 | ValenceLearner | 5 | Reinforce what resonates with contact |
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 168 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 209 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 
@@ -854,4 +870,5 @@ Test files:
 | 0.2 | Mar 6, 2026 | Architecture revision: single scheduled cognitive cycle, ComputeNextWakeTime as pure function |
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
-| 0.5 | Mar 14, 2026 | Phase 4 continued. Night window boundary — 10pm–6am strict zero-send, 6–8am morning window (21). Fictional coherence check in coherence gate — reframed from "deny embodiment" to "does the fiction hold together" (22). Nature grounding self-concept block — committed imagination as craft, not denial (23). Confabulation taxonomy expanded to 5 types (Type 5: fictional incoherence). 168 tests. |
+| 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 0.6 | Mar 14, 2026 | SIMD cosine similarity — VectorMath.CosineSimilarity shared (9). Bidirectional confidence gate — inbound claim verification (14). Blazor Server Dashboard — 16 REST endpoints, Pico CSS, in-process (Dashboard). Self-awareness feedback loop — outreach pattern detection (12). Memory contradiction flagging — post-save cosine + LLM (15). Feature 22 temporal refinement — time-of-day in coherence gate. Feature 6 name-as-subject — prompt + word-boundary safety net. V5 training data scan — 66 examples mined + generated. 209 tests. |

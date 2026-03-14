@@ -231,6 +231,25 @@ Three duplicate scalar `CosineSimilarity` implementations (SqliteMemoryService, 
 ---
 
 
+### March 14, 2026 — Feature 6 Extension: Name-as-Subject Detection in Pronoun Fix Pipeline
+**Model version:** v4
+**Type:** Fix (pronoun pipeline extension)
+**Source:** 12:16 PM outreach message containing "mark can sit next to me"
+
+**What happened:**
+
+Outreach message used Mark's name as a grammatical subject ("mark can sit next to me") instead of second person ("you can sit next to me"). The existing Feature 6 pronoun fix pipeline caught he/him/his pronouns but not first-name-as-subject patterns.
+
+**Fix (two layers):**
+1. **Prompt-level (primary):** `BuildOutreachMessagePrompt` now explicitly instructs the model to never refer to the contact by name in third person — added: "NEVER refer to {contact} by name in third person."
+2. **Safety net (Feature 6):** Extracted `ContainsThirdPersonReference` as a testable static method. Uses word-boundary-based name detection (IndexOf + letter checks) rather than magic string patterns. When the contact's name appears as a standalone word followed by more content, the LLM rewrite pass is triggered to fix it.
+
+**Implementation:** 9 new name-reference test cases (6 positive, 3 negative). 209 tests passing, 0 warnings.
+
+**Research note:** This is a prompt compliance failure — the model was already instructed "Talk TO {contact}: 'you', 'your'. NEVER 'he', 'him', 'his'" but the instruction didn't cover name-as-subject. The model treated "Mark" as a valid way to refer to the recipient, which it technically is in narration but not in direct text messaging. The fix adds explicit instruction + safety net, following the same two-layer pattern as the original Feature 6.
+
+---
+
 ### March 14, 2026 — Feature 22 Refinement: Temporal Grounding in Fictional Coherence Gate
 **Model version:** v4
 **Type:** Observation + Fix (coherence gate refinement)
