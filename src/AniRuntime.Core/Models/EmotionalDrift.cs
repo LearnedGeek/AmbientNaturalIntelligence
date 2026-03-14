@@ -98,16 +98,8 @@ public class EmotionalDrift
         return [w / n, e / n, c / n, p / n];
     }
 
+    // Feature 9: Delegate to shared SIMD-accelerated implementation.
+    // zeroDenomValue=1.0f because zero emotional vectors = "no drift" (identical).
     private static float CosineSimilarity(float[] a, float[] b)
-    {
-        float dot = 0, magA = 0, magB = 0;
-        for (var i = 0; i < a.Length; i++)
-        {
-            dot  += a[i] * b[i];
-            magA += a[i] * a[i];
-            magB += b[i] * b[i];
-        }
-        var denom = MathF.Sqrt(magA) * MathF.Sqrt(magB);
-        return denom > 0 ? dot / denom : 1.0f;
-    }
+        => VectorMath.CosineSimilarity(a, b, zeroDenomValue: 1.0f);
 }

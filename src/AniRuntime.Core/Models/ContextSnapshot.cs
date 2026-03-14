@@ -57,4 +57,24 @@ public class ContextSnapshot
     /// and older emotional vectors. Surfaces in inner thought when significant.
     /// </summary>
     public EmotionalDrift? EmotionalDrift { get; set; }
+
+    /// <summary>
+    /// Feature 14: Bidirectional confidence gate — inbound claim verification.
+    /// When Mark references past events or attributes statements to Ani, this scores
+    /// how well those claims are corroborated by episodic memory. Low confidence
+    /// triggers gentle skepticism injection in the reply prompt.
+    /// </summary>
+    public float? MarkClaimConfidence { get; set; }
+
+    /// <summary>
+    /// Feature 14: True when Mark's message contains claims that couldn't be
+    /// corroborated by memory search. Ani should not blindly agree.
+    /// </summary>
+    public bool MarkClaimNeedsVerification { get; set; }
+
+    /// <summary>
+    /// Feature 14: The specific unverified claims extracted from Mark's message,
+    /// so the prompt can reference them for targeted skepticism.
+    /// </summary>
+    public List<string> UnverifiedClaims { get; set; } = new();
 }

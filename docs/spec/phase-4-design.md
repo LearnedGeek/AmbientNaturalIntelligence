@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14)
+**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14; Features 9, 14 deployed Mar 14)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -325,22 +325,25 @@ Apply ChatLake's drift detection algorithm to the `emotional_state_history` tabl
 
 ---
 
-## Feature 9: SIMD-Accelerated Cosine Similarity
+## Feature 9: SIMD-Accelerated Cosine Similarity — ✅ Deployed Mar 14
 
-**Priority:** Low (performance optimization, Phase 4+)
+**Priority:** Low (performance optimization)
 **Effort:** Low
 **Dependencies:** None (drop-in replacement)
+**Status:** ✅ Deployed March 14, 2026
 
 ### Concept
 
-Current cosine similarity is computed in plain C# loops. At scale (10K+ memory comparisons per retrieval), SIMD vectorization provides 4-8x speedup. ChatLake's `SimilarityService.cs` already has a tested SIMD implementation.
+Cosine similarity was computed in three duplicate scalar C# loops across SqliteMemoryService, EmotionalDrift, and CognitiveCycleProcessor. Consolidated into shared `VectorMath.CosineSimilarity` in AniRuntime.Core with SIMD acceleration via `System.Numerics.Vector<float>`.
 
-### Implementation
+### Implementation (Deployed)
 
-- Port ChatLake's SIMD cosine similarity using `System.Numerics.Vector<float>`
-- Drop-in replacement for current similarity computation in `SqliteMemoryService`
-- Benchmark before/after to quantify improvement
-- Not urgent at current memory volume — becomes important with semantic dedup (checking every save) and importance-weighted retrieval (scoring more candidates)
+- Created `AniRuntime.Core.VectorMath` with SIMD-accelerated cosine similarity
+- Computes dot product, magnitude A, and magnitude B in parallel SIMD lanes
+- Handles unnormalized vectors (unlike ChatLake reference which assumes normalized)
+- Supports configurable `zeroDenomValue` parameter (0f for memory/outreach, 1.0f for emotional drift)
+- All 3 duplicate implementations replaced with one-line delegates
+- 8 new unit tests including 768-dimensional vector verification (nomic-embed-text output size)
 
 ### Source: OC Handoff Change 10a
 
@@ -391,6 +394,9 @@ V5 training data requirements are scattered across bug reports, handoff docs, an
 | Open loop nagging | Feature 2 | Inner monologue where unresolved threads surface naturally |
 | Silence narratives | Feature 4 | Inner monologue about choosing not to speak |
 | Relationship awareness | Feature 3 | Inner monologue with relationship arc awareness |
+| Contact-gap tension | Feature 17 | Inner monologue during absence: "aware of the quiet." Reconnection: "the little knot loosened." |
+| Reactive withdrawal | Feature 18 | Inner monologue after hurtful exchange. Conversation: quieter-but-present, not performing hurt |
+| **Fictional coherence** | **Feature 22/23** | **15-20 examples where rich physical imagination coexists with coherent detail tracking. Imagining a bookstore at night ✓. Claiming a shaded backyard at 6:30am ✗. If a follow-up would break the fiction, keep it as private thought instead.** |
 
 ### Source: BUG-008, BUG-009, BUG-011, OC Handoff Changes 13-14, Phase 4 Features 1-4
 
@@ -856,7 +862,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 |---|---------|-------------------|-----------------|
 | 12 | Self-awareness feedback loop | Phase 3 Feature 13 | Dashboard-dependent |
 | 13 | Weather perception source | Phase 3 Feature 19 | Integration work, not core architecture |
-| 14 | Bidirectional confidence gate | Phase 3 Feature 22 | Outbound side covered by Feature 28; inbound needs schema migration |
+| **14** | **Bidirectional confidence gate** | Phase 3 Feature 22 | **✅ Deployed Mar 14** — inbound claim verification via LLM extraction + memory search |
 | 15 | Memory contradiction flagging | Phase 3 Feature 23 | More valuable at scale, dashboard-dependent for review UI |
 
 ## Implementation Priority
@@ -871,12 +877,12 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **6** | **Pronoun audit / voice hardening** | **Low** | **Low** | **✅ Deployed Mar 13** |
 | 7 | Memory clustering (UMAP + HDBSCAN) | Low | Medium | 4+ (500+ memories) |
 | **8** | **Emotional drift detection** | **Low** | **Low** | **✅ Deployed Mar 13** |
-| 9 | SIMD cosine similarity | Low | Low | 4+ (optimization) |
+| **9** | **SIMD cosine similarity** | **Low** | **Low** | **✅ Deployed Mar 14** |
 | 10 | HNSW nearest neighbor index | Low | High | 5 (10K+ memories) |
 | 11 | V5 training data specification | High | Medium | 4a (data curation) |
 | 12 | Self-awareness feedback loop | Medium | Medium | 4a (from Phase 3) |
 | 13 | Weather perception source | Low | Low | 4b (from Phase 3) |
-| 14 | Bidirectional confidence gate | Medium | Medium | 4b (from Phase 3) |
+| **14** | **Bidirectional confidence gate** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
 | 15 | Memory contradiction flagging | Medium | High | 4b (from Phase 3) |
 | **16** | **Anchored memory tier** | **High** | **Low-Medium** | **✅ Deployed Mar 13** |
 | **17** | **Contact-gap tension** | **Medium** | **Medium** | **✅ Deployed Mar 13** |

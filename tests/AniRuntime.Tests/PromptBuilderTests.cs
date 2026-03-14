@@ -190,4 +190,65 @@ public class PromptBuilderTests
         system.Should().Contain("Standalone creative");
         system.Should().Contain("Inner thought leaked");
     }
+
+    // ── Feature 14: Bidirectional confidence gate ──
+
+    [Fact]
+    public void BuildConversationReplyPrompt_WhenUnverifiedClaims_InjectsSkepticism()
+    {
+        var snapshot = new ContextSnapshot
+        {
+            CharacterState = new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" },
+            EmotionalState = new EmotionalState(),
+            MarkClaimNeedsVerification = true,
+            UnverifiedClaims = new List<string> { "Ani said she loved hiking" },
+        };
+        var thread = new ConversationThread
+        {
+            Id = Guid.NewGuid(),
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "user", Content = "remember when you said you loved hiking?", SentAt = DateTimeOffset.UtcNow },
+            },
+        };
+
+        var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+
+        user.Should().Contain("don't have clear memory");
+        user.Should().Contain("Ani said she loved hiking");
+    }
+
+    [Fact]
+    public void BuildConversationReplyPrompt_WhenNoClaims_NoSkepticism()
+    {
+        var snapshot = new ContextSnapshot
+        {
+            CharacterState = new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" },
+            EmotionalState = new EmotionalState(),
+            MarkClaimNeedsVerification = false,
+        };
+        var thread = new ConversationThread
+        {
+            Id = Guid.NewGuid(),
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "user", Content = "hey how's it going", SentAt = DateTimeOffset.UtcNow },
+            },
+        };
+
+        var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+
+        user.Should().NotContain("don't have clear memory");
+    }
+
+    [Fact]
+    public void BuildClaimExtractionPrompt_ProducesValidPrompt()
+    {
+        var (system, user) = PromptBuilder.BuildClaimExtractionPrompt(
+            "remember when you said you loved pizza?");
+
+        system.Should().Contain("verifiable factual claims");
+        system.Should().Contain("claims");
+        user.Should().Contain("remember when you said you loved pizza?");
+    }
 }

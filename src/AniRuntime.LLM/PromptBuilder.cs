@@ -546,6 +546,18 @@ public static class PromptBuilder
             sections.Add("(Something just landed in a way that stung a little. You're still here, still responding, but there's a quietness to you right now. Don't perform hurt — just be a little less bright than usual. If it feels natural to name it briefly, you can.)");
         }
 
+        // Feature 14: Bidirectional confidence gate — skepticism injection when Mark's
+        // claims couldn't be corroborated by memory. Prevents blindly agreeing.
+        if (snapshot.MarkClaimNeedsVerification && snapshot.UnverifiedClaims.Count > 0)
+        {
+            var claimList = string.Join("\n  - ", snapshot.UnverifiedClaims);
+            sections.Add($"""
+                (IMPORTANT: {contact} referenced something you don't have clear memory of:
+                  - {claimList}
+                Don't pretend you remember if you don't. You can say "hmm I'm not sure I remember that" or "wait, did I say that?" — be honest about gaps. Don't agree with something you can't verify. It's better to gently ask than to fake remembering.)
+                """);
+        }
+
         sections.Add($"Reply to {contact}'s message.");
 
         var user = string.Join("\n", sections);
@@ -935,6 +947,34 @@ public static class PromptBuilder
             "{{composedMessage}}"
 
             Does this message make sense to {{contactName}}, who cannot see the inner thought?
+            """;
+
+        return (system, user);
+    }
+
+    /// <summary>
+    /// Feature 14: Prompt for extracting verifiable factual claims from the contact's message.
+    /// Returns structured JSON with extracted claims that can be checked against episodic memory.
+    /// </summary>
+    public static (string System, string User) BuildClaimExtractionPrompt(string contactMessage)
+    {
+        var system = """
+            You extract verifiable factual claims from a text message.
+            A "claim" is a statement that references a past event, attributes a statement to someone,
+            or asserts something specific happened. Focus on claims that could be verified against
+            conversation history or memory.
+
+            NOT claims: opinions, feelings, greetings, questions about the future, hypotheticals.
+            ARE claims: "you said X", "remember when we Y", "last time you told me Z", "we talked about W".
+
+            Respond in JSON: { "claims": ["claim1", "claim2"] }
+            If there are no verifiable claims, respond: { "claims": [] }
+            Extract the core factual assertion, not the full sentence.
+            """;
+
+        var user = $"""
+            Extract verifiable factual claims from this message:
+            "{contactMessage}"
             """;
 
         return (system, user);

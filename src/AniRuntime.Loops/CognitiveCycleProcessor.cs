@@ -792,19 +792,9 @@ public class CognitiveCycleProcessor
         return centroid;
     }
 
+    // Feature 9: Delegate to shared SIMD-accelerated implementation
     private static float CosineSimilarity(float[] a, float[] b)
-    {
-        if (a.Length != b.Length || a.Length == 0) return 0f;
-        float dot = 0f, magA = 0f, magB = 0f;
-        for (var i = 0; i < a.Length; i++)
-        {
-            dot  += a[i] * b[i];
-            magA += a[i] * a[i];
-            magB += b[i] * b[i];
-        }
-        var denom = MathF.Sqrt(magA) * MathF.Sqrt(magB);
-        return denom > 0 ? dot / denom : 0f;
-    }
+        => VectorMath.CosineSimilarity(a, b);
 
     private async Task<(string thought, string? reflection, float valence)> RunInnerThoughtAsync(
         ContextSnapshot snapshot, CancellationToken ct)
@@ -1149,6 +1139,20 @@ public class CognitiveCycleProcessor
 
         // Feature 18: Pass withdrawal state to prompt builder for tone injection
         snapshot.IsWithdrawn = IsWithdrawn;
+
+        // Feature 14: Bidirectional confidence gate — inbound claim verification.
+        // If Mark references past events or attributes statements to Ani, check memory
+        // before replying. Prevents Ani from blindly agreeing with things that didn't happen.
+        if (_aniOptions.ClaimVerificationEnabled && ContainsMemoryReferencingLanguage(lastMessage))
+        {
+            _log.LogDebug("Feature 14: Memory-referencing language detected — running claim verification");
+            await ComputeMarkClaimConfidenceAsync(snapshot, lastMessage, ct).ConfigureAwait(false);
+            if (snapshot.MarkClaimNeedsVerification)
+            {
+                _log.LogInformation("Feature 14: Unverified claims detected ({Count}) — skepticism injection active",
+                    snapshot.UnverifiedClaims.Count);
+            }
+        }
 
         // Step 2: Generate reply (free text, using conversation model)
         var replyPrompt = isReconsideration
@@ -1704,5 +1708,121 @@ public class CognitiveCycleProcessor
             _log.LogDebug("Outreach parse failure, raw response: {Raw}", raw);
             return new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" };
         }
+    }
+
+    /// <summary>
+    /// Feature 14: Lightweight heuristic — does the message contain language that references
+    /// past events, attributes statements to Ani, or makes factual claims about the relationship?
+    /// Only if true do we invoke the heavier LLM-based claim extraction.
+    /// </summary>
+    internal static bool ContainsMemoryReferencingLanguage(string message)
+    {
+        var lower = message.ToLowerInvariant();
+
+        string[] patterns =
+        [
+            "remember when", "remember that", "you said", "you told me",
+            "you mentioned", "last time", "you were talking about",
+            "didn't you say", "you promised", "you asked me",
+            "we talked about", "we discussed", "you brought up",
+            "you called me", "you texted me", "earlier you",
+            "yesterday you", "the other day you",
+        ];
+
+        foreach (var pattern in patterns)
+        {
+            if (lower.Contains(pattern))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Feature 14: Extract factual claims from the contact's message and verify them against
+    /// episodic memory. Sets MarkClaimConfidence and MarkClaimNeedsVerification on the snapshot.
+    /// </summary>
+    private async Task ComputeMarkClaimConfidenceAsync(
+        ContextSnapshot snapshot, string contactMessage, CancellationToken ct)
+    {
+        try
+        {
+            // Step 1: Extract claims using LLM (JSON mode)
+            var extractionPrompt = PromptBuilder.BuildClaimExtractionPrompt(contactMessage);
+            var extractionRaw = await _ollama.ChatJsonAsync(
+                extractionPrompt.System, Array.Empty<ChatMessage>(), extractionPrompt.User, ct)
+                .ConfigureAwait(false);
+
+            var claims = ParseExtractedClaims(extractionRaw);
+            if (claims.Count == 0)
+            {
+                _log.LogDebug("Feature 14: No verifiable claims extracted from message");
+                snapshot.MarkClaimConfidence = 1.0f;
+                return;
+            }
+
+            // Step 2: For each claim, search episodic memory for corroboration
+            var corroboratedCount = 0;
+            var unverified = new List<string>();
+
+            foreach (var claim in claims)
+            {
+                var matches = await _memory.SearchAsync(
+                    claim, _aniOptions.ClaimVerificationMaxMemories, ct).ConfigureAwait(false);
+
+                var matchList = matches.ToList();
+                if (matchList.Count > 0 && matchList[0].Importance > 0.2f)
+                {
+                    corroboratedCount++;
+                    _log.LogDebug("Feature 14: Claim corroborated — \"{Claim}\"", claim);
+                }
+                else
+                {
+                    unverified.Add(claim);
+                    _log.LogDebug("Feature 14: Claim NOT corroborated — \"{Claim}\"", claim);
+                }
+            }
+
+            // Step 3: Set confidence as ratio of corroborated claims
+            var confidence = claims.Count > 0 ? (float)corroboratedCount / claims.Count : 1.0f;
+            snapshot.MarkClaimConfidence = confidence;
+            snapshot.MarkClaimNeedsVerification = confidence < (float)_aniOptions.ClaimVerificationThreshold;
+            snapshot.UnverifiedClaims = unverified;
+
+            _log.LogInformation("Feature 14: Claim confidence {Confidence:F2} ({Corroborated}/{Total} claims verified)",
+                confidence, corroboratedCount, claims.Count);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Feature 14: Claim verification failed — continuing without skepticism");
+            snapshot.MarkClaimConfidence = 1.0f;
+        }
+    }
+
+    /// <summary>
+    /// Feature 14: Parse the LLM's claim extraction response.
+    /// Expected JSON: { "claims": ["claim1", "claim2"] }
+    /// </summary>
+    private List<string> ParseExtractedClaims(string raw)
+    {
+        try
+        {
+            var doc = JsonDocument.Parse(raw.Trim());
+            if (doc.RootElement.TryGetProperty("claims", out var claimsArray) &&
+                claimsArray.ValueKind == JsonValueKind.Array)
+            {
+                return claimsArray.EnumerateArray()
+                    .Select(c => c.GetString())
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Select(c => c!)
+                    .ToList();
+            }
+        }
+        catch
+        {
+            _log.LogDebug("Feature 14: Claim extraction parse failure: {Raw}", raw);
+        }
+
+        return new List<string>();
     }
 }

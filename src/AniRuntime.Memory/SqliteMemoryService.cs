@@ -277,19 +277,9 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         return await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
     }
 
+    // Feature 9: Delegate to shared SIMD-accelerated implementation
     private static float CosineSimilarity(float[] a, float[] b)
-    {
-        float dot = 0, normA = 0, normB = 0;
-        for (var i = 0; i < a.Length; i++)
-        {
-            dot   += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        var denom = MathF.Sqrt(normA) * MathF.Sqrt(normB);
-        return denom == 0 ? 0f : dot / denom;
-    }
+        => VectorMath.CosineSimilarity(a, b);
 
     /// <summary>
     /// Feature 20 + Feature 24: Park et al. three-way retrieval scoring with type-aware decay.

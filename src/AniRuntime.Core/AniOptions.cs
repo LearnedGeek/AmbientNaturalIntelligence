@@ -78,6 +78,11 @@ public class AniOptions
     public double TensionMax                   { get; set; } = 0.4;    // never the dominant state
     public double TensionDissipationMultiplier { get; set; } = 3.0;    // 3× faster fade on contact
 
+    // Feature 14: Bidirectional confidence gate — inbound claim verification
+    public bool   ClaimVerificationEnabled       { get; set; } = true;
+    public double ClaimVerificationThreshold     { get; set; } = 0.4;  // below this → needs verification
+    public int    ClaimVerificationMaxMemories   { get; set; } = 5;    // memories to search for corroboration
+
     // Feature 18: Reactive withdrawal — how long emotional withdrawal lasts after hurt detection
     public double WithdrawalDurationMinutes    { get; set; } = 20.0;
 

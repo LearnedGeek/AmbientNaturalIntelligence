@@ -444,4 +444,34 @@ public class CognitiveCycleProcessorTests : AniTestBase
                              lower.Contains("his.");
         hasThirdPerson.Should().Be(shouldDetect, $"edge case: '{message}'");
     }
+
+    // ── Feature 14: Bidirectional confidence gate ──
+
+    [Theory]
+    [InlineData("remember when you said you loved pizza", true)]
+    [InlineData("you told me you were from New York", true)]
+    [InlineData("didn't you say something about that last time", true)]
+    [InlineData("you mentioned your favorite book", true)]
+    [InlineData("we talked about movies yesterday", true)]
+    [InlineData("yesterday you were in a great mood", true)]
+    [InlineData("hey how's it going", false)]
+    [InlineData("what do you think about this", false)]
+    [InlineData("I had pizza for dinner", false)]
+    [InlineData("good morning!", false)]
+    [InlineData("tell me a joke", false)]
+    public void ContainsMemoryReferencingLanguage_DetectsClaimPatterns(string message, bool expected)
+    {
+        CognitiveCycleProcessor.ContainsMemoryReferencingLanguage(message)
+            .Should().Be(expected, $"message: '{message}'");
+    }
+
+    [Theory]
+    [InlineData("You Said you love hiking", true)]   // case-insensitive
+    [InlineData("REMEMBER WHEN we went there", true)] // all caps
+    [InlineData("You Told Me about your day", true)]  // mixed case
+    public void ContainsMemoryReferencingLanguage_IsCaseInsensitive(string message, bool expected)
+    {
+        CognitiveCycleProcessor.ContainsMemoryReferencingLanguage(message)
+            .Should().Be(expected, $"case insensitive: '{message}'");
+    }
 }
