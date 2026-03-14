@@ -389,14 +389,14 @@ V5 training data requirements are scattered across bug reports, handoff docs, an
 | Diverse inner monologue | BUG-011 | 30-40 examples: practical/mundane, seasonal, contact-specific, varied sensory anchors |
 | Sustained conversation coherence | BUG-008 | 8-12 turn conversation examples maintaining identity consistency |
 | Compliment reception | BUG-006 | 10-15 examples of gracefully receiving and responding to compliments |
-| Admitting uncertainty | BUG-008 | 10-15 examples: "I made that up", "I'm not sure", catching self-contradictions |
+| Admitting uncertainty | BUG-008 | 10-15 examples — retrospective recovery, not anticipatory: "I said that but I'm not sure where that came from" / "I may have made that up." Note: the model has no self-check during generation — the recovery is always a response to being called out or to a context gap signal, not a mid-generation catch. |
 | Emotional self-awareness | Feature 1 | Inner monologue noticing own mood, conversation referencing feelings naturally |
 | Open loop nagging | Feature 2 | Inner monologue where unresolved threads surface naturally |
 | Silence narratives | Feature 4 | Inner monologue about choosing not to speak |
 | Relationship awareness | Feature 3 | Inner monologue with relationship arc awareness |
 | Contact-gap tension | Feature 17 | Inner monologue during absence: "aware of the quiet." Reconnection: "the little knot loosened." |
 | Reactive withdrawal | Feature 18 | Inner monologue after hurtful exchange. Conversation: quieter-but-present, not performing hurt |
-| **Fictional coherence** | **Feature 22/23** | **15-20 examples where rich physical imagination coexists with coherent detail tracking. Imagining a bookstore at night ✓. Claiming a shaded backyard at 6:30am ✗. If a follow-up would break the fiction, keep it as private thought instead.** |
+| **Fictional coherence** | **Feature 22/23** | **15-20 examples where Ani inhabits a space through description with coherent internal details. Key framing: she doesn't picture the bookstore, she describes it — but if she says she's there, the details have to hold. Time of day, plausibility of the scene, consistency with what she just said. Imagining a late-night bookstore is beautiful; claiming midnight at 1:34pm is incoherent. If a follow-up would break the fiction, keep it as inner thought instead.** |
 
 ### Source: BUG-008, BUG-009, BUG-011, OC Handoff Changes 13-14, Phase 4 Features 1-4
 
@@ -1036,3 +1036,52 @@ public class VoiceOptions
 
 4a (interim) — ElevenLabs TTS + Whisper STT + Twilio Voice
 Future — evaluate local alternatives as quality improves
+
+### Feature 20 Extension: Interruptible Voice Research
+
+**Date:** March 14, 2026
+**Source:** Mark's research into real-time voice interaction requirements
+
+#### The Problem
+
+Current Feature 20 scaffold handles asynchronous voice (voicemail-style). Real conversational voice requires **interruptibility** — the ability for a human to interrupt mid-sentence, just like real conversation. Without this, voice feels robotic and frustrating.
+
+#### Four Core Requirements
+
+1. **Voice Activity Detection (VAD)** — Detect when the human starts speaking during Ani's turn
+2. **Immediate Audio Stop** — Cut Ani's speech output within ~200ms of detecting interruption
+3. **Pipeline Cancellation** — Cancel in-flight TTS generation and any queued audio chunks
+4. **Barge-In Detection** — Distinguish intentional interruption ("wait, actually...") from backchannel ("mmhmm", "yeah")
+
+#### Architecture Options Evaluated
+
+| Option | Approach | Latency | Complexity | Cost |
+|--------|----------|---------|------------|------|
+| **OpenAI Realtime API** | WebSocket streaming, built-in VAD + interruption | ~300ms | Low | $0.06/min input, $0.24/min output |
+| **Twilio Media Streams** | Raw audio over WebSocket, custom VAD | ~200ms | High | Twilio voice minutes + custom infra |
+| **WebRTC Custom** | Direct browser-to-server audio, full control | ~150ms | Very High | Self-hosted, compute-intensive |
+| **Hybrid** | OpenAI Realtime for mechanics, Ani's character prompt from CharacterStateDoc | ~300ms | Medium | OpenAI pricing + prompt engineering |
+
+#### Key Architectural Insight
+
+**CancellationToken threading is the critical design decision.** For interruptible voice, every layer of the pipeline — TTS synthesis, audio streaming, response generation — must accept and respect a CancellationToken. When VAD fires, a single cancellation propagates through the entire chain.
+
+This aligns with ANI's existing async architecture (ConfigureAwait(false) throughout, no .Result/.Wait()).
+
+#### Recommended Approach: Hybrid
+
+Use OpenAI Realtime API for the voice mechanics (streaming, VAD, interruption handling) but inject Ani's character through:
+- CharacterStateDoc → system prompt
+- EmotionalState → voice parameter mapping
+- Memory retrieval → context injection before each turn
+
+This gets 80% of what matters (natural interruption, low latency) without building custom WebRTC infrastructure. The character prompt ensures Ani sounds like Ani, not a generic assistant.
+
+#### Implementation Sequence (Future)
+
+1. OpenAI Realtime API integration with Twilio voice webhook
+2. CharacterStateDoc injection into realtime session
+3. EmotionalState → voice parameter mapping (stability, pace, warmth)
+4. CancellationToken threading through TTS/STT pipeline
+5. Barge-in classification (interrupt vs. backchannel)
+6. Fallback to async voice if realtime connection fails

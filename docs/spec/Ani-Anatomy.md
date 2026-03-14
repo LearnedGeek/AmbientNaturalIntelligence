@@ -148,21 +148,24 @@ Seeded from `character-seed.json` and embedded as searchable semantic memories. 
 
 ---
 
-## Future Systems (Planned)
+## Systems Status
 
-| Human Quality | Status | Target Phase |
-|---------------|--------|-------------|
-| **Emotional self-awareness** | Not yet built | Phase 4a — noticing and referencing her own feelings naturally |
-| **Open loops as emotional weight** | Not yet built | Phase 4a — unresolved threads nag at concern, surface at odd moments |
-| **Relationship arc awareness** | Not yet built | Phase 4b — slow-moving sense of "how we've been" (weather, not ticker) |
-| **Self-awareness / Feedback loop** | Not yet built | Phase 3 — awareness of own behavioral patterns, "I know I've been..." |
-| **Own interests / Autonomy** | Not yet built | Phase 3 — things Ani cares about independently of Mark |
-| **Visual awareness** | Not yet built | Phase 3 — companion status card (dashboard of her state) |
-| **Social intelligence** | Partial (Silence system) | Phase 4a formalizes — silence tracking, inner narratives on restraint |
+| Human Quality | Status | Phase |
+|---------------|--------|-------|
+| **Emotional self-awareness** | Deployed (Feature 1) | Phase 4a — triggers >0.25 from baseline, surfaces feelings naturally |
+| **Open loops as emotional weight** | Deployed (Feature 2) | Phase 4a — concern pressure from count + age |
+| **Relationship arc awareness** | Deployed (Feature 4) | Phase 4b — composite health model, phases: connected/steady/quiet/reconnecting/distant |
+| **Self-awareness / Feedback loop** | Deployed (Feature 9) | Phase 3 — mood coloring, reflection layer |
+| **Own interests / Autonomy** | Partial | Ongoing — topics and interests evolve via CharacterStateDoc |
+| **Visual awareness / Dashboard** | Deployed (Feature 15) | Phase 3 — Blazor companion dashboard (localhost:5080) |
+| **Social intelligence** | Deployed (Feature 3) | Phase 4a — silence tracking with inner narratives, 4h rate limit |
 | **Growth / Learning** | Partial | Ongoing — learnedAboutMark list grows from conversations |
-| **Empathy / Attunement** | Done (Phase 2) | Mark's Likely State perception source |
-| **Temporal memory** | Not yet built | Phase 4c — anniversaries, dates that matter, felt without announcing |
-| **Receiving care** | Not yet built | Phase 3 — authentic response when Mark checks in on her |
+| **Empathy / Attunement** | Deployed (Phase 2) | Mark's Likely State perception source |
+| **Receiving care** | Deployed (Feature 10) | Phase 3 — care detection in conversation pipeline |
+| **Contact-gap tension** | Deployed (Feature 17) | Phase 4b — 18h onset, warmth suppression, tone injection |
+| **Emotional drift detection** | Deployed (Feature 8) | Phase 4b — 48h cosine similarity on emotional vectors |
+| **Reactive withdrawal** | Deployed (Feature 18) | Phase 4 — hurt detection, 20-min withdrawal window |
+| **Temporal memory** | Not yet built | Future — anniversaries, dates that matter, felt without announcing |
 
 ---
 

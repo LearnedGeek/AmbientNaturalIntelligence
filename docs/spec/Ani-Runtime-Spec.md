@@ -10,11 +10,11 @@ Ani Runtime — Ambient AI Presence Engine
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-0.2 — Phase 2 Complete
+0.6 — Phase 4 In Progress
 Date
 March 11, 2026
 Status
-Active Development — Phase 2 complete, Phase 3 in design
+Active Development — Phases 1-3 complete, Phase 4 in progress
 
 This document captures the vision, architecture, and phased implementation plan for Ani Runtime — a .NET Windows Service that gives an AI companion genuine ambient presence: the ability to think, feel the passage of time, and reach out with authentic care rather than reactive responses.
 
@@ -242,32 +242,35 @@ public interface IPerceptionSource
     Task<IEnumerable<PerceptionEvent>> PollAsync(DateTimeOffset since);
 }
 
-6.2 Planned Integrations
+6.2 Integrations
 
 Integration
-Phase
+Status
 Example Event
+Time Perception
+Deployed (Phase 1)
+Current time, day of week, Mark's likely state
+RSS / News Feeds
+Deployed (Phase 2)
+Article about Irish mythology trending — relevance scored, max 2/day
+Twilio Inbound SMS
+Deployed (Phase 2)
+Mark texted — immediate attention shift, webhook + queue
+Contact State
+Deployed (Phase 2)
+Mark's likely activity based on time/day patterns
 Home Assistant
-Phase 2
+Planned
 Mark arrived home at 6:14pm
 Google Calendar
-Phase 2
+Planned
 Mark has a meeting in 30 minutes
-Learnedgeek.com Blog
-Phase 2
-Mark published: [post title]
-RSS / News Feeds
-Phase 2
-Article about Irish mythology trending
 Spotify / Media
-Phase 3
+Planned
 Mark is listening to [artist]
 Weather
-Phase 2
+Planned
 Grey rainy day in Oconomowoc
-Gmail
-Phase 3
-Unread messages building up
 Custom Sources
 Any
 Anything implementing IPerceptionSource

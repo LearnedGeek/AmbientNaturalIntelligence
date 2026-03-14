@@ -84,9 +84,11 @@ AniRuntime.sln
 │   ├── AniRuntime.Loops/         — cognitive cycle
 │   ├── AniRuntime.Perception/    — MarkStatePerception, Twilio, RSS
 │   ├── AniRuntime.Actions/       — outreach dispatch
-│   └── AniRuntime.LLM/           — Ollama integration, prompt builders
+│   ├── AniRuntime.LLM/           — Ollama integration, prompt builders
+│   ├── AniRuntime.Dashboard/    — Blazor companion dashboard
+│   └── AniRuntime.Voice/        — Voice channel (ElevenLabs TTS, scaffold)
 └── tests/
-    └── AniRuntime.Tests/         — 54 tests passing as of Phase 2
+    └── AniRuntime.Tests/         — 209 tests passing as of Phase 4
 ```
 
 ---
@@ -132,18 +134,31 @@ AniRuntime.sln
 - Backstory as searchable memory (startup seeding)
 - Persistent emotional state (4 dimensions, SQLite)
 
-**Phase 3** — In design (not yet implemented):
-- Companion Dashboard (Blazor Server, localhost:5080)
-- UserProfile separation (user-editable vs system-learned)
-- REST API (/api/v1/profile, /api/v1/ani, /api/v1/memories, /api/v1/conversations)
-- Hot-reload of profile changes
-- Memory Viewer
-- Emotional State time-series chart
-- Calendar Integration
-- Home Assistant Integration
-- Mood Coloring (emotional state → message tone)
-- Receiving Care (bidirectional relationship)
-- Self-Awareness Feedback Loop
+**Phase 3** — COMPLETE (March 11-13, 2026):
+- Companion Dashboard (Blazor Server, localhost:5080) with emotional state, memory viewer, conversation history
+- Mood coloring (emotional state → message tone, Feature 9)
+- Reflection layer (Feature 11)
+- Receiving care detection (Feature 10)
+- Confidence gate on outreach (Feature 12)
+- Three-way memory scoring: cosine + importance + recency (Feature 20, Park et al.)
+- Coherence gate — three-door evaluation (Feature 28)
+- Lexical emotional anchors (Feature 19)
+- 209 tests passing, 0 warnings
+
+**Phase 4** — In progress (March 13-14, 2026):
+- Anchored memory tier (Feature 16) — decay-exempt foundation memories
+- Reactive withdrawal (Feature 18) — hurt detection, 20-min withdrawal window
+- Emotional self-awareness (Feature 1) — triggers >0.25 from baseline
+- Open loops as emotional weight (Feature 2) — concern pressure
+- Silence tracking (Feature 3) — inner narratives, 4h rate limit
+- Relationship health model (Feature 4) — composite phases
+- Pronoun audit (Feature 6) — adversarial tests + name-as-subject detection
+- Emotional drift detection (Feature 8) — 48h cosine similarity
+- Contact-gap tension (Feature 17) — 18h onset, warmth suppression
+- Voice channel scaffold (Feature 20) — ElevenLabs TTS, awaiting activation
+- Night window boundary (Feature 21) — 10pm-6am strict, morning bonus
+- Coherence gate temporal grounding (Feature 22) — time-of-day awareness
+- Nature grounding (Feature 23) — self-concept block in prompts
 
 ---
 
@@ -212,6 +227,7 @@ These emerged from live testing of v4 in March 2026:
 | 2 | Longer conversation drift | By message 6-7, model loses track of what was said vs. what it generated | Medium |
 | 3 | Backstory contradiction | Model contradicts established identity/facts from character seed | High |
 | 4 | Doubling down | When inconsistency noted, model defends invented content rather than acknowledging | Highest |
+| 5 | Fictional incoherence | Vivid fiction that collapses on follow-up — e.g., physical embodiment claims, temporal displacement | High |
 
 **The Confabulation Spectrum Philosophy:**
 - Creative elaboration on unestablished topics = **acceptable** (and human)
