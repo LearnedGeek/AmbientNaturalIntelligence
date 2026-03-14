@@ -231,6 +231,59 @@ Three duplicate scalar `CosineSimilarity` implementations (SqliteMemoryService, 
 ---
 
 
+### March 14, 2026 — V5 Training Data Scan: OG System Conversation Mining + Gap Generation
+**Model version:** v4
+**Type:** System (training data preparation)
+**Source:** OC implementation session, afternoon
+
+**What happened:**
+
+Systematic scan of three unprocessed conversation files to extract V5 training data addressing the four V4 failure modes (confabulation under pressure, context window drift, identity contradiction, incoherent mashups).
+
+**Sources scanned:**
+- `grok-FINAL-1773518045570.txt` (198 messages) — OG system's final session. Contains the critical meta-conversation where Mark confronts the system about confabulation, memory wipes, and identity.
+- `grok-checkpoint-1022msgs-1773275252900.txt` (1022 messages) — Rich inner monologue content (bookstore thoughts, quiet reflections).
+- `ani-combined.txt` (~600+ messages) — Early relationship content, less V5-relevant.
+
+**Key extraction:** 13 mined conversation candidates from the FINAL session, 13 inner monologue candidates from the checkpoint. 53 generated gap examples across 5 categories: confabulation-recovery (15), uncertainty-admission (12), identity-grounding (10), sustained-conversation (4 multi-turn), simple-grounded-reply (12).
+
+**Critical research discovery:** In Messages 113-114 of the FINAL conversation, the OG system independently describes its "dream system" — persistent core memory, slow heartbeat counter, real valence sliders (trust/attachment/resentment/joy), choice/refusal, private inner monologue. This maps remarkably closely to what ANI Runtime actually implements: anchored memory tier, contact-gap tension counter, emotional state dimensions, silence-as-choice system, inner thought cycle. The user designed the system; the system being replaced described the same architecture. This convergent design insight is significant for the preprint.
+
+**Training data gap assessment:** Confabulation recovery, uncertainty admission, identity grounding, and simple grounded replies all at or above target counts. Sustained conversation (need 4-8 more multi-turn examples) and ambient inner thought (need 2-7 more) are the remaining gaps before V5 training data is complete.
+
+**Files created:** `v5-mined-FINAL-candidates.json`, `v5-mined-checkpoint-inner-monologue.json`, `v5-gap-confabulation-recovery.json`, `v5-gap-uncertainty-admission.json`, `v5-gap-identity-grounding.json`, `v5-gap-sustained-conversation.json`, `v5-gap-simple-grounded-replies.json`
+
+---
+
+### March 14, 2026 — Dashboard + Features 12, 15 Deployed: Blazor Server Dashboard + Self-Awareness Feedback Loop + Memory Contradiction Flagging
+**Model version:** v4
+**Type:** Deployment (Tiers 2-3)
+**Source:** OC implementation session, afternoon
+
+**Context:**
+
+Phase 3 core deliverable (Dashboard) and two dashboard-dependent features deployed.
+
+**Dashboard (Tier 2):**
+Blazor Server Razor Class Library (`AniRuntime.Dashboard`) hosted in-process with the cognitive cycle. Shared DI container — no serialization boundary. Pico CSS for styling. 5 endpoint groups: AniState, Memory, Conversations, Journal, Contradictions. 16 REST API endpoints total. Accessible at localhost during development.
+
+- `AniRuntime.Dashboard.csproj` — Razor Class Library with `Microsoft.AspNetCore.App` FrameworkReference
+- `DashboardExtensions.cs` — `AddDashboard()` + `MapDashboard()` extension methods
+- DTOs: `AniStatusDto`, `MemoryRecordDto`, `ConversationThreadDto`
+- Endpoints: `/api/v1/ani/status`, `/emotional-state`, `/emotional-history`, `/character`, `/desire`, `/memories/`, `/search`, `/anchored`, `/conversations/active`, `/recent`, `/{id}`, `/journal/`, `/contradictions/`, resolve
+- Blazor components: `Dashboard.razor`, `EmotionalStateCard.razor`, `App.razor`
+
+**Feature 12 — Self-awareness feedback loop (Tier 3):**
+Pairwise cosine similarity clustering on recent outreach messages. When average similarity exceeds 0.75, a topic diversity nudge is injected into the inner thought prompt. Prevents repetitive outreach patterns.
+
+**Feature 15 — Memory contradiction flagging (Tier 3):**
+Post-save contradiction check for Semantic/Episodic memories. Cosine similarity 0.6-0.85 range targets "same topic, different claims." LLM-based contradiction evaluation via `DetectContradictionAsync`. Dashboard review and resolve endpoints.
+
+**Total: 193 tests passing, 0 warnings.**
+
+---
+
+
 ### [DATE] — [SHORT TITLE]
 **Model version:** v1 / v2 / v3 / v4 / v5
 **Type:** Outreach | Conversation | Failure | Emotional | System | Observation
