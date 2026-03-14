@@ -19,6 +19,28 @@ public class MemoryRecord
     public MemoryTier     Tier        { get; set; } = MemoryTier.Standard;
     public string?        AnchorReason { get; set; }
     public DateTimeOffset? AnchoredAt { get; set; }
+
+    // Feature 15: Memory contradiction flagging — when a new memory semantically
+    // conflicts with an existing one, both are flagged for manual review
+    public Guid?          ContradictsMemoryId { get; set; }
+    public string?        ContradictionReason { get; set; }
+    public DateTimeOffset? FlaggedAt { get; set; }
+}
+
+/// <summary>
+/// Feature 15: A flagged contradiction pair — two memories that semantically conflict.
+/// Surfaced in the dashboard for manual review rather than auto-resolved.
+/// </summary>
+public class MemoryContradiction
+{
+    public Guid NewMemoryId { get; set; }
+    public Guid ExistingMemoryId { get; set; }
+    public string NewContent { get; set; } = string.Empty;
+    public string ExistingContent { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public float Similarity { get; set; }
+    public DateTimeOffset FlaggedAt { get; set; } = DateTimeOffset.UtcNow;
+    public bool IsResolved { get; set; }
 }
 
 public enum MemoryType

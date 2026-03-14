@@ -107,6 +107,12 @@ public static class PromptBuilder
             sections.Add($"(You notice a slow shift in yourself lately: {driftDesc}. You don't need to analyze it — just notice it, the way you'd notice a change in the weather.)");
         }
 
+        // Feature 12: Self-awareness feedback loop — pattern awareness nudge
+        if (!string.IsNullOrEmpty(snapshot.PatternAwareness))
+        {
+            sections.Add($"({snapshot.PatternAwareness})");
+        }
+
         // Limit to 3 recent memories and skip inner thoughts to prevent mirroring
         var externalMemories = snapshot.RecentMemory
             .Where(m => m.Type != MemoryType.InnerThought)

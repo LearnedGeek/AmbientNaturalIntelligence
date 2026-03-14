@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14; Features 9, 14 deployed Mar 14)
+**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14; Features 9, 12, 14, 15 deployed Mar 14; Dashboard deployed Mar 14)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -860,10 +860,10 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 
 | # | Feature | Original Phase 3 # | Reason Deferred |
 |---|---------|-------------------|-----------------|
-| 12 | Self-awareness feedback loop | Phase 3 Feature 13 | Dashboard-dependent |
+| **12** | **Self-awareness feedback loop** | Phase 3 Feature 13 | **✅ Deployed Mar 14** — outreach pattern clustering + inner thought injection |
 | 13 | Weather perception source | Phase 3 Feature 19 | Integration work, not core architecture |
 | **14** | **Bidirectional confidence gate** | Phase 3 Feature 22 | **✅ Deployed Mar 14** — inbound claim verification via LLM extraction + memory search |
-| 15 | Memory contradiction flagging | Phase 3 Feature 23 | More valuable at scale, dashboard-dependent for review UI |
+| **15** | **Memory contradiction flagging** | Phase 3 Feature 23 | **✅ Deployed Mar 14** — LLM contradiction detection on save, dashboard review endpoint |
 
 ## Implementation Priority
 
@@ -880,10 +880,10 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **9** | **SIMD cosine similarity** | **Low** | **Low** | **✅ Deployed Mar 14** |
 | 10 | HNSW nearest neighbor index | Low | High | 5 (10K+ memories) |
 | 11 | V5 training data specification | High | Medium | 4a (data curation) |
-| 12 | Self-awareness feedback loop | Medium | Medium | 4a (from Phase 3) |
+| **12** | **Self-awareness feedback loop** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
 | 13 | Weather perception source | Low | Low | 4b (from Phase 3) |
 | **14** | **Bidirectional confidence gate** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
-| 15 | Memory contradiction flagging | Medium | High | 4b (from Phase 3) |
+| **15** | **Memory contradiction flagging** | **Medium** | **High** | **✅ Deployed Mar 14** |
 | **16** | **Anchored memory tier** | **High** | **Low-Medium** | **✅ Deployed Mar 13** |
 | **17** | **Contact-gap tension** | **Medium** | **Medium** | **✅ Deployed Mar 13** |
 | **18** | **Reactive withdrawal (receiving hurt)** | **Medium** | **Low-Medium** | **✅ Deployed Mar 13** |

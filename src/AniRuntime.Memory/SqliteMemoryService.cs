@@ -145,6 +145,22 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         _log.LogDebug("Saved {Type} memory: {Content}", record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
+
+        // Feature 15: Post-save contradiction check for factual memory types.
+        // Semantic and Episodic memories can contain contradictory facts — check
+        // similar existing memories for conflicts. Inner thoughts and perceptions
+        // are subjective and don't need contradiction checking.
+        if (record.Embedding is not null && record.Type is MemoryType.Semantic or MemoryType.Episodic)
+        {
+            try
+            {
+                await CheckForContradictionsAsync(record, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Feature 15: Contradiction check failed — memory saved without flagging");
+            }
+        }
     }
 
     public async Task<IEnumerable<MemoryRecord>> GetByTypeAsync(
@@ -778,6 +794,17 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 recorded_at         TEXT NOT NULL
             );
 
+            -- Feature 15: Memory contradiction flagging
+            CREATE TABLE IF NOT EXISTS memory_contradictions (
+                new_memory_id       TEXT NOT NULL,
+                existing_memory_id  TEXT NOT NULL,
+                reason              TEXT NOT NULL,
+                similarity          REAL NOT NULL,
+                flagged_at          TEXT NOT NULL,
+                is_resolved         INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (new_memory_id, existing_memory_id)
+            );
+
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
             CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
             CREATE INDEX IF NOT EXISTS ix_emotional_history_time ON emotional_state_history (recorded_at DESC);
@@ -894,6 +921,187 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Feature 15: Check if a newly saved memory contradicts existing similar memories.
+    /// Uses cosine similarity to find candidates (0.6-0.85) and LLM to evaluate contradiction.
+    /// The range 0.6-0.85 targets "same topic, possibly different claims" — above 0.85 is
+    /// dedup territory, below 0.6 is likely unrelated content.
+    /// </summary>
+    private async Task CheckForContradictionsAsync(MemoryRecord newRecord, CancellationToken ct)
+    {
+        if (_ollama is null || newRecord.Embedding is null)
+            return;
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            SELECT id, content, embedding FROM memories
+            WHERE type = $type
+              AND id != $id
+              AND embedding IS NOT NULL
+            ORDER BY occurred_at DESC
+            LIMIT 30
+            """;
+        cmd.Parameters.AddWithValue("$type", (int)newRecord.Type);
+        cmd.Parameters.AddWithValue("$id", newRecord.Id.ToString());
+
+        var candidates = new List<(string id, string content, float similarity)>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            if (reader.IsDBNull(2)) continue;
+
+            var existingEmbedding = DeserialisedEmbedding((byte[])reader[2]);
+            var similarity = CosineSimilarity(newRecord.Embedding, existingEmbedding);
+
+            // Sweet spot: same topic (>0.6) but not a duplicate (<0.85)
+            if (similarity is >= 0.6f and < SemanticDedupThreshold)
+            {
+                candidates.Add((reader.GetString(0), reader.GetString(1), similarity));
+            }
+        }
+
+        if (candidates.Count == 0) return;
+
+        // Check top 3 most similar for contradiction using LLM
+        foreach (var (existingId, existingContent, similarity) in candidates.OrderByDescending(c => c.similarity).Take(3))
+        {
+            var contradictionReason = await DetectContradictionAsync(
+                newRecord.Content, existingContent, ct).ConfigureAwait(false);
+
+            if (contradictionReason is null) continue;
+
+            // Flag the contradiction
+            await using var flagConn = await OpenAsync(ct).ConfigureAwait(false);
+            await using var flagCmd = flagConn.CreateCommand();
+            flagCmd.CommandText = """
+                INSERT OR IGNORE INTO memory_contradictions
+                    (new_memory_id, existing_memory_id, reason, similarity, flagged_at)
+                VALUES ($new_id, $existing_id, $reason, $similarity, $flagged_at)
+                """;
+            flagCmd.Parameters.AddWithValue("$new_id", newRecord.Id.ToString());
+            flagCmd.Parameters.AddWithValue("$existing_id", existingId);
+            flagCmd.Parameters.AddWithValue("$reason", contradictionReason);
+            flagCmd.Parameters.AddWithValue("$similarity", similarity);
+            flagCmd.Parameters.AddWithValue("$flagged_at", DateTimeOffset.UtcNow.ToString("O"));
+
+            await flagCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+            _log.LogInformation("Feature 15: Contradiction flagged — \"{New}\" vs \"{Existing}\": {Reason}",
+                newRecord.Content[..Math.Min(40, newRecord.Content.Length)],
+                existingContent[..Math.Min(40, existingContent.Length)],
+                contradictionReason);
+        }
+    }
+
+    /// <summary>
+    /// Feature 15: Uses LLM to determine if two semantically similar memories contradict each other.
+    /// Returns a brief explanation if they contradict, null if they're consistent.
+    /// </summary>
+    private async Task<string?> DetectContradictionAsync(
+        string newContent, string existingContent, CancellationToken ct)
+    {
+        if (_ollama is null) return null;
+
+        var system = """
+            You compare two memory records for factual contradiction.
+            A contradiction means the two records make incompatible claims about the same topic.
+            Similar or complementary information is NOT a contradiction.
+
+            Respond in JSON: { "contradicts": true/false, "reason": "brief explanation" }
+            If they don't contradict, reason can be empty.
+            """;
+
+        var user = $"""
+            Memory A (newer): "{newContent}"
+            Memory B (older): "{existingContent}"
+
+            Do these two memories make contradictory factual claims?
+            """;
+
+        var raw = await _ollama.ChatJsonAsync(system, Array.Empty<ChatMessage>(), user, ct)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
+            if (doc.RootElement.TryGetProperty("contradicts", out var c) && c.GetBoolean())
+            {
+                return doc.RootElement.TryGetProperty("reason", out var r)
+                    ? r.GetString() ?? "contradiction detected"
+                    : "contradiction detected";
+            }
+        }
+        catch
+        {
+            _log.LogDebug("Feature 15: Contradiction detection parse failure: {Raw}", raw);
+        }
+
+        return null;
+    }
+
+    public async Task<List<MemoryContradiction>> GetFlaggedContradictionsAsync(
+        bool includeResolved = false, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = includeResolved
+            ? """
+              SELECT mc.new_memory_id, mc.existing_memory_id, mc.reason, mc.similarity,
+                     mc.flagged_at, mc.is_resolved, m1.content, m2.content
+              FROM memory_contradictions mc
+              LEFT JOIN memories m1 ON m1.id = mc.new_memory_id
+              LEFT JOIN memories m2 ON m2.id = mc.existing_memory_id
+              ORDER BY mc.flagged_at DESC
+              """
+            : """
+              SELECT mc.new_memory_id, mc.existing_memory_id, mc.reason, mc.similarity,
+                     mc.flagged_at, mc.is_resolved, m1.content, m2.content
+              FROM memory_contradictions mc
+              LEFT JOIN memories m1 ON m1.id = mc.new_memory_id
+              LEFT JOIN memories m2 ON m2.id = mc.existing_memory_id
+              WHERE mc.is_resolved = 0
+              ORDER BY mc.flagged_at DESC
+              """;
+
+        var results = new List<MemoryContradiction>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            results.Add(new MemoryContradiction
+            {
+                NewMemoryId = Guid.Parse(reader.GetString(0)),
+                ExistingMemoryId = Guid.Parse(reader.GetString(1)),
+                Reason = reader.GetString(2),
+                Similarity = reader.GetFloat(3),
+                FlaggedAt = DateTimeOffset.Parse(reader.GetString(4)),
+                IsResolved = reader.GetInt32(5) == 1,
+                NewContent = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                ExistingContent = reader.IsDBNull(7) ? "" : reader.GetString(7),
+            });
+        }
+
+        return results;
+    }
+
+    public async Task ResolveContradictionAsync(Guid newMemoryId, Guid existingMemoryId, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            UPDATE memory_contradictions
+            SET is_resolved = 1
+            WHERE new_memory_id = $new_id AND existing_memory_id = $existing_id
+            """;
+        cmd.Parameters.AddWithValue("$new_id", newMemoryId.ToString());
+        cmd.Parameters.AddWithValue("$existing_id", existingMemoryId.ToString());
+
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     private static byte[]? SerialiseEmbedding(float[]? embedding)

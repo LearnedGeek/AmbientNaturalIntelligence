@@ -59,6 +59,13 @@ public class ContextSnapshot
     public EmotionalDrift? EmotionalDrift { get; set; }
 
     /// <summary>
+    /// Feature 12: Self-awareness feedback loop — pattern analysis of recent outreach.
+    /// When Ani detects she's been repetitive or one-dimensional, this summary gets
+    /// injected into inner thought to nudge topic diversity.
+    /// </summary>
+    public string? PatternAwareness { get; set; }
+
+    /// <summary>
     /// Feature 14: Bidirectional confidence gate — inbound claim verification.
     /// When Mark references past events or attributes statements to Ani, this scores
     /// how well those claims are corroborated by episodic memory. Low confidence

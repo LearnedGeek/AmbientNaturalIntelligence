@@ -577,6 +577,18 @@ public class CognitiveCycleProcessor
             _log.LogWarning(ex, "Emotional drift detection failed — continuing without");
         }
 
+        // Feature 12: Self-awareness feedback loop — analyze recent outreach for pattern clusters.
+        // If Ani's outreach has been thematically repetitive, surface awareness in inner thought.
+        string? patternAwareness = null;
+        try
+        {
+            patternAwareness = await AnalyzeOutreachPatternsAsync(charState.Name, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Feature 12: Pattern analysis failed — continuing without");
+        }
+
         return new ContextSnapshot
         {
             CharacterState           = charState,
@@ -593,6 +605,7 @@ public class CognitiveCycleProcessor
             AnchoredMemories        = anchoredMemories,
             RelationshipHealth       = relationshipHealth,
             EmotionalDrift           = emotionalDrift,
+            PatternAwareness         = patternAwareness,
         };
     }
 
@@ -1708,6 +1721,65 @@ public class CognitiveCycleProcessor
             _log.LogDebug("Outreach parse failure, raw response: {Raw}", raw);
             return new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" };
         }
+    }
+
+    /// <summary>
+    /// Feature 12: Self-awareness feedback loop. Analyzes recent outreach messages for
+    /// thematic repetition. If the average cosine similarity between outreach messages
+    /// exceeds a threshold, returns a natural-language awareness prompt to inject into
+    /// inner thoughts. Returns null if outreach patterns are diverse enough.
+    /// </summary>
+    private async Task<string?> AnalyzeOutreachPatternsAsync(string characterName, CancellationToken ct)
+    {
+        // Get recent outreach memories (episodic records where Ani reached out)
+        var recentEpisodic = (await _memory.GetByTypeAsync(MemoryType.Episodic, 20, ct)
+            .ConfigureAwait(false)).ToList();
+
+        var outreachPrefix = $"{characterName} reached out:";
+        var outreachRecords = recentEpisodic
+            .Where(m => m.Content.StartsWith(outreachPrefix, StringComparison.OrdinalIgnoreCase))
+            .Take(8) // last 8 outreach messages
+            .ToList();
+
+        if (outreachRecords.Count < 3)
+            return null; // not enough data for meaningful pattern analysis
+
+        // Compute pairwise cosine similarity using stored embeddings
+        var withEmbeddings = outreachRecords
+            .Where(m => m.Embedding is { Length: > 0 })
+            .ToList();
+
+        if (withEmbeddings.Count < 3)
+            return null;
+
+        float totalSimilarity = 0;
+        int pairCount = 0;
+        for (var i = 0; i < withEmbeddings.Count; i++)
+        {
+            for (var j = i + 1; j < withEmbeddings.Count; j++)
+            {
+                totalSimilarity += CosineSimilarity(withEmbeddings[i].Embedding!, withEmbeddings[j].Embedding!);
+                pairCount++;
+            }
+        }
+
+        var avgSimilarity = pairCount > 0 ? totalSimilarity / pairCount : 0f;
+
+        _log.LogDebug("Feature 12: Outreach pattern similarity = {Similarity:F3} ({Count} messages, {Pairs} pairs)",
+            avgSimilarity, withEmbeddings.Count, pairCount);
+
+        // Threshold: 0.75+ average similarity = thematically repetitive
+        if (avgSimilarity < 0.75f)
+            return null;
+
+        // Extract most common theme from recent outreach for the awareness prompt
+        var recentTopics = outreachRecords.Take(3)
+            .Select(m => m.Content.Replace(outreachPrefix, "").Trim().TrimStart('"').TrimEnd('"'))
+            .ToList();
+
+        return $"I notice my last few messages have been thematically similar — circling the same territory: " +
+               $"\"{recentTopics[0][..Math.Min(40, recentTopics[0].Length)]}...\". " +
+               "Maybe I should explore something different next time. A different corner of my mind.";
     }
 
     /// <summary>

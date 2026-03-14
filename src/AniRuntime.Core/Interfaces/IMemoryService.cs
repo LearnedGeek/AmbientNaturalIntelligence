@@ -27,6 +27,10 @@ public interface IMemoryService
     // Feature 4/8: Emotional state history queries
     Task<List<EmotionalStateSnapshot>> GetEmotionalHistoryAsync(int hours, CancellationToken ct = default);
 
+    // Feature 15: Memory contradiction flagging
+    Task<List<MemoryContradiction>> GetFlaggedContradictionsAsync(bool includeResolved = false, CancellationToken ct = default);
+    Task ResolveContradictionAsync(Guid newMemoryId, Guid existingMemoryId, CancellationToken ct = default);
+
     // Feature 4: Interaction metrics for health computation
     Task<int> GetRecentMessageCountAsync(int days, CancellationToken ct = default);
     Task<float> GetAverageConversationValenceAsync(int days, CancellationToken ct = default);
