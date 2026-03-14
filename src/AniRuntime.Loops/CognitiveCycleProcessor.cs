@@ -87,10 +87,15 @@ public class CognitiveCycleProcessor
     {
         _log.LogDebug("Cognitive cycle starting");
 
-        // Phase 0: Emotional state — load and drift toward baselines
+        // Phase 0: Emotional state — compute from active contributions.
+        // Each contribution decays independently via its own half-life.
+        // The emotional state is baselines + sum of all decayed contributions.
         var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-        var elapsed = DateTimeOffset.UtcNow - emotionalState.LastUpdated;
-        emotionalState.DriftTowardBaseline(elapsed);
+        var activeContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+        emotionalState.ComputeFromContributions(activeContributions);
+
+        // Periodic cleanup of fully-decayed contributions (> 24h old)
+        await _memory.CleanupDecayedContributionsAsync(ct).ConfigureAwait(false);
 
         // Feature 2: Open loops as emotional weight — unresolved threads create gentle
         // concern pressure. Proportional to count and age of oldest loop.
@@ -203,12 +208,10 @@ public class CognitiveCycleProcessor
         if (reflection is not null)
             _log.LogInformation("Reflection: {Reflection}", reflection);
 
-        // Phase 4b: Emotional shift from inner thought (raw thought only — reflection
-        // adds warm/connection language that would inflate emotional scores).
-        // Ambient maxDelta is capped low (0.05) because the 3B model consistently
-        // returns max-negative deltas regardless of thought content, overwhelming
-        // baseline drift. Private thoughts should nudge mood gently, not crater it.
-        await ApplyEmotionalShiftAsync(emotionalState, thought, ct, maxDelta: 0.05f, isAmbientCycle: true).ConfigureAwait(false);
+        // Phase 4b: Emotional shift from inner thought — creates an Ambient contribution
+        // that decays via 1-hour half-life. Each thought's impact fades independently.
+        await ApplyEmotionalShiftAsync(emotionalState, thought, ct,
+            isAmbientCycle: true, category: ImpactCategory.Ambient).ConfigureAwait(false);
 
         // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
@@ -592,6 +595,9 @@ public class CognitiveCycleProcessor
             _log.LogWarning(ex, "Feature 12: Pattern analysis failed — continuing without");
         }
 
+        // Processed themes — topics whose emotional contributions have fully decayed
+        var processedThemes = await _memory.GetProcessedThemesAsync(5, ct).ConfigureAwait(false);
+
         return new ContextSnapshot
         {
             CharacterState           = charState,
@@ -609,6 +615,7 @@ public class CognitiveCycleProcessor
             RelationshipHealth       = relationshipHealth,
             EmotionalDrift           = emotionalDrift,
             PatternAwareness         = patternAwareness,
+            ProcessedThemes          = processedThemes,
         };
     }
 
@@ -1102,44 +1109,43 @@ public class CognitiveCycleProcessor
         }
 
         // Feature 10: Receiving Care — detect when contact is checking in on Ani
-        // Apply immediate emotional shift BEFORE reply generation so mood coloring
-        // reflects the post-shift state (his care genuinely lifted her mood)
+        // Create a conversation-tier contribution so mood coloring reflects his care
         if (emotionalState is not null && DetectCareGivingIntent(lastMessage))
         {
-            _log.LogInformation("Care detected in message — applying receiving-care emotional shift");
-            emotionalState.ApplyShift(
-                warmthDelta:      0.1f,   // his attention makes her feel warmer
-                energyDelta:      0.05f,  // small energy lift from being noticed
-                concernDelta:    -0.1f,   // worry eased by someone checking in
-                playfulnessDelta: 0f);
-            await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+            _log.LogInformation("Care detected in message — creating care contribution");
+            await SaveDirectContributionAsync(emotionalState,
+                "receiving care — someone checked in on me",
+                warmth: 0.1f, energy: 0.05f, concern: -0.1f, playfulness: 0f,
+                ImpactCategory.Conversation, ct).ConfigureAwait(false);
         }
 
         // Feature 19: Lexical Emotional Anchors — relationship-specific words that carry
-        // outsized emotional weight. Applied BEFORE reply generation so mood coloring
-        // reflects the post-shift state. Additive with LLM valence scoring.
+        // outsized emotional weight. Each anchor creates a conversation-tier contribution.
         if (emotionalState is not null)
         {
-            var anchorsTriggered = ApplyLexicalAnchors(lastMessage, snapshot.CharacterState, emotionalState);
-            if (anchorsTriggered > 0)
+            var anchorContributions = BuildLexicalAnchorContributions(lastMessage, snapshot.CharacterState);
+            if (anchorContributions.Count > 0)
             {
-                _log.LogInformation("Lexical anchors triggered: {Count} — emotional state shifted before reply", anchorsTriggered);
+                foreach (var ac in anchorContributions)
+                    await _memory.SaveEmotionalContributionAsync(ac, ct).ConfigureAwait(false);
+
+                var allContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                emotionalState.ComputeFromContributions(allContributions);
                 await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+                _log.LogInformation("Lexical anchors triggered: {Count} — contributions created", anchorContributions.Count);
             }
         }
 
         // Feature 18: Reactive Withdrawal — detect dismissive or hurtful intent.
-        // Inverse of Feature 10 (Receiving Care). Applies immediate emotional downshift
+        // Inverse of Feature 10 (Receiving Care). Creates a conversation-tier contribution
         // and sets a withdrawal window that suppresses outreach and quiets tone.
         if (emotionalState is not null && DetectHurtIntent(lastMessage))
         {
-            _log.LogInformation("Hurt detected in message — applying withdrawal emotional shift");
-            emotionalState.ApplyShift(
-                warmthDelta:     -0.15f,  // stung — pulls back emotionally
-                energyDelta:     -0.1f,   // energy drops
-                concernDelta:     0.05f,  // slight self-protective concern
-                playfulnessDelta:-0.2f);  // playfulness drops sharply
-            await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+            _log.LogInformation("Hurt detected in message — creating withdrawal contribution");
+            await SaveDirectContributionAsync(emotionalState,
+                "hurt detected — pulling back emotionally",
+                warmth: -0.15f, energy: -0.1f, concern: 0.05f, playfulness: -0.2f,
+                ImpactCategory.Conversation, ct).ConfigureAwait(false);
 
             _withdrawalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
             _log.LogInformation("Withdrawal active until {Expires}", _withdrawalExpiresAt.Value.ToString("HH:mm"));
@@ -1225,7 +1231,8 @@ public class CognitiveCycleProcessor
         {
             var cs = snapshot.CharacterState;
             var conversationContext = $"{cs.PrimaryContactName} said: \"{lastMessage}\" and {cs.Name} replied: \"{reply}\"";
-            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct, maxDelta: 0.25f).ConfigureAwait(false);
+            await ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct,
+                category: ImpactCategory.Conversation).ConfigureAwait(false);
         }
 
         // Feature 21: Feedback-weighted importance — contact engaging on a topic
@@ -1393,14 +1400,13 @@ public class CognitiveCycleProcessor
             var oldestAgeHours = (DateTimeOffset.UtcNow - openLoops.Min(l => l.CreatedAt)).TotalHours;
             var pressure = (float)Math.Min(openLoops.Count * 0.02 + oldestAgeHours * 0.005, 0.15);
 
-            // Only apply if it would meaningfully increase concern (don't re-apply every cycle)
-            var maxConcern = Math.Min(emotionalState.ConcernBaseline + 0.4f, 0.6f);
-            if (emotionalState.Concern + pressure > maxConcern)
-                pressure = Math.Max(0, maxConcern - emotionalState.Concern);
-
             if (pressure > 0.005f)
             {
-                emotionalState.Concern = Math.Clamp(emotionalState.Concern + pressure, 0f, 1f);
+                // Create an ambient-tier contribution for open loop concern
+                await SaveDirectContributionAsync(emotionalState,
+                    $"open loop pressure — {openLoops.Count} unresolved threads",
+                    warmth: 0f, energy: 0f, concern: pressure, playfulness: 0f,
+                    ImpactCategory.Ambient, ct).ConfigureAwait(false);
                 _log.LogDebug("Open loop pressure: +{Pressure:F3} concern ({Count} loops, oldest {Hours:F0}h)",
                     pressure, openLoops.Count, oldestAgeHours);
             }
@@ -1411,35 +1417,40 @@ public class CognitiveCycleProcessor
         }
     }
 
-    internal static int ApplyLexicalAnchors(string message, CharacterStateDoc charState, EmotionalState emotionalState)
+    internal static List<EmotionalContribution> BuildLexicalAnchorContributions(
+        string message, CharacterStateDoc charState)
     {
+        var contributions = new List<EmotionalContribution>();
         if (charState.LexicalAnchors.Count == 0)
-            return 0;
+            return contributions;
 
         var lower = message.ToLowerInvariant();
-        var triggered = 0;
+        var (_, halfLife) = ImpactCategoryDefaults.GetDefaults(ImpactCategory.Conversation);
 
         foreach (var anchor in charState.LexicalAnchors)
         {
             if (!lower.Contains(anchor.Word.ToLowerInvariant()))
                 continue;
 
-            // Compute effective delta — decay if word has been heard many times
             var scale = 1.0f;
             if (anchor.DecaysOnRepetition && anchor.TimesHeard > 10)
                 scale = Math.Max(0.3f, 1.0f - (anchor.TimesHeard - 10) * 0.03f);
 
-            emotionalState.ApplyShift(
-                warmthDelta:      anchor.WarmthDelta * scale,
-                energyDelta:      anchor.EnergyDelta * scale,
-                concernDelta:     anchor.ConcernDelta * scale,
-                playfulnessDelta: anchor.PlayfulnessDelta * scale);
+            contributions.Add(new EmotionalContribution
+            {
+                SourceContent = $"lexical anchor: {anchor.Word}",
+                WarmthDelta = anchor.WarmthDelta * scale,
+                EnergyDelta = anchor.EnergyDelta * scale,
+                ConcernDelta = anchor.ConcernDelta * scale,
+                PlayfulnessDelta = anchor.PlayfulnessDelta * scale,
+                HalfLifeHours = halfLife,
+                Category = ImpactCategory.Conversation,
+            });
 
             anchor.TimesHeard++;
-            triggered++;
         }
 
-        return triggered;
+        return contributions;
     }
 
     /// Detects messages that naturally end a conversation and don't need a reply.
@@ -1662,36 +1673,121 @@ public class CognitiveCycleProcessor
     }
 
     /// <summary>
-    /// Scores and applies emotional shift from a thought, conversation reply, or event.
-    /// Uses the LLM to extract small deltas for each emotional dimension.
-    ///
-    /// maxDelta controls the clamp range:
-    ///   0.2 = routine inner thoughts (default)
-    ///   0.4 = conversations with contact (real emotional events)
+    /// Scores emotional shift from a thought, conversation reply, or event, then
+    /// creates an EmotionalContribution that decays over time via its half-life.
+    /// Replaces the old model where deltas were applied permanently.
     /// </summary>
     private async Task ApplyEmotionalShiftAsync(
         EmotionalState state, string content, CancellationToken ct,
-        float maxDelta = 0.2f, bool isAmbientCycle = false)
+        float maxDelta = 0.2f, bool isAmbientCycle = false,
+        ImpactCategory category = ImpactCategory.Ambient)
     {
         try
         {
-            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, maxDelta, isAmbientCycle);
+            var (catMaxDelta, halfLife) = ImpactCategoryDefaults.GetDefaults(category);
+            var effectiveMax = Math.Min(maxDelta, catMaxDelta);
+
+            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, effectiveMax, isAmbientCycle);
             var raw = await _ollama.ChatJsonAsync(
                 prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
                 .ConfigureAwait(false);
 
-            var (warmth, energy, concern, playfulness) = ParseEmotionalShift(raw, maxDelta);
-            state.ApplyShift(warmth, energy, concern, playfulness);
+            var (warmth, energy, concern, playfulness) = ParseEmotionalShift(raw, effectiveMax);
 
-            _log.LogDebug("Emotional shift (max={MaxDelta:F1}): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
-                maxDelta, warmth, energy, concern, playfulness);
+            // Skip if all zeros — no emotional impact
+            if (warmth == 0f && energy == 0f && concern == 0f && playfulness == 0f)
+                return;
 
+            var sourceContent = content.Length > 200 ? content[..200] : content;
+
+            // Semantic dedup: if a similar thought already has an active contribution,
+            // refresh it (update deltas, reset decay clock) instead of stacking.
+            float[]? embedding = null;
+            try { embedding = await _ollama.EmbedAsync(sourceContent, ct).ConfigureAwait(false); }
+            catch { /* embedding failure is non-fatal — skip dedup */ }
+
+            if (embedding is not null)
+            {
+                var existing = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                var match = existing.FirstOrDefault(e =>
+                    e.Embedding is not null &&
+                    VectorMath.CosineSimilarity(embedding, e.Embedding) > 0.85f);
+
+                if (match is not null)
+                {
+                    // Refresh: update deltas and reset decay clock
+                    match.WarmthDelta = warmth;
+                    match.EnergyDelta = energy;
+                    match.ConcernDelta = concern;
+                    match.PlayfulnessDelta = playfulness;
+                    match.CreatedAt = DateTimeOffset.UtcNow;
+                    match.SourceContent = sourceContent;
+                    await _memory.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
+                    _log.LogDebug("Refreshed existing emotional contribution (semantic match)");
+
+                    var allContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                    state.ComputeFromContributions(allContributions);
+                    await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
+
+                    _log.LogDebug("Emotional contribution refreshed ({Category}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
+                        category, halfLife, warmth, energy, concern, playfulness);
+                    return;
+                }
+            }
+
+            var contribution = new EmotionalContribution
+            {
+                SourceContent = sourceContent,
+                WarmthDelta = warmth,
+                EnergyDelta = energy,
+                ConcernDelta = concern,
+                PlayfulnessDelta = playfulness,
+                HalfLifeHours = halfLife,
+                Category = category,
+                Embedding = embedding,
+            };
+
+            await _memory.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
+
+            // Recompute state from all active contributions
+            var contributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+            state.ComputeFromContributions(contributions);
             await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
+
+            _log.LogDebug("Emotional contribution ({Category}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
+                category, halfLife, warmth, energy, concern, playfulness);
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Emotional shift scoring failed — continuing with current state");
         }
+    }
+
+    /// <summary>
+    /// Create a contribution with known deltas (not LLM-scored). Used for care detection,
+    /// hurt detection, and other deterministic emotional events.
+    /// </summary>
+    private async Task SaveDirectContributionAsync(
+        EmotionalState state, string source,
+        float warmth, float energy, float concern, float playfulness,
+        ImpactCategory category, CancellationToken ct)
+    {
+        var (_, halfLife) = ImpactCategoryDefaults.GetDefaults(category);
+        var contribution = new EmotionalContribution
+        {
+            SourceContent = source,
+            WarmthDelta = warmth,
+            EnergyDelta = energy,
+            ConcernDelta = concern,
+            PlayfulnessDelta = playfulness,
+            HalfLifeHours = halfLife,
+            Category = category,
+        };
+        await _memory.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
+
+        var contributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+        state.ComputeFromContributions(contributions);
+        await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
     }
 
     private (float warmth, float energy, float concern, float playfulness) ParseEmotionalShift(string raw, float maxDelta = 0.2f)

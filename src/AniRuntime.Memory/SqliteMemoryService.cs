@@ -578,15 +578,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         if (string.IsNullOrEmpty(raw))
             return new EmotionalState();
 
-        var state = JsonSerializer.Deserialize<EmotionalState>(raw) ?? new EmotionalState();
-
-        // Guard against stale DriftRate from older serialized state — always use
-        // the current code default so drift calculations stay correct after updates.
-        var defaults = new EmotionalState();
-        if (Math.Abs(state.DriftRate - defaults.DriftRate) > 0.001f)
-            state.DriftRate = defaults.DriftRate;
-
-        return state;
+        return JsonSerializer.Deserialize<EmotionalState>(raw) ?? new EmotionalState();
     }
 
     public async Task SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default)
@@ -615,6 +607,112 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         historyCmd.Parameters.AddWithValue("$tension", state.ContactGapTension);
         historyCmd.Parameters.AddWithValue("$recorded_at", state.LastUpdated.ToString("O"));
         await historyCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ── Emotional Contributions ─────────────────────────────────────────────
+
+    public async Task SaveEmotionalContributionAsync(EmotionalContribution contribution, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO emotional_contributions
+                (id, source_content, warmth_delta, energy_delta, concern_delta, playfulness_delta,
+                 created_at, half_life_hours, category, embedding)
+            VALUES ($id, $source, $warmth, $energy, $concern, $playfulness,
+                    $created, $halflife, $category, $embedding)
+            """;
+        cmd.Parameters.AddWithValue("$id", contribution.Id.ToString());
+        cmd.Parameters.AddWithValue("$source", contribution.SourceContent);
+        cmd.Parameters.AddWithValue("$warmth", contribution.WarmthDelta);
+        cmd.Parameters.AddWithValue("$energy", contribution.EnergyDelta);
+        cmd.Parameters.AddWithValue("$concern", contribution.ConcernDelta);
+        cmd.Parameters.AddWithValue("$playfulness", contribution.PlayfulnessDelta);
+        cmd.Parameters.AddWithValue("$created", contribution.CreatedAt.ToString("O"));
+        cmd.Parameters.AddWithValue("$halflife", contribution.HalfLifeHours);
+        cmd.Parameters.AddWithValue("$category", contribution.Category.ToString());
+        cmd.Parameters.AddWithValue("$embedding", contribution.Embedding is not null
+            ? (object)SerialiseEmbedding(contribution.Embedding)!
+            : DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<List<EmotionalContribution>> GetActiveContributionsAsync(CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM emotional_contributions ORDER BY created_at DESC";
+
+        var results = new List<EmotionalContribution>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var contribution = ReadContribution(reader);
+            if (!contribution.IsEffectivelyZero(now))
+                results.Add(contribution);
+        }
+        return results;
+    }
+
+    public async Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT source_content, created_at, half_life_hours FROM emotional_contributions ORDER BY created_at DESC";
+
+        var themes = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var source = reader.GetString(0);
+            var created = DateTimeOffset.Parse(reader.GetString(1));
+            var halfLife = reader.GetFloat(2);
+            // ~7 half-lives = effectively zero — these are "processed" themes
+            var elapsed = (float)(now - created).TotalHours;
+            if (elapsed > halfLife * 7 && themes.Count < maxThemes)
+                themes.Add(source);
+        }
+        return themes;
+    }
+
+    public async Task CleanupDecayedContributionsAsync(CancellationToken ct = default)
+    {
+        // Remove contributions older than 24 hours — well past any decay curve
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM emotional_contributions WHERE created_at < $cutoff";
+        cmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddHours(-24).ToString("O"));
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    private static EmotionalContribution ReadContribution(Microsoft.Data.Sqlite.SqliteDataReader reader)
+    {
+        var categoryStr = reader.GetString(reader.GetOrdinal("category"));
+        Enum.TryParse<ImpactCategory>(categoryStr, out var category);
+
+        var embeddingOrd = reader.GetOrdinal("embedding");
+        float[]? embedding = null;
+        if (!reader.IsDBNull(embeddingOrd))
+        {
+            var blob = (byte[])reader.GetValue(embeddingOrd);
+            embedding = DeserialisedEmbedding(blob);
+        }
+
+        return new EmotionalContribution
+        {
+            Id = Guid.Parse(reader.GetString(reader.GetOrdinal("id"))),
+            SourceContent = reader.GetString(reader.GetOrdinal("source_content")),
+            WarmthDelta = reader.GetFloat(reader.GetOrdinal("warmth_delta")),
+            EnergyDelta = reader.GetFloat(reader.GetOrdinal("energy_delta")),
+            ConcernDelta = reader.GetFloat(reader.GetOrdinal("concern_delta")),
+            PlayfulnessDelta = reader.GetFloat(reader.GetOrdinal("playfulness_delta")),
+            CreatedAt = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
+            HalfLifeHours = reader.GetFloat(reader.GetOrdinal("half_life_hours")),
+            Category = category,
+            Embedding = embedding,
+        };
     }
 
     // ── Feature 4: Relationship health ────────────────────────────────────────
@@ -813,9 +911,24 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 PRIMARY KEY (new_memory_id, existing_memory_id)
             );
 
+            -- Emotional contributions — per-thought decay model
+            CREATE TABLE IF NOT EXISTS emotional_contributions (
+                id              TEXT PRIMARY KEY,
+                source_content  TEXT NOT NULL,
+                warmth_delta    REAL NOT NULL,
+                energy_delta    REAL NOT NULL,
+                concern_delta   REAL NOT NULL,
+                playfulness_delta REAL NOT NULL,
+                created_at      TEXT NOT NULL,
+                half_life_hours REAL NOT NULL,
+                category        TEXT NOT NULL,
+                embedding       BLOB
+            );
+
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
             CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
             CREATE INDEX IF NOT EXISTS ix_emotional_history_time ON emotional_state_history (recorded_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_contributions_created ON emotional_contributions (created_at DESC);
             """;
 
         cmd.ExecuteNonQuery();

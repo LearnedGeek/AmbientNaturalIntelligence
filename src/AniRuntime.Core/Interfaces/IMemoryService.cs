@@ -35,4 +35,10 @@ public interface IMemoryService
     Task<int> GetRecentMessageCountAsync(int days, CancellationToken ct = default);
     Task<float> GetAverageConversationValenceAsync(int days, CancellationToken ct = default);
     Task<(int outreach, int inbound)> GetInitiativeBalanceAsync(int days, CancellationToken ct = default);
+
+    // Emotional contributions — per-thought decay model
+    Task SaveEmotionalContributionAsync(EmotionalContribution contribution, CancellationToken ct = default);
+    Task<List<EmotionalContribution>> GetActiveContributionsAsync(CancellationToken ct = default);
+    Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default);
+    Task CleanupDecayedContributionsAsync(CancellationToken ct = default);
 }

@@ -7,126 +7,99 @@ namespace AniRuntime.Tests;
 public class EmotionalStateTests
 {
     [Fact]
-    public void DriftTowardBaseline_MovesValuesTowardBaseline()
+    public void ComputeFromContributions_BaselineWhenEmpty()
     {
-        var state = new EmotionalState
-        {
-            Warmth = 0.9f, WarmthBaseline = 0.6f,
-            Energy = 0.2f, EnergyBaseline = 0.5f,
-            Concern = 0.8f, ConcernBaseline = 0.2f,
-            Playfulness = 0.1f, PlayfulnessBaseline = 0.5f,
-            DriftRate = 0.5f, // 50% of gap per hour
-        };
-
-        state.DriftTowardBaseline(TimeSpan.FromHours(1));
-
-        // Each should move halfway toward baseline
-        state.Warmth.Should().BeApproximately(0.75f, 0.01f);      // 0.9 - (0.3 * 0.5) = 0.75
-        state.Energy.Should().BeApproximately(0.35f, 0.01f);      // 0.2 + (0.3 * 0.5) = 0.35
-        state.Concern.Should().BeApproximately(0.50f, 0.01f);     // 0.8 - (0.6 * 0.5) = 0.50
-        state.Playfulness.Should().BeApproximately(0.30f, 0.01f); // 0.1 + (0.4 * 0.5) = 0.30
-    }
-
-    [Fact]
-    public void DriftTowardBaseline_CapsFactorAtOne()
-    {
-        var state = new EmotionalState
-        {
-            Warmth = 0.9f, WarmthBaseline = 0.6f,
-            DriftRate = 0.5f,
-        };
-
-        // After 10 hours, factor = min(1.0, 0.5 * 10) = 1.0 → full drift
-        state.DriftTowardBaseline(TimeSpan.FromHours(10));
-
-        state.Warmth.Should().BeApproximately(0.6f, 0.01f);
-    }
-
-    [Fact]
-    public void DriftTowardBaseline_NoChangeWhenAtBaseline()
-    {
-        var state = new EmotionalState(); // all values at baseline by default
-
-        state.DriftTowardBaseline(TimeSpan.FromHours(1));
+        var state = new EmotionalState();
+        state.ComputeFromContributions(Array.Empty<EmotionalContribution>());
 
         state.Warmth.Should().Be(state.WarmthBaseline);
         state.Energy.Should().Be(state.EnergyBaseline);
+        state.Concern.Should().Be(state.ConcernBaseline);
+        state.Playfulness.Should().Be(state.PlayfulnessBaseline);
     }
 
     [Fact]
-    public void ApplyShift_ClampsToValidRange()
+    public void ComputeFromContributions_AppliesFreshDeltas()
     {
-        // Start at baseline so attenuation doesn't interfere with clamp test
-        var state = new EmotionalState
+        var state = new EmotionalState();
+        var now = DateTimeOffset.UtcNow;
+        var contributions = new List<EmotionalContribution>
         {
-            Warmth = 0.6f, WarmthBaseline = 0.6f,
-            Energy = 0.5f, EnergyBaseline = 0.5f,
+            new() { WarmthDelta = 0.1f, EnergyDelta = -0.2f, CreatedAt = now, HalfLifeHours = 1f }
         };
 
-        // Large deltas from baseline should still clamp to 0.0–1.0
-        state.ApplyShift(warmthDelta: 0.5f, energyDelta: -0.6f, concernDelta: 0f, playfulnessDelta: 0f);
+        state.ComputeFromContributions(contributions, now);
+
+        state.Warmth.Should().BeApproximately(0.7f, 0.01f);  // 0.6 + 0.1
+        state.Energy.Should().BeApproximately(0.3f, 0.01f);  // 0.5 - 0.2
+    }
+
+    [Fact]
+    public void ComputeFromContributions_DecaysOverTime()
+    {
+        var state = new EmotionalState();
+        var created = DateTimeOffset.UtcNow.AddHours(-1); // 1 half-life ago
+        var now = DateTimeOffset.UtcNow;
+        var contributions = new List<EmotionalContribution>
+        {
+            new() { WarmthDelta = 0.2f, CreatedAt = created, HalfLifeHours = 1f }
+        };
+
+        state.ComputeFromContributions(contributions, now);
+
+        // After 1 half-life, delta is halved: 0.2 * 0.5 = 0.1
+        state.Warmth.Should().BeApproximately(0.7f, 0.01f); // 0.6 + 0.1
+    }
+
+    [Fact]
+    public void ComputeFromContributions_MultipleSources_Sum()
+    {
+        var state = new EmotionalState();
+        var now = DateTimeOffset.UtcNow;
+        var contributions = new List<EmotionalContribution>
+        {
+            new() { WarmthDelta = 0.1f, CreatedAt = now, HalfLifeHours = 1f },
+            new() { WarmthDelta = -0.15f, CreatedAt = now, HalfLifeHours = 3f },
+            new() { EnergyDelta = 0.2f, CreatedAt = now, HalfLifeHours = 1f },
+        };
+
+        state.ComputeFromContributions(contributions, now);
+
+        state.Warmth.Should().BeApproximately(0.55f, 0.01f); // 0.6 + 0.1 - 0.15
+        state.Energy.Should().BeApproximately(0.7f, 0.01f);  // 0.5 + 0.2
+    }
+
+    [Fact]
+    public void ComputeFromContributions_ClampsToValidRange()
+    {
+        var state = new EmotionalState();
+        var now = DateTimeOffset.UtcNow;
+        var contributions = new List<EmotionalContribution>
+        {
+            new() { WarmthDelta = 0.5f, EnergyDelta = -0.6f, CreatedAt = now, HalfLifeHours = 1f }
+        };
+
+        state.ComputeFromContributions(contributions, now);
 
         state.Warmth.Should().BeLessOrEqualTo(1.0f);
         state.Energy.Should().BeGreaterOrEqualTo(0.0f);
     }
 
     [Fact]
-    public void ApplyShift_CorrectiveDeltas_FullStrength()
+    public void ComputeFromContributions_FullDecay_ReturnsToBaseline()
     {
-        // Warmth below baseline → positive delta is corrective → full strength
-        // Energy above baseline → negative delta is corrective → full strength
-        var state = new EmotionalState
+        var state = new EmotionalState();
+        var created = DateTimeOffset.UtcNow.AddHours(-10); // 10 half-lives ago
+        var now = DateTimeOffset.UtcNow;
+        var contributions = new List<EmotionalContribution>
         {
-            Warmth = 0.4f, WarmthBaseline = 0.6f,
-            Energy = 0.7f, EnergyBaseline = 0.5f,
-            Concern = 0.2f, ConcernBaseline = 0.2f,
-            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
+            new() { WarmthDelta = 0.2f, CreatedAt = created, HalfLifeHours = 1f }
         };
 
-        state.ApplyShift(0.1f, -0.1f, 0f, 0f);
+        state.ComputeFromContributions(contributions, now);
 
-        state.Warmth.Should().BeApproximately(0.5f, 0.001f);   // corrective: full +0.1
-        state.Energy.Should().BeApproximately(0.6f, 0.001f);   // corrective: full -0.1
-    }
-
-    [Fact]
-    public void ApplyShift_AwayFromBaseline_Attenuated()
-    {
-        // Warmth already 0.9 (far above 0.6 baseline) → positive delta attenuated
-        // range = 1.0 - 0.6 = 0.4, used = 0.3, scale = 1 - 0.3/0.4 = 0.25
-        // attenuated delta = 0.1 * 0.25 = 0.025
-        var state = new EmotionalState
-        {
-            Warmth = 0.9f, WarmthBaseline = 0.6f,
-            Energy = 0.5f, EnergyBaseline = 0.5f,
-            Concern = 0.2f, ConcernBaseline = 0.2f,
-            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
-        };
-
-        state.ApplyShift(0.1f, 0f, 0f, 0f);
-
-        state.Warmth.Should().BeApproximately(0.925f, 0.001f); // 0.9 + 0.025
-    }
-
-    [Fact]
-    public void ApplyShift_AtBaseline_RestingPullHalvesDelta()
-    {
-        // At baseline, pushing-away deltas are scaled by 0.5 (resting pull)
-        // to prevent max LLM deltas from cratering emotions every cycle
-        var state = new EmotionalState
-        {
-            Warmth = 0.6f, WarmthBaseline = 0.6f,
-            Energy = 0.5f, EnergyBaseline = 0.5f,
-            Concern = 0.2f, ConcernBaseline = 0.2f,
-            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
-        };
-
-        state.ApplyShift(0.1f, -0.1f, 0.05f, -0.05f);
-
-        state.Warmth.Should().BeApproximately(0.65f, 0.001f);       // 0.6 + 0.1*0.5
-        state.Energy.Should().BeApproximately(0.45f, 0.001f);       // 0.5 - 0.1*0.5
-        state.Concern.Should().BeApproximately(0.225f, 0.001f);     // 0.2 + 0.05*0.5
-        state.Playfulness.Should().BeApproximately(0.475f, 0.001f); // 0.5 - 0.05*0.5
+        // After 10 half-lives, delta ~ 0.0002 — effectively zero
+        state.Warmth.Should().BeApproximately(0.6f, 0.01f);
     }
 
     [Fact]
@@ -428,5 +401,114 @@ public class EmotionalStateTests
             Array.Empty<EmotionalStateSnapshot>());
         drift.Similarity.Should().Be(1.0f);
         drift.IsSignificant.Should().BeFalse();
+    }
+
+    // ── EmotionalContribution Model Tests ─────────────────────────────────
+
+    [Fact]
+    public void DecayFactor_AtCreation_ReturnsOne()
+    {
+        var c = new EmotionalContribution { CreatedAt = DateTimeOffset.UtcNow, HalfLifeHours = 1f };
+        c.DecayFactor(c.CreatedAt).Should().Be(1.0f);
+    }
+
+    [Fact]
+    public void DecayFactor_AfterOneHalfLife_ReturnsHalf()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution { CreatedAt = created, HalfLifeHours = 2f };
+        c.DecayFactor(created.AddHours(2)).Should().BeApproximately(0.5f, 0.001f);
+    }
+
+    [Fact]
+    public void DecayFactor_AfterTwoHalfLives_ReturnsQuarter()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution { CreatedAt = created, HalfLifeHours = 3f };
+        c.DecayFactor(created.AddHours(6)).Should().BeApproximately(0.25f, 0.001f);
+    }
+
+    [Fact]
+    public void DecayFactor_BeforeCreation_ReturnsOne()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution { CreatedAt = created, HalfLifeHours = 1f };
+        c.DecayFactor(created.AddHours(-1)).Should().Be(1.0f);
+    }
+
+    [Fact]
+    public void DecayFactor_ZeroHalfLife_ReturnsZero()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution { CreatedAt = created, HalfLifeHours = 0f };
+        c.DecayFactor(created.AddHours(1)).Should().Be(0f);
+    }
+
+    [Fact]
+    public void CurrentDeltas_ScalesByDecayFactor()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution
+        {
+            WarmthDelta = 0.2f, EnergyDelta = -0.1f,
+            ConcernDelta = 0.15f, PlayfulnessDelta = 0.05f,
+            CreatedAt = created, HalfLifeHours = 1f
+        };
+
+        // At creation — full strength
+        var (w, e, co, p) = c.CurrentDeltas(created);
+        w.Should().BeApproximately(0.2f, 0.001f);
+        e.Should().BeApproximately(-0.1f, 0.001f);
+        co.Should().BeApproximately(0.15f, 0.001f);
+        p.Should().BeApproximately(0.05f, 0.001f);
+
+        // After 1 half-life — half strength
+        var (w2, e2, co2, p2) = c.CurrentDeltas(created.AddHours(1));
+        w2.Should().BeApproximately(0.1f, 0.001f);
+        e2.Should().BeApproximately(-0.05f, 0.001f);
+        co2.Should().BeApproximately(0.075f, 0.001f);
+        p2.Should().BeApproximately(0.025f, 0.001f);
+    }
+
+    [Fact]
+    public void IsEffectivelyZero_FreshContribution_ReturnsFalse()
+    {
+        var c = new EmotionalContribution
+        {
+            WarmthDelta = 0.1f, CreatedAt = DateTimeOffset.UtcNow, HalfLifeHours = 1f
+        };
+        c.IsEffectivelyZero(c.CreatedAt).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsEffectivelyZero_AfterManyHalfLives_ReturnsTrue()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution
+        {
+            WarmthDelta = 0.2f, EnergyDelta = -0.15f,
+            ConcernDelta = 0.1f, PlayfulnessDelta = 0.05f,
+            CreatedAt = created, HalfLifeHours = 1f
+        };
+        // After 10 half-lives: 0.2 * 2^(-10) ≈ 0.0002 — well below epsilon
+        c.IsEffectivelyZero(created.AddHours(10)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsEffectivelyZero_ZeroDeltas_ReturnsTrue()
+    {
+        var c = new EmotionalContribution { CreatedAt = DateTimeOffset.UtcNow, HalfLifeHours = 1f };
+        c.IsEffectivelyZero(c.CreatedAt).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(ImpactCategory.Ambient, 0.15f, 1.0f)]
+    [InlineData(ImpactCategory.Conversation, 0.25f, 3.0f)]
+    [InlineData(ImpactCategory.Global, 0.20f, 6.0f)]
+    public void ImpactCategoryDefaults_ReturnsCorrectValues(ImpactCategory category, float maxDelta, float halfLife)
+    {
+        var (actualMax, actualHalfLife) = ImpactCategoryDefaults.GetDefaults(category);
+        actualMax.Should().Be(maxDelta);
+        actualHalfLife.Should().Be(halfLife);
     }
 }

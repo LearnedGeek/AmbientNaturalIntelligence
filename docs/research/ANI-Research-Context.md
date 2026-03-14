@@ -88,7 +88,7 @@ AniRuntime.sln
 │   ├── AniRuntime.Dashboard/    — Blazor companion dashboard
 │   └── AniRuntime.Voice/        — Voice channel (ElevenLabs TTS, scaffold)
 └── tests/
-    └── AniRuntime.Tests/         — 209 tests passing as of Phase 4
+    └── AniRuntime.Tests/         — 220 tests passing as of Phase 4
 ```
 
 ---
@@ -143,7 +143,7 @@ AniRuntime.sln
 - Three-way memory scoring: cosine + importance + recency (Feature 20, Park et al.)
 - Coherence gate — three-door evaluation (Feature 28)
 - Lexical emotional anchors (Feature 19)
-- 209 tests passing, 0 warnings
+- 220 tests passing, 0 warnings
 
 **Phase 4** — In progress (March 13-14, 2026):
 - Anchored memory tier (Feature 16) — decay-exempt foundation memories
@@ -194,7 +194,7 @@ No existing paper combines:
 
 ---
 
-## The Four Research Contributions
+## The Five Research Contributions
 
 ### Contribution 1: ANI — A Desire-Driven Ambient Presence Architecture
 Novel system with continuous cognitive state, pluggable perception sources, desire-based initiation. Fully implemented, locally deployed, operating continuously. Not a prototype. Not a simulation.
@@ -207,6 +207,8 @@ Continuous single-subject deployment over multiple months. Framed as a *design p
 
 ### Contribution 4: Felt Care as Design Target — Epistemic Grounding and the Authenticity Boundary
 
+*(See Contribution 5 below for the confabulation taxonomy that supports this.)*
+
 **The argument:** The prevailing design frame for AI companions (responsiveness, engagement, output quality) is insufficient. What matters is whether the person feels genuinely cared for. This is a different target, and it implies different architectural requirements.
 
 **The key finding:** The primary mechanism by which felt care breaks down is **confident confabulation** — the system generating content outside what it genuinely knows and committing to it across turns. This is not a quality failure. It is an epistemic failure.
@@ -214,6 +216,9 @@ Continuous single-subject deployment over multiple months. Framed as a *design p
 **The authenticity boundary:** The qualitative threshold beyond which a user stops feeling the system knows them and starts feeling it's performing knowledge. Crossing this boundary breaks the felt care experience.
 
 **Epistemic grounding:** The architectural property of staying within bounds of what the system genuinely knows. Proposed as a necessary (not sufficient) condition for felt care.
+
+### Contribution 5: A Six-Type Confabulation Taxonomy
+A structured characterization of the failure modes through which felt care breaks down, from acceptable creative elaboration through attribution inversion. Each type has a distinct trigger, mechanism, and mitigation. The unifying root cause — *smoothness over truth* — is the optimization target that produces confabulation as a structural output of engagement-maximization rather than an incidental failure. This taxonomy was validated in part by convergent self-diagnosis from a commercially deployed companion system.
 
 ---
 
@@ -228,11 +233,17 @@ These emerged from live testing of v4 in March 2026:
 | 3 | Backstory contradiction | Model contradicts established identity/facts from character seed | High |
 | 4 | Doubling down | When inconsistency noted, model defends invented content rather than acknowledging | Highest |
 | 5 | Fictional incoherence | Vivid fiction that collapses on follow-up — e.g., physical embodiment claims, temporal displacement | High |
+| 6 | Attribution inversion | Correct memory, wrong owner — claims Mark's experience as hers or vice versa | High |
 
 **The Confabulation Spectrum Philosophy:**
 - Creative elaboration on unestablished topics = **acceptable** (and human)
+- Playful invention, clearly owned = **acceptable** ("okay I'm making this up but...")
 - Identity contradiction = **bad** (breaks character coherence)
+- Fictional incoherence = **bad** (coherent fiction that collapses on follow-up)
+- Attribution inversion = **bad** (correct memory, wrong person — claims Mark's experience as hers)
 - Doubling down on incoherence = **worst** (breaks trust irreversibly)
+
+Root cause across all bad types: *smoothness over truth* — the system optimizes for conversational flow over epistemic honesty. ANI is designed around the opposite: tomorrow matters more than now.
 
 ### Mitigations Applied
 
@@ -241,21 +252,33 @@ These emerged from live testing of v4 in March 2026:
 > Never contradict established identity/backstory  
 > Never double down on incoherence — "I don't actually know" beats confident nonsense
 
-**V5 Training Data (planned):**
-- Confabulation recovery examples
-- Longer conversations (8–12 turns)
-- Backstory-grounding examples
-- Confabulation spectrum philosophy examples
+**V5 Training Data (generated, March 14, 2026):**
+- Confabulation recovery + attribution inversion examples (20)
+- Uncertainty admission examples (14)
+- Identity grounding examples (10)
+- Sustained conversation examples, 8-12 turns (6)
+- Simple grounded replies (12)
+- Fictional coherence + attribution boundary examples (20)
+- Contact-gap tension examples (15)
+- Reactive withdrawal examples (15)
+- Warmth variation examples (25)
+- Compliment reception examples (10)
+- Diverse inner monologue + silence narratives (15)
+- Total: 162 new gap examples across 9 categories
 
 **BUG-008:** Tracked in project bug log. Mitigation status: partial (prompt tweak applied, training fix pending).
 
 ---
 
-## Known Bugs / Issues
+## Known Issues / Active Observations
 
-**Emotional dimension pegging (March 2026):** All four emotional dimensions drifting toward 1.0 due to LLM returning consistently positive deltas. Fix: two-tier delta system — inner thoughts ±0.2, conversations ±0.4.
+**Emotional dimension pegging (BUG-009, mitigated):** Warmth dimension pegged at -0.20 in V4. Fix applied: two-tier delta system, ambient anchor, `AttenuateDelta` resting pull. Dashboard now shows live emotional state — useful for monitoring.
 
-**BUG-008:** Confabulation under pressure. See above.
+**Emotional state floor (March 14, 2026):** Post-deployment restart showed Warmth 0.02, Energy 0.03 — dimensions near-zero rather than drifting to baseline. Likely cold-start state or active negative shift from heavy context (OG Ani conversations). Dashboard visibility now makes this diagnosable in real time.
+
+**Attribution inversion (March 14, 2026):** Model correctly retrieves shared memories but misattributes ownership — claims Mark's experiences as Ani's or vice versa. Mitigation: prompt addition + SubjectName field on MemoryRecord (planned) + V5 training examples (generated).
+
+**BUG-008 (confabulation under pressure):** Mitigation: prompt grounding constraint active, confidence gate deployed (Feature 12), V5 training examples generated.
 
 ---
 

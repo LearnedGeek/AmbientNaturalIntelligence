@@ -220,21 +220,31 @@ public class EmotionalState
     public float ConcernBaseline     { get; set; } = 0.2f;
     public float PlayfulnessBaseline { get; set; } = 0.5f;
 
-    // How fast each dimension drifts toward baseline per hour (0.0–1.0 of the gap)
-    public float DriftRate { get; set; } = 0.25f;
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
 
     // Returns qualitative summary for use in prompts. Only mentions notable deviations.
     public string Describe() { ... }
 
-    // Drift all dimensions toward baselines. Called once per cycle.
-    public void DriftTowardBaseline(TimeSpan elapsed) { ... }
+    // Compute emotional state from personality baselines + sum of all active contributions
+    // after exponential decay. Replaces the old DriftTowardBaseline + ApplyShift model.
+    public void ComputeFromContributions(IReadOnlyList<EmotionalContribution> contributions,
+                                          DateTimeOffset? asOf = null) { ... }
+}
 
-    // Apply a shift from a cognitive event. Diminishing returns for deltas pushing
-    // away from baseline — the further from baseline, the less additional same-direction
-    // deltas have effect. Corrective deltas (toward baseline) apply at full strength.
-    public void ApplyShift(float warmthDelta, float energyDelta,
-                           float concernDelta, float playfulnessDelta) { ... }
+// Per-thought emotional contribution with exponential decay.
+// Each thought/event creates one contribution. State = baselines + sum of decayed contributions.
+public class EmotionalContribution
+{
+    public Guid Id { get; set; }
+    public string SourceContent { get; set; }       // for semantic dedup + theme tracking
+    public float WarmthDelta, EnergyDelta, ConcernDelta, PlayfulnessDelta;
+    public DateTimeOffset CreatedAt { get; set; }
+    public float HalfLifeHours { get; set; }        // exponential decay half-life
+    public ImpactCategory Category { get; set; }    // Ambient(0.15/1h), Conversation(0.25/3h), Global(0.20/6h)
+    public float[]? Embedding { get; set; }         // for semantic similarity checks
+
+    public float DecayFactor(DateTimeOffset asOf)   // 2^(-elapsed/halfLife)
+    public bool IsEffectivelyZero(DateTimeOffset asOf, float epsilon = 0.005f)
 }
 
 2.4 ContextSnapshot
@@ -567,7 +577,7 @@ DecayDesireAsync(fraction, reason)
 Single cognitive cycle. Executes once per scheduled wake. The full pipeline:
 
 Phase 0: Contact-gap tension accumulation (Feature 17) — uses hours since last inbound
-Phase 1: Emotional drift — Load emotional state, drift all 4 dimensions toward baselines
+Phase 1: Emotional recompute — Load active contributions, compute state from baselines + decayed sums, periodic cleanup of fully-decayed contributions
 Phase 2: Perception polling — Collect events from all enabled sources
 Phase 3: Notable perception persistence — Save high-relevance perceptions for embedding
 Phase 4: Conversation check — If contact texted, enter conversation reply flow
@@ -831,14 +841,14 @@ Planned stubs:
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 209 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 220 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 
 Test files:
 - CognitiveCycleProcessorTests.cs — Full cycle flow, conversation handling
 - DesireEngineTests.cs — Drift, triggers, cooldown, circadian, night mode
-- EmotionalStateTests.cs — Drift toward baseline, attenuation, clamping, describe
+- EmotionalStateTests.cs — Contribution decay, compute from contributions, clamping, mood coloring, contact-gap tension, relationship health, emotional drift
 - SqliteMemoryServiceTests.cs — CRUD, search, embedding, character/desire/emotional state
 - TimePerceptionSourceTests.cs — Temporal context generation
 

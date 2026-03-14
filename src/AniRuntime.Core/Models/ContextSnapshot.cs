@@ -84,4 +84,11 @@ public class ContextSnapshot
     /// so the prompt can reference them for targeted skepticism.
     /// </summary>
     public List<string> UnverifiedClaims { get; set; } = new();
+
+    /// <summary>
+    /// Themes from emotional contributions that have fully decayed — topics Ani has
+    /// already processed emotionally. Injected into inner thought prompt to encourage
+    /// the model to move on to fresh territory.
+    /// </summary>
+    public List<string> ProcessedThemes { get; set; } = new();
 }

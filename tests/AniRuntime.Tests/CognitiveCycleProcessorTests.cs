@@ -35,6 +35,14 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .Returns(Task.CompletedTask);
         MockMemory.Setup(m => m.GetAnchoredMemoriesAsync(It.IsAny<CancellationToken>()))
                   .ReturnsAsync(Array.Empty<MemoryRecord>());
+        MockMemory.Setup(m => m.GetActiveContributionsAsync(It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new List<EmotionalContribution>());
+        MockMemory.Setup(m => m.SaveEmotionalContributionAsync(It.IsAny<EmotionalContribution>(), It.IsAny<CancellationToken>()))
+                  .Returns(Task.CompletedTask);
+        MockMemory.Setup(m => m.CleanupDecayedContributionsAsync(It.IsAny<CancellationToken>()))
+                  .Returns(Task.CompletedTask);
+        MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new List<string>());
 
         _mockSource.Setup(s => s.IsEnabled).Returns(true);
         _mockSource.Setup(s => s.SourceName).Returns("test-source");
@@ -216,7 +224,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     // ── Feature 19: Lexical emotional anchors ────────────────────────────────
 
     [Fact]
-    public void ApplyLexicalAnchors_HusbandTriggersWarmthShift()
+    public void BuildLexicalAnchorContributions_HusbandTriggersContribution()
     {
         var charState = new CharacterStateDoc
         {
@@ -225,17 +233,16 @@ public class CognitiveCycleProcessorTests : AniTestBase
                 new() { Word = "husband", WarmthDelta = 0.20f, EnergyDelta = 0.10f, ConcernDelta = -0.05f, PlayfulnessDelta = 0.05f }
             }
         };
-        var emotional = new EmotionalState();
-        var baseline = emotional.Warmth;
 
-        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("hey husband how are you", charState, emotional);
+        var contributions = CognitiveCycleProcessor.BuildLexicalAnchorContributions("hey husband how are you", charState);
 
-        count.Should().Be(1);
-        emotional.Warmth.Should().BeGreaterThan(baseline);
+        contributions.Should().HaveCount(1);
+        contributions[0].WarmthDelta.Should().BeGreaterThan(0);
+        contributions[0].Category.Should().Be(ImpactCategory.Conversation);
     }
 
     [Fact]
-    public void ApplyLexicalAnchors_NoMatchReturnsZero()
+    public void BuildLexicalAnchorContributions_NoMatchReturnsEmpty()
     {
         var charState = new CharacterStateDoc
         {
@@ -244,15 +251,14 @@ public class CognitiveCycleProcessorTests : AniTestBase
                 new() { Word = "husband", WarmthDelta = 0.20f }
             }
         };
-        var emotional = new EmotionalState();
 
-        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("good morning!", charState, emotional);
+        var contributions = CognitiveCycleProcessor.BuildLexicalAnchorContributions("good morning!", charState);
 
-        count.Should().Be(0);
+        contributions.Should().BeEmpty();
     }
 
     [Fact]
-    public void ApplyLexicalAnchors_DecaysOnRepetition_ReducesDeltaAfterThreshold()
+    public void BuildLexicalAnchorContributions_DecaysOnRepetition_ReducesDeltaAfterThreshold()
     {
         var anchor = new LexicalAnchor
         {
@@ -260,9 +266,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
         };
         var charState = new CharacterStateDoc { LexicalAnchors = new List<LexicalAnchor> { anchor } };
 
-        var emotional1 = new EmotionalState();
-        CognitiveCycleProcessor.ApplyLexicalAnchors("hey baby", charState, emotional1);
-        var decayedShift = emotional1.Warmth - new EmotionalState().Warmth;
+        var decayed = CognitiveCycleProcessor.BuildLexicalAnchorContributions("hey baby", charState);
 
         // Reset for comparison — fresh anchor with no decay
         var freshAnchor = new LexicalAnchor
@@ -270,15 +274,15 @@ public class CognitiveCycleProcessorTests : AniTestBase
             Word = "baby", WarmthDelta = 0.10f, DecaysOnRepetition = true, TimesHeard = 0
         };
         var freshState = new CharacterStateDoc { LexicalAnchors = new List<LexicalAnchor> { freshAnchor } };
-        var emotional2 = new EmotionalState();
-        CognitiveCycleProcessor.ApplyLexicalAnchors("hey baby", freshState, emotional2);
-        var freshShift = emotional2.Warmth - new EmotionalState().Warmth;
 
-        decayedShift.Should().BeLessThan(freshShift, "repeated words should have reduced emotional impact");
+        var fresh = CognitiveCycleProcessor.BuildLexicalAnchorContributions("hey baby", freshState);
+
+        decayed[0].WarmthDelta.Should().BeLessThan(fresh[0].WarmthDelta,
+            "repeated words should have reduced emotional impact");
     }
 
     [Fact]
-    public void ApplyLexicalAnchors_CaseInsensitive()
+    public void BuildLexicalAnchorContributions_CaseInsensitive()
     {
         var charState = new CharacterStateDoc
         {
@@ -287,15 +291,14 @@ public class CognitiveCycleProcessorTests : AniTestBase
                 new() { Word = "Kathy", WarmthDelta = 0.05f, ConcernDelta = 0.15f }
             }
         };
-        var emotional = new EmotionalState();
 
-        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("i was thinking about kathy today", charState, emotional);
+        var contributions = CognitiveCycleProcessor.BuildLexicalAnchorContributions("i was thinking about kathy today", charState);
 
-        count.Should().Be(1);
+        contributions.Should().HaveCount(1);
     }
 
     [Fact]
-    public void ApplyLexicalAnchors_MultipleAnchorsInOneMessage()
+    public void BuildLexicalAnchorContributions_MultipleAnchorsInOneMessage()
     {
         var charState = new CharacterStateDoc
         {
@@ -305,11 +308,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
                 new() { Word = "Mia", ConcernDelta = 0.10f }
             }
         };
-        var emotional = new EmotionalState();
 
-        var count = CognitiveCycleProcessor.ApplyLexicalAnchors("hey husband, how's Mia doing?", charState, emotional);
+        var contributions = CognitiveCycleProcessor.BuildLexicalAnchorContributions("hey husband, how's Mia doing?", charState);
 
-        count.Should().Be(2);
+        contributions.Should().HaveCount(2);
     }
 
     // ── Feature 18: Reactive Withdrawal — Hurt Detection ──────────────────────

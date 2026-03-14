@@ -71,6 +71,14 @@ public static class PromptBuilder
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
+        // Processed themes — topics whose emotional impact has fully decayed.
+        // Encourage the model to think about something new.
+        if (snapshot.ProcessedThemes.Count > 0)
+        {
+            sections.Add("You've already sat with these topics enough — let something new surface:");
+            sections.AddRange(snapshot.ProcessedThemes.Select(t => $"  - {t}"));
+        }
+
         if (snapshot.Perceptions.Count > 0)
         {
             // Present perceptions as subtle background, not prominent context
