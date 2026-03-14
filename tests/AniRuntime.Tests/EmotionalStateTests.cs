@@ -234,4 +234,199 @@ public class EmotionalStateTests
         instruction.Should().Contain("guarded");
         instruction.Should().Contain("serious");
     }
+
+    // ── Feature 17: Contact-Gap Tension ────────────────────────────────
+
+    [Fact]
+    public void ContactGapTension_DefaultsToZero()
+    {
+        var state = new EmotionalState();
+        state.ContactGapTension.Should().Be(0f);
+    }
+
+    [Fact]
+    public void AccumulateContactGapTension_NoEffect_BeforeOnset()
+    {
+        var state = new EmotionalState();
+        state.AccumulateContactGapTension(hoursSinceContact: 12.0, onsetHours: 18.0, rate: 0.004, max: 0.4);
+        state.ContactGapTension.Should().Be(0f);
+    }
+
+    [Fact]
+    public void AccumulateContactGapTension_Accumulates_AfterOnset()
+    {
+        var state = new EmotionalState();
+        // 36 hours since contact, onset at 18 → 18 excess hours × 0.004 = 0.072
+        state.AccumulateContactGapTension(hoursSinceContact: 36.0, onsetHours: 18.0, rate: 0.004, max: 0.4);
+        state.ContactGapTension.Should().BeApproximately(0.072f, 0.001f);
+    }
+
+    [Fact]
+    public void AccumulateContactGapTension_CapsAtMax()
+    {
+        var state = new EmotionalState();
+        // 200 hours excess → would be 0.8 but capped at 0.4
+        state.AccumulateContactGapTension(hoursSinceContact: 218.0, onsetHours: 18.0, rate: 0.004, max: 0.4);
+        state.ContactGapTension.Should().BeApproximately(0.4f, 0.001f);
+    }
+
+    [Fact]
+    public void DissipateContactGapTension_ReducesTension()
+    {
+        var state = new EmotionalState { ContactGapTension = 0.3f };
+        // 5 min × 0.004 × 3.0 / 60 = 0.001 per call
+        state.DissipateContactGapTension(elapsedMinutes: 5.0, rate: 0.004, dissipationMultiplier: 3.0);
+        state.ContactGapTension.Should().BeLessThan(0.3f);
+        state.ContactGapTension.Should().BeGreaterOrEqualTo(0f);
+    }
+
+    [Fact]
+    public void DissipateContactGapTension_NeverGoesBelowZero()
+    {
+        var state = new EmotionalState { ContactGapTension = 0.001f };
+        state.DissipateContactGapTension(elapsedMinutes: 60.0, rate: 0.004, dissipationMultiplier: 3.0);
+        state.ContactGapTension.Should().Be(0f);
+    }
+
+    [Fact]
+    public void EffectiveWarmth_SuppressedByTension()
+    {
+        var state = new EmotionalState { Warmth = 0.8f, ContactGapTension = 0.3f };
+        // effectiveWarmth = 0.8 - 0.3*0.3 = 0.71
+        state.EffectiveWarmth.Should().BeApproximately(0.71f, 0.01f);
+    }
+
+    [Fact]
+    public void EffectiveWarmth_EqualsWarmth_WhenNoTension()
+    {
+        var state = new EmotionalState { Warmth = 0.8f, ContactGapTension = 0f };
+        state.EffectiveWarmth.Should().Be(state.Warmth);
+    }
+
+    [Fact]
+    public void EffectiveWarmth_NeverNegative()
+    {
+        var state = new EmotionalState { Warmth = 0.05f, ContactGapTension = 0.4f };
+        state.EffectiveWarmth.Should().BeGreaterOrEqualTo(0f);
+    }
+
+    [Fact]
+    public void Describe_MentionsTension_WhenAboveThreshold()
+    {
+        var state = new EmotionalState { ContactGapTension = 0.2f };
+        state.Describe().Should().Contain("silence");
+    }
+
+    [Fact]
+    public void Describe_OmitsTension_WhenBelowThreshold()
+    {
+        var state = new EmotionalState { ContactGapTension = 0.1f };
+        state.Describe().Should().NotContain("silence");
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_IncludesTension_WhenAboveThreshold()
+    {
+        var state = new EmotionalState { ContactGapTension = 0.25f };
+        var prompt = state.GetSelfAwarenessPrompt();
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("quiet");
+    }
+
+    [Fact]
+    public void BuildMoodInstruction_IncludesTension_WhenAboveThreshold()
+    {
+        var state = new EmotionalState { ContactGapTension = 0.2f };
+        var instruction = PromptBuilder.BuildMoodInstruction(state);
+        instruction.Should().Contain("undercurrent");
+    }
+
+    // ── Feature 4: Relationship Health Model ─────────────────────────────
+
+    [Theory]
+    [InlineData(0.8, "steady",   "connected")]
+    [InlineData(0.5, "steady",   "steady")]
+    [InlineData(0.3, "steady",   "quiet")]
+    [InlineData(0.1, "steady",   "distant")]
+    [InlineData(0.5, "quiet",    "reconnecting")]
+    [InlineData(0.5, "distant",  "reconnecting")]
+    [InlineData(0.8, "quiet",    "connected")]    // high score overrides reconnecting
+    [InlineData(0.1, "quiet",    "distant")]       // low score stays low
+    public void DeterminePhase_ReturnsCorrectPhase(double score, string previous, string expected)
+    {
+        RelationshipHealth.DeterminePhase(score, previous).Should().Be(expected);
+    }
+
+    [Fact]
+    public void RelationshipHealth_Describe_ReturnsNonEmpty_ForAllPhases()
+    {
+        foreach (var phase in new[] { "connected", "steady", "quiet", "reconnecting", "distant" })
+        {
+            var health = new RelationshipHealth { Phase = phase };
+            health.Describe().Should().NotBeEmpty($"phase '{phase}' should have a description");
+        }
+    }
+
+    [Fact]
+    public void BuildMoodInstruction_UsesEffectiveWarmth_WhenTensionPresent()
+    {
+        // Warmth is high (0.85) but tension suppresses effective warmth below baseline
+        var state = new EmotionalState
+        {
+            Warmth = 0.75f, WarmthBaseline = 0.6f,
+            ContactGapTension = 0.4f,
+            // EffectiveWarmth = 0.75 - 0.4*0.3 = 0.63 → warmthDiff = 0.03, below threshold
+        };
+        var instruction = PromptBuilder.BuildMoodInstruction(state);
+        // Should NOT say "warm" because effective warmth is near baseline
+        instruction.Should().NotContain("tenderness");
+    }
+
+    // ── Feature 8: Emotional Drift Detection ──────────────────────────────
+
+    [Fact]
+    public void EmotionalDrift_IdenticalVectors_HighSimilarity()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshots = Enumerable.Range(0, 10)
+            .Select(i => new EmotionalStateSnapshot(0.6f, 0.5f, 0.2f, 0.5f, 0f, now.AddHours(-i)))
+            .ToList();
+
+        var older = snapshots.Take(5).ToList();
+        var recent = snapshots.Skip(5).ToList();
+        var drift = EmotionalDrift.Compute(recent, older);
+
+        drift.Similarity.Should().BeGreaterThan(0.99f);
+        drift.IsSignificant.Should().BeFalse();
+        drift.Describe().Should().BeNull();
+    }
+
+    [Fact]
+    public void EmotionalDrift_ShiftedWarmth_DetectsDrift()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var older = Enumerable.Range(0, 5)
+            .Select(i => new EmotionalStateSnapshot(0.6f, 0.5f, 0.2f, 0.5f, 0f, now.AddHours(-10 - i)))
+            .ToList();
+        // Recent: warmth dropped to 0.2, concern spiked to 0.8
+        var recent = Enumerable.Range(0, 5)
+            .Select(i => new EmotionalStateSnapshot(0.2f, 0.5f, 0.8f, 0.5f, 0f, now.AddHours(-i)))
+            .ToList();
+
+        var drift = EmotionalDrift.Compute(recent, older);
+
+        drift.IsSignificant.Should().BeTrue();
+        drift.WarmthDrift.Should().BeLessThan(-0.1f);
+        drift.ConcernDrift.Should().BeGreaterThan(0.1f);
+        drift.Describe().Should().Contain("warmth").And.Contain("worry");
+    }
+
+    [Fact]
+    public void EmotionalDrift_EmptyInput_ReturnsDefault()
+    {
+        var drift = EmotionalDrift.Compute(Array.Empty<EmotionalStateSnapshot>(),
+            Array.Empty<EmotionalStateSnapshot>());
+        drift.Similarity.Should().Be(1.0f);
+        drift.IsSignificant.Should().BeFalse();
+    }
 }

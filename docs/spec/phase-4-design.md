@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 1, 2, 3, 6, 16, 18, 19 deployed Mar 13; Feature 20 voice channel scaffolded Mar 13)
+**Status:** In Progress (Features 1, 2, 3, 6, 16, 18, 19 deployed Mar 13; Feature 20 voice channel scaffolded Mar 13; Features 4, 8, 17 deployed Mar 13)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -772,11 +772,12 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 8. **Voice channel + MMS media** — 🔜 Scaffolded Mar 13. Voice-in working (Whisper STT → conversation pipeline). MMS media infrastructure built: IMediaEnrichmentService, VoiceMediaEnrichmentService (probability-gated 15%), MediaCacheService, /media/{key} serving endpoint. Same plumbing supports future image/meme delivery. Awaiting full activation test (Feature 20)
 
 **4b — Relationship intelligence:**
-8. **Relationship health model** — slow-moving composite, daily updates, weather not ticker
-9. **Contact-gap tension** — accumulates during absence, dissipates on reconnection (Feature 17)
+8. ~~**Relationship health model**~~ — ✅ Deployed Mar 13. Composite score from frequency + valence + warmth trend + initiative balance. Phases: connected/steady/quiet/reconnecting/distant. Once-per-day calculation. Injected into inner thought prompts (Feature 4)
+9. ~~**Contact-gap tension**~~ — ✅ Deployed Mar 13. Accumulates after 18h onset at 0.004/hr, max 0.4. Dissipates at 3× on contact. EffectiveWarmth suppression + tone injection + self-awareness trigger (Feature 17)
+10. ~~**Emotional drift detection**~~ — ✅ Deployed Mar 13. Rolling 48h cosine similarity on emotional state vectors. Detects slow-moving trends. Feeds into inner thought when significant (drift < 0.90) (Feature 8)
 
 **4c — Temporal depth (deferred):**
-10. **Anniversaries** — revisit after V4 model proves nuance capability
+11. **Anniversaries** — revisit after V4 model proves nuance capability
 
 ---
 

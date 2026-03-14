@@ -45,4 +45,16 @@ public class ContextSnapshot
     /// Ani is in a quieter emotional state. Affects reply tone injection.
     /// </summary>
     public bool IsWithdrawn { get; set; }
+
+    /// <summary>
+    /// Feature 4: Relationship health — slow-moving composite score capturing the
+    /// macro arc of the relationship. Updates once per day max.
+    /// </summary>
+    public RelationshipHealth? RelationshipHealth { get; set; }
+
+    /// <summary>
+    /// Feature 8: Emotional drift detection — cosine similarity between recent
+    /// and older emotional vectors. Surfaces in inner thought when significant.
+    /// </summary>
+    public EmotionalDrift? EmotionalDrift { get; set; }
 }

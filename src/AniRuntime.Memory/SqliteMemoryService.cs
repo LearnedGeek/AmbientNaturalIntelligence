@@ -591,15 +591,130 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         // Enables dashboard time-series, drift detection, and research data for the paper.
         await using var historyCmd = conn.CreateCommand();
         historyCmd.CommandText = """
-            INSERT INTO emotional_state_history (warmth, energy, concern, playfulness, recorded_at)
-            VALUES ($warmth, $energy, $concern, $playfulness, $recorded_at)
+            INSERT INTO emotional_state_history (warmth, energy, concern, playfulness, contact_gap_tension, recorded_at)
+            VALUES ($warmth, $energy, $concern, $playfulness, $tension, $recorded_at)
             """;
         historyCmd.Parameters.AddWithValue("$warmth", state.Warmth);
         historyCmd.Parameters.AddWithValue("$energy", state.Energy);
         historyCmd.Parameters.AddWithValue("$concern", state.Concern);
         historyCmd.Parameters.AddWithValue("$playfulness", state.Playfulness);
+        historyCmd.Parameters.AddWithValue("$tension", state.ContactGapTension);
         historyCmd.Parameters.AddWithValue("$recorded_at", state.LastUpdated.ToString("O"));
         await historyCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ── Feature 4: Relationship health ────────────────────────────────────────
+
+    public async Task<RelationshipHealth> GetRelationshipHealthAsync(CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = "SELECT json FROM relationship_health LIMIT 1";
+
+        var raw = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false) as string;
+        if (string.IsNullOrEmpty(raw))
+            return new RelationshipHealth();
+
+        return JsonSerializer.Deserialize<RelationshipHealth>(raw) ?? new RelationshipHealth();
+    }
+
+    public async Task SaveRelationshipHealthAsync(RelationshipHealth health, CancellationToken ct = default)
+    {
+        health.LastCalculated = DateTimeOffset.UtcNow;
+        var json = JsonSerializer.Serialize(health);
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR REPLACE INTO relationship_health (id, json) VALUES (1, $json)";
+        cmd.Parameters.AddWithValue("$json", json);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<List<EmotionalStateSnapshot>> GetEmotionalHistoryAsync(int hours, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT warmth, energy, concern, playfulness, contact_gap_tension, recorded_at
+            FROM emotional_state_history
+            WHERE recorded_at > $cutoff
+            ORDER BY recorded_at ASC
+            """;
+        cmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddHours(-hours).ToString("O"));
+
+        var results = new List<EmotionalStateSnapshot>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            results.Add(new EmotionalStateSnapshot(
+                reader.GetFloat(0), reader.GetFloat(1), reader.GetFloat(2), reader.GetFloat(3),
+                reader.GetFloat(4),
+                DateTimeOffset.Parse(reader.GetString(5))));
+        }
+        return results;
+    }
+
+    public async Task<int> GetRecentMessageCountAsync(int days, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT COUNT(*) FROM memories
+            WHERE type = $type
+              AND content LIKE 'Conversation (%'
+              AND occurred_at > $cutoff
+            """;
+        cmd.Parameters.AddWithValue("$type", (int)MemoryType.Episodic);
+        cmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddDays(-days).ToString("O"));
+        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return Convert.ToInt32(result);
+    }
+
+    public async Task<float> GetAverageConversationValenceAsync(int days, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT AVG(relational_valence) FROM memories
+            WHERE type = $type
+              AND content LIKE 'Conversation (%'
+              AND occurred_at > $cutoff
+            """;
+        cmd.Parameters.AddWithValue("$type", (int)MemoryType.Episodic);
+        cmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddDays(-days).ToString("O"));
+        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return result is DBNull or null ? 0.5f : Convert.ToSingle(result);
+    }
+
+    public async Task<(int outreach, int inbound)> GetInitiativeBalanceAsync(int days, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+
+        // Outreach count
+        await using var outCmd = conn.CreateCommand();
+        outCmd.CommandText = """
+            SELECT COUNT(*) FROM memories
+            WHERE type = $type
+              AND content LIKE '%reached out:%'
+              AND occurred_at > $cutoff
+            """;
+        outCmd.Parameters.AddWithValue("$type", (int)MemoryType.Episodic);
+        outCmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddDays(-days).ToString("O"));
+        var outreach = Convert.ToInt32(await outCmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+
+        // Inbound count (conversations that the contact initiated)
+        await using var inCmd = conn.CreateCommand();
+        inCmd.CommandText = """
+            SELECT COUNT(*) FROM memories
+            WHERE type = $type
+              AND content LIKE 'Conversation (%'
+              AND occurred_at > $cutoff
+            """;
+        inCmd.Parameters.AddWithValue("$type", (int)MemoryType.Episodic);
+        inCmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddDays(-days).ToString("O"));
+        var inbound = Convert.ToInt32(await inCmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+
+        return (outreach, inbound);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -658,13 +773,19 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 json TEXT    NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS relationship_health (
+                id   INTEGER PRIMARY KEY,
+                json TEXT    NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS emotional_state_history (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                warmth      REAL NOT NULL,
-                energy      REAL NOT NULL,
-                concern     REAL NOT NULL,
-                playfulness REAL NOT NULL,
-                recorded_at TEXT NOT NULL
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                warmth              REAL NOT NULL,
+                energy              REAL NOT NULL,
+                concern             REAL NOT NULL,
+                playfulness         REAL NOT NULL,
+                contact_gap_tension REAL NOT NULL DEFAULT 0,
+                recorded_at         TEXT NOT NULL
             );
 
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
@@ -724,6 +845,28 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addAt = conn.CreateCommand();
             addAt.CommandText = "ALTER TABLE memories ADD COLUMN anchored_at TEXT";
             addAt.ExecuteNonQuery();
+        }
+
+        // Migration: Feature 17 — add contact_gap_tension column to emotional_state_history
+        using var pragmaCmd3 = conn.CreateCommand();
+        pragmaCmd3.CommandText = "PRAGMA table_info(emotional_state_history)";
+        using var reader3 = pragmaCmd3.ExecuteReader();
+        var hasTensionColumn = false;
+        while (reader3.Read())
+        {
+            if (reader3.GetString(1) == "contact_gap_tension")
+            {
+                hasTensionColumn = true;
+                break;
+            }
+        }
+        reader3.Close();
+
+        if (!hasTensionColumn)
+        {
+            using var addTension = conn.CreateCommand();
+            addTension.CommandText = "ALTER TABLE emotional_state_history ADD COLUMN contact_gap_tension REAL NOT NULL DEFAULT 0";
+            addTension.ExecuteNonQuery();
         }
     }
 

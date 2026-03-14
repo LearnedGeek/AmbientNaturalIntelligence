@@ -62,6 +62,17 @@ public class AniOptions
     public double ConversationMinReplySeconds   { get; set; } = 12.0;
     public double ConversationMaxReplySeconds   { get; set; } = 25.0;
 
+    // Feature 4: Relationship health — slow-moving composite score
+    public int    RelationshipHealthWindowDays { get; set; } = 7;      // rolling window for metrics
+    public double HealthConnectedThreshold     { get; set; } = 0.7;    // score above this = connected
+    public double HealthQuietThreshold         { get; set; } = 0.4;    // score below this = quiet
+
+    // Feature 17: Contact-gap tension — relational ache from prolonged absence
+    public double TensionOnsetHours            { get; set; } = 18.0;   // absence starts to hurt after this
+    public double TensionAccumulationRate      { get; set; } = 0.004;  // per hour past onset
+    public double TensionMax                   { get; set; } = 0.4;    // never the dominant state
+    public double TensionDissipationMultiplier { get; set; } = 3.0;    // 3× faster fade on contact
+
     // Feature 18: Reactive withdrawal — how long emotional withdrawal lasts after hurt detection
     public double WithdrawalDurationMinutes    { get; set; } = 20.0;
 

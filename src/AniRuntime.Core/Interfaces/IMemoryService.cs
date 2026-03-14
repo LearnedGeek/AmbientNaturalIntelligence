@@ -19,4 +19,16 @@ public interface IMemoryService
     Task                            AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> GetAnchoredMemoriesAsync(CancellationToken ct = default);
     Task                            AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default);
+
+    // Feature 4: Relationship health persistence
+    Task<RelationshipHealth>        GetRelationshipHealthAsync(CancellationToken ct = default);
+    Task                            SaveRelationshipHealthAsync(RelationshipHealth health, CancellationToken ct = default);
+
+    // Feature 4/8: Emotional state history queries
+    Task<List<EmotionalStateSnapshot>> GetEmotionalHistoryAsync(int hours, CancellationToken ct = default);
+
+    // Feature 4: Interaction metrics for health computation
+    Task<int> GetRecentMessageCountAsync(int days, CancellationToken ct = default);
+    Task<float> GetAverageConversationValenceAsync(int days, CancellationToken ct = default);
+    Task<(int outreach, int inbound)> GetInitiativeBalanceAsync(int days, CancellationToken ct = default);
 }

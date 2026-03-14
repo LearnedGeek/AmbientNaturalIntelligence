@@ -430,4 +430,89 @@ public class SqliteMemoryServiceTests : AniTestBase
         anchored[0].AnchorReason.Should().Be("relational declaration");
         anchored[0].Importance.Should().BeGreaterOrEqualTo(0.9f);
     }
+
+    // ── Feature 4: Relationship Health ────────────────────────────────────
+
+    [Fact]
+    public async Task RelationshipHealth_RoundTrips()
+    {
+        var health = new RelationshipHealth
+        {
+            ConnectionScore = 0.75,
+            Phase = "connected",
+        };
+
+        await _svc.SaveRelationshipHealthAsync(health);
+        var loaded = await _svc.GetRelationshipHealthAsync();
+
+        loaded.ConnectionScore.Should().BeApproximately(0.75, 0.01);
+        loaded.Phase.Should().Be("connected");
+        loaded.LastCalculated.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task GetRelationshipHealthAsync_ReturnsDefault_WhenEmpty()
+    {
+        var health = await _svc.GetRelationshipHealthAsync();
+        health.Phase.Should().Be("steady");
+        health.ConnectionScore.Should().Be(0.6);
+    }
+
+    [Fact]
+    public async Task EmotionalStateHistory_IncludesContactGapTension()
+    {
+        var state = new EmotionalState
+        {
+            Warmth = 0.7f, Energy = 0.5f, Concern = 0.3f, Playfulness = 0.6f,
+            ContactGapTension = 0.15f,
+        };
+
+        await _svc.SaveEmotionalStateAsync(state);
+        var history = await _svc.GetEmotionalHistoryAsync(24);
+
+        history.Should().HaveCount(1);
+        history[0].ContactGapTension.Should().BeApproximately(0.15f, 0.01f);
+        history[0].Warmth.Should().BeApproximately(0.7f, 0.01f);
+    }
+
+    [Fact]
+    public async Task GetRecentMessageCountAsync_CountsConversations()
+    {
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic,
+            Content = "Conversation (3 messages): talked about the weather",
+            Importance = 0.5f,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic,
+            Content = "Ani reached out: hey what's up",
+            Importance = 0.3f,
+        });
+
+        var count = await _svc.GetRecentMessageCountAsync(7);
+        count.Should().Be(1); // only the Conversation record
+    }
+
+    [Fact]
+    public async Task GetInitiativeBalanceAsync_CountsBothSides()
+    {
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic,
+            Content = "Ani reached out: miss you",
+            Importance = 0.3f,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic,
+            Content = "Conversation (2 messages): quick check-in",
+            Importance = 0.5f,
+        });
+
+        var (outreach, inbound) = await _svc.GetInitiativeBalanceAsync(7);
+        outreach.Should().Be(1);
+        inbound.Should().Be(1);
+    }
 }

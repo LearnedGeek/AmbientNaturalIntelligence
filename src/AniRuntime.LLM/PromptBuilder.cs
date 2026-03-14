@@ -87,6 +87,20 @@ public static class PromptBuilder
             sections.AddRange(snapshot.OpenLoops.Select(l => $"  - {l.Description}"));
         }
 
+        // Feature 4: Relationship health vibe — slow-moving context about the arc
+        if (snapshot.RelationshipHealth is not null &&
+            snapshot.RelationshipHealth.Phase != "steady")
+        {
+            sections.Add($"(Relationship vibe lately: {snapshot.RelationshipHealth.Describe()})");
+        }
+
+        // Feature 8: Emotional drift — when significant, surface trend awareness
+        var driftDesc = snapshot.EmotionalDrift?.Describe();
+        if (driftDesc is not null)
+        {
+            sections.Add($"(You notice a slow shift in yourself lately: {driftDesc}. You don't need to analyze it — just notice it, the way you'd notice a change in the weather.)");
+        }
+
         // Limit to 3 recent memories and skip inner thoughts to prevent mirroring
         var externalMemories = snapshot.RecentMemory
             .Where(m => m.Type != MemoryType.InnerThought)
@@ -226,7 +240,9 @@ public static class PromptBuilder
         var instructions = new List<string>();
         const float threshold = 0.15f;
 
-        var warmthDiff = state.Warmth - state.WarmthBaseline;
+        // Feature 17: Use EffectiveWarmth when tension is present — the outside world
+        // sees the tension-suppressed warmth, not the raw internal value
+        var warmthDiff = (state.ContactGapTension > 0f ? state.EffectiveWarmth : state.Warmth) - state.WarmthBaseline;
         var energyDiff = state.Energy - state.EnergyBaseline;
         var concernDiff = state.Concern - state.ConcernBaseline;
         var playDiff = state.Playfulness - state.PlayfulnessBaseline;
@@ -254,6 +270,10 @@ public static class PromptBuilder
             instructions.Add("You're in a playful mood — tease a little, be lighter, let humor peek through.");
         else if (playDiff < -threshold)
             instructions.Add("You're feeling more serious than usual — still yourself, just less banter, more substance.");
+
+        // Feature 17: Contact-gap tension — subtle warmth suppression and tone shift
+        if (state.ContactGapTension > 0.15f)
+            instructions.Add("There's a slight undercurrent — you've been quieter than usual and you notice it. Not resentment exactly, more like... a small ache that wants acknowledging. Let it come through subtly if it feels natural.");
 
         if (instructions.Count == 0)
             return string.Empty;

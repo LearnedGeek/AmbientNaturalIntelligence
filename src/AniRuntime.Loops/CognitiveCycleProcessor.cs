@@ -96,6 +96,26 @@ public class CognitiveCycleProcessor
         // concern pressure. Proportional to count and age of oldest loop.
         await ApplyOpenLoopPressureAsync(emotionalState, ct).ConfigureAwait(false);
 
+        // Feature 17: Contact-gap tension — relational ache builds during prolonged absence.
+        // Uses LastContactInbound from desire state to track how long since contact reached out.
+        var desireForTension = await _desire.GetStateAsync(ct).ConfigureAwait(false);
+        var lastContact = desireForTension.LastContactInbound;
+        if (lastContact != default)
+        {
+            var hoursSinceContact = (DateTimeOffset.UtcNow - lastContact).TotalHours;
+            var previousTension = emotionalState.ContactGapTension;
+            emotionalState.AccumulateContactGapTension(
+                hoursSinceContact,
+                _aniOptions.TensionOnsetHours,
+                _aniOptions.TensionAccumulationRate,
+                _aniOptions.TensionMax);
+            if (emotionalState.ContactGapTension != previousTension)
+            {
+                _log.LogDebug("Contact-gap tension: {Previous:F3} → {New:F3} (hours since contact: {Hours:F1})",
+                    previousTension, emotionalState.ContactGapTension, hoursSinceContact);
+            }
+        }
+
         await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
 
         // Phase 1: Perception (includes Twilio inbound polling + conversation timeout checks)
@@ -512,6 +532,51 @@ public class CognitiveCycleProcessor
         // Feature 27: Assemble recent outreach context for continuity awareness
         var outreachContext = BuildOutreachContext(recentMem, desireState, charState);
 
+        // Feature 4: Load relationship health — updated at most once per day
+        RelationshipHealth? relationshipHealth = null;
+        try
+        {
+            relationshipHealth = await _memory.GetRelationshipHealthAsync(ct).ConfigureAwait(false);
+
+            // Recalculate if stale (>24h since last calculation)
+            if ((DateTimeOffset.UtcNow - relationshipHealth.LastCalculated).TotalHours >= 24)
+            {
+                relationshipHealth = await ComputeRelationshipHealthAsync(
+                    relationshipHealth, emotionalState, ct).ConfigureAwait(false);
+                await _memory.SaveRelationshipHealthAsync(relationshipHealth, ct).ConfigureAwait(false);
+                _log.LogInformation("Relationship health recalculated: score={Score:F2}, phase={Phase}",
+                    relationshipHealth.ConnectionScore, relationshipHealth.Phase);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to load/compute relationship health — continuing without");
+        }
+
+        // Feature 8: Emotional drift detection — compare recent vs older emotional vectors
+        EmotionalDrift? emotionalDrift = null;
+        try
+        {
+            // Use the history already fetched for health (or fetch if needed)
+            var driftHistory = await _memory.GetEmotionalHistoryAsync(48, ct).ConfigureAwait(false);
+            if (driftHistory.Count >= 4)
+            {
+                var midpoint = driftHistory.Count / 2;
+                var older = driftHistory.Take(midpoint).ToList();
+                var recent = driftHistory.Skip(midpoint).ToList();
+                emotionalDrift = EmotionalDrift.Compute(recent, older);
+                if (emotionalDrift.IsSignificant)
+                {
+                    _log.LogInformation("Emotional drift detected: similarity={Sim:F3}, {Description}",
+                        emotionalDrift.Similarity, emotionalDrift.Describe());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Emotional drift detection failed — continuing without");
+        }
+
         return new ContextSnapshot
         {
             CharacterState           = charState,
@@ -526,6 +591,8 @@ public class CognitiveCycleProcessor
             SimilarRecentThoughts    = similarThoughts,
             OutreachContext          = outreachContext,
             AnchoredMemories        = anchoredMemories,
+            RelationshipHealth       = relationshipHealth,
+            EmotionalDrift           = emotionalDrift,
         };
     }
 
@@ -658,6 +725,58 @@ public class CognitiveCycleProcessor
             _log.LogWarning(ex, "Diversity re-ranking failed — returning original order");
             return candidates;
         }
+    }
+
+    /// <summary>
+    /// Feature 4: Computes relationship health from interaction metrics over a rolling window.
+    /// Inputs weighted equally:
+    ///   1. Message frequency — conversations per day (7-day rolling)
+    ///   2. Conversation quality — average relational valence of recent conversations
+    ///   3. Warmth trend — average warmth from emotional state history
+    ///   4. Initiative balance — healthy when roughly balanced (neither side dominates)
+    /// </summary>
+    private async Task<RelationshipHealth> ComputeRelationshipHealthAsync(
+        RelationshipHealth previous, EmotionalState current, CancellationToken ct)
+    {
+        var days = _aniOptions.RelationshipHealthWindowDays;
+
+        // 1. Message frequency: conversations per day, normalized (0 = no conversations, 1 = 3+/day)
+        var msgCount = await _memory.GetRecentMessageCountAsync(days, ct).ConfigureAwait(false);
+        var msgsPerDay = (double)msgCount / days;
+        var frequencyScore = Math.Min(1.0, msgsPerDay / 3.0);
+
+        // 2. Conversation quality: average valence (0.0-1.0, center at 0.5)
+        var avgValence = await _memory.GetAverageConversationValenceAsync(days, ct).ConfigureAwait(false);
+        var qualityScore = Math.Clamp(avgValence, 0.0, 1.0);
+
+        // 3. Warmth trend: average warmth from emotional state history
+        var history = await _memory.GetEmotionalHistoryAsync(days * 24, ct).ConfigureAwait(false);
+        var warmthScore = history.Count > 0
+            ? Math.Clamp(history.Average(h => h.Warmth), 0.0, 1.0)
+            : 0.5;
+
+        // 4. Initiative balance: penalize when one side dominates
+        var (outreach, inbound) = await _memory.GetInitiativeBalanceAsync(days, ct).ConfigureAwait(false);
+        var total = outreach + inbound;
+        var balanceScore = total > 0
+            ? 1.0 - Math.Abs((double)(outreach - inbound) / total)  // 1.0 = perfectly balanced
+            : 0.5;  // no data = neutral
+
+        // Equal-weight composite
+        var score = (frequencyScore + qualityScore + warmthScore + balanceScore) / 4.0;
+        score = Math.Clamp(score, 0.0, 1.0);
+
+        var phase = RelationshipHealth.DeterminePhase(score, previous.Phase);
+
+        _log.LogDebug(
+            "Relationship health inputs: freq={Freq:F2} ({MsgsPerDay:F1}/day), quality={Quality:F2}, warmth={Warmth:F2}, balance={Balance:F2} (out={Out}/in={In}) → score={Score:F2}, phase={Phase}",
+            frequencyScore, msgsPerDay, qualityScore, warmthScore, balanceScore, outreach, inbound, score, phase);
+
+        return new RelationshipHealth
+        {
+            ConnectionScore = score,
+            Phase = phase,
+        };
     }
 
     private static float[] ComputeCentroid(List<float[]> embeddings)
@@ -955,6 +1074,25 @@ public class CognitiveCycleProcessor
 
             // She's replying — clear the gate so future messages evaluate fresh
             LastEvaluatedMessageAt = null;
+        }
+
+        // Feature 17: Dissipate contact-gap tension on reconnection.
+        // Tension fades at 3× accumulation rate. Applied BEFORE reply generation
+        // so warmth suppression lifts as the conversation continues.
+        if (emotionalState is not null && emotionalState.ContactGapTension > 0f)
+        {
+            var previousTension = emotionalState.ContactGapTension;
+            // Dissipate based on time since this conversation started (or a default chunk)
+            emotionalState.DissipateContactGapTension(
+                elapsedMinutes: 5.0, // each reply interaction = ~5 min of reconnection
+                rate: _aniOptions.TensionAccumulationRate,
+                dissipationMultiplier: _aniOptions.TensionDissipationMultiplier);
+            if (emotionalState.ContactGapTension != previousTension)
+            {
+                _log.LogInformation("Contact-gap tension dissipating: {Previous:F3} → {New:F3}",
+                    previousTension, emotionalState.ContactGapTension);
+            }
+            await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
         }
 
         // Feature 10: Receiving Care — detect when contact is checking in on Ani
