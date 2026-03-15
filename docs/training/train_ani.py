@@ -2,13 +2,17 @@
 train_ani.py - Modal-based automated fine-tuning for ANI companions
 
 Usage:
-    modal run train_ani.py --data-file ani-v3-CONVERSATION-ONLY.json
-    modal run train_ani.py --data-file ani-v3-INNER-MONOLOGUE-ONLY.json --epochs 5 --output ani-v3-inner.gguf
-    modal run train_ani.py --data-file marcus-v1.json --gpu A100 --output marcus-v1.gguf
+    modal run train_ani.py --data-file v5/ani-v5-CONVERSATION.json --base-model 8B
+    modal run train_ani.py --data-file v5/ani-v5-INNER-MONOLOGUE.json --epochs 5
+    modal run train_ani.py --data-file v5/ani-v5-CONVERSATION.json --base-model 8B --output v5/aniv5CONVERSATION-8B.gguf
+
+Base models:
+    3B  = unsloth/Llama-3.2-3B-Instruct  (default, ~2GB GGUF, fast CPU inference)
+    8B  = unsloth/Llama-3.1-8B-Instruct  (~4.5GB GGUF, better instruction following)
 
 This script handles the complete training pipeline:
 1. Upload training data to Modal
-2. Load Llama 3.2-3B base model
+2. Load base model (3B or 8B)
 3. Apply LoRA adapters
 4. Fine-tune on your data
 5. Export to GGUF format
@@ -63,10 +67,11 @@ def train_model(
     batch_size: int = 2,
     gradient_accumulation: int = 4,
     learning_rate: float = 2e-4,
+    base_model: str = "3B",
 ):
     """
-    Fine-tune Llama 3.2-3B on Modal's GPU infrastructure
-    
+    Fine-tune a Llama model on Modal's GPU infrastructure
+
     Args:
         training_data: JSON string containing training examples
         model_name: Name for the output model
@@ -74,7 +79,8 @@ def train_model(
         batch_size: Per-device batch size (default: 2)
         gradient_accumulation: Gradient accumulation steps (default: 4)
         learning_rate: Learning rate (default: 2e-4)
-    
+        base_model: Base model size — "3B" or "8B" (default: "3B")
+
     Returns:
         Path to the exported GGUF file
     """
@@ -103,10 +109,17 @@ def train_model(
     conversations_list = [item["conversations"] for item in data]
     dataset = Dataset.from_dict({"conversations": conversations_list})
     
+    # Select base model
+    base_models = {
+        "3B": "unsloth/Llama-3.2-3B-Instruct",
+        "8B": "unsloth/Llama-3.1-8B-Instruct",
+    }
+    base_model_id = base_models.get(base_model.upper(), base_models["3B"])
+
     # Load base model
-    print("\n🤖 Loading Llama 3.2-3B base model...")
+    print(f"\n🤖 Loading {base_model.upper()} base model ({base_model_id})...")
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name="unsloth/Llama-3.2-3B-Instruct",
+        model_name=base_model_id,
         max_seq_length=2048,
         dtype=None,
         load_in_4bit=True,
@@ -221,10 +234,11 @@ def main(
     batch_size: int = 2,
     gradient_accumulation: int = 4,
     learning_rate: float = 2e-4,
+    base_model: str = "3B",
 ):
     """
     Main entry point - runs locally, orchestrates cloud training
-    
+
     Args:
         data_file: Path to training JSON file (required)
         output: Output filename (default: auto-generated from data_file)
@@ -232,12 +246,11 @@ def main(
         batch_size: Per-device batch size (default: 2)
         gradient_accumulation: Gradient accumulation steps (default: 4)
         learning_rate: Learning rate (default: 2e-4)
-    
-    Note: To change GPU, edit line 51 of this script (gpu="T4" to gpu="A10G" or gpu="A100")
-    
+        base_model: Base model — "3B" (Llama 3.2) or "8B" (Llama 3.1). Default: 3B.
+
     Example:
-        modal run train_ani.py --data-file ani-v3-CONVERSATION-ONLY.json
-        modal run train_ani.py --data-file ani-v3-INNER-MONOLOGUE-ONLY.json --epochs 5
+        modal run train_ani.py --data-file v5/ani-v5-CONVERSATION.json --base-model 8B
+        modal run train_ani.py --data-file v5/ani-v5-INNER-MONOLOGUE.json --epochs 5
     """
     import time
     
@@ -263,9 +276,10 @@ def main(
     print(f"\n📋 Configuration:")
     print(f"   Input file:  {data_file}")
     print(f"   Output file: {output}")
+    print(f"   Base model:  {base_model.upper()}")
     print(f"   Epochs:      {epochs}")
     print(f"   Batch size:  {batch_size} (effective: {batch_size * gradient_accumulation})")
-    print(f"   GPU:         T4 (edit line 51 to change)")
+    print(f"   GPU:         A10G")
     
     # Load training data
     print(f"\n📤 Loading training data from {data_file}...")
@@ -275,10 +289,11 @@ def main(
     training_data_str = json.dumps(data)
     print(f"   Loaded {len(data)} training examples ({len(training_data_str):,} bytes)")
     
-    # Estimate cost (using T4 pricing)
-    estimated_minutes = len(data) * epochs / 200  # Rough estimate
-    estimated_cost = (estimated_minutes / 60) * 0.60  # T4 pricing
-    print(f"\n💰 Estimated cost: ${estimated_cost:.2f} ({estimated_minutes:.0f} minutes on T4)")
+    # Estimate cost (using A10G pricing)
+    examples_per_min = 100 if base_model.upper() == "3B" else 60
+    estimated_minutes = len(data) * epochs / examples_per_min
+    estimated_cost = (estimated_minutes / 60) * 1.10  # A10G pricing
+    print(f"\n💰 Estimated cost: ~${estimated_cost:.2f} ({estimated_minutes:.0f} minutes on A10G)")
     
     # Confirm BEFORE starting the remote job
     print("\n" + "="*80)
@@ -303,10 +318,11 @@ def main(
             batch_size=batch_size,
             gradient_accumulation=gradient_accumulation,
             learning_rate=learning_rate,
+            base_model=base_model,
         )
         
         elapsed = time.time() - start_time
-        actual_cost = (elapsed / 3600) * 0.60  # T4 pricing
+        actual_cost = (elapsed / 3600) * 1.10  # A10G pricing
         
         print("\n" + "="*80)
         print("✅ TRAINING COMPLETE!")
