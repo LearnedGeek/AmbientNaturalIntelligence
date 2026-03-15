@@ -8,6 +8,8 @@ using AniRuntime.Loops;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
 using AniRuntime.Dashboard;
+using AniRuntime.Emergence;
+using AniRuntime.Emergence.Models;
 using AniRuntime.Voice;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
@@ -54,6 +56,7 @@ try
     builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
     builder.Services.Configure<WeatherOptions>(config.GetSection("Weather"));
     builder.Services.Configure<VoiceOptions>(config.GetSection("Voice"));
+    builder.Services.Configure<EmergenceOptions>(config.GetSection("Emergence"));
 
     // ── Core services ─────────────────────────────────────────────────────────
     builder.Services.AddSingleton<IMemoryService, SqliteMemoryService>();
@@ -98,6 +101,10 @@ try
     builder.Services.AddSingleton<IPerceptionSource>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
+
+    // ── Emergence layer (E1 — passive observation) ────────────────────────────
+    var emergenceEnabled = config.GetValue<bool>("Emergence:Enabled");
+    builder.Services.AddEmergence(emergenceEnabled);
 
     // ── Dashboard (Blazor Server + REST API) ──────────────────────────────────
     builder.Services.AddDashboard();
@@ -346,6 +353,7 @@ try
         Log.Information("║  Dashboard: http://localhost:5100/");
         Log.Information("║  API:    http://localhost:5100/api/v1/ani/status");
         Log.Information("║  Voice:   {Status}", voiceEnabled ? "enabled (http://localhost:5100/voice/inbound)" : "disabled");
+        Log.Information("║  Emergence: {Status}", emergenceEnabled ? "enabled (ani-emergence.db)" : "disabled");
         Log.Information("╚══════════════════════════════════════════╝");
     }
 

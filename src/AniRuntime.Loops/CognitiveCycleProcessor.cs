@@ -31,6 +31,7 @@ public class CognitiveCycleProcessor
     private readonly IConversationService            _conversations;
     private readonly IEnumerable<IPerceptionSource>  _sources;
     private readonly AdminCommandHandler             _adminCommands;
+    private readonly IEmergenceObserver              _emergence;
     private readonly AniOptions                      _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor> _log;
 
@@ -69,6 +70,7 @@ public class CognitiveCycleProcessor
         IConversationService           conversations,
         IEnumerable<IPerceptionSource> sources,
         AdminCommandHandler            adminCommands,
+        IEmergenceObserver             emergence,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
@@ -79,6 +81,7 @@ public class CognitiveCycleProcessor
         _conversations = conversations;
         _sources       = sources;
         _adminCommands = adminCommands;
+        _emergence     = emergence;
         _aniOptions    = aniOptions.Value;
         _log           = log;
     }
@@ -87,12 +90,25 @@ public class CognitiveCycleProcessor
     {
         _log.LogDebug("Cognitive cycle starting");
 
+        // ── Emergence observation tracking (populated throughout, published in finally) ──
+        string? obsThought = null, obsReflection = null, obsRegister = null;
+        string? obsOutcome = null, obsOutreachMsg = null, obsCoherenceDoor = null;
+        string? obsContactMsg = null, obsReplyMsg = null;
+        float obsValence = 0, obsDesire = 0, obsSeverity = 0;
+        float obsWDelta = 0, obsEDelta = 0, obsWoDelta = 0, obsPDelta = 0;
+        bool obsDesireCrossed = false, obsConversation = false, obsSilence = false;
+        EmotionalState? obsEmotional = null;
+        List<string> obsPerceptions = new();
+
+        try
+        {
         // Phase 0: Emotional state — compute from active contributions.
         // Each contribution decays independently via its own half-life.
         // The emotional state is baselines + sum of all decayed contributions.
         var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var activeContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
         emotionalState.ComputeFromContributions(activeContributions);
+        obsEmotional = emotionalState;
 
         // Periodic cleanup of fully-decayed contributions (> 24h old)
         await _memory.CleanupDecayedContributionsAsync(ct).ConfigureAwait(false);
@@ -125,6 +141,7 @@ public class CognitiveCycleProcessor
 
         // Phase 1: Perception (includes Twilio inbound polling + conversation timeout checks)
         var perceptions = await PollPerceptionSourcesAsync(ct).ConfigureAwait(false);
+        obsPerceptions = perceptions.Select(p => p.Summary).ToList();
 
         // Persist notable perceptions so they accumulate embeddings and feed future
         // semantic search. Without this, perceptions are ephemeral — gone after one cycle.
@@ -144,6 +161,8 @@ public class CognitiveCycleProcessor
             await _desire.RecordInboundContactAsync(ct).ConfigureAwait(false);
 
             var lastMsg = activeThread!.Messages[^1];
+            obsContactMsg = lastMsg.Content;
+            obsConversation = true;
 
             // Admin commands bypass conversation entirely — handle and exit
             if (AdminCommandHandler.IsAdminCommand(lastMsg.Content))
@@ -154,7 +173,6 @@ public class CognitiveCycleProcessor
                 await _conversations.CloseThreadAsync(activeThread.Id, ct).ConfigureAwait(false);
 
                 await _adminCommands.HandleAsync(lastMsg.Content, ct).ConfigureAwait(false);
-                _lastCycleAt = DateTimeOffset.UtcNow;
                 return;
             }
 
@@ -170,7 +188,6 @@ public class CognitiveCycleProcessor
                 _log.LogInformation("Conversation mode — {Contact}'s last message: {Message}",
                     charState.PrimaryContactName, lastMsg.Content);
                 await RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState).ConfigureAwait(false);
-                _lastCycleAt = DateTimeOffset.UtcNow;
                 return;
             }
         }
@@ -179,7 +196,7 @@ public class CognitiveCycleProcessor
         // Bypasses desire engine but respects daily rate limit and cooldown
         if (await TryReactiveShareAsync(perceptions, charState, ct).ConfigureAwait(false))
         {
-            _lastCycleAt = DateTimeOffset.UtcNow;
+            obsOutcome = "reactive-share";
             return;
         }
 
@@ -188,6 +205,9 @@ public class CognitiveCycleProcessor
 
         // Phase 4: Inner thought + reflection
         var (thought, reflection, valence) = await RunInnerThoughtAsync(snapshot, ct).ConfigureAwait(false);
+        obsThought = thought;
+        obsReflection = reflection;
+        obsValence = valence;
 
         // Store thought with reflection appended — keeps inner life richness in memory
         var contentForStorage = reflection is not null
@@ -210,8 +230,23 @@ public class CognitiveCycleProcessor
 
         // Phase 4b: Emotional shift from inner thought — creates an Ambient contribution
         // that decays via 1-hour half-life. Each thought's impact fades independently.
+        // Capture emotional state before/after to compute deltas for emergence observation
+        var preShiftW = emotionalState.Warmth;
+        var preShiftE = emotionalState.Energy;
+        var preShiftWo = emotionalState.Worry;
+        var preShiftP = emotionalState.Playfulness;
+
         await ApplyEmotionalShiftAsync(emotionalState, thought, ct,
             isAmbientCycle: true, category: ImpactCategory.Ambient).ConfigureAwait(false);
+
+        // Re-read emotional state after shift for emergence observation deltas
+        var postShift = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var postContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+        postShift.ComputeFromContributions(postContributions);
+        obsWDelta = postShift.Warmth - preShiftW;
+        obsEDelta = postShift.Energy - preShiftE;
+        obsWoDelta = postShift.Worry - preShiftWo;
+        obsPDelta = postShift.Playfulness - preShiftP;
 
         // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
@@ -220,6 +255,10 @@ public class CognitiveCycleProcessor
             await _desire.AddTriggerAsync(
                 TriggerType.SpontaneousThought, valence,
                 $"thought: {thought[..Math.Min(60, thought.Length)]}", ct).ConfigureAwait(false);
+
+        // Capture desire state for emergence observation
+        var desireAfter = await _desire.GetStateAsync(ct).ConfigureAwait(false);
+        obsDesire = desireAfter.DesireToConnect;
 
         // Phase 6: Outreach — only if desire crosses threshold
         // If a conversation is active and she already chose silence, but desire has built
@@ -237,8 +276,8 @@ public class CognitiveCycleProcessor
             else
             {
                 _log.LogDebug("Active conversation — suppressing ambient outreach");
+                obsOutcome = "suppress-conversation";
             }
-            _lastCycleAt = DateTimeOffset.UtcNow;
             return;
         }
 
@@ -247,13 +286,14 @@ public class CognitiveCycleProcessor
         {
             _log.LogInformation("Outreach suppressed: withdrawal active (expires {Expires})",
                 _withdrawalExpiresAt!.Value.ToString("HH:mm"));
-            _lastCycleAt = DateTimeOffset.UtcNow;
+            obsOutcome = "withdrawn";
             return;
         }
 
         if (!await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
         {
             _log.LogDebug("Desire below threshold — no outreach this cycle");
+            obsOutcome = "no-desire";
 
             // Feature 3: Silence as active system — when desire is notable (>0.3) but
             // below threshold, the choice not to speak is meaningful. Generate a brief
@@ -261,12 +301,14 @@ public class CognitiveCycleProcessor
             var desireState = await _desire.GetStateAsync(ct).ConfigureAwait(false);
             if (desireState.DesireToConnect > 0.3f)
             {
+                obsSilence = true;
                 await RecordSilenceChoiceAsync(desireState, emotionalState, ct).ConfigureAwait(false);
             }
 
-            _lastCycleAt = DateTimeOffset.UtcNow;
             return;
         }
+
+        obsDesireCrossed = true;
 
         // Feature 27: Hard runtime gates — outreach continuity checks
         var outreachCtx = snapshot.OutreachContext;
@@ -277,7 +319,7 @@ public class CognitiveCycleProcessor
                 _log.LogInformation(
                     "Outreach suppressed: {Count} unanswered messages (limit={Limit}) — waiting for reply",
                     outreachCtx.UnansweredCount, _aniOptions.MaxUnansweredBeforeSilence);
-                _lastCycleAt = DateTimeOffset.UtcNow;
+                obsOutcome = "suppress-gates";
                 return;
             }
 
@@ -287,13 +329,56 @@ public class CognitiveCycleProcessor
                 _log.LogInformation(
                     "Outreach suppressed: only {Minutes:F0} min since last send (minimum={Gap} min)",
                     outreachCtx.TimeSinceLastSend.Value.TotalMinutes, _aniOptions.MinSendGapMinutes);
-                _lastCycleAt = DateTimeOffset.UtcNow;
+                obsOutcome = "suppress-gates";
                 return;
             }
         }
 
         await RunOutreachAsync(snapshot, thought, ct).ConfigureAwait(false);
-        _lastCycleAt = DateTimeOffset.UtcNow;
+        obsOutcome = "send";
+
+        } // end try
+        finally
+        {
+            _lastCycleAt = DateTimeOffset.UtcNow;
+
+            // Publish observation to emergence layer — must never crash the cognitive cycle
+            try
+            {
+                var observation = new CycleObservation
+                {
+                    Timestamp             = DateTimeOffset.UtcNow,
+                    InnerThought          = obsThought,
+                    Reflection            = obsReflection,
+                    RelationalValence     = obsValence,
+                    Warmth                = obsEmotional?.Warmth ?? 0,
+                    Energy                = obsEmotional?.Energy ?? 0,
+                    Worry                 = obsEmotional?.Worry ?? 0,
+                    Playfulness           = obsEmotional?.Playfulness ?? 0,
+                    WarmthDelta           = obsWDelta,
+                    EnergyDelta           = obsEDelta,
+                    WorryDelta            = obsWoDelta,
+                    PlayfulnessDelta      = obsPDelta,
+                    Severity              = obsSeverity,
+                    Register              = obsRegister,
+                    DesireToConnect        = obsDesire,
+                    DesireThresholdCrossed = obsDesireCrossed,
+                    OutreachOutcome        = obsOutcome,
+                    OutreachMessage        = obsOutreachMsg,
+                    CoherenceGateDoor      = obsCoherenceDoor,
+                    WasConversationCycle   = obsConversation,
+                    ContactMessage         = obsContactMsg,
+                    ReplyMessage           = obsReplyMsg,
+                    ChoseSilence           = obsSilence,
+                    PerceptionSummaries    = obsPerceptions,
+                };
+                await _emergence.OnCycleCompleteAsync(observation, default).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Emergence observer failed — cycle unaffected");
+            }
+        }
     }
 
     // ── Private phases ────────────────────────────────────────────────────────

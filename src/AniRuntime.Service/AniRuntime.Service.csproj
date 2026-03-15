@@ -30,5 +30,6 @@
     <ProjectReference Include="..\AniRuntime.LLM\AniRuntime.LLM.csproj" />
     <ProjectReference Include="..\AniRuntime.Voice\AniRuntime.Voice.csproj" />
     <ProjectReference Include="..\AniRuntime.Dashboard\AniRuntime.Dashboard.csproj" />
+    <ProjectReference Include="..\AniRuntime.Emergence\AniRuntime.Emergence.csproj" />
   </ItemGroup>
 </Project>

@@ -79,6 +79,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             _mockConversations.Object,
             sources,
             adminHandler,
+            new NullEmergenceObserver(),
             DefaultOptions,
             NullLogger<CognitiveCycleProcessor>.Instance);
     }

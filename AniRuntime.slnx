@@ -6,6 +6,9 @@
     <Project Path="src/AniRuntime.Loops/AniRuntime.Loops.csproj" />
     <Project Path="src/AniRuntime.Memory/AniRuntime.Memory.csproj" />
     <Project Path="src/AniRuntime.Perception/AniRuntime.Perception.csproj" />
+    <Project Path="src/AniRuntime.Emergence/AniRuntime.Emergence.csproj" />
+    <Project Path="src/AniRuntime.Dashboard/AniRuntime.Dashboard.csproj" />
+    <Project Path="src/AniRuntime.Voice/AniRuntime.Voice.csproj" />
     <Project Path="src/AniRuntime.Service/AniRuntime.Service.csproj" />
   </Folder>
   <Folder Name="/tests/">

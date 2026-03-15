@@ -16,6 +16,7 @@ public static class DashboardExtensions
         app.MapConversationEndpoints();
         app.MapJournalEndpoints();
         app.MapContradictionEndpoints();
+        app.MapEmergenceEndpoints();
 
         // Blazor Server (when components are added)
         app.MapBlazorHub();

@@ -1,0 +1,123 @@
+@page "/emergence"
+@using AniRuntime.Emergence
+@using AniRuntime.Emergence.Models
+@using Microsoft.Extensions.Options
+
+<h1>Emergence Layer</h1>
+
+@if (_enabled)
+{
+    <p><mark>Emergence: Active</mark></p>
+}
+else
+{
+    <p><ins>Emergence: Disabled</ins> — set <code>Emergence:Enabled = true</code> in appsettings to activate.</p>
+}
+
+@if (_stats is not null)
+{
+    <section>
+        <h3>Stats</h3>
+        <div class="grid">
+            <article>
+                <header>Resonance Themes</header>
+                <p style="font-size: 2em; text-align: center;">@_stats.ResonanceCount</p>
+            </article>
+            <article>
+                <header>Log Entries</header>
+                <p style="font-size: 2em; text-align: center;">@_stats.LogEntryCount</p>
+            </article>
+            <article>
+                <header>Last Scored</header>
+                <p style="text-align: center;">@(_stats.LastScoredAt?.LocalDateTime.ToString("MMM d, h:mm tt") ?? "—")</p>
+            </article>
+        </div>
+    </section>
+}
+
+@if (_resonanceRecords.Count > 0)
+{
+    <section>
+        <h3>Resonance Themes</h3>
+        <figure>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Theme</th>
+                        <th>Score</th>
+                        <th>Count</th>
+                        <th>Type</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _resonanceRecords)
+                    {
+                        <tr>
+                            <td><strong>@r.Theme</strong></td>
+                            <td>@r.ResonanceScore.ToString("F2")</td>
+                            <td>@r.OccurrenceCount</td>
+                            <td>@r.Type</td>
+                            <td>@r.FirstObserved.LocalDateTime.ToString("MMM d")</td>
+                            <td>@r.LastObserved.LocalDateTime.ToString("MMM d, h:mm tt")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </figure>
+    </section>
+}
+
+@if (_logEntries.Count > 0)
+{
+    <section>
+        <h3>Recent Emergence Log</h3>
+        @foreach (var entry in _logEntries.Take(20))
+        {
+            <blockquote>
+                <p>
+                    <strong>@entry.EntryType</strong>
+                    @if (entry.ResonanceScore.HasValue)
+                    {
+                        <span> — score: @entry.ResonanceScore.Value.ToString("F2")</span>
+                    }
+                </p>
+                <footer>@entry.Timestamp.LocalDateTime.ToString("MMM d, h:mm tt")</footer>
+            </blockquote>
+        }
+    </section>
+}
+else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
+{
+    <section>
+        <p><em>No emergence data yet. The observer will begin recording when the cognitive cycle runs.</em></p>
+    </section>
+}
+
+@code {
+    [Inject] private IOptions<EmergenceOptions> EmergenceOpts { get; set; } = default!;
+    [Inject] private IServiceProvider Services { get; set; } = default!;
+
+    private bool _enabled;
+    private EmergenceStats? _stats;
+    private List<ResonanceRecord> _resonanceRecords = new();
+    private List<EmergenceLogEntry> _logEntries = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _enabled = EmergenceOpts.Value.Enabled;
+
+        if (!_enabled)
+            return;
+
+        // EmergenceStore is only registered when enabled
+        var store = Services.GetService<EmergenceStore>();
+        if (store is null)
+            return;
+
+        _stats = await store.GetStatsAsync();
+        _resonanceRecords = (await store.GetResonanceRecordsAsync(50)).ToList();
+        _logEntries = (await store.GetRecentLogEntriesAsync(20)).ToList();
+    }
+}

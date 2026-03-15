@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\AniRuntime.Actions\AniRuntime.Actions.csproj" />
     <ProjectReference Include="..\..\src\AniRuntime.LLM\AniRuntime.LLM.csproj" />
     <ProjectReference Include="..\..\src\AniRuntime.Perception\AniRuntime.Perception.csproj" />
+    <ProjectReference Include="..\..\src\AniRuntime.Emergence\AniRuntime.Emergence.csproj" />
   </ItemGroup>
 
 </Project>
