@@ -140,6 +140,14 @@ public class RssFeed
     public string Url  { get; set; } = string.Empty;
 }
 
+public class WeatherOptions
+{
+    public bool   Enabled              { get; set; } = true;
+    public float  Latitude             { get; set; } = 43.11f;   // Oconomowoc, WI (53066)
+    public float  Longitude            { get; set; } = -88.49f;
+    public int    PollIntervalMinutes  { get; set; } = 30;
+}
+
 public class VoiceOptions
 {
     public bool   Enabled              { get; set; } = false;

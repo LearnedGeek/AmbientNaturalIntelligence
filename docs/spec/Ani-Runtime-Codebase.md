@@ -78,6 +78,7 @@ AniRuntime.sln
 │   │   ├── RssPerceptionSource.cs
 │   │   ├── ContactStatePerceptionSource.cs
 │   │   ├── TwilioInboundPerceptionSource.cs
+│   │   ├── WeatherPerceptionSource.cs
 │   │   └── AniRuntime.Perception.csproj
 │   │
 │   ├── AniRuntime.Actions/          # Output channel implementations
@@ -659,12 +660,15 @@ Commands:
 | RssPerceptionSource | rss | Content | If configured | 0.2–0.85 | Keyword-matched relevance from CharacterStateDoc |
 | ContactStatePerceptionSource | contact-state | Social | Yes | 0.2–0.5 | Inferred state from ContactRoutine + time of day |
 | TwilioInboundPerceptionSource | twilio-inbound | Communication | If configured | 0.95 | Webhook + API fallback, dedupes by SID |
+| WeatherPerceptionSource | weather | Environment | If configured | 0.15–0.35 | Open-Meteo API, 30-min polling, notable weather + change detection |
 
 TimePerceptionSource: Emits temporal context — hour-based descriptions ("early morning", "late evening"), day of week, month position, season transitions (first 3 days), nearby holidays, elapsed time since last cycle.
 
 RssPerceptionSource: Polls configured feeds. Tracks last-seen publish date per feed. Relevance scoring: 0 keyword matches → 0.2, 1 → 0.4, 2 → 0.6, 3+ → 0.85. Keywords extracted from CharacterStateDoc (ThingsContactCares, Interests, SharedExperiences, TopicValence keys). Items above ReactiveShareThreshold can trigger direct SMS sharing.
 
 ContactStatePerceptionSource: Infers contact's likely state from known routine + time. Gap descriptions: <2h silent, 2–6h "a few hours", 6–12h "quiet today", 12–24h "haven't heard since yesterday", 24–48h "over a day", 48h+ "X days".
+
+WeatherPerceptionSource: Polls Open-Meteo free API every 30 minutes (configurable). WMO weather codes → human descriptions. Emits base conditions (0.15 relevance) plus notable weather alerts: extreme cold/heat (0.25–0.3), thunderstorms (0.35), snow (0.3), high wind (0.25). Tracks last temperature and condition to detect significant changes between polls.
 
 TwilioInboundPerceptionSource: Dual mechanism — webhook (POST /sms/inbound) enqueues message and fires OnMessageReceived to trigger early wake; PollAsync drains queue then fetches Twilio API as safety net. Starts new ConversationThread if needed. Closes stale threads after ConversationTimeoutMinutes.
 
@@ -818,6 +822,7 @@ Implemented components (Phase 1–4):
 | RssPerceptionSource | 2 | Complete |
 | ContactStatePerceptionSource | 2 | Complete |
 | TwilioInboundPerceptionSource | 2 | Complete |
+| WeatherPerceptionSource | 4 | Complete — Open-Meteo free API, 30-min polling, WMO codes |
 | ConversationThread / ConversationMessage | 2 | Complete |
 | EmotionalState (4-dim W/E/Worry/P, per-thought decay, compound Describe) | 2+ | Complete (Phase 1b Mar 15) |
 | AdminCommandHandler | 2 | Complete |

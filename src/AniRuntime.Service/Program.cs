@@ -51,6 +51,7 @@ try
     builder.Services.Configure<OllamaOptions>(config.GetSection("Ollama"));
     builder.Services.Configure<TwilioOptions>(config.GetSection("Twilio"));
     builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
+    builder.Services.Configure<WeatherOptions>(config.GetSection("Weather"));
     builder.Services.Configure<VoiceOptions>(config.GetSection("Voice"));
 
     // ── Core services ─────────────────────────────────────────────────────────
@@ -88,6 +89,8 @@ try
     builder.Services.AddHttpClient("rss");
     builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource, ContactStatePerceptionSource>();
+    builder.Services.AddHttpClient("weather");
+    builder.Services.AddSingleton<IPerceptionSource, WeatherPerceptionSource>();
     builder.Services.AddHttpClient("twilio");
     builder.Services.AddSingleton<TwilioInboundPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());

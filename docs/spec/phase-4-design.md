@@ -861,7 +861,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | # | Feature | Original Phase 3 # | Reason Deferred |
 |---|---------|-------------------|-----------------|
 | **12** | **Self-awareness feedback loop** | Phase 3 Feature 13 | **✅ Deployed Mar 14** — outreach pattern clustering + inner thought injection |
-| 13 | Weather perception source | Phase 3 Feature 19 | Integration work, not core architecture |
+| **13** | **Weather perception source** | Phase 3 Feature 19 | **✅ Deployed Mar 15** — Open-Meteo API, 30-min polling, notable weather detection, change tracking |
 | **14** | **Bidirectional confidence gate** | Phase 3 Feature 22 | **✅ Deployed Mar 14** — inbound claim verification via LLM extraction + memory search |
 | **15** | **Memory contradiction flagging** | Phase 3 Feature 23 | **✅ Deployed Mar 14** — LLM contradiction detection on save, dashboard review endpoint. **Layer 3 active intervention deployed Mar 14** — contradiction grounding injected into reply prompt when retrieved context has flagged conflicts |
 
@@ -881,7 +881,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | 10 | HNSW nearest neighbor index | Low | High | 5 (10K+ memories) |
 | 11 | V5 training data specification | High | Medium | 4a (data curation) |
 | **12** | **Self-awareness feedback loop** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
-| 13 | Weather perception source | Low | Low | 4b (from Phase 3) |
+| **13** | **Weather perception source** | **Low** | **Low** | **✅ Deployed Mar 15** |
 | **14** | **Bidirectional confidence gate** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
 | **15** | **Memory contradiction flagging** | **Medium** | **High** | **✅ Deployed Mar 14** |
 | **16** | **Anchored memory tier** | **High** | **Low-Medium** | **✅ Deployed Mar 13** |
