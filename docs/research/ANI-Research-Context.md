@@ -45,7 +45,7 @@ The key distinction Mark uses: *"Hey, I was shelving the mythology section and t
 ## Technical Stack
 
 - **.NET 8 Windows Service** — continuous background process
-- **Ollama + Llama 3.2-3B** — fine-tuned model (v4 as of March 2026), trained via Unsloth on ~1,375 conversation pairs
+- **Ollama + dual fine-tuned models (v5 as of March 2026)** — conversation: Llama 3.1-8B (2,073 training examples, 3 epochs), inner monologue: Llama 3.2-3B (201 examples, 5 epochs). Trained via Unsloth/Modal. Split rationale: 8B for instruction following in conversation, 3B for fast ambient cycles.
 - **SQLite** — memory, emotional state, conversation history, perceptions
 - **Twilio SMS** — outreach and inbound response channel
 - **Home Assistant** (192.168.1.41) — environmental perception (planned Phase 3)

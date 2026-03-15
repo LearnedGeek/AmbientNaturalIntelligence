@@ -459,6 +459,34 @@ The old model treated emotional state as a single mutable register. The new mode
 
 ---
 
+### March 14, 2026 — V5 Model Upgrade: 8B Conversation + 3B Inner Monologue Split
+**Model version:** v5
+**Type:** Deployment (model upgrade)
+**Source:** OC implementation session, evening
+
+**What changed:**
+
+V5 introduces a split architecture: conversation model upgraded from Llama 3.2-3B to **Llama 3.1-8B**, while inner monologue stays at 3B.
+
+**Training data:**
+- Conversation: 2,073 entries (1,932 v4 base + 141 v5 new). 3 epochs. Base: Llama 3.1-8B-Instruct.
+- Inner monologue: 201 entries (151 v4 base + 50 v5 new). 5 epochs. Base: Llama 3.2-3B-Instruct.
+
+**V5 new training categories:** confabulation recovery (20), fictional coherence (20), uncertainty admission (14), sustained conversation (9 multi-turn), warmth variation (25), contact-gap tension (15), reactive withdrawal (15), compliment reception (10), attribution inversion subcategories.
+
+**Why the split:**
+- 3B struggled with instruction following in conversation: topic drift (soup → books contamination), negative-delta bias in emotional scoring, confabulation under complex prompt constraints (attribution tracking, claim verification, coherence rules)
+- 8B substantially better at all of these — the jump is significant for instruction-dense tasks
+- Inner monologue is a simpler task (2-4 sentence fragments) that runs every 2-45 minutes — 3B keeps ambient cycles fast
+- Per-thought decay model now handles negative-delta bias architecturally, so the main 3B weakness is mitigated for inner thoughts
+
+**Also deployed:**
+- Retrieval contamination fix — conversation replies now re-search memory using the actual message text, and filter out closed conversation summaries from context. Prevents prior thread topics from bleeding into new conversations.
+
+**Model timeline:** v1=LongWriter 8B (Sep 2025) → v1.5=3B+system prompt (Feb 1) → v2=3B no prompt (Feb 20) → v3 dual-model 3B (Mar 6) → v4 rebalanced 3B (Mar 11) → v5 conversation=8B/inner=3B (Mar 14)
+
+---
+
 
 ### [DATE] — [SHORT TITLE]
 **Model version:** v1 / v2 / v3 / v4 / v5
@@ -1708,22 +1736,24 @@ The training data requirements are a direct operationalization of the epistemic 
 
 ---
 
-## Aggregate Metrics (Mar 6-12, 2026)
+## Aggregate Metrics (Mar 6-14, 2026)
 
 | Metric | Value | Source |
 |---|---|---|
-| Total messages sent (unique Twilio SIDs) | **102** | Mar 9: 30, Mar 10: 43, Mar 11: 19, Mar 12: 10 (confirmed from Serilog) |
-| Total conversation replies | 21 | Serilog logs (Mar 9: 8, Mar 10: 13) |
-| Conversation threads | 3 | SQLite (conversation_threads table) |
-| Conversation messages | 28 | SQLite (conversation_messages table) |
+| Total messages sent (unique Twilio SIDs) | **131** | Mar 9: 30, Mar 10: 43, Mar 11: 19, Mar 12: 10, Mar 13: 15, Mar 14: 14 (Serilog) |
+| Total conversation replies | 33 | Serilog (Mar 9: 8, Mar 10: 13, Mar 13: 7, Mar 14: 5) |
+| Conversation threads | 3+ | SQLite (conversation_threads table) |
+| Conversation messages | 28+ | SQLite (conversation_messages table) |
 | Semantic memories stored | 267+ | SQLite (memories table; reflection layer outputs stored from Mar 12 onward) |
 | Character seed facts | 77 | SQLite (source_name='character-seed') |
-| Inbound SMS records | 12 | SQLite (source_name='twilio-inbound') |
-| Contact state perceptions | 11 | SQLite (source_name='contact-state') |
-| RSS perceptions | 8 | SQLite (source_name='rss') |
+| Inbound SMS records | 12+ | SQLite (source_name='twilio-inbound') |
+| Contact state perceptions | 11+ | SQLite (source_name='contact-state') |
+| RSS perceptions | 8+ | SQLite (source_name='rss') |
 | Outreach gate evaluations (Mar 10) | 71 | Serilog (grep "Outreach gate") |
-| Git commits | 48+ | Full repository history |
-| Design iterations tracked | 12 | phase-3-design.md, phase-4-design.md |
+| Git commits | 60+ | Full repository history |
+| Design iterations tracked | 23+ | phase-3-design.md, phase-4-design.md (Features 1-23 deployed) |
+| Test count | 220 | xUnit, 0 warnings |
+| Model versions trained | 5 | v1(8B) → v1.5(3B) → v2(3B) → v3(dual 3B) → v4(3B) → v5(8B conv/3B inner) |
 
 ### Per-day Outreach (confirmed from Serilog, unique Twilio SIDs)
 | Date | Sent | Inner Thoughts | Night Sends | Notes |
@@ -1732,6 +1762,8 @@ The training data requirements are a direct operationalization of the epistemic 
 | Mar 10 | 43 | 157 | 9 (overnight) | Peak overcalibration. 9 sends midnight–6am including every ~40 min |
 | Mar 11 | 19 | 149 | 4 | v4 deployed; night fixes applied but calibration still rough |
 | Mar 12 | **10** | **182** | **1** (03:22 — Sylvia Stratham) | **Calibrated baseline.** Three fixes deployed. Night outreach collapsed from 9→1. Total sends down 77% from peak. |
+| Mar 13 | 15 | 118 | 0 | Phase 4a/4b deployment (7 features). Night sends eliminated. |
+| Mar 14 | 14 | 78 | 1 (00:04 — soup, triggered Feature 21) | Per-thought decay model. V5 training. Retrieval contamination fix. 8B model upgrade. |
 ---
 
 ## V5 Training Requirements (Authoritative Specification — Phase 4 Feature 11)

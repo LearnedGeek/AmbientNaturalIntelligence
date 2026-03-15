@@ -703,7 +703,8 @@ Thread closure saves full conversation as single episodic memory record.
 
 8.1 Ollama
 Base URL: http://localhost:11434 (configurable)
-Models: ani-v4-conversation (chat), ani-v4-inner (inner monologue), nomic-embed-text (embeddings)
+Models: ani-v5-conversation (chat, Llama 3.1-8B fine-tuned), ani-v5-inner (inner monologue, Llama 3.2-3B fine-tuned), nomic-embed-text (embeddings)
+Split rationale: 8B for conversation (better instruction following, topic adherence, attribution tracking). 3B for inner monologue (frequent ambient cycles, simpler task, per-thought decay handles negative-delta bias architecturally).
 Auth: None — local only
 
 // Chat request (stream=false, format=null or "json")
@@ -732,8 +733,8 @@ All sensitive values in appsettings.Development.json (gitignored).
   },
   "Ollama": {
     "BaseUrl": "http://localhost:11434",
-    "ChatModel": "ani-v4-conversation",
-    "InnerMonologueModel": "ani-v4-inner",
+    "ChatModel": "ani-v5-conversation",
+    "InnerMonologueModel": "ani-v5-inner",
     "EmbedModel": "nomic-embed-text"
   },
   "Twilio": {
