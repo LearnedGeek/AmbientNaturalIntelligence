@@ -189,6 +189,7 @@ public class VoiceConversationService
                 prompt.User, turnCts.Token).ConfigureAwait(false);
 
             reply = MessageCleaner.Clean(reply);
+            reply = TruncateForVoice(reply);
             if (string.IsNullOrWhiteSpace(reply))
             {
                 _log.LogWarning("Voice: LLM returned empty reply");
@@ -333,6 +334,30 @@ public class VoiceConversationService
             <Record maxLength="{_voiceOptions.VoiceRecordMaxSeconds}" action="/voice/turn?callSid={callSid}" playBeep="false" timeout="{_voiceOptions.VoiceRecordTimeoutSeconds}" />
         </Response>
         """;
+
+    /// <summary>
+    /// Truncate LLM reply to ~2 sentences for voice — the model doesn't reliably
+    /// respect word count limits. Keeps the first two sentence-ending punctuation marks.
+    /// Prevents long replies from blowing the TTS synthesis budget.
+    /// </summary>
+    private static string TruncateForVoice(string reply)
+    {
+        const int maxSentences = 2;
+        var count = 0;
+        for (var i = 0; i < reply.Length; i++)
+        {
+            if (reply[i] is '.' or '!' or '?')
+            {
+                // Skip ellipses (...)
+                if (reply[i] == '.' && i + 1 < reply.Length && reply[i + 1] == '.')
+                    continue;
+                count++;
+                if (count >= maxSentences)
+                    return reply[..(i + 1)].Trim();
+            }
+        }
+        return reply;
+    }
 
     private static string EscapeXml(string text) =>
         text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")

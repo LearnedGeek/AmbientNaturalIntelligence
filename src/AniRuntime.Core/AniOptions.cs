@@ -155,7 +155,7 @@ public class VoiceOptions
     // ElevenLabs TTS
     public string ElevenLabsApiKey     { get; set; } = string.Empty;
     public string ElevenLabsVoiceId    { get; set; } = string.Empty;
-    public string ElevenLabsModelId    { get; set; } = "eleven_turbo_v2_5";
+    public string ElevenLabsModelId    { get; set; } = "eleven_v3";
 
     // OpenAI Whisper STT
     public string WhisperApiKey        { get; set; } = string.Empty;

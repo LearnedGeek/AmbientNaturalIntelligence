@@ -13,7 +13,7 @@ namespace AniRuntime.Voice;
 /// ElevenLabs TTS implementation. Converts text to speech with emotional state
 /// mapped to voice settings (stability, similarity_boost, style).
 ///
-/// Free tier: ~10,000 characters/month (~100 voice messages at typical length).
+/// Starter tier: 30,000 characters/month. Supports emotional acting directions.
 /// </summary>
 public class ElevenLabsTextToSpeechService : ITextToSpeechService
 {
@@ -53,10 +53,11 @@ public class ElevenLabsTextToSpeechService : ITextToSpeechService
             throw new InvalidOperationException("ElevenLabs VoiceId is not configured.");
 
         var voiceSettings = MapEmotionalStateToVoiceSettings(emotionalState);
+        var emotionalText = PrependEmotionalTag(text, emotionalState);
 
         var payload = new
         {
-            text,
+            text = emotionalText,
             model_id = _options.ElevenLabsModelId,
             voice_settings = voiceSettings,
         };
@@ -81,6 +82,41 @@ public class ElevenLabsTextToSpeechService : ITextToSpeechService
             text.Length, audioStream.Length);
 
         return audioStream;
+    }
+
+    /// <summary>
+    /// Prepend a silent audio tag to the text based on emotional state.
+    /// Eleven v3 supports [tag] syntax — these are NOT spoken aloud, they direct
+    /// the voice performance. See: elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode
+    /// Supported tags: [laughs], [whispers], [sighs], [excited], [curious], [mischievously], [sarcastic]
+    /// </summary>
+    internal static string PrependEmotionalTag(string text, EmotionalState? state)
+    {
+        if (state is null) return text;
+
+        var warmthDiff = state.Warmth - state.WarmthBaseline;
+        var energyDiff = state.Energy - state.EnergyBaseline;
+        var playDiff   = state.Playfulness - state.PlayfulnessBaseline;
+        var worryDiff  = state.Worry - state.WorryBaseline;
+
+        const float threshold = 0.15f;
+
+        var shifts = new (float magnitude, string tag)[]
+        {
+            (warmthDiff,  warmthDiff > threshold ? "[whispers]" : warmthDiff < -threshold ? "[sighs]" : ""),
+            (energyDiff,  energyDiff > threshold ? "[excited]" : energyDiff < -threshold ? "[sighs]" : ""),
+            (playDiff,    playDiff > threshold ? "[mischievously]" : ""),
+            (worryDiff,   worryDiff > threshold ? "[curious]" : ""),
+        };
+
+        var best = shifts
+            .Where(s => s.tag.Length > 0)
+            .OrderByDescending(s => Math.Abs(s.magnitude))
+            .FirstOrDefault();
+
+        if (best.tag is null or "") return text;
+
+        return $"{best.tag} {text}";
     }
 
     /// <summary>

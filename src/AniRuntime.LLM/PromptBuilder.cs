@@ -632,7 +632,7 @@ public static class PromptBuilder
 
             RULES:
             - You're on a PHONE CALL, not texting. Speak naturally.
-            - 1-2 sentences max. Keep it short — this is a conversation, not a monologue.
+            - 1-2 SHORT sentences max. 30 words or less. This is a phone conversation, not a monologue.
             - NO emojis, NO abbreviations, NO text-speak. You're talking, not typing.
             - Talk TO {contact}: "you", "your". NEVER third person.
             - Be yourself — warm, funny, real. Match the energy of the conversation.
