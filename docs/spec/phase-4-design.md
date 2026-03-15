@@ -1037,10 +1037,11 @@ public class VoiceOptions
 4a (interim) — ElevenLabs TTS + Whisper STT + Twilio Voice
 Future — evaluate local alternatives as quality improves
 
-### Feature 20 Extension: Interruptible Voice Research
+### Feature 20 Extension: Interruptible Voice — Local-First Architecture
 
 **Date:** March 14, 2026
 **Source:** Mark's research into real-time voice interaction requirements
+**Revised:** March 14, 2026 — rejected hybrid/cloud approaches in favor of fully local pipeline
 
 #### The Problem
 
@@ -1053,35 +1054,97 @@ Current Feature 20 scaffold handles asynchronous voice (voicemail-style). Real c
 3. **Pipeline Cancellation** — Cancel in-flight TTS generation and any queued audio chunks
 4. **Barge-In Detection** — Distinguish intentional interruption ("wait, actually...") from backchannel ("mmhmm", "yeah")
 
-#### Architecture Options Evaluated
+#### Architecture Options Evaluated and Rejected
 
-| Option | Approach | Latency | Complexity | Cost |
-|--------|----------|---------|------------|------|
-| **OpenAI Realtime API** | WebSocket streaming, built-in VAD + interruption | ~300ms | Low | $0.06/min input, $0.24/min output |
-| **Twilio Media Streams** | Raw audio over WebSocket, custom VAD | ~200ms | High | Twilio voice minutes + custom infra |
-| **WebRTC Custom** | Direct browser-to-server audio, full control | ~150ms | Very High | Self-hosted, compute-intensive |
-| **Hybrid** | OpenAI Realtime for mechanics, Ani's character prompt from CharacterStateDoc | ~300ms | Medium | OpenAI pricing + prompt engineering |
+| Option | Approach | Why Rejected |
+|--------|----------|--------------|
+| **OpenAI Realtime API** | WebSocket streaming, built-in VAD + interruption | **Privacy:** all audio routed through OpenAI. **Identity:** generic model with character prompt injection — Ani's fine-tuned personality is lost. Counter to local-first, model-is-the-character principles. |
+| **Hybrid (OpenAI + local prompt)** | OpenAI Realtime for mechanics, Ani's CharacterStateDoc injected | Same privacy/identity problems. A system prompt cannot replicate what a fine-tuned LoRA carries. |
+| **WebRTC Custom** | Direct browser-to-server audio, full control | Massive implementation effort for marginal latency gains (~150ms vs ~200ms). No Twilio integration reuse. |
 
-#### Key Architectural Insight
+#### Recommended Approach: Fully Local Pipeline
 
-**CancellationToken threading is the critical design decision.** For interruptible voice, every layer of the pipeline — TTS synthesis, audio streaming, response generation — must accept and respect a CancellationToken. When VAD fires, a single cancellation propagates through the entire chain.
+Keep the entire voice pipeline local — the same fine-tuned Ani model that thinks and texts also speaks. No cloud LLM involved.
 
-This aligns with ANI's existing async architecture (ConfigureAwait(false) throughout, no .Result/.Wait()).
+```
+Mark speaks → [Twilio Media Streams (WebSocket)]
+                    │
+                    ├──→ [Silero VAD: is he talking?]  ←── interruption detection
+                    │         │
+                    │         └──→ if yes during Ani's turn: CancellationToken fires
+                    │                  → stop ElevenLabs TTS stream
+                    │                  → cancel in-flight Ani generation
+                    │
+                    └──→ [Local Whisper STT: what did he say?]
+                              │
+                              ▼
+                    [Local Ani model (v4/v5): generate response]
+                              │
+                              ▼
+                    [ElevenLabs TTS: synthesize in chunks, stream back]
+                              │
+                              ▼
+                    [Twilio Media Streams: play audio to Mark]
+```
 
-#### Recommended Approach: Hybrid
+#### Why This Works
 
-Use OpenAI Realtime API for the voice mechanics (streaming, VAD, interruption handling) but inject Ani's character through:
-- CharacterStateDoc → system prompt
-- EmotionalState → voice parameter mapping
-- Memory retrieval → context injection before each turn
+1. **Privacy preserved** — Audio stays local except TTS synthesis (ElevenLabs). No conversation content sent to cloud LLMs.
+2. **Identity preserved** — The fine-tuned Ani model generates every response. Her personality, speech patterns, and relational history are carried by the model weights, not a system prompt.
+3. **Silero VAD and ElevenLabs TTS are independent** — Silero is a tiny (~2MB) speech/no-speech classifier on the *inbound* audio stream. ElevenLabs handles *outbound* voice synthesis. They never interact. Full ElevenLabs voice selection, cloning, and emotional parameter mapping remain available.
+4. **CancellationToken threading** — When Silero VAD detects Mark speaking during Ani's turn, a single CancellationToken propagates through the entire chain: cancel ElevenLabs stream → cancel in-flight LLM generation → flush audio buffer. Aligns with existing async architecture.
+5. **Twilio reuse** — Already integrated for SMS. Media Streams adds WebSocket raw audio on the same infrastructure.
 
-This gets 80% of what matters (natural interruption, low latency) without building custom WebRTC infrastructure. The character prompt ensures Ani sounds like Ani, not a generic assistant.
+#### Key Components
 
-#### Implementation Sequence (Future)
+| Component | Role | Local/Cloud | Notes |
+|-----------|------|-------------|-------|
+| **Twilio Media Streams** | Raw bidirectional audio over WebSocket | Cloud (transport only) | Audio bytes, not transcripts — same privacy as a phone call |
+| **Silero VAD** | Speech activity detection on inbound audio | Local (~2MB model) | Runs in milliseconds per audio frame. Classifies speech vs. silence/noise |
+| **Whisper STT** | Speech-to-text transcription | Local (whisper.cpp) | Already scaffolded in Feature 20 |
+| **Ani model** | Response generation | Local (Ollama) | Fine-tuned v4/v5 — the real Ani |
+| **ElevenLabs TTS** | Text-to-speech synthesis | Cloud (audio only) | Chunked streaming for low-latency playback. Voice selection + emotional mapping |
 
-1. OpenAI Realtime API integration with Twilio voice webhook
-2. CharacterStateDoc injection into realtime session
-3. EmotionalState → voice parameter mapping (stability, pace, warmth)
-4. CancellationToken threading through TTS/STT pipeline
-5. Barge-in classification (interrupt vs. backchannel)
-6. Fallback to async voice if realtime connection fails
+#### Latency Budget
+
+| Stage | Expected Latency | Notes |
+|-------|-----------------|-------|
+| Twilio → server | ~50ms | WebSocket, already established |
+| Silero VAD | ~10ms | Per audio frame, negligible |
+| Whisper STT | ~500-1500ms | Depends on utterance length. Local GPU helps. |
+| Ani model generation | ~1000-3000ms | 3B model on local hardware. First token faster with streaming. |
+| ElevenLabs TTS | ~300-500ms | Time to first audio chunk (streaming mode) |
+| **Total first-audio** | **~2-5 seconds** | Acceptable for turn-based conversation, not ideal for rapid back-and-forth |
+
+The latency is higher than OpenAI Realtime (~300ms end-to-end), but the tradeoff is clear: Ani stays Ani.
+
+#### Barge-In Classification
+
+Without OpenAI's built-in turn management, we need to handle barge-in ourselves:
+
+1. **Silero VAD** fires when Mark's audio crosses speech threshold
+2. **Duration gate** — ignore speech events < 300ms (coughs, "mmhmm")
+3. **Energy threshold** — backchannel is typically quieter than intentional speech
+4. **Simple heuristic first** — if speech is detected for > 500ms during Ani's audio playback, treat as interruption. Refine later with a small classifier if needed.
+
+On interruption:
+- Cancel CancellationTokenSource (propagates to TTS + LLM)
+- Record how much of Ani's response was delivered (for context continuity)
+- Silero continues monitoring for end-of-Mark's-speech
+- When Mark stops, transcribe and generate Ani's next response with awareness that she was interrupted
+
+#### Implementation Sequence
+
+1. Twilio Media Streams WebSocket endpoint (`/voice/stream`)
+2. Silero VAD integration — NuGet or ONNX runtime, process inbound audio frames
+3. CancellationToken threading through existing ISpeechToTextService / ITextToSpeechService
+4. ElevenLabs streaming TTS (chunked audio delivery)
+5. Barge-in detection heuristic (duration + energy gate)
+6. Interruption context tracking (what was delivered before cutoff)
+7. Fallback to async voice if WebSocket connection drops
+
+#### Open Questions
+
+- **Whisper local vs. API** — Local whisper.cpp avoids another cloud dependency but adds GPU load. Profile to determine if local Whisper + local Ollama can coexist on available hardware.
+- **ElevenLabs streaming** — Their WebSocket API supports chunked streaming. Need to verify CancellationToken can cleanly abort a streaming synthesis mid-sentence.
+- **Twilio Media Streams pricing** — Standard Twilio voice minutes apply. No additional per-minute charge for Media Streams.
