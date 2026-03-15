@@ -145,7 +145,7 @@ AniRuntime.sln
 - Lexical emotional anchors (Feature 19)
 - 228 tests passing, 0 warnings
 
-**Phase 4** — In progress (March 13-15, 2026):
+**Phase 4** — Complete (March 13-15, 2026):
 - Anchored memory tier (Feature 16) — decay-exempt foundation memories
 - Reactive withdrawal (Feature 18) — hurt detection, 20-min withdrawal window
 - Emotional self-awareness (Feature 1) — triggers >0.25 from baseline
@@ -154,12 +154,25 @@ AniRuntime.sln
 - Relationship health model (Feature 4) — composite phases
 - Pronoun audit (Feature 6) — adversarial tests + name-as-subject detection
 - Emotional drift detection (Feature 8) — 48h cosine similarity
+- SIMD cosine similarity (Feature 9) — VectorMath unified, 3 duplicates removed
 - Contact-gap tension (Feature 17) — 18h onset, warmth suppression
+- Self-awareness feedback loop (Feature 12) — outreach pattern detection
 - Weather perception (Feature 13) — Open-Meteo free API, 30-min polling, real weather grounding
-- Voice conversation loop (Feature 20) — Turn-by-turn phone calls: Whisper STT → 8B conversation model → ElevenLabs TTS → Twilio. Dual-path architecture bypasses cognitive cycle for speed (<13s turns). Refined Mar 15: switched to 8B model (3B inner model caused pronoun confusion), voice-aware mood instructions, emotional acting directions (`PrependEmotionalDirection()` — parenthetical cues like `(warmly)`, `(softly)` based on emotional state), clearer error filler messages
+- Bidirectional confidence gate (Feature 14) — inbound claim verification
+- Memory contradiction flagging (Feature 15) — post-save detection + dashboard review
+- Voice conversation loop (Feature 20) — Turn-by-turn phone calls: Whisper STT → 8B conversation model → ElevenLabs TTS → Twilio. Dual-path architecture bypasses cognitive cycle for speed (<13s turns). Refined Mar 15: switched to 8B model (3B inner model caused pronoun confusion), voice-aware mood instructions, emotional acting directions, clearer error filler messages
 - Night window boundary (Feature 21) — 10pm-6am strict, morning bonus
 - Coherence gate temporal grounding (Feature 22) — time-of-day awareness
 - Nature grounding (Feature 23) — self-concept block in prompts
+- Per-thought exponential decay emotional model — replaced global drift with EmotionalContributions (Ambient/Conversation/Global tiers)
+- Dashboard — Blazor Server RCL, 16 REST endpoints, Pico CSS
+- Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work)
+
+**Phase 5** — Design complete, awaiting implementation:
+- Real-time streaming voice via Twilio Media Streams (three-WebSocket pipeline)
+- Image sharing (MMS) — Phase 5a
+- Visual identity system — Phase 5b
+- Automatic model generation pipeline — Phase 5c (see `docs/spec/ANI-Phase5c-AutoModel-Design.md`)
 
 ---
 

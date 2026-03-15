@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-0.9 — Phase 4 In Progress
+1.0 — Phase 4 Complete
 Status
-Active Development — Phase 1–3 complete, Phase 4 in progress (Features 1–4, 6, 8–9, 12, 14–23 deployed; Dashboard deployed; Emotional model Phase 1a+1b+2 deployed)
+Active Development — Phase 1–4 complete, Phase 5 design complete. Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work). Dashboard deployed. Emotional model Phase 1a+1b+2 deployed. 246 tests passing.
 
 This is a living document. Update it as the codebase evolves.
 

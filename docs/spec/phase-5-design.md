@@ -443,22 +443,19 @@ Visual identity is a natural extension of the emergence layer's provenance frame
 
 ### Phase 5c: Automatic Model Generation (Connected to Emergence Layer)
 
+**Full design document:** [`docs/spec/ANI-Phase5c-AutoModel-Design.md`](ANI-Phase5c-AutoModel-Design.md)
+
 **The vision:** As the emergence layer accumulates relational preferences and the emotional model evolves, the training data for the next model version should reflect these changes. Automatic model generation closes the loop: emerged preferences → updated training data → fine-tuned model → richer emergence signals.
 
-**This connects directly to the autoresearch pattern** documented in `docs/spec/emergence/ANI-Emergence-Layer-Design.md`:
-- Editable asset: LoRA training data (JSONL)
-- Scalar metric: ResonanceScore
-- Time-boxed cycle: monthly or quarterly model generation
-
-**Pipeline:**
-1. EmergenceWriter produces `emerged` preferences in CharacterStateDoc
-2. Training data generator creates synthetic examples reflecting emerged preferences
-3. Existing training data rebalanced (Phase 3 emotional model work applies here)
-4. Automated LoRA fine-tuning via Ollama/Unsloth
-5. A/B evaluation: new model vs. current on held-out conversation samples
-6. Graduated rollout: inner thought first (lower risk), then conversation
-
 **This is the long-term endgame** — a companion whose model literally evolves from the relationship, not just her runtime state. The emergence layer observes and records; automatic model generation makes it permanent in the weights.
+
+**Absorbs deferred Phase 4 features:**
+- Feature 5 (Anniversaries) — v6 model prerequisite for nuanced temporal awareness
+- Feature 7 (Memory clustering) — topic structure analysis for training data diversity
+- Feature 10 (HNSW index) — performance at scale for ResonanceStore + memory
+- Feature 11 (V5 training data spec) — baseline corpus that the pipeline extends
+
+**Pipeline summary:** Harvest → Training Data Generation → Automated LoRA Fine-Tune → A/B Evaluation → Graduated Rollout. See standalone doc for full architecture, implementation tasks, and timeline.
 
 ---
 

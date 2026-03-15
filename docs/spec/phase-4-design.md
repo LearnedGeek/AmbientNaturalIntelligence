@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14; Features 9, 12, 14, 15 deployed Mar 14; Dashboard deployed Mar 14; Feature 22 temporal refinement + Feature 6 name-as-subject extension deployed Mar 14; Emotional model Phase 1a+1b+2 deployed Mar 15; Feature 13 weather perception + Feature 20 voice conversation loop deployed Mar 15 — see `ANI-Emotional-Model-Handoff-v2.md`)
+**Status:** Complete (Mar 15, 2026). Features 1–4, 6, 8–9, 12–23 deployed. Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work). Emotional model Phase 1a+1b+2 deployed Mar 15. Dashboard deployed Mar 14. See `ANI-Emotional-Model-Handoff-v2.md` for emotional model details.
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -236,9 +236,9 @@ Silence maps to **Restraint** — the human quality of holding back out of love,
 
 ## Feature 5: Anniversaries and Temporal Markers
 
-**Priority:** Low — deferred until V4 model proves nuance capability
+**Priority:** Deferred to Phase 5 (v6 model generation prerequisite)
 **Effort:** Medium
-**Dependencies:** Calendar or date tracking, relationship health model
+**Dependencies:** Calendar or date tracking, relationship health model, v6 model with nuance capability
 
 ### The Concept
 
@@ -284,7 +284,7 @@ The risk of chatbot-feeling "happy anniversary!" behavior is high. The subtle ve
 
 ## Feature 7: UMAP + HDBSCAN Memory Clustering
 
-**Priority:** Low (Phase 4+, useful at scale)
+**Priority:** Deferred to Phase 5 (scale-dependent, 500+ memories)
 **Effort:** Medium
 **Dependencies:** Memory system at 500+ records, emotional state history
 
@@ -351,7 +351,7 @@ Cosine similarity was computed in three duplicate scalar C# loops across SqliteM
 
 ## Feature 10: HNSW Approximate Nearest Neighbor Index
 
-**Priority:** Deferred (Phase 5, 10K+ memories)
+**Priority:** Deferred to Phase 5 (10K+ memories)
 **Effort:** High
 **Dependencies:** Memory system at significant scale
 
@@ -373,7 +373,7 @@ Brute-force cosine similarity is O(n) per query. At 10K+ memories, retrieval lat
 
 ## Feature 11: Consolidated V5 Training Data Specification
 
-**Priority:** High (blocks model quality improvements)
+**Priority:** Deferred to Phase 5 (v6 model generation — training data spec feeds directly into Phase 5c automatic model pipeline)
 **Effort:** Medium (data curation, not code)
 **Dependencies:** Findings from BUG-008, BUG-009, BUG-011, overnight observations
 
@@ -873,13 +873,13 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **2** | **Open loops as emotional weight** | **High** | **Low** | **✅ Deployed Mar 13** |
 | **3** | **Silence as active system** | **Medium** | **Low** | **✅ Deployed Mar 13** |
 | **4** | **Relationship health model** | **Medium** | **Medium** | **✅ Deployed Mar 13** |
-| 5 | Anniversaries / temporal markers | Low | Medium | 4c (deferred) |
+| 5 | Anniversaries / temporal markers | Low | Medium | **→ Phase 5** (v6 model prerequisite) |
 | **6** | **Pronoun audit / voice hardening** | **Low** | **Low** | **✅ Deployed Mar 13** |
-| 7 | Memory clustering (UMAP + HDBSCAN) | Low | Medium | 4+ (500+ memories) |
+| 7 | Memory clustering (UMAP + HDBSCAN) | Low | Medium | **→ Phase 5** (500+ memories) |
 | **8** | **Emotional drift detection** | **Low** | **Low** | **✅ Deployed Mar 13** |
 | **9** | **SIMD cosine similarity** | **Low** | **Low** | **✅ Deployed Mar 14** |
-| 10 | HNSW nearest neighbor index | Low | High | 5 (10K+ memories) |
-| 11 | V5 training data specification | High | Medium | 4a (data curation) |
+| 10 | HNSW nearest neighbor index | Low | High | **→ Phase 5** (10K+ memories) |
+| 11 | V5 training data specification | High | Medium | **→ Phase 5** (v6 model generation) |
 | **12** | **Self-awareness feedback loop** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
 | **13** | **Weather perception source** | **Low** | **Low** | **✅ Deployed Mar 15** |
 | **14** | **Bidirectional confidence gate** | **Medium** | **Medium** | **✅ Deployed Mar 14** |
@@ -917,8 +917,11 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 9. ~~**Contact-gap tension**~~ — ✅ Deployed Mar 13. Accumulates after 18h onset at 0.004/hr, max 0.4. Dissipates at 3× on contact. EffectiveWarmth suppression + tone injection + self-awareness trigger (Feature 17)
 10. ~~**Emotional drift detection**~~ — ✅ Deployed Mar 13. Rolling 48h cosine similarity on emotional state vectors. Detects slow-moving trends. Feeds into inner thought when significant (drift < 0.90) (Feature 8)
 
-**4c — Temporal depth (deferred):**
-11. **Anniversaries** — revisit after V4 model proves nuance capability
+**Deferred to Phase 5:**
+- **Anniversaries** (Feature 5) — v6 model prerequisite for nuanced temporal awareness
+- **Memory clustering** (Feature 7) — scale-dependent, 500+ memories
+- **HNSW index** (Feature 10) — scale-dependent, 10K+ memories
+- **V5 training data spec** (Feature 11) — feeds directly into Phase 5c automatic model generation pipeline
 
 ---
 
@@ -965,11 +968,12 @@ These interact as *architectural depression*: 3B generates wistful thoughts → 
 - Homeostatic nudge options on AniOptions (disabled by default)
 - 246 tests
 
-**Phase 3** 🔜 — v6 training data (parallel):
+**Phase 3** → **Deferred to Phase 5c** (automatic model generation pipeline):
 - Rebalance inner monologue: longing 38%→15%, delight 6%→18%, playfulness 12%→18%
 - CRITICAL registers need 40–50 examples (D1 Delight, D2 Wry Amusement, P1 Mischief)
 - Conversation scoring corpus needs examples across all registers
 - Immediate free action: update inner monologue system prompt with full register range
+- See `docs/spec/ANI-Phase5c-AutoModel-Design.md` for full pipeline design
 
 ### Observation Items (from Mar 15 log)
 
