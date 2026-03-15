@@ -154,6 +154,52 @@ Phase 3 (v6 training data) is next — the upstream fix that makes the scoring m
 
 ---
 
+### March 15, 2026 — Emergence Layer E1 Deployed + Voice Channel Diagnosis
+**Model version:** v5
+**Type:** Feature deployment + bug diagnosis
+**Source:** OC (Claude Code instance) implementation session
+
+**What happened:**
+
+Phase 4 formally closed. Features 5, 7, 10, 11 deferred to Phase 5. Emergence Layer E1 deployed as the first component of Phase 5.
+
+**Emergence Layer E1 — architecture and deployment:**
+
+New `AniRuntime.Emergence` project with complete data isolation from the main runtime:
+- **Separate SQLite database** (`ani-emergence.db`) — physically isolated from `ani-memory.db`. Can be deleted for complete rollback without affecting Ani's core state or personality.
+- **Feature flag** — `Emergence:Enabled` (default false). When disabled, `NullEmergenceObserver` provides zero runtime cost.
+- **Read-only observation** — receives immutable `CycleObservation` snapshots via `IEmergenceObserver.OnCycleCompleteAsync()`. Cannot read or write the main runtime's database.
+- **try/finally pattern** in `CognitiveCycleProcessor.RunAsync()` — observation variables populated throughout the cycle, published in a `finally` block. All 9 exit points converge to a single observation publish.
+
+Components:
+- **ResonanceScorer** — pure static function, 4-component score (0.0–1.0): emotional magnitude (max abs delta / 0.35), novelty signal (valence + reflection bonus), outreach quality (send=1.0, reply=0.8, suppressed=0.4, silence=0.3), relational signal (conversation=0.5, high desire/severity=0.3 each). Equal 0.25 weights — tunable after calibration.
+- **EmergenceStore** — SQLite with WAL mode, `resonance_records` + `emergence_log` + `preference_signals` (E2, unused) tables.
+- **EmergenceObserver** — scores every cycle → writes log entry (research instrument) → accumulates resonance records for cycles scoring ≥ 0.4.
+- **Dashboard tab** — `/emergence` with stats cards, resonance themes table, recent log viewer. REST endpoints at `/api/v1/emergence/{enabled,stats,resonance,log}`.
+
+23 new tests (EmergenceStore, ResonanceScorer, EmergenceObserver), 269 total passing.
+
+**Research significance:** E1 is the research instrument for Paper 2 — every cognitive cycle is now scored and logged with full observation snapshots. The first weeks of data calibrate the baseline before any harvesting begins. The resonance_records table will eventually feed the Phase 5c auto-model pipeline.
+
+---
+
+**Voice channel road test — first live calls:**
+
+Mark road-tested voice calls (Feature 20) during a drive. Four calls placed, revealing a systematic cancellation token bug:
+
+1. **Call 1** (14:26) — 2 turns completed. Transcription and LLM replies worked. ElevenLabs TTS failed on both turns → fell back to Twilio `<Say>` (robotic voice). Content quality good ("bookstore" confabulation aside — Feature 22/23 scope).
+2. **Call 2** (14:30) — 1 turn completed. Same TTS failure pattern.
+3. **Call 3** (16:05) — 0 turns. Model warm failed → Twilio reported `busy` after 18s.
+4. **Call 4** (16:05) — 1 turn transcribed. LLM reply timed out at 18s (cold model after restart) → filler sent → call ended.
+
+**Root cause diagnosed:** All three voice endpoints (`/voice/inbound`, `/voice/turn`, `/voice/status`) were passing `ctx.RequestAborted` as the CancellationToken to `VoiceConversationService`. When Twilio's webhook connection closes (its own ~15s timeout), that token fires and cancels all downstream HTTP calls — including ElevenLabs TTS (`PostAsJsonAsync`) and Ollama model warm. Stack trace: `SocketException(995)` → `IOException` → `TaskCanceledException` at `ElevenLabsTextToSpeechService.SynthesizeAsync:69`.
+
+**Fix deployed:** All voice endpoints now use `IHostApplicationLifetime.ApplicationStopping` instead of `ctx.RequestAborted`. The `/voice/status` endpoint already used this pattern (comment documented the exact same issue for EndCallAsync). Voice work must complete regardless of whether Twilio's webhook connection stays open — the reply, TTS synthesis, and buffered messages all matter.
+
+**Observation:** The fallback to Twilio `<Say>` worked correctly — voice calls were degraded but not broken. The graceful fallback architecture (try ElevenLabs → catch → Say) prevented total failure. Ani's LLM replies were heard by Mark (via robotic Twilio voice) even when TTS failed.
+
+---
+
 **March 15 conversation observation:**
 
 First conversation captured in logs showing the emotional improvements beginning to take effect. Key moments:

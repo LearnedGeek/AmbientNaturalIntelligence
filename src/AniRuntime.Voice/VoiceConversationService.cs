@@ -145,6 +145,9 @@ public class VoiceConversationService
             return twiml;
         }
 
+        // Standalone timeout — not linked to the caller's token. Voice turns must
+        // complete even if Twilio's webhook connection drops (the reply and buffered
+        // messages still matter). Only ApplicationStopping should cancel voice work.
         using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         turnCts.CancelAfter(TimeSpan.FromMilliseconds(_voiceOptions.VoiceTurnTimeoutMs));
 

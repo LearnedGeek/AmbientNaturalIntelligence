@@ -200,6 +200,13 @@ try
     // record → transcribe → LLM → synthesize → play → record → repeat.
     if (voiceEnabled)
     {
+        // Voice endpoints use ApplicationStopping instead of ctx.RequestAborted.
+        // Twilio closes webhook connections on its own timeout (~15s), which fires
+        // ctx.RequestAborted and cancels in-flight HTTP calls to ElevenLabs/Whisper.
+        // Voice work must complete regardless — the reply, TTS, and buffered messages
+        // all matter even if Twilio's connection dropped.
+        var voiceAppCt = app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
+
         app.MapPost("/voice/inbound", async (HttpContext ctx) =>
         {
             var form = await ctx.Request.ReadFormAsync();
@@ -208,7 +215,7 @@ try
             Log.Information("Voice inbound: call {CallSid}", callSid);
 
             var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
-            var twiml = await voiceService.StartCallAsync(callSid, ctx.RequestAborted);
+            var twiml = await voiceService.StartCallAsync(callSid, voiceAppCt);
             return Results.Content(twiml, "application/xml");
         });
 
@@ -225,7 +232,7 @@ try
             }
 
             var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
-            var twiml = await voiceService.ProcessTurnAsync(callSid, recordingUrl, ctx.RequestAborted);
+            var twiml = await voiceService.ProcessTurnAsync(callSid, recordingUrl, voiceAppCt);
             return Results.Content(twiml, "application/xml");
         });
 
@@ -239,11 +246,7 @@ try
             {
                 Log.Information("Voice status: {CallSid} → {Status}", callSid, callStatus);
                 var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
-                // Use app lifetime token, not request token — Twilio's status webhook
-                // closes the connection quickly, cancelling ctx.RequestAborted before
-                // EndCallAsync finishes saving buffered messages.
-                var appCt = app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
-                await voiceService.EndCallAsync(callSid, appCt);
+                await voiceService.EndCallAsync(callSid, voiceAppCt);
             }
 
             return Results.Ok();
