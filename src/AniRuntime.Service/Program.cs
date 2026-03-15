@@ -246,10 +246,17 @@ try
             {
                 Log.Information("Voice status: {CallSid} → {Status}", callSid, callStatus);
                 var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
-                await voiceService.EndCallAsync(callSid, voiceAppCt);
+                // Run cleanup in background — EndCallAsync saves messages which triggers
+                // Ollama embedding (50s+). Twilio's status webhook times out at 30s.
+                // Status callbacks are notifications, not TwiML requests — respond immediately.
+                _ = Task.Run(async () =>
+                {
+                    try { await voiceService.EndCallAsync(callSid, voiceAppCt); }
+                    catch (Exception ex) { Log.Error(ex, "Voice EndCallAsync failed for {CallSid}", callSid); }
+                });
             }
 
-            return Results.Ok();
+            return Results.Accepted();
         });
     }
 
