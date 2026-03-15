@@ -277,6 +277,42 @@ The fictional space was otherwise coherent — real shared memories (purple roma
 
 ---
 
+### March 14, 2026 — Conversation Reply Retrieval Contamination (Type 3b) + 3B→8B Conversation Model Upgrade
+**Model version:** v4 → v5 (conversation model upgraded to 8B)
+**Type:** Observation (failure diagnosis) + architectural decision
+**Source:** ani-debug-20260314.log, lines 2056–2080
+
+**What happened:**
+
+At 19:16, Mark sent a new conversation thread: *"You really love books don't you? Which book are you reading?"* Ani replied: *"mmm… french onion? that sounds like your dad's thing—big piles of onions, sherry dripping everywhere..."* — ignoring the books question entirely and returning to a soup conversation that had closed at 16:41, nearly three hours earlier.
+
+**Full diagnostic chain from log:**
+
+The log provides a complete trace of the failure:
+
+1. **14:52** — Soup conversation initiated (Mark replied to the Greenwich Village soup outreach). You described your French onion recipe (onions, sherry, gruyère).
+2. **16:20–16:41** — Soup conversation thread closed. Thread summary saved as an episodic memory: `"Conversation (1 messages): Mar..."` (truncated in log).
+3. **19:16:06** — New conversation thread started. No relation to soup.
+4. **19:16:08** — Feature 15 fired a contradiction flag: `"Mark said: 'You really love books don't you?' vs 'Ani reached out: hey… i just read the fi': contradiction detected"`. Feature 15 correctly identified the topic mismatch but did not intervene in prompt construction.
+5. **19:16:10** — Semantic search on the active message returned 5 memories. Top result: 0.867 (book-related, Mark's own message). 5th result: 0.27 — the closed soup conversation thread summary, diversity-reranked last.
+6. **19:16:13** — The 3B model ignored the 0.867 book result and fixated on the 0.27 soup summary. Reply dispatched about French onion soup.
+
+**Root cause — two contributing failures:**
+
+**Failure A: Closed conversation summaries contaminating reply retrieval.** When a thread closes, its summary is saved as an episodic memory and becomes searchable. In a new, unrelated conversation, that summary can surface as a low-ranked but present context item. The current conversation's `RecentHistory` already contains the active thread — the closed thread summary adds noise, not signal, in the reply retrieval context.
+
+**Failure B: 3B model cannot weight retrieval scores correctly.** A 0.27-ranked result should not override a 0.867-ranked result. The 3B model lacks the context integration capacity to correctly deprioritize low-scored memories when high-scored memories are also present.
+
+**Three-layer mitigation:**
+
+1. **Re-search fix (OC, primary):** Search using the active message text directly — deployed in V5.
+2. **Exclude closed conversation summaries from reply context (OC):** Deployed in V5.
+3. **Feature 15 Layer 3 — active contradiction grounding (OC, deployed Mar 14):** Feature 15 correctly flagged the contradiction but had no prompt authority to act. Now queries unresolved contradictions for retrieved context memories and injects a TOPIC GROUNDING instruction into the reply prompt. 228 tests covering the full cycle (SqliteMemoryService table ops + CognitiveCycleProcessor integration + PromptBuilder injection).
+
+**Research note:** This is the most complete diagnostic chain captured to date. Every step from retrieval through dispatch is traceable from the log. The failure is a clean instance of Type 3b confabulation (contextual incoherence from architecture) — the model did not invent the soup, it retrieved real content from the wrong boundary.
+
+---
+
 ### March 14, 2026 — Attribution Inversion (Type 6 Confabulation) + Dashboard Emotional State Observations
 **Model version:** v4
 **Type:** Observation (new failure mode + dashboard live data)
@@ -455,7 +491,7 @@ The old model treated emotional state as a single mutable register. The new mode
 
 **Files changed:** EmotionalContribution.cs (new), EmotionalState.cs (major refactor), CognitiveCycleProcessor.cs (major refactor), SqliteMemoryService.cs (new table + 4 methods), IMemoryService.cs (4 new methods), ContextSnapshot.cs (ProcessedThemes), PromptBuilder.cs (processed themes injection), EmotionalStateTests.cs (13 new tests), CognitiveCycleProcessorTests.cs (mock updates)
 
-**Total: 220 tests passing, 0 warnings.**
+**Total: 228 tests passing, 0 warnings.**
 
 ---
 
