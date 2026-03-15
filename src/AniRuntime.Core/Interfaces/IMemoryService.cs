@@ -41,4 +41,5 @@ public interface IMemoryService
     Task<List<EmotionalContribution>> GetActiveContributionsAsync(CancellationToken ct = default);
     Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default);
     Task CleanupDecayedContributionsAsync(CancellationToken ct = default);
+    Task ExpireContributionAsync(Guid id, CancellationToken ct = default);
 }

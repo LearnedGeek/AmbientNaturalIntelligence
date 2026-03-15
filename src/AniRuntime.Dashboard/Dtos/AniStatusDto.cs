@@ -16,7 +16,7 @@ public class EmotionalStateDto
 {
     public float Warmth { get; set; }
     public float Energy { get; set; }
-    public float Concern { get; set; }
+    public float Worry { get; set; }
     public float Playfulness { get; set; }
     public string? Mood { get; set; }
 }
@@ -34,7 +34,7 @@ public class EmotionalHistoryPointDto
 {
     public float Warmth { get; set; }
     public float Energy { get; set; }
-    public float Concern { get; set; }
+    public float Worry { get; set; }
     public float Playfulness { get; set; }
     public DateTimeOffset Timestamp { get; set; }
 }

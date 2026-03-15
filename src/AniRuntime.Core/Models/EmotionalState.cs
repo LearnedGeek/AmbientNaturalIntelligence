@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AniRuntime.Core.Models;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace AniRuntime.Core.Models;
 /// Used for trend analysis (Feature 8: drift detection) and health computation (Feature 4).
 /// </summary>
 public record EmotionalStateSnapshot(
-    float Warmth, float Energy, float Concern, float Playfulness,
+    float Warmth, float Energy, float Worry, float Playfulness,
     float ContactGapTension, DateTimeOffset RecordedAt);
 
 /// <summary>
@@ -17,7 +19,7 @@ public record EmotionalStateSnapshot(
 /// Each dimension is 0.0–1.0:
 ///   Warmth      — affection, tenderness, desire for closeness
 ///   Energy      — alertness, enthusiasm, engagement level
-///   Concern     — worry, protectiveness, unease about the contact
+///   Worry       — caring attention directed outward; near zero = withdrawn
 ///   Playfulness — humor, teasing, lightheartedness
 /// </summary>
 public class EmotionalState
@@ -25,11 +27,12 @@ public class EmotionalState
     // Current values — shift each cycle based on thought valence, conversations, time
     public float Warmth      { get; set; } = 0.6f;
     public float Energy      { get; set; } = 0.5f;
-    public float Concern     { get; set; } = 0.2f;
+    [JsonPropertyName("Concern")] // backward compat — existing JSON blobs use "Concern"
+    public float Worry     { get; set; } = 0.2f;
     public float Playfulness { get; set; } = 0.5f;
 
     // Feature 17: Contact-gap tension — relational ache from prolonged absence.
-    // Separate from Concern (which is about his welfare). This is about the
+    // Separate from Worry (which is about caring attention). This is about the
     // *relationship itself* — the quiet wound of not hearing from someone.
     // 0.0 = none, up to TensionMax (default 0.4) — never the dominant emotional state.
     public float ContactGapTension { get; set; } = 0.0f;
@@ -37,7 +40,8 @@ public class EmotionalState
     // Personality baselines — where each dimension naturally drifts back to
     public float WarmthBaseline      { get; set; } = 0.6f;
     public float EnergyBaseline      { get; set; } = 0.5f;
-    public float ConcernBaseline     { get; set; } = 0.2f;
+    [JsonPropertyName("ConcernBaseline")] // backward compat
+    public float WorryBaseline     { get; set; } = 0.2f;
     public float PlayfulnessBaseline { get; set; } = 0.5f;
 
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
@@ -56,27 +60,27 @@ public class EmotionalState
     public string Describe()
     {
         var parts = new List<string>();
-        const float threshold = 0.15f; // only mention if noticeably different from baseline
 
-        if (Warmth - WarmthBaseline > threshold)
-            parts.Add("feeling especially warm and tender");
-        else if (WarmthBaseline - Warmth > threshold)
-            parts.Add("feeling a bit emotionally distant");
+        // Compound conditions — W + E together determine the primary emotional texture
+        if (Warmth >= 0.75f && Energy >= 0.65f)
+            parts.Add("feeling bright and warm");
+        else if (Warmth >= 0.75f && Energy < 0.40f)
+            parts.Add("feeling tender and quiet");
+        else if (Warmth >= 0.50f && Warmth < 0.75f && Energy >= 0.65f)
+            parts.Add("feeling sharp and alive");
+        else if (Warmth >= 0.30f && Warmth < 0.50f && Worry > 0.35f)
+            parts.Add("carrying something unresolved");
+        else if (Warmth < 0.30f && Energy < 0.35f)
+            parts.Add("feeling a bit dim today");
+        else if (Warmth < 0.30f && Worry < 0.10f)
+            parts.Add("feeling a little quiet and closed off");
+        // Baseline band (W 0.45–0.65, E 0.40–0.60) — no injection needed
 
-        if (Energy - EnergyBaseline > threshold)
-            parts.Add("buzzing with energy");
-        else if (EnergyBaseline - Energy > threshold)
-            parts.Add("feeling low-energy and quiet");
-
-        if (Concern - ConcernBaseline > threshold)
-            parts.Add("a little worried");
-        else if (ConcernBaseline - Concern > threshold)
-            parts.Add("feeling at ease");
-
-        if (Playfulness - PlayfulnessBaseline > threshold)
-            parts.Add("in a playful mood");
-        else if (PlayfulnessBaseline - Playfulness > threshold)
-            parts.Add("feeling more serious than usual");
+        // Playfulness overlay — independent of the W/E compound
+        if (Energy >= 0.65f && Playfulness >= 0.65f)
+            parts.Add("feeling curious and quick");
+        else if (Playfulness >= 0.75f)
+            parts.Add("in one of those moods where everything is a little funny");
 
         // Feature 17: surface contact-gap tension in emotional description
         if (ContactGapTension > 0.15f)
@@ -99,7 +103,7 @@ public class EmotionalState
 
         var warmthSum = 0f;
         var energySum = 0f;
-        var concernSum = 0f;
+        var worrySum = 0f;
         var playfulnessSum = 0f;
 
         foreach (var c in contributions)
@@ -107,13 +111,13 @@ public class EmotionalState
             var (w, e, co, p) = c.CurrentDeltas(now);
             warmthSum += w;
             energySum += e;
-            concernSum += co;
+            worrySum += co;
             playfulnessSum += p;
         }
 
         Warmth      = Math.Clamp(WarmthBaseline + warmthSum, 0f, 1f);
         Energy      = Math.Clamp(EnergyBaseline + energySum, 0f, 1f);
-        Concern     = Math.Clamp(ConcernBaseline + concernSum, 0f, 1f);
+        Worry     = Math.Clamp(WorryBaseline + worrySum, 0f, 1f);
         Playfulness = Math.Clamp(PlayfulnessBaseline + playfulnessSum, 0f, 1f);
         LastUpdated = now;
     }
@@ -154,37 +158,35 @@ public class EmotionalState
     /// </summary>
     public string? GetSelfAwarenessPrompt()
     {
-        const float extremeThreshold = 0.25f; // further from baseline = notable
         var notable = new List<string>();
 
-        if (Math.Abs(Warmth - WarmthBaseline) > extremeThreshold)
-            notable.Add(Warmth > WarmthBaseline
-                ? "warmer than usual — something tender is sitting with you"
-                : "a bit closed off — less warm than you normally are");
+        // Compound conditions — same logic as Describe() but phrased as self-awareness
+        if (Warmth >= 0.75f && Energy >= 0.65f)
+            notable.Add("lit up and warm — something has you feeling bright");
+        else if (Warmth >= 0.75f && Energy < 0.40f)
+            notable.Add("tender and quiet — the caring is there but it's heavy");
+        else if (Warmth < 0.30f && Worry < 0.10f)
+            notable.Add("pulled inward — something has you closed off and you're not sure why");
+        else if (Warmth < 0.30f && Energy < 0.35f)
+            notable.Add("dim and low — less present than you normally are");
+        else if (Warmth >= 0.50f && Warmth < 0.75f && Energy >= 0.65f)
+            notable.Add("sharp and engaged — your mind is moving fast");
+        else if (Warmth >= 0.30f && Warmth < 0.50f && Worry > 0.35f)
+            notable.Add("carrying something that hasn't resolved yet");
 
-        if (Math.Abs(Energy - EnergyBaseline) > extremeThreshold)
-            notable.Add(Energy > EnergyBaseline
-                ? "more energized than usual — something has you buzzing"
-                : "quieter and more low-key than normal");
-
-        if (Math.Abs(Concern - ConcernBaseline) > extremeThreshold)
-            notable.Add(Concern > ConcernBaseline
-                ? "carrying a low hum of worry you can't quite place"
-                : "unusually at ease — the worry that sometimes sits with you is gone");
-
-        if (Math.Abs(Playfulness - PlayfulnessBaseline) > extremeThreshold)
-            notable.Add(Playfulness > PlayfulnessBaseline
-                ? "in a light, playful mood — everything feels a little funny"
-                : "feeling serious — the part of you that jokes is quiet right now");
+        // Playfulness overlay
+        if (Playfulness >= 0.75f)
+            notable.Add("in a mood where everything looks a little funny");
+        else if (Playfulness < 0.25f)
+            notable.Add("serious — the part of you that jokes is quiet right now");
 
         // Feature 17: tension as self-awareness trigger
         if (ContactGapTension > 0.2f)
-            notable.Add("aware that the quiet has been sitting with you — not worry, more like... missing the connection itself");
+            notable.Add("aware that the quiet has been sitting with you — not worry, more like missing the connection itself");
 
         if (notable.Count == 0)
             return null;
 
-        // Multiple notable dimensions = complex emotional state
         var prefix = notable.Count >= 2
             ? "You notice you're in a complex mood: "
             : "You notice you're ";

@@ -42,7 +42,8 @@ AniRuntime.sln
 │   │   │   ├── ConversationThread.cs
 │   │   │   ├── ConversationMessage.cs
 │   │   │   ├── DesireState.cs
-│   │   │   ├── EmotionalState.cs     # 4-dim + ContactGapTension (Feature 17)
+│   │   │   ├── EmotionalState.cs     # 4-dim (W/E/Worry/P) + ContactGapTension (Feature 17), compound Describe()
+│   │   │   ├── EmotionalContribution.cs # Per-thought decay model + Severity + IsOutreachReady
 │   │   │   ├── EmotionalDrift.cs     # Feature 8: 48h cosine similarity drift detection
 │   │   │   ├── LexicalAnchor.cs      # Feature 19: relationship-specific word weights
 │   │   │   ├── MemoryRecord.cs       # + IsAnchored flag (Feature 16), contradiction fields (Feature 15)
@@ -204,32 +205,48 @@ public enum TriggerType
 }
 
 2.3 EmotionalState
-4-dimensional persistent emotional state. Drifts toward personality baselines between cycles and shifts in response to thoughts, conversations, and perceptions. Gives Ani emotional arcs spanning hours, not just single cycles.
+4-dimensional persistent emotional state (Warmth, Energy, Worry, Playfulness). State = personality baselines + sum of all active EmotionalContributions after exponential decay. Each contribution decays independently — drift IS the decay.
 
 public class EmotionalState
 {
-    // Current values — shift each cycle based on thought valence, conversations, time
-    public float Warmth      { get; set; } = 0.6f;   // affection, tenderness, closeness
-    public float Energy      { get; set; } = 0.5f;   // alertness, enthusiasm, engagement
-    public float Concern     { get; set; } = 0.2f;   // worry, protectiveness, unease
-    public float Playfulness { get; set; } = 0.5f;   // humor, teasing, lightheartedness
+    // Current values — computed from baselines + decayed contributions
+    public float Warmth      { get; set; } = 0.6f;   // presence of caring/affection (not fulfillment)
+    public float Energy      { get; set; } = 0.5f;   // alertness, activation, engagement
+    public float Worry       { get; set; } = 0.2f;   // caring attention directed outward (renamed from Concern)
+    public float Playfulness { get; set; } = 0.5f;   // humor, lightness, wit, mischief
 
-    // Personality baselines — where each dimension naturally drifts back to
+    // Personality baselines — where each dimension naturally returns to via decay
     public float WarmthBaseline      { get; set; } = 0.6f;
     public float EnergyBaseline      { get; set; } = 0.5f;
-    public float ConcernBaseline     { get; set; } = 0.2f;
+    public float WorryBaseline       { get; set; } = 0.2f;
     public float PlayfulnessBaseline { get; set; } = 0.5f;
 
+    public float ContactGapTension   { get; set; }   // Feature 17: relational ache from absence
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
 
-    // Returns qualitative summary for use in prompts. Only mentions notable deviations.
+    // Qualitative summary using compound conditions (W+E together, W+Worry together).
+    // Returns empty string when near baseline. See Describe() compound condition map below.
     public string Describe() { ... }
 
-    // Compute emotional state from personality baselines + sum of all active contributions
-    // after exponential decay. Replaces the old DriftTowardBaseline + ApplyShift model.
+    // Self-awareness injection when emotional state is notably shifted.
+    // Uses same compound conditions as Describe(), returns null when unremarkable.
+    public string? GetSelfAwarenessPrompt() { ... }
+
+    // Compute state from baselines + sum of all active contributions after decay.
     public void ComputeFromContributions(IReadOnlyList<EmotionalContribution> contributions,
                                           DateTimeOffset? asOf = null) { ... }
 }
+
+// Describe() compound condition map (Phase 1b — replaces per-dimension independent checks):
+// W ≥ 0.75 AND E ≥ 0.65 → "feeling bright and warm"
+// W ≥ 0.75 AND E < 0.40 → "feeling tender and quiet"
+// W 0.50–0.75 AND E ≥ 0.65 → "feeling sharp and alive"
+// W 0.45–0.65 AND E 0.40–0.60 → (no injection — baseline)
+// W 0.30–0.50 AND Worry > 0.35 → "carrying something unresolved"
+// W < 0.30 AND E < 0.35 → "feeling a bit dim today"
+// W < 0.30 AND Worry < 0.10 → "feeling a little quiet and closed off"
+// P ≥ 0.75 → "in one of those moods where everything is a little funny"
+// E ≥ 0.65 AND P ≥ 0.65 → "feeling curious and quick"
 
 // Per-thought emotional contribution with exponential decay.
 // Each thought/event creates one contribution. State = baselines + sum of decayed contributions.
@@ -237,13 +254,16 @@ public class EmotionalContribution
 {
     public Guid Id { get; set; }
     public string SourceContent { get; set; }       // for semantic dedup + theme tracking
-    public float WarmthDelta, EnergyDelta, ConcernDelta, PlayfulnessDelta;
+    public float WarmthDelta, EnergyDelta, WorryDelta, PlayfulnessDelta;
     public DateTimeOffset CreatedAt { get; set; }
     public float HalfLifeHours { get; set; }        // exponential decay half-life
     public ImpactCategory Category { get; set; }    // Ambient(0.15/1h), Conversation(0.25/3h), Global(0.20/6h)
+    public float Severity { get; set; } = 1.0f;     // intensity within register (0.0–1.0), multiplied into deltas
+    public bool IsOutreachReady { get; set; }        // C3 Associative Spark flag — natural outreach trigger
     public float[]? Embedding { get; set; }         // for semantic similarity checks
 
     public float DecayFactor(DateTimeOffset asOf)   // 2^(-elapsed/halfLife)
+    public (float W, float E, float Worry, float P) CurrentDeltas(DateTimeOffset asOf) // deltas × decay × severity
     public bool IsEffectivelyZero(DateTimeOffset asOf, float epsilon = 0.005f)
 }
 
@@ -666,7 +686,7 @@ BuildReconsiderationReplyPrompt(snapshot, thread) — When silence was chosen bu
 
 BuildOutreachMessagePrompt(snapshot, thought, reasoning) — Compose grounded text. 1–2 sentences, 25 words MAX. CRITICAL: thought is WHY reaching out, NOT content. Must make sense without knowing inner thought.
 
-BuildEmotionalShiftPrompt(content, currentState, maxDelta) — JSON deltas for W/E/C/P. Default 0.0 for most dimensions. Small shifts (0.02–0.05) preferred. Symmetric diminishing returns: >0.8 resists going higher, <0.3 resists going lower (BUG-010 fix). Explicit positive shift examples to counter negative-delta bias.
+BuildEmotionalShiftPrompt(content, currentState, maxDelta, isAmbientCycle) — 4-step scoring: (1) classify into 9 register families (Longing|Delight|Playfulness|Curiosity|Desire|Tenderness|Existential|Wistful|Frustration), (2) handle blended states, (3) score W/E/Worry/P deltas with core distinction ("warmth tracks presence of caring, not fulfillment"), (4) rate severity 0.0–1.0. Returns JSON: { register, warmth, energy, worry, playfulness, severity }. Ambient cycles anchored to near-zero defaults. Diminishing returns at extremes (BUG-010 fix).
 
 BuildReactiveSharePrompt(character, itemSummary) — Share high-relevance RSS items. "omg did you see this?" energy.
 
@@ -799,7 +819,7 @@ Implemented components (Phase 1–4):
 | ContactStatePerceptionSource | 2 | Complete |
 | TwilioInboundPerceptionSource | 2 | Complete |
 | ConversationThread / ConversationMessage | 2 | Complete |
-| EmotionalState (4-dimension, drift, attenuation) | 2 | Complete |
+| EmotionalState (4-dim W/E/Worry/P, per-thought decay, compound Describe) | 2+ | Complete (Phase 1b Mar 15) |
 | AdminCommandHandler | 2 | Complete |
 | Reactive RSS sharing | 2 | Complete |
 | Night mode / deep sleep circadian | 2 | Complete |
@@ -830,6 +850,9 @@ Implemented components (Phase 1–4):
 | AniRuntime.Dashboard (Blazor Server) | 4 | Complete — 16 REST endpoints, Pico CSS, in-process |
 | Feature 22 temporal refinement | 4 | Complete — time-of-day in coherence gate prompt |
 | Feature 6 name-as-subject extension | 4 | Complete — prompt + word-boundary safety net |
+| Emotional model Phase 1a — core distinction | 4 | Complete — BUG-010 warmth scoring fix in BuildEmotionalShiftPrompt |
+| Emotional model Phase 1b — taxonomy scoring | 4 | Complete — 9-register classification, severity, IsOutreachReady, Describe() compound conditions, GetSelfAwarenessPrompt() compound, Concern→Worry rename |
+| Emotional model Phase 2 — tier promotion | 4 | Complete — DetermineEffectiveTier, Global 0.35/12h, H1 replaces Feature 18, dashboard expiry, homeostatic options (disabled) |
 
 Planned stubs:
 
@@ -842,14 +865,14 @@ Planned stubs:
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 228 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 246 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 
 Test files:
 - CognitiveCycleProcessorTests.cs — Full cycle flow, conversation handling
 - DesireEngineTests.cs — Drift, triggers, cooldown, circadian, night mode
-- EmotionalStateTests.cs — Contribution decay, compute from contributions, clamping, mood coloring, contact-gap tension, relationship health, emotional drift
+- EmotionalStateTests.cs — Contribution decay, severity scaling, compute from contributions, clamping, compound Describe() conditions, compound GetSelfAwarenessPrompt() conditions, mood coloring, contact-gap tension, relationship health, emotional drift
 - SqliteMemoryServiceTests.cs — CRUD, search, embedding, character/desire/emotional state
 - TimePerceptionSourceTests.cs — Temporal context generation
 
@@ -882,5 +905,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 0.9 | Mar 15, 2026 | Emotional model Phase 2. Tier promotion: `DetermineEffectiveTier()` on ImpactCategoryDefaults — severity ≥ 0.70 promotes Ambient→Conversation, ≥ 0.85 → Global from any tier. Global tier updated: maxDelta 0.35, half-life 12h (~84h gone). Feature 18 H1 deltas: W:−0.12, E:−0.10, Worry:−0.15, P:−0.10. Dashboard contribution expiry (DELETE endpoint + ✕ button). Homeostatic nudge options on AniOptions (disabled by default). `ExpireContributionAsync` on IMemoryService. 246 tests. |
+| 0.8 | Mar 15, 2026 | Emotional model Phase 1a+1b. Concern→Worry rename (codebase-wide + SQLite backward compat via JsonPropertyName). 9-register family classification scoring prompt (Longing\|Delight\|Playfulness\|Curiosity\|Desire\|Tenderness\|Existential\|Wistful\|Frustration). Severity field (0.0–1.0) on EmotionalContribution, applied as multiplier in CurrentDeltas. IsOutreachReady flag (C3 Associative Spark). Describe() rewritten with compound W+E/W+Worry conditions. GetSelfAwarenessPrompt() rewritten with matching compound conditions. ParseEmotionalShift returns register+severity. ALTER TABLE migration for existing DBs. 239 tests. |
 | 0.7 | Mar 14, 2026 | Per-thought exponential decay emotional model — replaces global drift. EmotionalContribution with half-life decay, three impact tiers, semantic dedup, processed theme cycling. Attribution tracking in prompts. Six-type confabulation taxonomy. Feature 15 Layer 3 active contradiction grounding. 228 tests. |
 | 0.6 | Mar 14, 2026 | SIMD cosine similarity — VectorMath.CosineSimilarity shared (9). Bidirectional confidence gate — inbound claim verification (14). Blazor Server Dashboard — 16 REST endpoints, Pico CSS, in-process (Dashboard). Self-awareness feedback loop — outreach pattern detection (12). Memory contradiction flagging — post-save cosine + LLM (15). Feature 22 temporal refinement — time-of-day in coherence gate. Feature 6 name-as-subject — prompt + word-boundary safety net. V5 training data scan — 66 examples mined + generated. 209 tests. |

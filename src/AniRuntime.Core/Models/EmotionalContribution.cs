@@ -20,7 +20,7 @@ public class EmotionalContribution
     /// <summary>Initial scored deltas — the contribution at full strength.</summary>
     public float WarmthDelta { get; set; }
     public float EnergyDelta { get; set; }
-    public float ConcernDelta { get; set; }
+    public float WorryDelta { get; set; }
     public float PlayfulnessDelta { get; set; }
 
     /// <summary>When this contribution was created (or last refreshed).</summary>
@@ -40,6 +40,19 @@ public class EmotionalContribution
     /// </summary>
     public ImpactCategory Category { get; set; } = ImpactCategory.Ambient;
 
+    /// <summary>
+    /// Intensity within the emotional register (0.0–1.0). Applied as a multiplier
+    /// to the raw deltas before tier ceiling clamping. Default 1.0 for backward compat.
+    /// Phase 2 uses this for tier promotion: severity ≥ 0.85 → Global tier.
+    /// </summary>
+    public float Severity { get; set; } = 1.0f;
+
+    /// <summary>
+    /// C3 Associative Spark flag — signals that this thought has natural outreach
+    /// potential ("something made me think of you") independent of the desire threshold.
+    /// </summary>
+    public bool IsOutreachReady { get; set; }
+
     /// <summary>Optional embedding for semantic similarity checks.</summary>
     public float[]? Embedding { get; set; }
 
@@ -57,14 +70,14 @@ public class EmotionalContribution
         return (float)Math.Pow(2.0, -elapsed / HalfLifeHours);
     }
 
-    /// <summary>Current effective deltas after decay.</summary>
-    public (float Warmth, float Energy, float Concern, float Playfulness) CurrentDeltas(DateTimeOffset asOf)
+    /// <summary>Current effective deltas after severity scaling and decay.</summary>
+    public (float Warmth, float Energy, float Worry, float Playfulness) CurrentDeltas(DateTimeOffset asOf)
     {
-        var factor = DecayFactor(asOf);
+        var factor = DecayFactor(asOf) * Severity;
         return (
             WarmthDelta * factor,
             EnergyDelta * factor,
-            ConcernDelta * factor,
+            WorryDelta * factor,
             PlayfulnessDelta * factor
         );
     }
@@ -91,7 +104,7 @@ public enum ImpactCategory
     /// <summary>Direct conversation with contact. Max delta 0.25, half-life 3 hours.</summary>
     Conversation,
 
-    /// <summary>Major news, life events. Max delta 0.20, half-life 6 hours.</summary>
+    /// <summary>Major news, life events. Max delta 0.35, half-life 12 hours.</summary>
     Global
 }
 
@@ -105,7 +118,23 @@ public static class ImpactCategoryDefaults
     {
         ImpactCategory.Ambient      => (0.15f, 1.0f),
         ImpactCategory.Conversation => (0.25f, 3.0f),
-        ImpactCategory.Global       => (0.20f, 6.0f),
+        ImpactCategory.Global       => (0.35f, 12.0f),
         _                           => (0.15f, 1.0f),
     };
+
+    /// <summary>
+    /// Severity-driven tier promotion. High-severity ambient thoughts promote to
+    /// Conversation or Global tier for longer-lasting emotional impact.
+    /// Kept here (not in CognitiveCycleProcessor) for discoverability and testability.
+    /// </summary>
+    public static ImpactCategory DetermineEffectiveTier(
+        ImpactCategory baseTier, float severity, AniOptions options)
+    {
+        if (severity >= options.GlobalPromotionThreshold)
+            return ImpactCategory.Global;
+        if (severity >= options.ConversationPromotionThreshold
+            && baseTier == ImpactCategory.Ambient)
+            return ImpactCategory.Conversation;
+        return baseTier;
+    }
 }

@@ -86,6 +86,16 @@ public class AniOptions
     // Feature 18: Reactive withdrawal — how long emotional withdrawal lasts after hurt detection
     public double WithdrawalDurationMinutes    { get; set; } = 20.0;
 
+    // Tier promotion — severity-driven tier escalation
+    public float GlobalPromotionThreshold       { get; set; } = 0.85f;  // severity ≥ this → Global from any tier
+    public float ConversationPromotionThreshold { get; set; } = 0.70f;  // severity ≥ this → Conversation from Ambient
+
+    // Homeostatic nudge — counteracts sustained negative drift on a dimension
+    public int   HomeostaticLookback        { get; set; } = 4;     // check last N ambient contributions
+    public int   HomeostaticTriggerCount    { get; set; } = 3;     // N-of-lookback negative → nudge
+    public float HomeostaticNudgeStrength   { get; set; } = 0.03f; // positive nudge magnitude
+    public bool  HomeostaticNudgeEnabled    { get; set; } = false;  // off by default — enable after scoring fix confirmed
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

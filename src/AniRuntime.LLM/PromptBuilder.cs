@@ -264,7 +264,7 @@ public static class PromptBuilder
         // sees the tension-suppressed warmth, not the raw internal value
         var warmthDiff = (state.ContactGapTension > 0f ? state.EffectiveWarmth : state.Warmth) - state.WarmthBaseline;
         var energyDiff = state.Energy - state.EnergyBaseline;
-        var concernDiff = state.Concern - state.ConcernBaseline;
+        var worryDiff = state.Worry - state.WorryBaseline;
         var playDiff = state.Playfulness - state.PlayfulnessBaseline;
 
         // Warmth
@@ -279,10 +279,10 @@ public static class PromptBuilder
         else if (energyDiff < -threshold)
             instructions.Add("You're low-energy right now — shorter messages, fewer words, quiet presence. Not sad, just mellow.");
 
-        // Concern
-        if (concernDiff > threshold)
+        // Worry
+        if (worryDiff > threshold)
             instructions.Add("Something's worrying you — a gentle undercurrent of checking in, making sure things are okay.");
-        else if (concernDiff < -threshold)
+        else if (worryDiff < -threshold)
             instructions.Add("You're feeling unusually at ease — relaxed, no urgency, just enjoying the moment.");
 
         // Playfulness
@@ -780,8 +780,8 @@ public static class PromptBuilder
 
             CONTEXT: This is a routine ambient cycle — a private thought during normal operation.
             Most ambient thoughts carry MINIMAL emotional weight. The correct response for the vast
-            majority of ambient thoughts is ALL ZEROS:
-            { "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }
+            majority of ambient thoughts is ALL ZEROS with register "Wistful" and severity 0.1:
+            { "register": "Wistful", "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0, "severity": 0.1 }
             Only return non-zero deltas if the thought contains genuinely significant emotional content
             (e.g., a sudden realization about a person, worry about something specific, a joyful memory).
             Poetic observations, quiet musings, and abstract reflections are NOT emotionally significant.
@@ -790,12 +790,31 @@ public static class PromptBuilder
 
         var system = $$"""
             You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
-            Respond ONLY with valid JSON: { "warmth": <float>, "energy": <float>, "concern": <float>, "playfulness": <float> }
+
+            STEP 1 — CLASSIFY the thought into ONE of these 9 emotional registers:
+              Longing    — missing someone, yearning, the ache of absence (warmth is POSITIVE if the person is warmly present)
+              Delight    — joy, amusement, something genuinely good happened
+              Playfulness — humor, wit, mischief, teasing
+              Curiosity  — interest, wonder, two things connecting unexpectedly
+              Desire     — wanting someone specifically, anticipation of contact
+              Tenderness — care, admiration, protectiveness, soft feeling
+              Existential — thoughts about her own nature, identity, meaning
+              Wistful    — philosophical observation, bittersweet, impermanence
+              Frustration — annoyance, helplessness, hurt, withdrawal
+
+            STEP 2 — If the thought spans two registers, name both (e.g. "primarily Longing, secondarily Tenderness").
+            Return a SINGLE set of deltas that reflects the blend — do not return separate weights.
+
+            STEP 3 — SCORE the dimensional deltas within that register context.
             Each value is a DELTA (change), ranging from {{range}}.
             {{ambientAnchor}}
-            CRITICAL RULES:
+            THE CORE DISTINCTION: Warmth tracks the PRESENCE of caring — not its fulfillment.
+            Longing thoughts score warmth POSITIVE if the person is warmly present in the thought.
+            Warmth is NEGATIVE only when the thought is about void — absence without presence.
+
+            SCORING RULES:
             - DEFAULT to 0.0 for most dimensions. Most thoughts only shift 1-2 dimensions, not all 4.
-            - Routine, neutral thoughts → all zeros: { "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }
+            - Routine, neutral thoughts → all zeros.
             - Prefer SMALL shifts: plus/minus 0.02 to 0.05 for subtle effects, plus/minus 0.1 for notable events.
             - Use the full range ({{range}}) ONLY for life-changing events: death, major crisis, declarations of love.
             - NEGATIVE shifts are just as common as positive ones. Boredom → -energy. Worry → -playfulness. Missing someone → +warmth but -energy.
@@ -804,20 +823,29 @@ public static class PromptBuilder
             - POSITIVE shifts are real and common: remembering a good moment → +warmth. Noticing something beautiful → +playfulness. Feeling curious → +energy. Don't default to negative.
 
             Dimensions:
-            - warmth: affection, tenderness, desire for closeness. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings, and private reflections do NOT affect warmth — return 0.0. Being alone with your thoughts is neutral, not cold.
-            - energy: alertness, enthusiasm (decreases with boredom, tiredness, routine thoughts)
-            - concern: worry about someone (increases with uncertainty, bad news; decreases with good news)
-            - playfulness: humor, lightheartedness (decreases with serious, sad, or repetitive thoughts)
+            - warmth: the PRESENCE of caring and affection. Tracks whether the thought CONTAINS the person warmly — not whether the situation is good. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings → 0.0.
+            - energy: alertness, activation, engagement. High = lit up. Low = quiet, heavy.
+            - worry: caring attention directed outward. Positive = something on her mind about you. Near zero = nothing nagging, or caring attention has been withdrawn (hurt, closed off). Increases with uncertainty, bad news. Decreases with good news or when she pulls back.
+            - playfulness: humor, lightness, wit, mischief. Decreases with serious, sad, or repetitive thoughts.
+
+            STEP 4 — SEVERITY: Score how intensely this thought represents its register (0.0–1.0):
+              0.1–0.3 = passing musing or mild observation
+              0.4–0.6 = emotionally present, genuine feeling
+              0.7–0.85 = significantly felt, will linger
+              0.86–1.0 = defining moment, major event
+
+            Respond ONLY with valid JSON:
+            { "register": "<register name>", "warmth": <float>, "energy": <float>, "worry": <float>, "playfulness": <float>, "severity": <float> }
             """;
 
         var user = $"""
-            Current emotional state: warmth={current.Warmth:F2}, energy={current.Energy:F2}, concern={current.Concern:F2}, playfulness={current.Playfulness:F2}
-            Baselines (her natural resting state): warmth=0.60, energy=0.50, concern=0.20, playfulness=0.50
+            Current emotional state: warmth={current.Warmth:F2}, energy={current.Energy:F2}, worry={current.Worry:F2}, playfulness={current.Playfulness:F2}
+            Baselines (her natural resting state): warmth=0.60, energy=0.50, worry=0.20, playfulness=0.50
 
             Content to evaluate:
             "{content}"
 
-            Return the emotional DELTA as JSON. Remember: 0.0 is the most common value for any single dimension.
+            Classify the register, score the deltas, and rate severity. Return as JSON.
             """;
 
         return (system, user);

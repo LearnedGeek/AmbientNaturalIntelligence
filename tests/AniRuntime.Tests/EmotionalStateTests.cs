@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using FluentAssertions;
@@ -14,7 +15,7 @@ public class EmotionalStateTests
 
         state.Warmth.Should().Be(state.WarmthBaseline);
         state.Energy.Should().Be(state.EnergyBaseline);
-        state.Concern.Should().Be(state.ConcernBaseline);
+        state.Worry.Should().Be(state.WorryBaseline);
         state.Playfulness.Should().Be(state.PlayfulnessBaseline);
     }
 
@@ -115,17 +116,14 @@ public class EmotionalStateTests
     {
         var state = new EmotionalState
         {
-            Warmth = 0.9f, WarmthBaseline = 0.6f,        // notably warm
-            Energy = 0.5f, EnergyBaseline = 0.5f,        // at baseline — not mentioned
-            Concern = 0.5f, ConcernBaseline = 0.2f,       // notably concerned
-            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f, // at baseline
+            Warmth = 0.9f, WarmthBaseline = 0.6f,        // W ≥ 0.75, E ≥ 0.65 → "bright and warm"
+            Energy = 0.7f, EnergyBaseline = 0.5f,
+            Worry = 0.5f, WorryBaseline = 0.2f,
+            Playfulness = 0.5f, PlayfulnessBaseline = 0.5f,
         };
 
         var desc = state.Describe();
-        desc.Should().Contain("warm");
-        desc.Should().Contain("worried");
-        desc.Should().NotContain("energy");
-        desc.Should().NotContain("playful");
+        desc.Should().Contain("bright and warm");
     }
 
     [Fact]
@@ -133,13 +131,13 @@ public class EmotionalStateTests
     {
         var state = new EmotionalState
         {
-            Warmth = 0.3f, WarmthBaseline = 0.6f,         // below — distant
-            Playfulness = 0.2f, PlayfulnessBaseline = 0.5f, // below — serious
+            Warmth = 0.25f, WarmthBaseline = 0.6f,         // W < 0.30, E < 0.35 → "dim today"
+            Energy = 0.30f, EnergyBaseline = 0.5f,
+            Playfulness = 0.2f, PlayfulnessBaseline = 0.5f,
         };
 
         var desc = state.Describe();
-        desc.Should().Contain("distant");
-        desc.Should().Contain("serious");
+        desc.Should().Contain("dim");
     }
 
     // ── Mood Coloring (BuildMoodInstruction) ─────────────────────────────
@@ -381,7 +379,7 @@ public class EmotionalStateTests
         var older = Enumerable.Range(0, 5)
             .Select(i => new EmotionalStateSnapshot(0.6f, 0.5f, 0.2f, 0.5f, 0f, now.AddHours(-10 - i)))
             .ToList();
-        // Recent: warmth dropped to 0.2, concern spiked to 0.8
+        // Recent: warmth dropped to 0.2, worry spiked to 0.8
         var recent = Enumerable.Range(0, 5)
             .Select(i => new EmotionalStateSnapshot(0.2f, 0.5f, 0.8f, 0.5f, 0f, now.AddHours(-i)))
             .ToList();
@@ -390,7 +388,7 @@ public class EmotionalStateTests
 
         drift.IsSignificant.Should().BeTrue();
         drift.WarmthDrift.Should().BeLessThan(-0.1f);
-        drift.ConcernDrift.Should().BeGreaterThan(0.1f);
+        drift.WorryDrift.Should().BeGreaterThan(0.1f);
         drift.Describe().Should().Contain("warmth").And.Contain("worry");
     }
 
@@ -451,7 +449,7 @@ public class EmotionalStateTests
         var c = new EmotionalContribution
         {
             WarmthDelta = 0.2f, EnergyDelta = -0.1f,
-            ConcernDelta = 0.15f, PlayfulnessDelta = 0.05f,
+            WorryDelta = 0.15f, PlayfulnessDelta = 0.05f,
             CreatedAt = created, HalfLifeHours = 1f
         };
 
@@ -487,7 +485,7 @@ public class EmotionalStateTests
         var c = new EmotionalContribution
         {
             WarmthDelta = 0.2f, EnergyDelta = -0.15f,
-            ConcernDelta = 0.1f, PlayfulnessDelta = 0.05f,
+            WorryDelta = 0.1f, PlayfulnessDelta = 0.05f,
             CreatedAt = created, HalfLifeHours = 1f
         };
         // After 10 half-lives: 0.2 * 2^(-10) ≈ 0.0002 — well below epsilon
@@ -504,11 +502,186 @@ public class EmotionalStateTests
     [Theory]
     [InlineData(ImpactCategory.Ambient, 0.15f, 1.0f)]
     [InlineData(ImpactCategory.Conversation, 0.25f, 3.0f)]
-    [InlineData(ImpactCategory.Global, 0.20f, 6.0f)]
+    [InlineData(ImpactCategory.Global, 0.35f, 12.0f)]
     public void ImpactCategoryDefaults_ReturnsCorrectValues(ImpactCategory category, float maxDelta, float halfLife)
     {
         var (actualMax, actualHalfLife) = ImpactCategoryDefaults.GetDefaults(category);
         actualMax.Should().Be(maxDelta);
         actualHalfLife.Should().Be(halfLife);
+    }
+
+    [Fact]
+    public void CurrentDeltas_AppliesSeverityMultiplier()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution
+        {
+            WarmthDelta = 0.2f, EnergyDelta = -0.1f,
+            WorryDelta = 0.15f, PlayfulnessDelta = 0.05f,
+            CreatedAt = created, HalfLifeHours = 1f,
+            Severity = 0.5f
+        };
+
+        var (w, e, co, p) = c.CurrentDeltas(created);
+        w.Should().BeApproximately(0.1f, 0.001f);   // 0.2 * 1.0 * 0.5
+        e.Should().BeApproximately(-0.05f, 0.001f);  // -0.1 * 1.0 * 0.5
+        co.Should().BeApproximately(0.075f, 0.001f);
+        p.Should().BeApproximately(0.025f, 0.001f);
+    }
+
+    [Fact]
+    public void CurrentDeltas_SeverityAndDecayCombine()
+    {
+        var created = DateTimeOffset.UtcNow;
+        var c = new EmotionalContribution
+        {
+            WarmthDelta = 0.2f,
+            CreatedAt = created, HalfLifeHours = 1f,
+            Severity = 0.5f
+        };
+
+        // After 1 half-life: 0.2 * 0.5(decay) * 0.5(severity) = 0.05
+        var (w, _, _, _) = c.CurrentDeltas(created.AddHours(1));
+        w.Should().BeApproximately(0.05f, 0.001f);
+    }
+
+    [Fact]
+    public void Describe_TenderAndQuiet_WhenHighWarmthLowEnergy()
+    {
+        var state = new EmotionalState { Warmth = 0.80f, Energy = 0.35f };
+        state.Describe().Should().Contain("tender and quiet");
+    }
+
+    [Fact]
+    public void Describe_SharpAndAlive_WhenModerateWarmthHighEnergy()
+    {
+        var state = new EmotionalState { Warmth = 0.60f, Energy = 0.70f };
+        state.Describe().Should().Contain("sharp and alive");
+    }
+
+    [Fact]
+    public void Describe_Unresolved_WhenLowWarmthHighWorry()
+    {
+        var state = new EmotionalState { Warmth = 0.40f, Worry = 0.40f };
+        state.Describe().Should().Contain("unresolved");
+    }
+
+    [Fact]
+    public void Describe_ClosedOff_WhenVeryLowWarmthAndWorry()
+    {
+        var state = new EmotionalState { Warmth = 0.20f, Worry = 0.05f, Energy = 0.50f };
+        state.Describe().Should().Contain("closed off");
+    }
+
+    [Fact]
+    public void Describe_PlayfulOverlay_HighPlayfulness()
+    {
+        var state = new EmotionalState { Playfulness = 0.80f };
+        state.Describe().Should().Contain("funny");
+    }
+
+    [Fact]
+    public void Describe_CuriousAndQuick_HighEnergyAndPlayfulness()
+    {
+        var state = new EmotionalState { Warmth = 0.80f, Energy = 0.70f, Playfulness = 0.70f };
+        var desc = state.Describe();
+        desc.Should().Contain("curious and quick");
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_ReturnsNull_WhenNearBaseline()
+    {
+        var state = new EmotionalState();
+        state.GetSelfAwarenessPrompt().Should().BeNull();
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_BrightAndWarm_WhenHighWarmthEnergy()
+    {
+        var state = new EmotionalState { Warmth = 0.80f, Energy = 0.70f };
+        var prompt = state.GetSelfAwarenessPrompt();
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("bright");
+    }
+
+    [Fact]
+    public void GetSelfAwarenessPrompt_ClosedOff_WhenVeryLowWarmthWorry()
+    {
+        var state = new EmotionalState { Warmth = 0.20f, Worry = 0.05f, Energy = 0.50f };
+        var prompt = state.GetSelfAwarenessPrompt();
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("closed off");
+    }
+
+    // ── Tier Promotion Tests ─────────────────────────────────────────────
+
+    [Fact]
+    public void DetermineEffectiveTier_BelowThresholds_ReturnsBaseTier()
+    {
+        var options = new AniOptions();
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Ambient, 0.5f, options)
+            .Should().Be(ImpactCategory.Ambient);
+    }
+
+    [Fact]
+    public void DetermineEffectiveTier_AboveConversationThreshold_PromotesAmbient()
+    {
+        var options = new AniOptions();
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Ambient, 0.75f, options)
+            .Should().Be(ImpactCategory.Conversation);
+    }
+
+    [Fact]
+    public void DetermineEffectiveTier_ConversationTier_NotPromotedAtModerateSeverity()
+    {
+        var options = new AniOptions();
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Conversation, 0.75f, options)
+            .Should().Be(ImpactCategory.Conversation);
+    }
+
+    [Fact]
+    public void DetermineEffectiveTier_AboveGlobalThreshold_PromotesToGlobal()
+    {
+        var options = new AniOptions();
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Ambient, 0.90f, options)
+            .Should().Be(ImpactCategory.Global);
+    }
+
+    [Fact]
+    public void DetermineEffectiveTier_ConversationToGlobal_AtHighSeverity()
+    {
+        var options = new AniOptions();
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Conversation, 0.90f, options)
+            .Should().Be(ImpactCategory.Global);
+    }
+
+    [Fact]
+    public void DetermineEffectiveTier_RespectsCustomThresholds()
+    {
+        var options = new AniOptions
+        {
+            ConversationPromotionThreshold = 0.50f,
+            GlobalPromotionThreshold = 0.60f,
+        };
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Ambient, 0.55f, options)
+            .Should().Be(ImpactCategory.Conversation);
+
+        ImpactCategoryDefaults.DetermineEffectiveTier(
+            ImpactCategory.Ambient, 0.65f, options)
+            .Should().Be(ImpactCategory.Global);
+    }
+
+    [Fact]
+    public void GlobalTier_HasExtendedHalfLife()
+    {
+        var (maxDelta, halfLife) = ImpactCategoryDefaults.GetDefaults(ImpactCategory.Global);
+        maxDelta.Should().Be(0.35f);
+        halfLife.Should().Be(12.0f);
     }
 }

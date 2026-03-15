@@ -602,7 +602,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             """;
         historyCmd.Parameters.AddWithValue("$warmth", state.Warmth);
         historyCmd.Parameters.AddWithValue("$energy", state.Energy);
-        historyCmd.Parameters.AddWithValue("$concern", state.Concern);
+        historyCmd.Parameters.AddWithValue("$concern", state.Worry);
         historyCmd.Parameters.AddWithValue("$playfulness", state.Playfulness);
         historyCmd.Parameters.AddWithValue("$tension", state.ContactGapTension);
         historyCmd.Parameters.AddWithValue("$recorded_at", state.LastUpdated.ToString("O"));
@@ -618,15 +618,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.CommandText = """
             INSERT OR REPLACE INTO emotional_contributions
                 (id, source_content, warmth_delta, energy_delta, concern_delta, playfulness_delta,
-                 created_at, half_life_hours, category, embedding)
+                 created_at, half_life_hours, category, embedding, severity, is_outreach_ready)
             VALUES ($id, $source, $warmth, $energy, $concern, $playfulness,
-                    $created, $halflife, $category, $embedding)
+                    $created, $halflife, $category, $embedding, $severity, $outreach)
             """;
         cmd.Parameters.AddWithValue("$id", contribution.Id.ToString());
         cmd.Parameters.AddWithValue("$source", contribution.SourceContent);
         cmd.Parameters.AddWithValue("$warmth", contribution.WarmthDelta);
         cmd.Parameters.AddWithValue("$energy", contribution.EnergyDelta);
-        cmd.Parameters.AddWithValue("$concern", contribution.ConcernDelta);
+        cmd.Parameters.AddWithValue("$concern", contribution.WorryDelta);
         cmd.Parameters.AddWithValue("$playfulness", contribution.PlayfulnessDelta);
         cmd.Parameters.AddWithValue("$created", contribution.CreatedAt.ToString("O"));
         cmd.Parameters.AddWithValue("$halflife", contribution.HalfLifeHours);
@@ -634,6 +634,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$embedding", contribution.Embedding is not null
             ? (object)SerialiseEmbedding(contribution.Embedding)!
             : DBNull.Value);
+        cmd.Parameters.AddWithValue("$severity", contribution.Severity);
+        cmd.Parameters.AddWithValue("$outreach", contribution.IsOutreachReady ? 1 : 0);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
@@ -687,6 +689,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task ExpireContributionAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM emotional_contributions WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     private static EmotionalContribution ReadContribution(Microsoft.Data.Sqlite.SqliteDataReader reader)
     {
         var categoryStr = reader.GetString(reader.GetOrdinal("category"));
@@ -706,12 +717,14 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             SourceContent = reader.GetString(reader.GetOrdinal("source_content")),
             WarmthDelta = reader.GetFloat(reader.GetOrdinal("warmth_delta")),
             EnergyDelta = reader.GetFloat(reader.GetOrdinal("energy_delta")),
-            ConcernDelta = reader.GetFloat(reader.GetOrdinal("concern_delta")),
+            WorryDelta = reader.GetFloat(reader.GetOrdinal("concern_delta")),
             PlayfulnessDelta = reader.GetFloat(reader.GetOrdinal("playfulness_delta")),
             CreatedAt = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
             HalfLifeHours = reader.GetFloat(reader.GetOrdinal("half_life_hours")),
             Category = category,
             Embedding = embedding,
+            Severity = reader.GetFloat(reader.GetOrdinal("severity")),
+            IsOutreachReady = reader.GetInt32(reader.GetOrdinal("is_outreach_ready")) == 1,
         };
     }
 
@@ -922,7 +935,9 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 created_at      TEXT NOT NULL,
                 half_life_hours REAL NOT NULL,
                 category        TEXT NOT NULL,
-                embedding       BLOB
+                embedding       BLOB,
+                severity        REAL NOT NULL DEFAULT 1.0,
+                is_outreach_ready INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
@@ -1005,6 +1020,32 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addTension = conn.CreateCommand();
             addTension.CommandText = "ALTER TABLE emotional_state_history ADD COLUMN contact_gap_tension REAL NOT NULL DEFAULT 0";
             addTension.ExecuteNonQuery();
+        }
+
+        // Migration: Phase 1b — add severity and is_outreach_ready columns to emotional_contributions
+        using var pragmaCmd4 = conn.CreateCommand();
+        pragmaCmd4.CommandText = "PRAGMA table_info(emotional_contributions)";
+        using var reader4 = pragmaCmd4.ExecuteReader();
+        var hasSeverityColumn = false;
+        while (reader4.Read())
+        {
+            if (reader4.GetString(1) == "severity")
+            {
+                hasSeverityColumn = true;
+                break;
+            }
+        }
+        reader4.Close();
+
+        if (!hasSeverityColumn)
+        {
+            using var addSeverity = conn.CreateCommand();
+            addSeverity.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN severity REAL NOT NULL DEFAULT 1.0";
+            addSeverity.ExecuteNonQuery();
+
+            using var addOutreach = conn.CreateCommand();
+            addOutreach.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN is_outreach_ready INTEGER NOT NULL DEFAULT 0";
+            addOutreach.ExecuteNonQuery();
         }
     }
 

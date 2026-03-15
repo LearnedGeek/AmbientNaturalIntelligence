@@ -98,7 +98,7 @@ public class CognitiveCycleProcessor
         await _memory.CleanupDecayedContributionsAsync(ct).ConfigureAwait(false);
 
         // Feature 2: Open loops as emotional weight — unresolved threads create gentle
-        // concern pressure. Proportional to count and age of oldest loop.
+        // worry pressure. Proportional to count and age of oldest loop.
         await ApplyOpenLoopPressureAsync(emotionalState, ct).ConfigureAwait(false);
 
         // Feature 17: Contact-gap tension — relational ache builds during prolonged absence.
@@ -1149,7 +1149,7 @@ public class CognitiveCycleProcessor
             _log.LogInformation("Care detected in message — creating care contribution");
             await SaveDirectContributionAsync(emotionalState,
                 "receiving care — someone checked in on me",
-                warmth: 0.1f, energy: 0.05f, concern: -0.1f, playfulness: 0f,
+                warmth: 0.1f, energy: 0.05f, worry: -0.1f, playfulness: 0f,
                 ImpactCategory.Conversation, ct).ConfigureAwait(false);
         }
 
@@ -1175,10 +1175,10 @@ public class CognitiveCycleProcessor
         // and sets a withdrawal window that suppresses outreach and quiets tone.
         if (emotionalState is not null && DetectHurtIntent(lastMessage))
         {
-            _log.LogInformation("Hurt detected in message — creating withdrawal contribution");
+            _log.LogInformation("Hurt detected in message — creating H1 withdrawal contribution");
             await SaveDirectContributionAsync(emotionalState,
                 "hurt detected — pulling back emotionally",
-                warmth: -0.15f, energy: -0.1f, concern: 0.05f, playfulness: -0.2f,
+                warmth: -0.12f, energy: -0.10f, worry: -0.15f, playfulness: -0.10f,
                 ImpactCategory.Conversation, ct).ConfigureAwait(false);
 
             _withdrawalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
@@ -1305,7 +1305,7 @@ public class CognitiveCycleProcessor
     /// Feature 10: Heuristic detection of care-giving intent in a contact's message.
     /// Returns true when the contact is checking in on Ani's wellbeing — "you okay?",
     /// "how are you doing?", "just checking on you", etc. This triggers an immediate
-    /// emotional shift (warmth up, concern down) before reply generation so the mood
+    /// emotional shift (warmth up, worry down) before reply generation so the mood
     /// coloring reflects that his attention genuinely lifted her spirits.
     /// </summary>
     internal static bool DetectCareGivingIntent(string message)
@@ -1426,8 +1426,8 @@ public class CognitiveCycleProcessor
     }
 
     /// <summary>
-    /// Feature 2: Open loops create gentle concern pressure on the emotional state.
-    /// Proportional to count and age of oldest loop. Max +0.15 concern contribution.
+    /// Feature 2: Open loops create gentle worry pressure on the emotional state.
+    /// Proportional to count and age of oldest loop. Max +0.15 worry contribution.
     /// </summary>
     private async Task ApplyOpenLoopPressureAsync(EmotionalState emotionalState, CancellationToken ct)
     {
@@ -1441,12 +1441,12 @@ public class CognitiveCycleProcessor
 
             if (pressure > 0.005f)
             {
-                // Create an ambient-tier contribution for open loop concern
+                // Create an ambient-tier contribution for open loop worry
                 await SaveDirectContributionAsync(emotionalState,
                     $"open loop pressure — {openLoops.Count} unresolved threads",
-                    warmth: 0f, energy: 0f, concern: pressure, playfulness: 0f,
+                    warmth: 0f, energy: 0f, worry: pressure, playfulness: 0f,
                     ImpactCategory.Ambient, ct).ConfigureAwait(false);
-                _log.LogDebug("Open loop pressure: +{Pressure:F3} concern ({Count} loops, oldest {Hours:F0}h)",
+                _log.LogDebug("Open loop pressure: +{Pressure:F3} worry ({Count} loops, oldest {Hours:F0}h)",
                     pressure, openLoops.Count, oldestAgeHours);
             }
         }
@@ -1480,7 +1480,7 @@ public class CognitiveCycleProcessor
                 SourceContent = $"lexical anchor: {anchor.Word}",
                 WarmthDelta = anchor.WarmthDelta * scale,
                 EnergyDelta = anchor.EnergyDelta * scale,
-                ConcernDelta = anchor.ConcernDelta * scale,
+                WorryDelta = anchor.WorryDelta * scale,
                 PlayfulnessDelta = anchor.PlayfulnessDelta * scale,
                 HalfLifeHours = halfLife,
                 Category = ImpactCategory.Conversation,
@@ -1723,7 +1723,7 @@ public class CognitiveCycleProcessor
     {
         try
         {
-            var (catMaxDelta, halfLife) = ImpactCategoryDefaults.GetDefaults(category);
+            var (catMaxDelta, _) = ImpactCategoryDefaults.GetDefaults(category);
             var effectiveMax = Math.Min(maxDelta, catMaxDelta);
 
             var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, effectiveMax, isAmbientCycle);
@@ -1731,11 +1731,25 @@ public class CognitiveCycleProcessor
                 prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
                 .ConfigureAwait(false);
 
-            var (warmth, energy, concern, playfulness) = ParseEmotionalShift(raw, effectiveMax);
+            var (warmth, energy, worry, playfulness, register, severity) = ParseEmotionalShift(raw, effectiveMax);
 
             // Skip if all zeros — no emotional impact
-            if (warmth == 0f && energy == 0f && concern == 0f && playfulness == 0f)
+            if (warmth == 0f && energy == 0f && worry == 0f && playfulness == 0f)
                 return;
+
+            // Tier promotion: high-severity thoughts promote to longer-lasting tiers
+            var effectiveCategory = ImpactCategoryDefaults.DetermineEffectiveTier(category, severity, _aniOptions);
+            var (_, halfLife) = ImpactCategoryDefaults.GetDefaults(effectiveCategory);
+
+            if (effectiveCategory != category)
+            {
+                _log.LogDebug("Tier promotion: {Base} → {Effective} (severity={Severity:F2})",
+                    category, effectiveCategory, severity);
+            }
+
+            // C3 Associative Spark: flag for outreach if register is Curiosity and content is contact-related
+            var isOutreachReady = string.Equals(register, "Curiosity", StringComparison.OrdinalIgnoreCase)
+                && warmth > 0.05f; // warmth > 0.05 implies the connecting element involves the contact
 
             var sourceContent = content.Length > 200 ? content[..200] : content;
 
@@ -1757,8 +1771,10 @@ public class CognitiveCycleProcessor
                     // Refresh: update deltas and reset decay clock
                     match.WarmthDelta = warmth;
                     match.EnergyDelta = energy;
-                    match.ConcernDelta = concern;
+                    match.WorryDelta = worry;
                     match.PlayfulnessDelta = playfulness;
+                    match.Severity = severity;
+                    match.IsOutreachReady = isOutreachReady;
                     match.CreatedAt = DateTimeOffset.UtcNow;
                     match.SourceContent = sourceContent;
                     await _memory.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
@@ -1768,8 +1784,8 @@ public class CognitiveCycleProcessor
                     state.ComputeFromContributions(allContributions);
                     await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
 
-                    _log.LogDebug("Emotional contribution refreshed ({Category}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
-                        category, halfLife, warmth, energy, concern, playfulness);
+                    _log.LogDebug("Emotional contribution refreshed ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
+                        category, register, severity, halfLife, warmth, energy, worry, playfulness);
                     return;
                 }
             }
@@ -1779,11 +1795,13 @@ public class CognitiveCycleProcessor
                 SourceContent = sourceContent,
                 WarmthDelta = warmth,
                 EnergyDelta = energy,
-                ConcernDelta = concern,
+                WorryDelta = worry,
                 PlayfulnessDelta = playfulness,
                 HalfLifeHours = halfLife,
-                Category = category,
+                Category = effectiveCategory,
                 Embedding = embedding,
+                Severity = severity,
+                IsOutreachReady = isOutreachReady,
             };
 
             await _memory.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
@@ -1793,8 +1811,8 @@ public class CognitiveCycleProcessor
             state.ComputeFromContributions(contributions);
             await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
 
-            _log.LogDebug("Emotional contribution ({Category}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Concern:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
-                category, halfLife, warmth, energy, concern, playfulness);
+            _log.LogDebug("Emotional contribution ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
+                effectiveCategory, register, severity, halfLife, warmth, energy, worry, playfulness);
         }
         catch (Exception ex)
         {
@@ -1808,7 +1826,7 @@ public class CognitiveCycleProcessor
     /// </summary>
     private async Task SaveDirectContributionAsync(
         EmotionalState state, string source,
-        float warmth, float energy, float concern, float playfulness,
+        float warmth, float energy, float worry, float playfulness,
         ImpactCategory category, CancellationToken ct)
     {
         var (_, halfLife) = ImpactCategoryDefaults.GetDefaults(category);
@@ -1817,7 +1835,7 @@ public class CognitiveCycleProcessor
             SourceContent = source,
             WarmthDelta = warmth,
             EnergyDelta = energy,
-            ConcernDelta = concern,
+            WorryDelta = worry,
             PlayfulnessDelta = playfulness,
             HalfLifeHours = halfLife,
             Category = category,
@@ -1829,23 +1847,35 @@ public class CognitiveCycleProcessor
         await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
     }
 
-    private (float warmth, float energy, float concern, float playfulness) ParseEmotionalShift(string raw, float maxDelta = 0.2f)
+    private (float warmth, float energy, float worry, float playfulness, string register, float severity)
+        ParseEmotionalShift(string raw, float maxDelta = 0.2f)
     {
         try
         {
             var doc = JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
+
+            var register = root.TryGetProperty("register", out var regVal)
+                ? regVal.GetString() ?? "Wistful"
+                : "Wistful";
+
+            var severity = root.TryGetProperty("severity", out var sevVal)
+                ? (float)Math.Clamp(sevVal.GetDouble(), 0.0, 1.0)
+                : 1.0f;
+
             return (
                 ClampDelta(root, "warmth"),
                 ClampDelta(root, "energy"),
-                ClampDelta(root, "concern"),
-                ClampDelta(root, "playfulness")
+                ClampDelta(root, "worry"),
+                ClampDelta(root, "playfulness"),
+                register,
+                severity
             );
         }
         catch
         {
             _log.LogDebug("Emotional shift parse failure: {Raw}", raw);
-            return (0f, 0f, 0f, 0f);
+            return (0f, 0f, 0f, 0f, "Wistful", 0.1f);
         }
 
         float ClampDelta(JsonElement root, string prop)

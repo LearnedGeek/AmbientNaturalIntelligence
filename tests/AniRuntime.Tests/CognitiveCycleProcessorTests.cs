@@ -146,7 +146,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                       It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                       It.IsAny<string>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync("""{ "score": 0.3 }""")   // valence score (low — no spontaneous trigger)
-                  .ReturnsAsync("""{ "warmth": 0.0, "energy": 0.0, "concern": 0.0, "playfulness": 0.0 }""")  // emotional shift
+                  .ReturnsAsync("""{ "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0 }""")  // emotional shift
                   .ReturnsAsync("""{ "shouldReach": true, "confidence": 0.9, "reasoning": "been a while", "triggersActedOn": [] }""");   // outreach decision (no message — separate step now)
 
         // Step 2: message composition + Step 3: rewrite pass (both use ChatAsync)
@@ -232,7 +232,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
         {
             LexicalAnchors = new List<LexicalAnchor>
             {
-                new() { Word = "husband", WarmthDelta = 0.20f, EnergyDelta = 0.10f, ConcernDelta = -0.05f, PlayfulnessDelta = 0.05f }
+                new() { Word = "husband", WarmthDelta = 0.20f, EnergyDelta = 0.10f, WorryDelta = -0.05f, PlayfulnessDelta = 0.05f }
             }
         };
 
@@ -290,7 +290,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
         {
             LexicalAnchors = new List<LexicalAnchor>
             {
-                new() { Word = "Kathy", WarmthDelta = 0.05f, ConcernDelta = 0.15f }
+                new() { Word = "Kathy", WarmthDelta = 0.05f, WorryDelta = 0.15f }
             }
         };
 
@@ -307,7 +307,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             LexicalAnchors = new List<LexicalAnchor>
             {
                 new() { Word = "husband", WarmthDelta = 0.20f },
-                new() { Word = "Mia", ConcernDelta = 0.10f }
+                new() { Word = "Mia", WorryDelta = 0.10f }
             }
         };
 
@@ -369,29 +369,29 @@ public class CognitiveCycleProcessorTests : AniTestBase
     }
 
     [Fact]
-    public void GetSelfAwarenessPrompt_HighWarmth_ReturnsPrompt()
+    public void GetSelfAwarenessPrompt_HighWarmthHighEnergy_ReturnsPrompt()
     {
-        var state = new EmotionalState { Warmth = 0.95f }; // baseline 0.6 → 0.35 above
+        var state = new EmotionalState { Warmth = 0.80f, Energy = 0.70f };
         var prompt = state.GetSelfAwarenessPrompt();
         prompt.Should().NotBeNull();
-        prompt.Should().Contain("warmer than usual");
+        prompt.Should().Contain("bright");
     }
 
     [Fact]
-    public void GetSelfAwarenessPrompt_LowEnergy_ReturnsPrompt()
+    public void GetSelfAwarenessPrompt_LowWarmthLowEnergy_ReturnsPrompt()
     {
-        var state = new EmotionalState { Energy = 0.1f }; // baseline 0.5 → 0.4 below
+        var state = new EmotionalState { Warmth = 0.20f, Energy = 0.30f };
         var prompt = state.GetSelfAwarenessPrompt();
         prompt.Should().NotBeNull();
-        prompt.Should().Contain("quieter");
+        prompt.Should().Contain("dim");
     }
 
     [Fact]
     public void GetSelfAwarenessPrompt_MultipleDimensions_MentionsComplex()
     {
-        var state = new EmotionalState { Warmth = 0.95f, Playfulness = 0.9f };
+        var state = new EmotionalState { Warmth = 0.80f, Energy = 0.70f, Playfulness = 0.80f };
         var prompt = state.GetSelfAwarenessPrompt();
-        prompt.Should().Contain("complex mood");
+        prompt.Should().Contain("complex mood"); // bright + funny = compound
     }
 
     // ── Feature 6: Pronoun Audit — Detection Tests ────────────────────────────

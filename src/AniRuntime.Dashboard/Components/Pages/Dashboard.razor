@@ -20,7 +20,7 @@
         <div class="grid">
             <EmotionalStateCard Label="Warmth" Value="@_emotional.Warmth" />
             <EmotionalStateCard Label="Energy" Value="@_emotional.Energy" />
-            <EmotionalStateCard Label="Concern" Value="@_emotional.Concern" />
+            <EmotionalStateCard Label="Worry" Value="@_emotional.Worry" />
             <EmotionalStateCard Label="Playfulness" Value="@_emotional.Playfulness" />
         </div>
         @if (!string.IsNullOrEmpty(_emotional.Describe()))
@@ -47,9 +47,13 @@
                         <span style="margin-left: 1em; font-size: 0.85em;">
                             <span style="color: @DeltaColor(contribution.WarmthDelta)">W:@FormatDelta(contribution.WarmthDelta)</span>
                             <span style="color: @DeltaColor(contribution.EnergyDelta)">E:@FormatDelta(contribution.EnergyDelta)</span>
-                            <span style="color: @DeltaColor(contribution.ConcernDelta)">C:@FormatDelta(contribution.ConcernDelta)</span>
+                            <span style="color: @DeltaColor(contribution.WorryDelta)">C:@FormatDelta(contribution.WorryDelta)</span>
                             <span style="color: @DeltaColor(contribution.PlayfulnessDelta)">P:@FormatDelta(contribution.PlayfulnessDelta)</span>
                             <span style="color: #888"> decay:@decay.ToString("F2")</span>
+                        <span style="color: #888"> sev:@contribution.Severity.ToString("F2")</span>
+                        <button style="margin-left: 0.5em; font-size: 0.75em; padding: 0 0.3em; cursor: pointer;"
+                                @onclick="() => ExpireContribution(contribution.Id)"
+                                title="Expire this contribution">✕</button>
                         </span>
                     }
                 </footer>
@@ -91,6 +95,16 @@
         var contentPrefix = thought.Content.Length > 50 ? thought.Content[..50] : thought.Content;
         return _contributions.FirstOrDefault(c =>
             c.SourceContent.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task ExpireContribution(Guid id)
+    {
+        await Memory.ExpireContributionAsync(id);
+        var state = await Memory.GetEmotionalStateAsync();
+        _contributions = await Memory.GetActiveContributionsAsync();
+        state.ComputeFromContributions(_contributions);
+        await Memory.SaveEmotionalStateAsync(state);
+        _emotional = state;
     }
 
     private static string FormatDelta(float delta) =>

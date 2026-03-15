@@ -155,11 +155,11 @@ public class AdminCommandHandler
     private async Task<string> HandleResetMoodAsync(CancellationToken ct)
     {
         var emotional = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-        var before = $"W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Concern:F2} P={emotional.Playfulness:F2}";
+        var before = $"W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Worry:F2} P={emotional.Playfulness:F2}";
 
         emotional.Warmth      = emotional.WarmthBaseline;
         emotional.Energy      = emotional.EnergyBaseline;
-        emotional.Concern     = emotional.ConcernBaseline;
+        emotional.Worry     = emotional.WorryBaseline;
         emotional.Playfulness = emotional.PlayfulnessBaseline;
         emotional.LastUpdated = DateTimeOffset.UtcNow;
 
@@ -167,7 +167,7 @@ public class AdminCommandHandler
 
         _log.LogWarning("Emotional state reset to baselines (was: {Before})", before);
 
-        return $"Mood reset to baselines.\nBefore: {before}\nAfter: W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Concern:F2} P={emotional.Playfulness:F2}";
+        return $"Mood reset to baselines.\nBefore: {before}\nAfter: W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Worry:F2} P={emotional.Playfulness:F2}";
     }
 
     private async Task<string> HandleStatusAsync(CancellationToken ct)
@@ -184,7 +184,7 @@ public class AdminCommandHandler
             $"=== {charState.Name} Status ===",
             $"Mode: {(IsTestMode ? "TEST" : "LIVE")}",
             $"Mood: {mood}",
-            $"  W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Concern:F2} P={emotional.Playfulness:F2}",
+            $"  W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Worry:F2} P={emotional.Playfulness:F2}",
             $"Desire: {desire.DesireToConnect:F2} (threshold: {_aniOptions.OutreachThresholdFloor:F2}–{_aniOptions.OutreachThresholdFloor + _aniOptions.OutreachThresholdRange:F2})",
             $"Cooldown: {(desire.CooldownActive ? $"until {desire.CooldownUntil:HH:mm}" : "none")}",
             $"Last outreach: {FormatAge(desire.LastOutreach)}",

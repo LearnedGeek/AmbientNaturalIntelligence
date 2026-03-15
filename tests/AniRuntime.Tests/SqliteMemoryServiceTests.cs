@@ -211,7 +211,7 @@ public class SqliteMemoryServiceTests : AniTestBase
         var state = new EmotionalState
         {
             Warmth = 0.85f, Energy = 0.3f,
-            Concern = 0.7f, Playfulness = 0.9f,
+            Worry = 0.7f, Playfulness = 0.9f,
         };
 
         await _svc.SaveEmotionalStateAsync(state);
@@ -219,7 +219,7 @@ public class SqliteMemoryServiceTests : AniTestBase
         var loaded = await _svc.GetEmotionalStateAsync();
         loaded.Warmth.Should().BeApproximately(0.85f, 0.001f);
         loaded.Energy.Should().BeApproximately(0.3f, 0.001f);
-        loaded.Concern.Should().BeApproximately(0.7f, 0.001f);
+        loaded.Worry.Should().BeApproximately(0.7f, 0.001f);
         loaded.Playfulness.Should().BeApproximately(0.9f, 0.001f);
     }
 
@@ -312,8 +312,8 @@ public class SqliteMemoryServiceTests : AniTestBase
     [Fact]
     public async Task SaveEmotionalStateAsync_AppendsToHistoryTable()
     {
-        var state1 = new EmotionalState { Warmth = 0.7f, Energy = 0.4f, Concern = 0.3f, Playfulness = 0.6f };
-        var state2 = new EmotionalState { Warmth = 0.5f, Energy = 0.8f, Concern = 0.1f, Playfulness = 0.9f };
+        var state1 = new EmotionalState { Warmth = 0.7f, Energy = 0.4f, Worry = 0.3f, Playfulness = 0.6f };
+        var state2 = new EmotionalState { Warmth = 0.5f, Energy = 0.8f, Worry = 0.1f, Playfulness = 0.9f };
 
         await _svc.SaveEmotionalStateAsync(state1);
         await _svc.SaveEmotionalStateAsync(state2);
@@ -463,7 +463,7 @@ public class SqliteMemoryServiceTests : AniTestBase
     {
         var state = new EmotionalState
         {
-            Warmth = 0.7f, Energy = 0.5f, Concern = 0.3f, Playfulness = 0.6f,
+            Warmth = 0.7f, Energy = 0.5f, Worry = 0.3f, Playfulness = 0.6f,
             ContactGapTension = 0.15f,
         };
 

@@ -28,7 +28,7 @@ public class EmotionalDrift
     /// </summary>
     public float WarmthDrift      { get; set; }
     public float EnergyDrift      { get; set; }
-    public float ConcernDrift     { get; set; }
+    public float WorryDrift     { get; set; }
     public float PlayfulnessDrift { get; set; }
 
     /// <summary>
@@ -48,8 +48,8 @@ public class EmotionalDrift
         if (EnergyDrift > threshold) parts.Add("energy has been climbing");
         else if (EnergyDrift < -threshold) parts.Add("energy has been dropping");
 
-        if (ConcernDrift > threshold) parts.Add("worry has been creeping in");
-        else if (ConcernDrift < -threshold) parts.Add("worry has been easing");
+        if (WorryDrift > threshold) parts.Add("worry has been creeping in");
+        else if (WorryDrift < -threshold) parts.Add("worry has been easing");
 
         if (PlayfulnessDrift > threshold) parts.Add("playfulness has been growing");
         else if (PlayfulnessDrift < -threshold) parts.Add("playfulness has been fading");
@@ -79,7 +79,7 @@ public class EmotionalDrift
             Similarity      = similarity,
             WarmthDrift      = recentAvg[0] - olderAvg[0],
             EnergyDrift      = recentAvg[1] - olderAvg[1],
-            ConcernDrift     = recentAvg[2] - olderAvg[2],
+            WorryDrift     = recentAvg[2] - olderAvg[2],
             PlayfulnessDrift = recentAvg[3] - olderAvg[3],
         };
     }
@@ -91,7 +91,7 @@ public class EmotionalDrift
         {
             w += s.Warmth;
             e += s.Energy;
-            c += s.Concern;
+            c += s.Worry;
             p += s.Playfulness;
         }
         var n = (float)snapshots.Count;

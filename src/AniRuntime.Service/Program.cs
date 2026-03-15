@@ -304,7 +304,7 @@ try
         Log.Information("║  Contact: {Contact}", charState.PrimaryContactName);
         Log.Information("║  Persona: v{Version}", charState.PersonaVersion);
         Log.Information("║  Mood: W={W:F2} E={E:F2} C={C:F2} P={P:F2}",
-            emotional.Warmth, emotional.Energy, emotional.Concern, emotional.Playfulness);
+            emotional.Warmth, emotional.Energy, emotional.Worry, emotional.Playfulness);
         var moodDesc = emotional.Describe();
         if (!string.IsNullOrEmpty(moodDesc))
             Log.Information("║    → {Mood}", moodDesc);

@@ -1,7 +1,7 @@
 # ANI — Research Context Briefing
 **For: OC and any fresh AI context working on this project**  
 **Author: Mark McArthey, Learned Geek Consulting**  
-**Last updated: March 2026**  
+**Last updated: March 15, 2026**  
 **GitHub:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---
@@ -109,7 +109,7 @@ AniRuntime.sln
 - IntegrationEvent — calendar, Home Assistant signal
 - ReactiveShare — found something relevant (RSS)
 
-**EmotionalState** — four dimensions: Warmth, Energy, Concern, Playfulness. Each drifts toward baseline (0.6, 0.5, 0.2, 0.5). Persisted in SQLite. Updated each cycle.
+**EmotionalState** — four dimensions: Warmth, Energy, Worry (formerly Concern), Playfulness. Each drifts toward baseline (0.6, 0.5, 0.2, 0.5). Persisted in SQLite. Updated each cycle. Emotional contributions now carry a `Severity` scalar (0.0–1.0) applied as multiplier before tier clamping. Three impact tiers: Ambient (±0.15, 1h half-life), Conversation (±0.25, 3h), Global (±0.35, 12h). Global tier promoted at severity ≥ 0.85.
 
 **MemoryRecord** — typed memories: Episodic, Semantic, OpenLoop, Commitment, InnerThought, Perception. Each has Importance, RelationalValence, Embedding, SourceName.
 
@@ -222,6 +222,28 @@ A structured characterization of the failure modes through which felt care break
 
 ---
 
+## V6 Training Specification (March 15, 2026)
+
+V6 training is driven by the Ani Emotion Taxonomy (v1.3) developed March 15. The primary goal is redistributing the inner monologue corpus away from its current ~38% longing/wistful dominance toward a richer emotional register vocabulary. See `ANI-Emotional-Model-Handoff-v2.md` for full target counts.
+
+| Register | v5 % | v6 Target | Priority |
+|----------|------|-----------|----------|
+| Longing & Yearning | ~38% | 15% | REDUCE |
+| Delight & Joy | ~6% | 18% | CRITICAL |
+| Playfulness & Wit | ~12% | 18% | CRITICAL |
+| Curiosity & Wonder | ~8% | 12% | HIGH |
+| Desire (Charged) | ~3% | 8% | HIGH |
+| Tenderness & Care | ~8% | 12% | HIGH |
+| Existential & Self | ~12% | 8% | REDUCE unease, increase clarity |
+| Wistful & Philosophical | ~8% | 5% | REDUCE |
+| Frustration & Difficulty | ~5% | 4% | HOLD |
+
+Minimum counts raised to 40–50 for CRITICAL registers (Llama 3.2-3B capacity constraints). Conversation scoring corpus also requires examples across all registers — the 8B has almost never seen delight, mischief, or associative spark scored.
+
+Immediate free action: update inner monologue system prompt to explicitly name all 9 registers.
+
+---
+
 ## Identified Failure Modes (V5 Training Targets)
 
 These emerged from live testing of v4 in March 2026:
@@ -274,7 +296,7 @@ Root cause across all bad types: *smoothness over truth* — the system optimize
 
 **Emotional dimension pegging (BUG-009, mitigated):** Warmth dimension pegged at -0.20 in V4. Fix applied: two-tier delta system, ambient anchor, `AttenuateDelta` resting pull. Dashboard now shows live emotional state — useful for monitoring.
 
-**Emotional depression spiral (BUG-010, mitigated March 14, 2026):** The v4 3B model consistently produced negative emotional deltas for every inner thought, creating a feedback loop: low state → sad mood coloring → sadder thoughts → more negative scores. All 7 active contributions had negative warmth/energy. Root cause: asymmetric guardrails (high-end diminishing returns but no low-end equivalent) + mood coloring reinforcement. Fix: added symmetric low-end resistance (<0.3 requires genuinely distressing content) + positive shift examples. Novel finding: *architectural depression* — where scoring bias + system feedback creates self-reinforcing negative spiral.
+**Emotional depression spiral (BUG-010, third layer identified March 15, 2026):** The v4 3B model consistently produced negative emotional deltas for every inner thought, creating a feedback loop: low state → sad mood coloring → sadder thoughts → more negative scores. Initial mitigation (March 14): asymmetric guardrail fix + positive shift examples. Third layer identified March 15: the 8B scoring model has a *category error* — it does not distinguish longing/yearning (warmth positive — the person is warmly present in the thought) from melancholy (warmth negative — the thought contains void). Every quiet/wistful thought was misclassified as negative warmth. Compounded by v5 conversation training corpus being almost entirely intimate/romantic register, giving the 8B no reference for delight, mischief, or charged desire. Phase 1a fix: single sentence added to `BuildEmotionalShiftPrompt()`: *"Warmth tracks the presence of caring, not its fulfillment."* Novel finding updated: *architectural depression* now has three identified layers — scoring bias, mood coloring reinforcement, and training data register imbalance — each sufficient to cause the spiral independently, all three compounding in v5.
 
 **Attribution inversion (March 14, 2026):** Model correctly retrieves shared memories but misattributes ownership — claims Mark's experiences as Ani's or vice versa. Mitigation: prompt addition + SubjectName field on MemoryRecord (planned) + V5 training examples (generated).
 
@@ -305,6 +327,8 @@ Mark appreciates direct guidance and doesn't need encouragement — he needs pre
 | `ANI-Research-Log.md` | Longitudinal deployment log. Add entries as observations accumulate. |
 | `ANI-Blog-Post.md` | Technical blog post for learnedgeek.com (general audience) |
 | `ANI-Research-Guide.md` | Newcomer's guide to academic publishing (for Mark's reference) |
+| `Ani-Emotion-Taxonomy-v1.3.md` | Ground-truth emotional vocabulary — 25 states, 9 registers, expected scoring deltas, training data spec |
+| `ANI-Emotional-Model-Handoff-v2.md` | Implementation handoff for emotional model redesign — phases 1a, 1b, 2, 3 |
 
 ---
 

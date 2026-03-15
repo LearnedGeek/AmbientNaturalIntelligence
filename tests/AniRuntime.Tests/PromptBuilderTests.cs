@@ -46,6 +46,7 @@ public class PromptBuilderTests
         snapshot.EmotionalState = new EmotionalState
         {
             Warmth = 0.9f, WarmthBaseline = 0.6f,
+            Energy = 0.7f, EnergyBaseline = 0.5f, // W ≥ 0.75, E ≥ 0.65 → "bright and warm"
         };
 
         var (_, user) = PromptBuilder.BuildReflectionPrompt("a quiet thought", snapshot);

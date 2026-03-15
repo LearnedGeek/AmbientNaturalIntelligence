@@ -30,7 +30,7 @@ public static class AniStateEndpoints
                 {
                     Warmth = emotional.Warmth,
                     Energy = emotional.Energy,
-                    Concern = emotional.Concern,
+                    Worry = emotional.Worry,
                     Playfulness = emotional.Playfulness,
                     Mood = emotional.Describe(),
                 },
@@ -54,7 +54,7 @@ public static class AniStateEndpoints
             {
                 Warmth = emotional.Warmth,
                 Energy = emotional.Energy,
-                Concern = emotional.Concern,
+                Worry = emotional.Worry,
                 Playfulness = emotional.Playfulness,
                 Mood = emotional.Describe(),
             });
@@ -70,7 +70,7 @@ public static class AniStateEndpoints
             {
                 Warmth = s.Warmth,
                 Energy = s.Energy,
-                Concern = s.Concern,
+                Worry = s.Worry,
                 Playfulness = s.Playfulness,
                 Timestamp = s.RecordedAt,
             }).ToList();
@@ -94,6 +94,22 @@ public static class AniStateEndpoints
                 CircadianModifier = state.CircadianModifier,
                 LastContactInbound = state.LastContactInbound,
             });
+        });
+
+        group.MapDelete("/contributions/{id}", async (
+            Guid id,
+            IMemoryService memory,
+            CancellationToken ct) =>
+        {
+            await memory.ExpireContributionAsync(id, ct);
+
+            // Recompute emotional state after expiry
+            var state = await memory.GetEmotionalStateAsync(ct);
+            var contributions = await memory.GetActiveContributionsAsync(ct);
+            state.ComputeFromContributions(contributions);
+            await memory.SaveEmotionalStateAsync(state, ct);
+
+            return Results.NoContent();
         });
 
         return group;
