@@ -91,4 +91,11 @@ public class ContextSnapshot
     /// the model to move on to fresh territory.
     /// </summary>
     public List<string> ProcessedThemes { get; set; } = new();
+
+    /// <summary>
+    /// Feature 15 Layer 3: Active contradiction grounding — when retrieved context memories
+    /// have unresolved contradictions flagged, this instruction reminds the model to focus
+    /// on the current topic rather than contaminated context. Injected into reply prompt.
+    /// </summary>
+    public List<string> ContradictionWarnings { get; set; } = new();
 }

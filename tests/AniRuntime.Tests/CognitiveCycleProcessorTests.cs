@@ -43,6 +43,8 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .Returns(Task.CompletedTask);
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
+        MockMemory.Setup(m => m.GetFlaggedContradictionsAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new List<MemoryContradiction>());
 
         _mockSource.Setup(s => s.IsEnabled).Returns(true);
         _mockSource.Setup(s => s.SourceName).Returns("test-source");

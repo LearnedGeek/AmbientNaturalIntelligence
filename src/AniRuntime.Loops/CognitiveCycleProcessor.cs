@@ -1196,6 +1196,11 @@ public class CognitiveCycleProcessor
         // Feature 18: Pass withdrawal state to prompt builder for tone injection
         snapshot.IsWithdrawn = IsWithdrawn;
 
+        // Feature 15 Layer 3: Active contradiction grounding — check if any retrieved
+        // context memories have unresolved contradictions flagged. If so, inject a
+        // grounding instruction so the model focuses on the current topic, not stale context.
+        await CheckRetrievedMemoryContradictionsAsync(snapshot, lastMessage, ct).ConfigureAwait(false);
+
         // Feature 14: Bidirectional confidence gate — inbound claim verification.
         // If Mark references past events or attributes statements to Ani, check memory
         // before replying. Prevents Ani from blindly agreeing with things that didn't happen.
@@ -1990,6 +1995,57 @@ public class CognitiveCycleProcessor
 
         return false;
     }
+
+    /// <summary>
+    /// Feature 15 Layer 3: Check if any retrieved context memories have unresolved contradiction
+    /// flags. If they do, inject a grounding instruction into the snapshot so the reply prompt
+    /// steers the model toward the current topic rather than contaminated context.
+    /// This turns Feature 15 from a passive observer into an active safety layer.
+    /// </summary>
+    private async Task CheckRetrievedMemoryContradictionsAsync(
+        ContextSnapshot snapshot, string contactMessage, CancellationToken ct)
+    {
+        try
+        {
+            var retrieved = snapshot.RelevantMemory;
+            if (retrieved.Count == 0) return;
+
+            var retrievedIds = new HashSet<Guid>(retrieved.Select(m => m.Id));
+
+            // Query unresolved contradictions — only the ones that involve our retrieved context
+            var contradictions = await _memory.GetFlaggedContradictionsAsync(includeResolved: false, ct)
+                .ConfigureAwait(false);
+
+            var relevant = contradictions
+                .Where(c => retrievedIds.Contains(c.NewMemoryId) || retrievedIds.Contains(c.ExistingMemoryId))
+                .ToList();
+
+            if (relevant.Count == 0) return;
+
+            // Build warnings from each relevant contradiction
+            foreach (var c in relevant)
+            {
+                // Determine which memory is in our retrieved context and which is the conflicting one
+                var isNewInContext = retrievedIds.Contains(c.NewMemoryId);
+                var contextContent = isNewInContext ? c.NewContent : c.ExistingContent;
+                var conflictContent = isNewInContext ? c.ExistingContent : c.NewContent;
+
+                snapshot.ContradictionWarnings.Add(
+                    $"Context memory \"{Truncate(contextContent, 60)}\" conflicts with \"{Truncate(conflictContent, 60)}\": {c.Reason}");
+
+                _log.LogInformation(
+                    "Feature 15 Layer 3: Contradiction grounding active — context \"{Context}\" vs \"{Conflict}\": {Reason}",
+                    Truncate(contextContent, 80), Truncate(conflictContent, 80), c.Reason);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Feature 15 Layer 3: Contradiction check failed — continuing without grounding");
+        }
+    }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "…";
 
     /// <summary>
     /// Feature 14: Extract factual claims from the contact's message and verify them against

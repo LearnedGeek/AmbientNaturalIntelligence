@@ -88,7 +88,7 @@ AniRuntime.sln
 │   ├── AniRuntime.Dashboard/    — Blazor companion dashboard
 │   └── AniRuntime.Voice/        — Voice channel (ElevenLabs TTS, scaffold)
 └── tests/
-    └── AniRuntime.Tests/         — 220 tests passing as of Phase 4
+    └── AniRuntime.Tests/         — 222 tests passing as of Phase 4
 ```
 
 ---
@@ -143,7 +143,7 @@ AniRuntime.sln
 - Three-way memory scoring: cosine + importance + recency (Feature 20, Park et al.)
 - Coherence gate — three-door evaluation (Feature 28)
 - Lexical emotional anchors (Feature 19)
-- 220 tests passing, 0 warnings
+- 222 tests passing, 0 warnings
 
 **Phase 4** — In progress (March 13-14, 2026):
 - Anchored memory tier (Feature 16) — decay-exempt foundation memories

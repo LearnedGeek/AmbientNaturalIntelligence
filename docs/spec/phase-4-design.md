@@ -863,7 +863,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **12** | **Self-awareness feedback loop** | Phase 3 Feature 13 | **✅ Deployed Mar 14** — outreach pattern clustering + inner thought injection |
 | 13 | Weather perception source | Phase 3 Feature 19 | Integration work, not core architecture |
 | **14** | **Bidirectional confidence gate** | Phase 3 Feature 22 | **✅ Deployed Mar 14** — inbound claim verification via LLM extraction + memory search |
-| **15** | **Memory contradiction flagging** | Phase 3 Feature 23 | **✅ Deployed Mar 14** — LLM contradiction detection on save, dashboard review endpoint |
+| **15** | **Memory contradiction flagging** | Phase 3 Feature 23 | **✅ Deployed Mar 14** — LLM contradiction detection on save, dashboard review endpoint. **Layer 3 active intervention deployed Mar 14** — contradiction grounding injected into reply prompt when retrieved context has flagged conflicts |
 
 ## Implementation Priority
 

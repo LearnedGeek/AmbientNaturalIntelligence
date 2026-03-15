@@ -825,7 +825,7 @@ Implemented components (Phase 1–4):
 | Voice channel (Feature 20) | 4 | Scaffolded — awaiting activation |
 | SIMD cosine similarity (Feature 9) | 4 | Complete — VectorMath.CosineSimilarity, 3 duplicates unified |
 | Bidirectional confidence gate (Feature 14) | 4 | Complete — 17-pattern heuristic + LLM claim extraction |
-| Memory contradiction flagging (Feature 15) | 4 | Complete — post-save cosine 0.6-0.85 + LLM evaluation |
+| Memory contradiction flagging (Feature 15) | 4 | Complete — post-save cosine 0.6-0.85 + LLM evaluation + Layer 3 active prompt intervention |
 | Self-awareness feedback loop (Feature 12) | 4 | Complete — pairwise cosine on outreach, avg > 0.75 → nudge |
 | AniRuntime.Dashboard (Blazor Server) | 4 | Complete — 16 REST endpoints, Pico CSS, in-process |
 | Feature 22 temporal refinement | 4 | Complete — time-of-day in coherence gate prompt |
@@ -842,7 +842,7 @@ Planned stubs:
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 220 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 222 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 
@@ -882,5 +882,5 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
-| 0.7 | Mar 14, 2026 | Per-thought exponential decay emotional model — replaces global drift. EmotionalContribution with half-life decay, three impact tiers, semantic dedup, processed theme cycling. Attribution tracking in prompts. Six-type confabulation taxonomy. 220 tests. |
+| 0.7 | Mar 14, 2026 | Per-thought exponential decay emotional model — replaces global drift. EmotionalContribution with half-life decay, three impact tiers, semantic dedup, processed theme cycling. Attribution tracking in prompts. Six-type confabulation taxonomy. Feature 15 Layer 3 active contradiction grounding. 222 tests. |
 | 0.6 | Mar 14, 2026 | SIMD cosine similarity — VectorMath.CosineSimilarity shared (9). Bidirectional confidence gate — inbound claim verification (14). Blazor Server Dashboard — 16 REST endpoints, Pico CSS, in-process (Dashboard). Self-awareness feedback loop — outreach pattern detection (12). Memory contradiction flagging — post-save cosine + LLM (15). Feature 22 temporal refinement — time-of-day in coherence gate. Feature 6 name-as-subject — prompt + word-boundary safety net. V5 training data scan — 66 examples mined + generated. 209 tests. |

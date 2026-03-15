@@ -298,4 +298,57 @@ public class PromptBuilderTests
         system.Should().Contain("claims");
         user.Should().Contain("remember when you said you loved pizza?");
     }
+
+    // ── Feature 15 Layer 3: Contradiction grounding ──
+
+    [Fact]
+    public void BuildConversationReplyPrompt_WhenContradictionWarnings_InjectsGrounding()
+    {
+        var snapshot = new ContextSnapshot
+        {
+            CharacterState = new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" },
+            EmotionalState = new EmotionalState(),
+            ContradictionWarnings = new List<string>
+            {
+                "Context memory \"soup discussion\" conflicts with \"books discussion\": different topics"
+            },
+        };
+        var thread = new ConversationThread
+        {
+            Id = Guid.NewGuid(),
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "user", Content = "which book are you reading?", SentAt = DateTimeOffset.UtcNow },
+            },
+        };
+
+        var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+
+        user.Should().Contain("TOPIC GROUNDING");
+        user.Should().Contain("soup discussion");
+        user.Should().Contain("ACTUALLY asking about");
+    }
+
+    [Fact]
+    public void BuildConversationReplyPrompt_WhenNoContradictions_NoGrounding()
+    {
+        var snapshot = new ContextSnapshot
+        {
+            CharacterState = new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" },
+            EmotionalState = new EmotionalState(),
+            ContradictionWarnings = new List<string>(),
+        };
+        var thread = new ConversationThread
+        {
+            Id = Guid.NewGuid(),
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "user", Content = "hey how's it going", SentAt = DateTimeOffset.UtcNow },
+            },
+        };
+
+        var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+
+        user.Should().NotContain("TOPIC GROUNDING");
+    }
 }

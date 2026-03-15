@@ -575,6 +575,20 @@ public static class PromptBuilder
                 """);
         }
 
+        // Feature 15 Layer 3: Active contradiction grounding — when retrieved context
+        // memories have flagged contradictions, steer the model to focus on the current
+        // message topic. Prevents contamination from semantically adjacent but topically
+        // irrelevant context (e.g., a soup conversation leaking into a books question).
+        if (snapshot.ContradictionWarnings.Count > 0)
+        {
+            var warningList = string.Join("\n  - ", snapshot.ContradictionWarnings);
+            sections.Add($"""
+                (IMPORTANT — TOPIC GROUNDING: Some of your context memories may conflict or be off-topic:
+                  - {warningList}
+                Focus your reply on what {contact} is ACTUALLY asking about right now. Ignore context that doesn't match the current topic. If you're unsure what's relevant, respond only to {contact}'s latest message.)
+                """);
+        }
+
         sections.Add($"Reply to {contact}'s message.");
 
         var user = string.Join("\n", sections);
