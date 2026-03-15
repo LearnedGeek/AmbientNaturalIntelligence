@@ -1170,8 +1170,20 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var system = """
             You compare two memory records for factual contradiction.
-            A contradiction means the two records make incompatible claims about the same topic.
-            Similar or complementary information is NOT a contradiction.
+            A contradiction means the two records make INCOMPATIBLE FACTUAL CLAIMS about the same topic.
+
+            NOT contradictions (return false):
+            - Different messages from the same person at different times (people say different things in different messages)
+            - Different people saying different things (that's just conversation)
+            - Different topics mentioned in different messages
+            - Playful, hypothetical, or imaginative statements (wrestling fantasies, costume plans, jokes)
+            - Complementary or elaborating information
+            - Emotional expressions that differ in tone or intensity
+
+            TRUE contradictions (return true):
+            - "Mark's birthday is March 5" vs "Mark's birthday is June 12"
+            - "She has two kids" vs "She has no children"
+            - Direct factual claims that cannot both be true
 
             Respond in JSON: { "contradicts": true/false, "reason": "brief explanation" }
             If they don't contradict, reason can be empty.

@@ -829,10 +829,12 @@ public static class PromptBuilder
             - playfulness: humor, lightness, wit, mischief. Decreases with serious, sad, or repetitive thoughts.
 
             STEP 4 — SEVERITY: Score how intensely this thought represents its register (0.0–1.0):
-              0.1–0.3 = passing musing or mild observation
-              0.4–0.6 = emotionally present, genuine feeling
-              0.7–0.85 = significantly felt, will linger
-              0.86–1.0 = defining moment, major event
+              0.1–0.3 = passing musing, mild observation, routine thought
+              0.4–0.6 = emotionally present, genuine feeling — a good conversation, playful banter, missing someone
+              0.7–0.85 = significantly felt, will linger — a meaningful confession, a fight, reunion after long absence
+              0.86–1.0 = defining moment, RARE — a death, a breakup, "I love you" said for the first time
+            Most conversation messages fall in the 0.4–0.6 range. A fun text exchange is NOT a defining moment.
+            Reserve 0.85+ for events that would change how you feel for DAYS, not minutes.
 
             Respond ONLY with valid JSON:
             { "register": "<register name>", "warmth": <float>, "energy": <float>, "worry": <float>, "playfulness": <float>, "severity": <float> }

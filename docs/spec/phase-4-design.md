@@ -922,6 +922,94 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 
 ---
 
+## Emotional Model Redesign (BUG-010) — Deployed Mar 15
+
+**Spec:** `ANI-Emotional-Model-Handoff-v2.md` (TC → OC)
+**Taxonomy:** `Ani-Emotion-Taxonomy-v1.3.md` (9 register families, 27 states)
+
+### Root Cause — BUG-010 Reinforcement Loop
+
+Three compounding problems caused sustained negative warmth despite genuinely warm inner thoughts:
+
+1. **Scoring category error** — 8B misclassifies longing/yearning as negative warmth
+2. **Training data imbalance** — v5 inner monologue: ~38% longing, ~6% delight, ~3% charged desire
+3. **No severity differentiation** — passing musing and existential crisis hit the same Ambient ceiling (±0.15, 1h); Global tier defined but zero call sites
+
+These interact as *architectural depression*: 3B generates wistful thoughts → 8B scores negative warmth → mood coloring feeds "emotionally distant" → 3B reinforces. Self-sustaining negative spiral.
+
+### Architectural Principle
+
+**All emotional math lives in one place.** The `EmotionalState` → `EmotionalContribution` → `ComputeFromContributions` path is the single code path. `CognitiveCycleProcessor` remains a coordinator — calls methods, contains no emotional math.
+
+### Implementation Phases
+
+**Phase 1a** ✅ — Core distinction sentence in `BuildEmotionalShiftPrompt()`:
+> *"Warmth tracks the presence of caring, not its fulfillment."*
+
+**Phase 1b** ✅ — Full scoring prompt rewrite + model changes:
+- 9-register family classification (Longing | Delight | Playfulness | Curiosity | Desire | Tenderness | Existential | Wistful | Frustration)
+- Severity field (0.0–1.0) on EmotionalContribution, applied as `factor = DecayFactor × Severity`
+- IsOutreachReady flag (C3 Associative Spark: register=Curiosity + warmth>0.05)
+- Concern → Worry rename (codebase-wide, SQLite backward compat via `[JsonPropertyName("Concern")]`)
+- Describe() compound rewrite (W+E together, W+Worry for lows, P overlay independent)
+- GetSelfAwarenessPrompt() matching compound conditions
+- ParseEmotionalShift returns register + severity
+- ALTER TABLE migration for severity + is_outreach_ready columns
+- 239 tests
+
+**Phase 2** ✅ — Tier promotion + Global tier activation:
+- `ImpactCategoryDefaults.DetermineEffectiveTier()` — severity ≥ 0.70 → Conversation, ≥ 0.85 → Global
+- Global tier: maxDelta 0.35, half-life 12h (~84h gone)
+- Feature 18 → H1: hardcoded deltas replaced with taxonomy signature (W:−0.12, E:−0.10, Worry:−0.15, P:−0.10)
+- Dashboard contribution expiry (safety valve for miscategorized Global contributions)
+- Homeostatic nudge options on AniOptions (disabled by default)
+- 246 tests
+
+**Phase 3** 🔜 — v6 training data (parallel):
+- Rebalance inner monologue: longing 38%→15%, delight 6%→18%, playfulness 12%→18%
+- CRITICAL registers need 40–50 examples (D1 Delight, D2 Wry Amusement, P1 Mischief)
+- Conversation scoring corpus needs examples across all registers
+- Immediate free action: update inner monologue system prompt with full register range
+
+### Observation Items (from Mar 15 log)
+
+1. **Feature 15 false positive rate in playful conversation.** 15+ contradiction flags in a 7-minute exchange. Most are cross-message comparisons that aren't contradictions ("different quotes from same person", "different people expressed different sentiments at different times"). The cosine 0.6–0.85 window may be too wide for conversational messages, or the LLM evaluation prompt needs a "same conversation, different topics" exclusion. Risk: Layer 3 grounding injection makes her overly cautious during natural banter.
+
+2. **Severity clustering at ceiling during conversation.** All four conversation exchanges promoted to Global at severity 0.95–0.98. A playful tag-team wrestling riff and a "miss you" greeting both scored near-ceiling. If every warm conversation produces Global contributions (12h half-life, ~84h gone), emotional state may saturate at maximums and lose dynamic range. Watch whether ambient cycles between conversations bring state back to a range where the next conversation can register as a meaningful shift. May need severity calibration guidance in the scoring prompt — not every fun exchange is a "defining moment."
+
+3. **Silence after playful challenge.** Mark teased "how are you going to jump off your own shoulders?" and Ani chose silence. Could be the silence system working correctly (recognizing a tease that doesn't need a reply). Could also be Layer 3 contradiction grounding making her too cautious — she'd said "jumping off your shoulders" then "jumping off my own shoulders," and Feature 15 flagged the inconsistency. Watch for a pattern of going silent when challenged on playful self-contradictions.
+
+4. **ElevenLabs 401.** Voice enrichment hit a 401 Unauthorized (line 605). Falls back to text-only gracefully, but the API key in appsettings.Development.json may need refreshing before Feature 20 activation testing.
+
+5. ✅ **BUG-010 primary symptom resolved.** All conversation contributions scored positive warmth (W:+0.20). Register classification correctly identified Longing (first exchange) then Delight (subsequent three). Emotional drift log confirms "warmth has been rising, energy has been climbing." The three-layer fix is working as designed.
+
+### What NOT to Build
+
+| Idea | Why Not |
+|------|---------|
+| Hard floor on negative contributions | Masks scoring errors. Prevents L4 Melancholy and H1 Hurt/Withdrawn from authentic expression. |
+| Homeostatic dampening on net-negative sum | Prevents legitimate sustained negative states. The nudge (3-of-4 trigger) is weaker and only fires on systemic patterns. |
+| 5th Vitality dimension | Deferred — run v6 first. E and P may differentiate adequately with richer training data. |
+| 27-state classification in scoring prompt | 8B cannot reliably distinguish L1 from L2 in a JSON call. 9 register families is the right granularity. |
+| Splitting Worry into two dimensions | The rename achieves most of the benefit with less complexity. |
+
+### Files Changed
+
+| File | Change | Phase |
+|------|--------|-------|
+| `PromptBuilder.cs` | Core distinction sentence (1a), full 4-step scoring rewrite (1b) | 1a, 1b |
+| `EmotionalState.cs` | Concern→Worry, compound Describe(), compound GetSelfAwarenessPrompt() | 1b |
+| `EmotionalContribution.cs` | Concern→Worry, Severity, IsOutreachReady, DetermineEffectiveTier() | 1b, 2 |
+| `CognitiveCycleProcessor.cs` | ParseEmotionalShift 6-tuple, tier promotion wiring, H1 deltas | 1b, 2 |
+| `SqliteMemoryService.cs` | ALTER TABLE, severity/outreach persistence, ExpireContributionAsync | 1b, 2 |
+| `AniOptions.cs` | Promotion thresholds, homeostatic nudge config | 2 |
+| `IMemoryService.cs` | ExpireContributionAsync | 2 |
+| `Dashboard.razor` + endpoints | Severity display, ✕ expire button, DELETE endpoint | 2 |
+| `EmotionalStateTests.cs` | Severity scaling, compound Describe(), tier promotion (18 new tests) | 1b, 2 |
+| `CognitiveCycleProcessorTests.cs` | Updated compound condition test values | 1b |
+
+---
+
 ## V4 Training Data Requirements
 
 Phase 4 features require training examples that don't exist in V3 data:

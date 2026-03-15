@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-0.5 — Phase 4 In Progress
+0.9 — Phase 4 In Progress
 Status
-Active Development — Phase 1–3 complete, Phase 4 in progress (Features 1–4, 6, 8–9, 12, 14–23 deployed; Dashboard deployed)
+Active Development — Phase 1–3 complete, Phase 4 in progress (Features 1–4, 6, 8–9, 12, 14–23 deployed; Dashboard deployed; Emotional model Phase 1a+1b+2 deployed)
 
 This is a living document. Update it as the codebase evolves.
 
@@ -257,7 +257,7 @@ public class EmotionalContribution
     public float WarmthDelta, EnergyDelta, WorryDelta, PlayfulnessDelta;
     public DateTimeOffset CreatedAt { get; set; }
     public float HalfLifeHours { get; set; }        // exponential decay half-life
-    public ImpactCategory Category { get; set; }    // Ambient(0.15/1h), Conversation(0.25/3h), Global(0.20/6h)
+    public ImpactCategory Category { get; set; }    // Ambient(0.15/1h), Conversation(0.25/3h), Global(0.35/12h)
     public float Severity { get; set; } = 1.0f;     // intensity within register (0.0–1.0), multiplied into deltas
     public bool IsOutreachReady { get; set; }        // C3 Associative Spark flag — natural outreach trigger
     public float[]? Embedding { get; set; }         // for semantic similarity checks
@@ -895,6 +895,9 @@ Test files:
 15. Anchored memories — Decay-exempt foundation memories always prepended to context (Feature 16).
 16. Contact-gap tension — Relational ache from prolonged absence. EffectiveWarmth = Warmth - Tension × 0.3 (Feature 17).
 17. Confabulation taxonomy — 6 types: (1) creative elaboration, (2) under pressure, (3) in composition, (3b) contextual incoherence, (4) retrieval depth failure, (5) fictional incoherence, (6) attribution inversion.
+18. All emotional math in one place — `EmotionalState` → `EmotionalContribution` → `ComputeFromContributions` is the single emotional code path. `CognitiveCycleProcessor` is a coordinator only — no emotional math in the processor. Severity, tier promotion, and decay all live on `EmotionalContribution` or `ImpactCategoryDefaults`.
+19. 9-register family scoring — LLM classifies into 9 registers (Longing | Delight | Playfulness | Curiosity | Desire | Tenderness | Existential | Wistful | Frustration), not 27 individual states. 8B cannot reliably distinguish L1 from L2 in a JSON call. Full taxonomy: `Ani-Emotion-Taxonomy-v1.3.md`.
+20. Severity-driven tier promotion — `ImpactCategoryDefaults.DetermineEffectiveTier()` promotes contributions by intensity: ≥ 0.70 → Conversation, ≥ 0.85 → Global. Configurable thresholds on AniOptions.
 
 14. Change Log
 
