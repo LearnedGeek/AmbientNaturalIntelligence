@@ -515,4 +515,106 @@ public class SqliteMemoryServiceTests : AniTestBase
         outreach.Should().Be(1);
         inbound.Should().Be(1);
     }
+
+    // ── Feature 15: Memory Contradiction Flagging ───────────────────────────
+
+    [Fact]
+    public async Task GetFlaggedContradictionsAsync_ReturnsEmpty_WhenNoContradictions()
+    {
+        var results = await _svc.GetFlaggedContradictionsAsync();
+        results.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetFlaggedContradictionsAsync_ReturnsFlaggedContradictions()
+    {
+        // Save two memories that we'll manually flag as contradictory
+        var memory1 = new MemoryRecord
+        {
+            Type = MemoryType.Semantic, Content = "Mark loves french onion soup",
+            Importance = 0.5f,
+        };
+        var memory2 = new MemoryRecord
+        {
+            Type = MemoryType.Semantic, Content = "Mark doesn't like soup at all",
+            Importance = 0.5f,
+        };
+        await _svc.SaveAsync(memory1);
+        await _svc.SaveAsync(memory2);
+
+        // Manually insert a contradiction flag (normally done by LLM evaluation)
+        await InsertContradictionAsync(memory2.Id, memory1.Id, "conflicting soup preferences", 0.72f);
+
+        var results = await _svc.GetFlaggedContradictionsAsync();
+        results.Should().HaveCount(1);
+        results[0].NewMemoryId.Should().Be(memory2.Id);
+        results[0].ExistingMemoryId.Should().Be(memory1.Id);
+        results[0].Reason.Should().Be("conflicting soup preferences");
+        results[0].NewContent.Should().Contain("doesn't like soup");
+        results[0].ExistingContent.Should().Contain("loves french onion soup");
+    }
+
+    [Fact]
+    public async Task GetFlaggedContradictionsAsync_ExcludesResolved_ByDefault()
+    {
+        var memory1 = new MemoryRecord { Type = MemoryType.Semantic, Content = "fact A" };
+        var memory2 = new MemoryRecord { Type = MemoryType.Semantic, Content = "fact B" };
+        await _svc.SaveAsync(memory1);
+        await _svc.SaveAsync(memory2);
+
+        await InsertContradictionAsync(memory2.Id, memory1.Id, "contradicts", 0.7f);
+        await _svc.ResolveContradictionAsync(memory2.Id, memory1.Id);
+
+        var unresolved = await _svc.GetFlaggedContradictionsAsync(includeResolved: false);
+        unresolved.Should().BeEmpty();
+
+        var all = await _svc.GetFlaggedContradictionsAsync(includeResolved: true);
+        all.Should().HaveCount(1);
+        all[0].IsResolved.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ResolveContradictionAsync_MarksAsResolved()
+    {
+        var memory1 = new MemoryRecord { Type = MemoryType.Semantic, Content = "claim 1" };
+        var memory2 = new MemoryRecord { Type = MemoryType.Semantic, Content = "claim 2" };
+        await _svc.SaveAsync(memory1);
+        await _svc.SaveAsync(memory2);
+
+        await InsertContradictionAsync(memory2.Id, memory1.Id, "contradiction", 0.68f);
+
+        var before = await _svc.GetFlaggedContradictionsAsync();
+        before.Should().HaveCount(1);
+
+        await _svc.ResolveContradictionAsync(memory2.Id, memory1.Id);
+
+        var after = await _svc.GetFlaggedContradictionsAsync();
+        after.Should().BeEmpty("resolved contradictions should not appear by default");
+    }
+
+    /// <summary>
+    /// Helper: directly insert a contradiction flag into the database.
+    /// In production this is done by CheckForContradictionsAsync after LLM evaluation,
+    /// but tests bypass the LLM and insert manually.
+    /// </summary>
+    private async Task InsertContradictionAsync(Guid newId, Guid existingId, string reason, float similarity)
+    {
+        var connStr = _svc.GetType()
+            .GetField("_connectionString", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
+            .GetValue(_svc) as string;
+
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(connStr);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO memory_contradictions (new_memory_id, existing_memory_id, reason, similarity, flagged_at)
+            VALUES ($new_id, $existing_id, $reason, $similarity, $flagged_at)
+            """;
+        cmd.Parameters.AddWithValue("$new_id", newId.ToString());
+        cmd.Parameters.AddWithValue("$existing_id", existingId.ToString());
+        cmd.Parameters.AddWithValue("$reason", reason);
+        cmd.Parameters.AddWithValue("$similarity", similarity);
+        cmd.Parameters.AddWithValue("$flagged_at", DateTimeOffset.UtcNow.ToString("O"));
+        await cmd.ExecuteNonQueryAsync();
+    }
 }

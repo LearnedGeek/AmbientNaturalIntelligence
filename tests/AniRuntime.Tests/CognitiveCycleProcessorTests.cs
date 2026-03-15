@@ -483,4 +483,138 @@ public class CognitiveCycleProcessorTests : AniTestBase
         CognitiveCycleProcessor.ContainsMemoryReferencingLanguage(message)
             .Should().Be(expected, $"case insensitive: '{message}'");
     }
+
+    // ── Feature 15 Layer 3: Contradiction grounding in full cycle ──
+
+    [Fact]
+    public async Task RunAsync_WhenContradictionsExistForRetrievedMemory_InjectsGroundingIntoReplyPrompt()
+    {
+        // Arrange: a conversation where Mark asks about books, but there's a
+        // contradiction flagged between a soup memory and the retrieved context.
+        var soupMemoryId = Guid.NewGuid();
+        var bookMemoryId = Guid.NewGuid();
+
+        var soupMemory = new MemoryRecord
+        {
+            Id = soupMemoryId, Type = MemoryType.Episodic,
+            Content = "Mark said he loves french onion soup",
+        };
+        var bookMemory = new MemoryRecord
+        {
+            Id = bookMemoryId, Type = MemoryType.Semantic,
+            Content = "Mark enjoys reading mythology books",
+        };
+
+        var thread = new ConversationThread
+        {
+            Id = Guid.NewGuid(),
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "mark", Content = "Which book are you reading right now?", SentAt = DateTimeOffset.UtcNow },
+            },
+        };
+
+        // Reply decision: YES (default parse falls through to true)
+        MockOllama.Setup(o => o.ChatJsonAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                                              It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync("""{ "shouldReply": true, "reasoning": "they asked a question" }""");
+
+        MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                                              It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync("thinking about what to read next");
+
+        // Capture the reply prompt to verify grounding injection
+        string? capturedUserPrompt = null;
+        MockOllama.Setup(o => o.ChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken>(
+                      (system, history, user, ct) => capturedUserPrompt = user)
+                  .ReturnsAsync("Oh I'm rereading The Odyssey right now!");
+
+        var processor = CreateProcessor();
+
+        // Override mocks AFTER CreateProcessor (which sets broader defaults)
+        _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
+                          .ReturnsAsync(thread);
+        _mockConversations.Setup(c => c.AddMessageAsync(It.IsAny<Guid>(), It.IsAny<ConversationMessage>(), It.IsAny<CancellationToken>()))
+                          .Returns(Task.CompletedTask);
+
+        // SearchAsync returns both memories (simulating retrieval contamination)
+        MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new[] { bookMemory, soupMemory });
+
+        // Contradiction flagged: soup memory conflicts with prior context
+        MockMemory.Setup(m => m.GetFlaggedContradictionsAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new List<MemoryContradiction>
+                  {
+                      new()
+                      {
+                          NewMemoryId = soupMemoryId,
+                          ExistingMemoryId = Guid.NewGuid(),
+                          NewContent = "Mark said he loves french onion soup",
+                          ExistingContent = "Conversation about books and reading",
+                          Reason = "different topics — soup vs books",
+                          Similarity = 0.65f,
+                          FlaggedAt = DateTimeOffset.UtcNow,
+                      }
+                  });
+
+        await processor.RunAsync(CancellationToken.None);
+
+        // Assert: the reply prompt should contain the contradiction grounding
+        capturedUserPrompt.Should().NotBeNull("a reply should have been generated");
+        capturedUserPrompt.Should().Contain("TOPIC GROUNDING",
+            "contradiction grounding should be injected when retrieved memories have flagged conflicts");
+        capturedUserPrompt.Should().Contain("soup",
+            "the warning should reference the contradicting content");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoContradictions_NoGroundingInReplyPrompt()
+    {
+        var bookMemory = new MemoryRecord
+        {
+            Id = Guid.NewGuid(), Type = MemoryType.Semantic,
+            Content = "Mark enjoys reading mythology books",
+        };
+
+        var thread = new ConversationThread
+        {
+            Id = Guid.NewGuid(),
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "mark", Content = "What are you reading?", SentAt = DateTimeOffset.UtcNow },
+            },
+        };
+
+        MockOllama.Setup(o => o.ChatJsonAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                                              It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync("""{ "shouldReply": true, "reasoning": "question" }""");
+        MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                                              It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync("thinking");
+
+        string? capturedUserPrompt = null;
+        MockOllama.Setup(o => o.ChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken>(
+                      (system, history, user, ct) => capturedUserPrompt = user)
+                  .ReturnsAsync("Reading The Odyssey!");
+
+        var processor = CreateProcessor();
+
+        // Override mocks AFTER CreateProcessor
+        _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
+                          .ReturnsAsync(thread);
+        _mockConversations.Setup(c => c.AddMessageAsync(It.IsAny<Guid>(), It.IsAny<ConversationMessage>(), It.IsAny<CancellationToken>()))
+                          .Returns(Task.CompletedTask);
+        MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new[] { bookMemory });
+
+        await processor.RunAsync(CancellationToken.None);
+
+        capturedUserPrompt.Should().NotBeNull("a reply should have been generated");
+        capturedUserPrompt.Should().NotContain("TOPIC GROUNDING",
+            "no grounding should be injected when no contradictions exist");
+    }
 }
