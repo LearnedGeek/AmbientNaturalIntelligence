@@ -36,9 +36,23 @@
         <h3>Recent Inner Thoughts</h3>
         @foreach (var thought in _recentThoughts.Take(5))
         {
+            var contribution = FindContributionForThought(thought);
             <blockquote>
                 <p>@thought.Content</p>
-                <footer>@thought.CreatedAt.LocalDateTime.ToString("MMM d, h:mm tt")</footer>
+                <footer>
+                    @thought.CreatedAt.LocalDateTime.ToString("MMM d, h:mm tt")
+                    @if (contribution is not null)
+                    {
+                        var decay = contribution.DecayFactor(DateTimeOffset.UtcNow);
+                        <span style="margin-left: 1em; font-size: 0.85em;">
+                            <span style="color: @DeltaColor(contribution.WarmthDelta)">W:@FormatDelta(contribution.WarmthDelta)</span>
+                            <span style="color: @DeltaColor(contribution.EnergyDelta)">E:@FormatDelta(contribution.EnergyDelta)</span>
+                            <span style="color: @DeltaColor(contribution.ConcernDelta)">C:@FormatDelta(contribution.ConcernDelta)</span>
+                            <span style="color: @DeltaColor(contribution.PlayfulnessDelta)">P:@FormatDelta(contribution.PlayfulnessDelta)</span>
+                            <span style="color: #888"> decay:@decay.ToString("F2")</span>
+                        </span>
+                    }
+                </footer>
             </blockquote>
         }
     </section>
@@ -59,6 +73,7 @@
     private CharacterStateDoc? _charState;
     private EmotionalState? _emotional;
     private List<MemoryRecord> _recentThoughts = new();
+    private List<EmotionalContribution> _contributions = new();
     private ConversationThread? _activeThread;
 
     protected override async Task OnInitializedAsync()
@@ -66,6 +81,21 @@
         _charState = await Memory.GetCharacterStateAsync();
         _emotional = await Memory.GetEmotionalStateAsync();
         _recentThoughts = (await Memory.GetByTypeAsync(MemoryType.InnerThought, 5)).ToList();
+        _contributions = await Memory.GetActiveContributionsAsync();
         _activeThread = await Conversations.GetActiveThreadAsync();
     }
+
+    private EmotionalContribution? FindContributionForThought(MemoryRecord thought)
+    {
+        // Match by source content prefix — contributions store the first 200 chars of the thought
+        var contentPrefix = thought.Content.Length > 50 ? thought.Content[..50] : thought.Content;
+        return _contributions.FirstOrDefault(c =>
+            c.SourceContent.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FormatDelta(float delta) =>
+        delta >= 0 ? $"+{delta:F2}" : $"{delta:F2}";
+
+    private static string DeltaColor(float delta) =>
+        delta > 0.01f ? "#4caf50" : delta < -0.01f ? "#f44336" : "#888";
 }

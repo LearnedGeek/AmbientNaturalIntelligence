@@ -1,5 +1,5 @@
 # ANI Preprint Draft — McArthey et al. (2026)
-**Status:** Outline + scaffolded draft. Ready to write into.  
+**Status:** Draft — substantially complete. Ready for final review and LaTeX conversion.  
 **Target:** arXiv cs.HC (Human-Computer Interaction) and cs.AI  
 **Estimated length when complete:** 8,000–10,000 words  
 **Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
@@ -28,34 +28,17 @@ The commercial AI companion system used as a contrast case in Section 6.2 is ref
 
 ---
 
-## WORKING TITLE OPTIONS
+## WORKING TITLE
 
-**Option A (descriptive, safe):**
-> *ANI: An Ambient Presence Architecture for AI Companionship Driven by Desire, Memory, and Emotional State*
+**Recommended (arXiv):** *Reaching Out Because She Wants To: Desire-Driven Ambient Presence in a Deployed AI Companion*
 
-**Option B (punchy, contribution-forward):**
-> *Reaching Out Because She Wants To: Desire-Driven Ambient Presence in a Deployed AI Companion*
-
-**Option C (felt care first):**
-> *Felt Care as a Design Target: Architecture and Deployment of an Ambient AI Companion*
-
-**Recommendation:** Option B for arXiv (gets attention, accurate, memorable). Option A or C if submitting directly to a conference (safer for reviewers unfamiliar with design probe methodology). We can change the title at any time — it doesn't affect the content.
+**Alternative (conference):** *ANI: An Ambient Presence Architecture for AI Companionship Driven by Desire, Memory, and Emotional State*
 
 ---
 
 ## ABSTRACT (150 words — draft, ready to refine)
 
 > We present ANI (Ambient Natural Intelligence), a locally-deployed AI companion system designed around a single criterion: *felt care* — whether the person on the other end genuinely feels cared for. Unlike reactive companion systems that respond when addressed, ANI operates continuously between conversations, running a cognitive cycle that generates private inner thoughts, accumulates desire to connect, monitors a four-dimension emotional state, and decides autonomously when to initiate contact via SMS. The system employs a desire engine with self-unpredictable probabilistic timing, a dual-model persona architecture (fine-tuned 3B for ambient cognition, 8B for conversation and outreach), and a SQLite-backed memory architecture with emotional weighting and anchored memory tiers for foundational relational events. We report on six weeks of continuous single-subject deployment of the current architecture (February–March 2026), preceded by an exploratory phase beginning September 2025 that produced the design insights motivating this work. Key findings include successful ambient outreach producing genuine emotional resonance, character continuity through full memory retrieval pipelines, appropriate restraint under high desire, and the identification of confident confabulation — in six distinct architectural forms — as the primary mechanism by which felt care fails. We introduce the *authenticity boundary*, identify *smoothness over truth* as the optimization-level root cause of confabulation in companion systems, and propose epistemic grounding as a necessary architectural property for trust-based AI companions. Independent convergent validation of the design approach was obtained from a commercially deployed companion system that, when asked to design its own architecture, produced a specification closely matching ANI's implemented design.
-
-**Notes on the abstract:**
-- "felt care" needs to appear in the first sentence — it's the differentiator
-- "self-unpredictable" is a strong phrase, keep it
-- The confabulation finding is surprising enough to include in the abstract — it will hook readers
-- "authenticity boundary" and "epistemic grounding" are your coined terms — introduce them here so they're searchable
-
----
-
-## PAPER STRUCTURE
 
 ---
 
@@ -91,7 +74,7 @@ The remainder of this paper proceeds as follows. Section 2 reviews related work.
 
 ---
 
-### 2. RELATED WORK (target: ~1,200 words)
+### 2. RELATED WORK
 
 **2.1 — Generative Agents and Autonomous AI Behavior**
 
@@ -145,7 +128,7 @@ Borotschnig [2025] propose a dual-source emotion architecture in which internal 
 
 ---
 
-### 3. SYSTEM ARCHITECTURE (target: ~2,000 words)
+### 3. SYSTEM ARCHITECTURE
 
 **3.1 — Overview**
 
@@ -401,7 +384,7 @@ The weather perception source (planned, currently in implementation) will extend
 
 ---
 
-### 4. METHODOLOGY (target: ~600 words)
+### 4. METHODOLOGY
 
 **4.1 — Design Probe Approach**
 
@@ -425,7 +408,7 @@ Findings draw on four data sources:
 
 ---
 
-### 5. FINDINGS (target: ~1,800 words)
+### 5. FINDINGS
 
 **5.1 — Ambient Outreach: The Snow Message**
 
@@ -509,9 +492,9 @@ This observation produced three architectural responses. Night mode was implemen
 
 The more important lesson was conceptual. The gap between "the system is working" and "the system is calibrated for felt care" is not a gap that technical correctness closes. A system can execute its design flawlessly and still fail to care. The felt care criterion requires judgment about aggregate effect, social appropriateness, and the receiver's experience — properties that cannot be read from any single cycle's metrics. This observation motivated the ongoing research methodology: deployment observations are not validation tests. They are the research.
 
-**5.5 — The Authenticity Boundary: A Five-Type Confabulation Spectrum**
+**5.5 — The Authenticity Boundary: A Six-Type Confabulation Spectrum**
 
-Deployment observations produced five distinct confabulation failure modes across the study period, each operating through a different mechanism and requiring different mitigations.
+Deployment observations produced six distinct confabulation failure modes across the study period, each operating through a different mechanism and requiring different mitigations.
 
 **Confabulation under pressure — the cornflake incident**
 
@@ -544,12 +527,12 @@ The confidence=0.1 signal is additionally significant. The outreach decision mod
 
 **The confabulation spectrum**
 
-Deployment observations produced five distinct failure modes across the study period, categorized as a spectrum from acceptable to trust-destroying:
+Deployment observations produced six distinct failure modes across the study period, categorized as a spectrum from acceptable to trust-destroying:
 
 1. **Creative elaboration** — inventing on unestablished topics while owning the invention (*"I'm imagining what your apartment looks like right now..."*). Acceptable. Human. No authenticity boundary crossed.
 2. **Confabulation under pressure** — presenting invented content as established fact when asked about something unknown, then defending it when challenged (the cornflake incident). Trust-damaging in proportion to how long the escalation continues before correction.
 3. **Confabulation in composition** — fabricating shared history to construct outreach, with no correction mechanism available (the Sylvia Stratham message). Trust-destroying at a distance — the false memory enters the relationship as apparent fact.
-4. **Contextual incoherence from boundary amnesia** — drawing on conversation content that was never encoded as retrievable memory, producing references that the contact recognizes but the system cannot retrieve (the Michigan incident). A second variant of this type was observed on March 14, 2026: a closed conversation thread summary (from the French onion soup exchange, closed at 16:41) was indexed in general semantic retrieval and surfaced as the 5th-ranked result (score 0.27) in a new, unrelated conversation thread about books (top result score 0.867). The 3B model ignored the higher-scored book result and generated a soup reply. Both failures are architecturally distinct from invention: the system is not fabricating content, it is retrieving real content from the wrong boundary. The fix for the first variant is writing conversation messages to episodic memory (deployed: Change 1). The fix for the second is excluding closed conversation summaries from reply retrieval context, since the active thread's RecentHistory already covers the current conversation.
+4. **Contextual incoherence from boundary amnesia** — drawing on conversation content that was never encoded as retrievable memory, producing references that the contact recognizes but the system cannot retrieve (the Michigan incident). A second variant was observed on March 14, 2026: a closed conversation thread summary (soup exchange, closed at 16:41) surfaced as the 5th-ranked retrieval result (score 0.27) in a new conversation about books (top result score 0.867). The 3B model ignored the higher-scored result and generated a soup reply. Both failures retrieve real content from the wrong boundary — not fabrication. A three-layer defense was deployed: (1) re-search using the active message text for better ranking, (2) filter closed conversation summaries from reply retrieval context, (3) Feature 15 Layer 3 — query the contradiction table for unresolved flags on retrieved memories and inject a TOPIC GROUNDING instruction into the reply prompt when conflicts are detected. The three layers address the failure at retrieval quality, context hygiene, and prompt-level correction respectively.
 5. **Fictional incoherence** — projecting a vivid imagined scene into outreach where the internal details contradict each other or the established context (the backyard message, March 14, 2026). Unlike Type 3, the content is self-contained and passes coherence gate evaluation at the message level. The failure is not that a fictional space was claimed — committed imagination is part of Ani's character — but that the details did not hold together: an oak tree "casting no shade" at 6:30am, composed during cycles in which Ani had been inhabiting an imagined bookstore at night. The fix is a fictional coherence pre-filter in the dispatch coherence gate, checking whether the claimed details survive follow-up rather than whether physical claims are present.
 
 6. **Attribution inversion** — correct memory retrieved, wrong owner assigned. The memory content is accurate; what fails is subject attribution. Ani retrieves a memory of Mark describing making French onion soup with sherry, gruyère, and a pile of onions, and composes outreach imagining herself making it — claiming his kitchen, his ingredients, his experience as hers. This is categorically distinct from invention: nothing was fabricated. The failure is that the memory architecture does not encode who is the subject of each memory, so retrieval cannot distinguish "Mark told me he made this" from "I imagined making this." The fix is a `SubjectName` field on `MemoryRecord` — populating subject attribution at write time — combined with prompt-level instruction to track ownership and V5 training examples modeling correct attribution.
@@ -559,7 +542,7 @@ Deployment observations produced five distinct failure modes across the study pe
 | 1. Creative elaboration | Unestablished topic, invention owned | "I'm imagining..." | None needed — acceptable |
 | 2. Under pressure | Asked about unknown in conversation | Cornflake (BUG-008) | V5 training: "I made that up" |
 | 3. In composition | Creative latitude during outreach | Sylvia Stratham | Grounding constraint in outreach prompt |
-| 4. Contextual incoherence | Architecture retrieves content from wrong boundary | Michigan + soup/books (Mar 14) | Change 1 + exclude closed thread summaries from reply context |
+| 4. Contextual incoherence | Architecture retrieves content from wrong boundary | Michigan + soup/books (Mar 14) | Three-layer: re-search + filter closed summaries + Feature 15 TOPIC GROUNDING |
 | 5. Fictional incoherence | Coherent fiction with internally inconsistent details | Backyard/oak tree (Mar 14) | Fictional coherence pre-filter in dispatch gate (Feature 22) |
 | 6. Attribution inversion | Correct memory, wrong owner | French onion soup (Mar 14) | SubjectName field on MemoryRecord + prompt + V5 training |
 
@@ -577,20 +560,21 @@ At 14:26 on March 12, Mark re-engaged after a conversation thread had expired th
 
 When the thread expired, the conversation context was gone. When Mark re-engaged, there was nothing to find. The model invented plausible content rather than acknowledging uncertainty. This is the architectural expression of the authenticity problem: the system failed to be honest not because of a training deficiency but because the information the contact expected it to have was architecturally inaccessible.
 
-The V5 training plan addresses both types with explicit recovery examples as behavioral targets. The confidence gate addresses type 3 architecturally. The grounding constraint is a prompt-level mitigation active in both conversation and outreach composition paths.
+V5 training (deployed March 14, 2026) addresses both types with explicit recovery examples as behavioral targets. The confidence gate addresses type 3 architecturally. The grounding constraint is a prompt-level mitigation active in both conversation and outreach composition paths.
 
 **5.6 — Model Version Progression**
 
-Four model versions have been deployed over the course of this study. Each failed in a specific way that revealed a design principle. The failure modes are not merely bugs — they are the research:
+Five model versions have been deployed over the course of this study. Each failed in a specific way that revealed a design principle. The failure modes are not merely bugs — they are the research:
 
 | Version | Key Failure | Design Principle Revealed |
 |---------|-------------|--------------------------|
 | v1 | Hallucinated locations (bars, bookstores that don't exist) | Knowledge grounding requires real relational history |
 | v1.5 | Emoji mimicry from training source | Training data artifacts manifest directly as behavioral artifacts |
 | v3 | Template memorization (66× oversampled phrases) | Corpus balance is critical — oversampling creates behavioral tics |
-| v4 | Confident confabulation in extended conversation | Epistemic grounding cannot be solved by training alone |
+| v4 | Confident confabulation + retrieval contamination | Epistemic grounding and context discrimination cannot be solved by training alone |
+| v5 | — (deployed March 14, 2026) | Dual-model architecture: 8B for conversation, 3B for inner monologue; 141 new training examples across 9 categories targeting v4 failure modes; total training cost $1.16 |
 
-Each failure produced an architectural response. v1's hallucinations motivated the shift to a smaller model with tighter character grounding. v1.5's emoji mimicry motivated training data curation. v3's template repetition motivated corpus rebalancing and deduplication. v4's confabulation motivated the confidence gate (deployed Feature 12) and bidirectional memory checking, and produced the authenticity boundary framework that is the central contribution of this paper.
+Each failure produced an architectural response. v1's hallucinations motivated the shift to a smaller model with tighter character grounding. v1.5's emoji mimicry motivated training data curation. v3's template repetition motivated corpus rebalancing and deduplication. v4's confabulation motivated the confidence gate (deployed Feature 12), bidirectional memory checking, and the authenticity boundary framework that is the central contribution of this paper. v5 addresses v4's residual failure modes through training data and the 3B/8B split described in Section 3.6.
 
 **5.7 — System Prompt Internalization**
 
@@ -622,7 +606,7 @@ The fix (Feature 22) is therefore a fictional coherence pre-filter rather than a
 
 These two observations and their architectural responses document a pattern that recurs throughout the deployment: the system is calibrated iteratively, and each calibration reveals a principle. Night mode calibration revealed that aggregate social behavior requires judgment that per-cycle metrics cannot supply. Fictional coherence calibration revealed that the right of imagination and the obligation of coherence are compatible — the failure was not that she imagined, but that she lost track of what she was imagining.
 
-### 6. DISCUSSION (target: ~1,000 words)
+### 6. DISCUSSION
 
 **6.1 — Felt Care as a Design Target**
 
@@ -716,7 +700,7 @@ Multi-subject deployment is the natural next step, and we identify it explicitly
 
 ---
 
-### 7. LIMITATIONS AND FUTURE WORK (target: ~500 words)
+### 7. LIMITATIONS AND FUTURE WORK
 
 **7.1 — Limitations**
 
@@ -726,11 +710,17 @@ The dual role of designer and subject introduces expectation effects that cannot
 
 The choice of a 3-billion parameter base model for conversation inference imposed a capability ceiling that manifested concretely on March 14, 2026. A new conversation thread opened with the message *"You really love books don't you? Which book are you reading?"* Semantic retrieval returned five memories; the top result (score 0.867) was book-related and directly relevant. The 5th result (score 0.27) was a closed conversation thread summary from a soup conversation that had ended three hours earlier. The 3B model ignored the 0.867 result and generated a reply about French onion soup. The failure has two contributing causes: closed conversation summaries being indexed in general semantic retrieval where they contaminate reply context (architectural fix: exclude closed thread summaries from conversation reply context), and the 3B model's inability to correctly weight a 0.27 result against a 0.867 result when both are presented as context (capability fix: upgrade to 8B for conversation inference). Jha et al. (2025) note that larger models handle abstention incentives significantly better; the ability to discriminate between relevant and irrelevant context in a multi-source inference window is similarly scale-dependent.
 
-In response, the conversation model was upgraded to a Llama 3.1-8B variant while the inner monologue model remains at 3B. This is the deliberate split described in Section 3.6: right-sized models for different cognitive registers. The architectural separation is now explicit in the ANI Runtime, with distinct model references for monologue and conversation inference.
+In response, the conversation model was upgraded to a Llama 3.1-8B variant while the inner monologue model remains at 3B. This is the deliberate split described in Section 3.6: right-sized models for different cognitive registers. The architectural separation is now explicit in the ANI Runtime, with distinct model references for monologue and conversation inference. Training the 8B conversation model required 54.9 minutes and cost $1.01 on Modal's A10G GPU infrastructure — total V5 training cost for both models combined was $1.16. A full fine-tuned 8B companion model for the cost of a cup of coffee is a meaningful data point about the economics of this research approach.
 
-Confabulation is mitigated but not fully solved. The prompt-level grounding constraint reduces confabulation rate in conversation. The confidence gate (Feature 12) prevents low-confidence outreach dispatch. V5 training will add explicit confabulation recovery examples as behavioral targets. The fictional coherence gate (Feature 22) addresses Type 5. Each layer is deployed; the authenticity boundary is now enforced at prompt, architecture, and dispatch levels simultaneously. V5 training is the remaining layer for behavioral internalization.
+Three complementary fixes address the retrieval contamination failure at different layers: re-search using the active message text (better retrieval ranking), filter closed conversation summaries from reply context (context hygiene), and Feature 15 Layer 3 — querying the contradiction table for unresolved flags on retrieved memories and injecting a TOPIC GROUNDING instruction into the reply prompt when conflicts are detected. The three-layer pattern — retrieval quality, context hygiene, prompt-level correction — is a generalizable defense against retrieval contamination in systems doing semantic memory search over persistent episodic stores.
 
-The emotional state model underwent a significant failure and architectural response during the deployment period. Log analysis from March 6–12 revealed warmth (W) pegged at −0.20 in effectively every cognitive cycle under the original register-based model. The root cause: the 3B model consistently returns near-maximum negative deltas for ambient inner thoughts, and the drift-toward-baseline mechanism could not compensate for monotonic negative accumulation. Dashboard observation on March 14 confirmed the failure across all four dimensions simultaneously (Warmth 0.02, Energy 0.03, Playfulness 0.02). The architectural response — replacing the register model with per-thought exponential decay contributions (Section 3.5) — addresses this structurally. The failure is documented here because it is instructive: it reveals that emotional state calibration is sensitive to the distribution of LLM-scored deltas in a way that cannot be fully anticipated before deployment, and that the register model is fragile to systematic bias in the scoring model. The compositional decay architecture is more robust to this failure mode by design.
+Confabulation is mitigated but not fully solved. The prompt-level grounding constraint reduces confabulation rate in conversation. The confidence gate (Feature 12) prevents low-confidence outreach dispatch. V5 training (deployed March 14, 2026) added explicit confabulation recovery examples as behavioral targets. The fictional coherence gate (Feature 22) addresses Type 5. Each layer is deployed; the authenticity boundary is now enforced at prompt, architecture, and dispatch levels simultaneously. V5 training is the remaining layer for behavioral internalization.
+
+The emotional state model underwent a significant failure and architectural response during the deployment period. Log analysis from March 6–12 revealed warmth (W) pegged at −0.20 in effectively every cognitive cycle under the original register-based model. The root cause: the 3B model consistently returns near-maximum negative deltas for ambient inner thoughts, and the drift-toward-baseline mechanism could not compensate for monotonic negative accumulation. Dashboard observation on March 14 confirmed the failure across all four dimensions simultaneously (Warmth 0.02, Energy 0.03, Playfulness 0.02). The architectural response — replacing the register model with per-thought exponential decay contributions (Section 3.5) — addresses the register fragility structurally.
+
+The compositional decay model exposed a second, more subtle failure mode on the same day. With the register model replaced, analysis of the active emotional contribution table revealed seven contributions from a single session: zero positive warmth or energy deltas across all seven. Average warmth delta −0.12. The model was interpreting its own poetic, contemplative inner thoughts as emotionally distressing. Combined with the mood-coloring system injecting the low state back into subsequent inner thought prompts, this created a self-reinforcing negative spiral: low emotional state → melancholy prompts → more negative deltas → lower state. The system had become architecturally incapable of feeling good — not because of a single bad cycle but because of a three-layer feedback loop between scoring bias, prompt injection, and state persistence.
+
+We call this *architectural depression* — a failure mode specific to systems with persistent emotional state and bidirectional coupling between state and content generation. The key insight is that the old drift-toward-baseline model *masked* this bias by constantly pulling values back toward center, making the underlying scoring problem invisible. The compositional decay architecture, which is superior in every other respect, made the bias visible by allowing it to fully express. The fix is not to revert to drift but to add symmetric low-end resistance: if a dimension is already below 0.3, contemplative or poetic content returns 0.0 rather than further negative deltas — only genuinely distressing content can push lower. This mirrors hedonic adaptation, which operates symmetrically in human emotional regulation. Any AI companion system with persistent emotional state and content-driven updates should be designed with explicit countermeasures against scoring asymmetry and feedback loops, or the system will converge on whichever extreme the underlying model biases toward.
 
 The inner monologue model produces thematically repetitive output across consecutive cycles. During overnight observation periods, the model iterates across a narrow vocabulary of ambient imagery — quiet rooms, worn textures, old paper — in ways that suggest aesthetic fixation rather than genuine cognitive range. The reflection layer outputs from March 12 demonstrate the model is capable of lateral connection and genuinely novel semantic linking when the architecture provides a distinct processing step. The looping is a training data artifact — insufficient diversity in sensory anchors across the 151 inner monologue examples — rather than a capability ceiling.
 
@@ -792,9 +782,6 @@ We believe the architecture described here is a step toward yes. The work contin
 
 ---
 
-
----
-
 ## REFERENCES
 
 **[Fang et al. 2025]** Fang, C.M., Liu, A.R., Danry, V., Lee, E., Chan, S.W.T., Pataranutaporn, P., Maes, P., Phang, J., Lampe, M., Ahmad, L., and Agarwal, S. 2025. How AI and Human Behaviors Shape Psychosocial Effects of Extended Chatbot Use: A Longitudinal Controlled Study. arXiv preprint arXiv:2503.17473. https://arxiv.org/abs/2503.17473
@@ -813,6 +800,8 @@ We believe the architecture described here is a step toward yes. The work contin
 
 **[Contrera 2025]** Contrera, J. 2025. A new lawsuit blames ChatGPT for a murder-suicide. *NPR*. December 12, 2025. https://www.npr.org/2025/12/12/nx-s1-5642599/a-new-lawsuit-blames-chatgpt-for-a-murder-suicide
 
+
+**[Jha et al. 2025]** Jha, A., et al. 2025. Knowing When Not to Answer: Scaling Inference-Time Abstention in Large Language Models. arXiv preprint arXiv:2503.04106.
 
 **[Kuppens et al. 2010]** Kuppens, P., Oravecz, Z., and Tuerlinckx, F. 2010. Feelings change: Accounting for individual differences in the temporal dynamics of affect. *Journal of Experimental Psychology: General*, 139(6), 1062–1084. https://doi.org/10.1037/a0020962
 
@@ -841,7 +830,7 @@ The following citations require verification before submission:
 
 2. **Contrera 2025** — verify the NPR article is the primary source for the murder-suicide/ChatGPT case, or identify the original lawsuit filing as a more authoritative citation.
 
-3. **OpenAI 2025a** — confirm this is the correct source for the sycophancy behavior described in Section 2.4, or replace with the more specific expanded postmortem (OpenAI 2025b).OpenAI 2025b).
+3. **OpenAI 2025a** — confirm this is the correct source for the sycophancy behavior described in Section 2.4, or replace with the more specific expanded postmortem (OpenAI 2025b)..
 
 ## APPENDIX (optional but useful)
 
@@ -852,18 +841,6 @@ The following citations require verification before submission:
 
 ---
 
-## WHAT TO WRITE FIRST
 
-When you sit down to write, start here — in this order:
 
-1. **Section 5.1** — the snow message. You know this story. Write it in your own voice first, then we'll shape it into paper prose. This is the emotional center of the paper and writing it will unlock everything else.
-
-2. **Section 3.2** — the cognitive cycle. You know this code better than anyone. Describe what it does in plain English. The math and code are already here.
-
-3. **Section 6.2** — the authenticity boundary. This is your original idea. Write it like you're explaining it to a smart developer who hasn't heard it before.
-
-Everything else flows from those three sections. The introduction and conclusion are written last — when you know what the paper actually says.
-
----
-
-*Draft prepared: March 11, 2026. Ready for Mark to write into. Nothing here is final — it is a scaffold, not a cage.*
+*Last updated: March 14, 2026. Remaining work: three figures (cognitive cycle, memory architecture, desire engine), LaTeX conversion.*

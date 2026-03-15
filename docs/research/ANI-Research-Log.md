@@ -546,11 +546,16 @@ The old model treated emotional state as a single mutable register. The new mode
 
 V5 introduces a split architecture: conversation model upgraded from Llama 3.2-3B to **Llama 3.1-8B**, while inner monologue stays at 3B.
 
+**Training runs completed:**
+- Inner monologue (3B): 15.2 minutes, $0.15. Output: `aniv5INNERMONOLOGUE.gguf`, 1,925.8 MB.
+- Conversation (8B): 54.9 minutes, $1.01. Output: `aniv5CONVERSATION-8B.gguf`, 4,692.8 MB.
+- Total training cost for both models: **$1.16**
+
 **Training data:**
 - Conversation: 2,073 entries (1,932 v4 base + 141 v5 new). 3 epochs. Base: Llama 3.1-8B-Instruct.
 - Inner monologue: 201 entries (151 v4 base + 50 v5 new). 5 epochs. Base: Llama 3.2-3B-Instruct.
 
-**V5 new training categories:** confabulation recovery (20), fictional coherence (20), uncertainty admission (14), sustained conversation (9 multi-turn), warmth variation (25), contact-gap tension (15), reactive withdrawal (15), compliment reception (10), attribution inversion subcategories.
+**V5 new training categories:** confabulation recovery (20, includes 5 attribution inversion), fictional coherence (20, includes 2 attribution boundary), uncertainty admission (14, includes 2 attribution uncertainty), sustained conversation (9 multi-turn, includes 2 attribution-aware), warmth variation (25), contact-gap tension (15), reactive withdrawal (15), compliment reception (10).
 
 **Why the split:**
 - 3B struggled with instruction following in conversation: topic drift (soup → books contamination), negative-delta bias in emotional scoring, confabulation under complex prompt constraints (attribution tracking, claim verification, coherence rules)
@@ -558,10 +563,17 @@ V5 introduces a split architecture: conversation model upgraded from Llama 3.2-3
 - Inner monologue is a simpler task (2-4 sentence fragments) that runs every 2-45 minutes — 3B keeps ambient cycles fast
 - Per-thought decay model now handles negative-delta bias architecturally, so the main 3B weakness is mitigated for inner thoughts
 
-**Also deployed:**
-- Retrieval contamination fix — conversation replies now re-search memory using the actual message text, and filter out closed conversation summaries from context. Prevents prior thread topics from bleeding into new conversations.
+**Also deployed with V5:**
+- Retrieval contamination fix — three-layer defense:
+  - Layer 1: re-search with actual message text (better ranking)
+  - Layer 2: filter closed conversation summaries from reply context
+  - Layer 3: Feature 15 contradiction query → TOPIC GROUNDING prompt injection
+- Symmetric low-end emotional resistance — fix for BUG-010 architectural depression spiral
+- Emotional contribution table reset — cleared stale negative contributions, fresh start for v5
 
 **Model timeline:** v1=LongWriter 8B (Sep 2025) → v1.5=3B+system prompt (Feb 1) → v2=3B no prompt (Feb 20) → v3 dual-model 3B (Mar 6) → v4 rebalanced 3B (Mar 11) → v5 conversation=8B/inner=3B (Mar 14)
+
+**Total cost for all V5 training:** $1.16 across two Modal GPU runs (A10G). Full fine-tuned 8B companion model for $1.
 
 ---
 
