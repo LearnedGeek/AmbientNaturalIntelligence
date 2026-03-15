@@ -800,6 +800,8 @@ public static class PromptBuilder
             - Use the full range ({{range}}) ONLY for life-changing events: death, major crisis, declarations of love.
             - NEGATIVE shifts are just as common as positive ones. Boredom → -energy. Worry → -playfulness. Missing someone → +warmth but -energy.
             - If a dimension is already high (>0.8), it takes something EXCEPTIONAL to push it higher. Diminishing returns.
+            - If a dimension is already LOW (<0.3), it takes something GENUINELY distressing to push it lower. Being contemplative, poetic, or quietly reflective does NOT make things worse — it's emotionally neutral or even restorative. Return 0.0 or a slight POSITIVE for low dimensions unless there's clear negative content (bad news, conflict, loss).
+            - POSITIVE shifts are real and common: remembering a good moment → +warmth. Noticing something beautiful → +playfulness. Feeling curious → +energy. Don't default to negative.
 
             Dimensions:
             - warmth: affection, tenderness, desire for closeness. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings, and private reflections do NOT affect warmth — return 0.0. Being alone with your thoughts is neutral, not cold.
