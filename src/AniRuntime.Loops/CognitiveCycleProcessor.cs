@@ -1054,6 +1054,35 @@ public class CognitiveCycleProcessor
         // Build context for the reply
         var snapshot = await BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
+        // Re-search relevant memories using Mark's actual message, not the perception queue.
+        // The perception-based search from BuildContextSnapshotAsync can surface memories from
+        // prior closed conversations (e.g., a soup discussion leaking into a books question).
+        // By re-searching against the actual message, we get topically relevant context.
+        try
+        {
+            var messageSearchResults = await _memory.SearchAsync(lastMessage, 5, ct).ConfigureAwait(false);
+            var messageRelevant = messageSearchResults.ToList();
+
+            // Filter out episodic memories from the current conversation thread — they're
+            // already in RecentHistory and would be redundant
+            messageRelevant = messageRelevant
+                .Where(m => !m.Content.StartsWith("Mark said:") || !lastMessage.Contains(m.Content[11..Math.Min(m.Content.Length, 40)]))
+                .ToList();
+
+            // Re-rank for diversity against recent thoughts
+            var recentThoughts = (await _memory.GetByTypeAsync(MemoryType.InnerThought, 5, ct)
+                .ConfigureAwait(false)).ToList();
+            messageRelevant = await ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
+                .ConfigureAwait(false);
+
+            snapshot.RelevantMemory = messageRelevant;
+            _log.LogDebug("Conversation context: re-searched with message text, {Count} relevant memories", messageRelevant.Count);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Conversation memory re-search failed — using perception-based results");
+        }
+
         // Populate RecentHistory with the conversation thread so prompts have full context
         snapshot.RecentHistory = thread.Messages.Select(m => new ChatMessage(
             m.Role == "ani" ? "assistant" : "user",
