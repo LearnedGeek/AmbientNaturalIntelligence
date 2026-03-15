@@ -1128,10 +1128,10 @@ public class VoiceOptions
 
 ### Phase
 
-4a (interim) — ElevenLabs TTS + Whisper STT + Twilio Voice
-Future — evaluate local alternatives as quality improves
+4a (interim) — ElevenLabs TTS + Whisper STT + Twilio Voice (Record+webhook, batch)
+**Phase 5** — Real-time streaming voice via Twilio Media Streams. See `docs/spec/phase-5-design.md` for full design: Deepgram streaming STT, ElevenLabs WebSocket TTS (ulaw_8000), Ollama streaming tokens, Silero VAD for barge-in. ~800ms-1.4s end-to-end latency vs ~5-9s in interim. Zero transcoding pipeline.
 
-### Feature 20 Extension: Interruptible Voice — Local-First Architecture
+### Feature 20 Extension: Interruptible Voice — Local-First Architecture (Superseded by Phase 5)
 
 **Date:** March 14, 2026
 **Source:** Mark's research into real-time voice interaction requirements
