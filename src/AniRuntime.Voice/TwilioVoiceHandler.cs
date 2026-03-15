@@ -19,6 +19,7 @@ public class TwilioVoiceHandler
     private readonly ITextToSpeechService _tts;
     private readonly VoiceOptions _options;
     private readonly TwilioOptions _twilioOptions;
+    private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<TwilioVoiceHandler> _logger;
 
     public TwilioVoiceHandler(
@@ -26,12 +27,14 @@ public class TwilioVoiceHandler
         ITextToSpeechService tts,
         IOptions<VoiceOptions> options,
         IOptions<TwilioOptions> twilioOptions,
+        IHttpClientFactory httpFactory,
         ILogger<TwilioVoiceHandler> logger)
     {
         _stt            = stt;
         _tts            = tts;
         _options        = options.Value;
         _twilioOptions  = twilioOptions.Value;
+        _httpFactory    = httpFactory;
         _logger         = logger;
     }
 
@@ -43,7 +46,7 @@ public class TwilioVoiceHandler
     {
         try
         {
-            using var http = new HttpClient();
+            var http = _httpFactory.CreateClient("twilio");
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{_twilioOptions.AccountSid}:{_twilioOptions.AuthToken}"));
             http.DefaultRequestHeaders.Authorization =

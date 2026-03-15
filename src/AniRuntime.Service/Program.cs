@@ -30,12 +30,13 @@ try
         .ReadFrom.Configuration(builder.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
-        .WriteTo.Console()
+        .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}")
         // Journal — inner thoughts, outreach decisions, messages sent (queryable story)
+        // No {Exception} — stack traces go to debug log only, journal stays readable
         .WriteTo.File("logs/ani-.log",
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
-            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}",
             retainedFileCountLimit: 30)
         // Diagnostic — everything, for debugging
         .WriteTo.File("logs/ani-debug-.log",
@@ -76,6 +77,7 @@ try
         builder.Services.AddSingleton<TwilioVoiceHandler>();
         builder.Services.AddSingleton<MediaCacheService>();
         builder.Services.AddSingleton<IMediaEnrichmentService, VoiceMediaEnrichmentService>();
+        builder.Services.AddSingleton<VoiceConversationService>();
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -128,6 +130,14 @@ try
                            .OfType<AniHeartbeatService>().First();
     twilioSource.OnMessageReceived = heartbeat.RequestEarlyWake;
 
+    // ── Wire voice call → cognitive cycle pause ─────────────────────────────
+    if (voiceEnabled)
+    {
+        var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
+        voiceService.OnCallStarted = heartbeat.PauseForVoiceCall;
+        voiceService.OnCallEnded   = heartbeat.ResumeAfterVoiceCall;
+    }
+
     // ── Inbound SMS webhook ──────────────────────────────────────────────────
     // Twilio POSTs here when an SMS arrives at Ani's number.
     // Enqueues the message for the cognitive cycle and triggers an early wake.
@@ -177,46 +187,59 @@ try
         });
     }
 
-    // ── Inbound Voice webhook (Feature 20) ─────────────────────────────────────
-    // Twilio POSTs here when a voice recording is ready. Transcribes via Whisper
-    // and enqueues the text into the same conversation pipeline as SMS.
+    // ── Voice conversation loop (Feature 20) ────────────────────────────────────
+    // Three endpoints: /voice/inbound (greeting + first record), /voice/turn (each
+    // subsequent turn), /voice/status (call ended cleanup). Turn-by-turn: speak →
+    // record → transcribe → LLM → synthesize → play → record → repeat.
     if (voiceEnabled)
     {
-        app.MapPost("/voice/inbound", async (HttpContext ctx, IOptions<TwilioOptions> twilioOpts) =>
+        app.MapPost("/voice/inbound", async (HttpContext ctx) =>
         {
             var form = await ctx.Request.ReadFormAsync();
+            var callSid = form["CallSid"].ToString();
 
-            // Validate Twilio request signature
-            var authToken = twilioOpts.Value.AuthToken;
-            var signature = ctx.Request.Headers["X-Twilio-Signature"].FirstOrDefault() ?? "";
-            var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.Path}";
-            var parameters = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
+            Log.Information("Voice inbound: call {CallSid}", callSid);
 
-            var validator = new Twilio.Security.RequestValidator(authToken);
-            if (!string.IsNullOrWhiteSpace(authToken) && !validator.Validate(requestUrl, parameters, signature))
-            {
-                Log.Warning("Rejected inbound voice webhook — invalid Twilio signature");
-                return Results.StatusCode(403);
-            }
+            var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
+            var twiml = await voiceService.StartCallAsync(callSid, ctx.RequestAborted);
+            return Results.Content(twiml, "application/xml");
+        });
 
+        app.MapPost("/voice/turn", async (HttpContext ctx) =>
+        {
+            var form = await ctx.Request.ReadFormAsync();
+            var callSid = ctx.Request.Query["callSid"].ToString();
             var recordingUrl = form["RecordingUrl"].ToString();
-            if (string.IsNullOrWhiteSpace(recordingUrl))
+
+            if (string.IsNullOrWhiteSpace(callSid) || string.IsNullOrWhiteSpace(recordingUrl))
             {
-                // Initial call — respond with TwiML to record
-                var twiml = "<Response><Say>Hey, leave me a message.</Say><Record maxLength=\"120\" action=\"/voice/inbound\" /></Response>";
-                return Results.Content(twiml, "application/xml");
+                Log.Warning("Voice turn: missing callSid or recordingUrl");
+                return Results.Content("<Response><Hangup/></Response>", "application/xml");
             }
 
-            // Recording ready — transcribe and enqueue
-            var voiceHandler = app.Services.GetRequiredService<TwilioVoiceHandler>();
-            var text = await voiceHandler.TranscribeInboundAsync(recordingUrl);
-            if (!string.IsNullOrWhiteSpace(text))
+            var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
+            var twiml = await voiceService.ProcessTurnAsync(callSid, recordingUrl, ctx.RequestAborted);
+            return Results.Content(twiml, "application/xml");
+        });
+
+        app.MapPost("/voice/status", async (HttpContext ctx) =>
+        {
+            var form = await ctx.Request.ReadFormAsync();
+            var callSid = form["CallSid"].ToString();
+            var callStatus = form["CallStatus"].ToString();
+
+            if (callStatus is "completed" or "failed" or "busy" or "no-answer" or "canceled")
             {
-                twilioSource.EnqueueInbound($"voice-{Guid.NewGuid():N}", text, DateTimeOffset.UtcNow);
-                Log.Information("Voice webhook: transcribed and enqueued ({Chars} chars)", text.Length);
+                Log.Information("Voice status: {CallSid} → {Status}", callSid, callStatus);
+                var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
+                // Use app lifetime token, not request token — Twilio's status webhook
+                // closes the connection quickly, cancelling ctx.RequestAborted before
+                // EndCallAsync finishes saving buffered messages.
+                var appCt = app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
+                await voiceService.EndCallAsync(callSid, appCt);
             }
 
-            return Results.Content("<Response></Response>", "application/xml");
+            return Results.Ok();
         });
     }
 
@@ -324,6 +347,22 @@ try
         Log.Information("║  API:    http://localhost:5100/api/v1/ani/status");
         Log.Information("║  Voice:   {Status}", voiceEnabled ? "enabled (http://localhost:5100/voice/inbound)" : "disabled");
         Log.Information("╚══════════════════════════════════════════╝");
+    }
+
+    // ── Pre-warm LLM models — avoids cold-start latency on first request ──
+    if (voiceEnabled)
+    {
+        var ollama = app.Services.GetRequiredService<IOllamaClient>();
+        var ollamaOpts = app.Services.GetRequiredService<IOptions<OllamaOptions>>().Value;
+        Log.Information("Pre-warming voice model: {Model}", ollamaOpts.ChatModel);
+        try
+        {
+            await ollama.WarmModelAsync(ollamaOpts.ChatModel);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to pre-warm voice model — first voice turn may be slow");
+        }
     }
 
     await app.RunAsync();

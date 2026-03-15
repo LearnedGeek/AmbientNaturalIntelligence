@@ -29,6 +29,7 @@ public class AniHeartbeatService : BackgroundService
     private readonly ILogger<AniHeartbeatService>  _log;
 
     private CancellationTokenSource? _wakeCts;
+    private volatile int _voiceCallActive;
 
     public AniHeartbeatService(
         CognitiveCycleProcessor      cycle,
@@ -52,6 +53,13 @@ public class AniHeartbeatService : BackgroundService
     {
         _wakeCts?.Cancel();
     }
+
+    /// <summary>
+    /// Pause cognitive cycles during a voice call so Ollama is free for voice replies.
+    /// </summary>
+    public void PauseForVoiceCall() => Interlocked.Exchange(ref _voiceCallActive, 1);
+    public void ResumeAfterVoiceCall() => Interlocked.Exchange(ref _voiceCallActive, 0);
+    public bool IsVoiceCallActive => _voiceCallActive == 1;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -80,6 +88,14 @@ public class AniHeartbeatService : BackgroundService
                 {
                     _wakeCts.Dispose();
                     _wakeCts = null;
+                }
+
+                // Skip cognitive cycle while a voice call is active — Ollama must be
+                // free for voice reply generation (single-threaded inference)
+                if (IsVoiceCallActive)
+                {
+                    _log.LogDebug("Cognitive cycle skipped — voice call active");
+                    continue;
                 }
 
                 await _cycle.RunAsync(stoppingToken).ConfigureAwait(false);

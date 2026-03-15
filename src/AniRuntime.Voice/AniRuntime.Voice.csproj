@@ -8,6 +8,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AniRuntime.Core\AniRuntime.Core.csproj" />
+    <ProjectReference Include="..\AniRuntime.LLM\AniRuntime.LLM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

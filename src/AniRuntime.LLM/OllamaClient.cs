@@ -92,6 +92,18 @@ public class OllamaClient : IOllamaClient
         return body?.Embedding ?? Array.Empty<float>();
     }
 
+    public async Task WarmModelAsync(string model, CancellationToken ct = default)
+    {
+        // Send a minimal chat request to force Ollama to load the model into VRAM.
+        // The actual response doesn't matter — we just need the model warm.
+        var request = new { model, messages = new[] { new { role = "user", content = "hi" } },
+            stream = false, keep_alive = "30m" };
+        var response = await _http.PostAsJsonAsync("/api/chat", request, JsonOpts, ct)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        _log.LogInformation("Model {Model} pre-warmed in VRAM (keep_alive=30m)", model);
+    }
+
     // ── Response shapes ───────────────────────────────────────────────────────
 
     private record ChatResponse(

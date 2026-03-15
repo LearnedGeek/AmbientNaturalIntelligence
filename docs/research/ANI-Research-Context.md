@@ -86,9 +86,9 @@ AniRuntime.sln
 │   ├── AniRuntime.Actions/       — outreach dispatch
 │   ├── AniRuntime.LLM/           — Ollama integration, prompt builders
 │   ├── AniRuntime.Dashboard/    — Blazor companion dashboard
-│   └── AniRuntime.Voice/        — Voice channel (ElevenLabs TTS, scaffold)
+│   └── AniRuntime.Voice/        — Voice channel (ElevenLabs TTS + Whisper STT, active — 8B conversation model, emotional acting directions)
 └── tests/
-    └── AniRuntime.Tests/         — 228 tests passing as of Phase 4
+    └── AniRuntime.Tests/         — 246 tests passing as of Phase 4
 ```
 
 ---
@@ -145,7 +145,7 @@ AniRuntime.sln
 - Lexical emotional anchors (Feature 19)
 - 228 tests passing, 0 warnings
 
-**Phase 4** — In progress (March 13-14, 2026):
+**Phase 4** — In progress (March 13-15, 2026):
 - Anchored memory tier (Feature 16) — decay-exempt foundation memories
 - Reactive withdrawal (Feature 18) — hurt detection, 20-min withdrawal window
 - Emotional self-awareness (Feature 1) — triggers >0.25 from baseline
@@ -155,7 +155,8 @@ AniRuntime.sln
 - Pronoun audit (Feature 6) — adversarial tests + name-as-subject detection
 - Emotional drift detection (Feature 8) — 48h cosine similarity
 - Contact-gap tension (Feature 17) — 18h onset, warmth suppression
-- Voice channel scaffold (Feature 20) — ElevenLabs TTS, awaiting activation
+- Weather perception (Feature 13) — Open-Meteo free API, 30-min polling, real weather grounding
+- Voice conversation loop (Feature 20) — Turn-by-turn phone calls: Whisper STT → 8B conversation model → ElevenLabs TTS → Twilio. Dual-path architecture bypasses cognitive cycle for speed (<13s turns). Refined Mar 15: switched to 8B model (3B inner model caused pronoun confusion), voice-aware mood instructions, emotional acting directions (`PrependEmotionalDirection()` — parenthetical cues like `(warmly)`, `(softly)` based on emotional state), clearer error filler messages
 - Night window boundary (Feature 21) — 10pm-6am strict, morning bonus
 - Coherence gate temporal grounding (Feature 22) — time-of-day awareness
 - Nature grounding (Feature 23) — self-concept block in prompts

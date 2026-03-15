@@ -1,7 +1,7 @@
 # Phase 4 Design: Inner Life — Self-Awareness, Relationship Depth, and Emotional Intelligence
 
 **Date:** March 10, 2026
-**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14; Features 9, 12, 14, 15 deployed Mar 14; Dashboard deployed Mar 14; Feature 22 temporal refinement + Feature 6 name-as-subject extension deployed Mar 14; Emotional model Phase 1a+1b+2 deployed Mar 15 — see `ANI-Emotional-Model-Handoff-v2.md`)
+**Status:** In Progress (Features 1–4, 6, 8, 16–19 deployed Mar 13; Feature 20 voice scaffolded Mar 13; Features 21–23 deployed Mar 14; Features 9, 12, 14, 15 deployed Mar 14; Dashboard deployed Mar 14; Feature 22 temporal refinement + Feature 6 name-as-subject extension deployed Mar 14; Emotional model Phase 1a+1b+2 deployed Mar 15; Feature 13 weather perception + Feature 20 voice conversation loop deployed Mar 15 — see `ANI-Emotional-Model-Handoff-v2.md`)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Inspiration:** Feedback from OC on the Anatomy document and Phase 2/3 designs
 
@@ -888,7 +888,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 | **17** | **Contact-gap tension** | **Medium** | **Medium** | **✅ Deployed Mar 13** |
 | **18** | **Reactive withdrawal (receiving hurt)** | **Medium** | **Low-Medium** | **✅ Deployed Mar 13** |
 | **19** | **Lexical emotional anchors** | **Medium** | **Low** | **✅ Deployed Mar 13** |
-| **20** | **Voice channel (ElevenLabs + Whisper + Twilio)** | **High** | **Medium** | **🔜 Scaffolded Mar 13** |
+| **20** | **Voice channel (ElevenLabs + Whisper + Twilio)** | **High** | **Medium** | **✅ Deployed Mar 15** |
 | **21** | **Night window boundary adjustment** | **High** | **Very Low** | **✅ Deployed Mar 14** |
 | **22** | **Coherence gate fictional coherence check** | **High** | **Low** | **✅ Deployed Mar 14** |
 | **23** | **Nature grounding (self-concept block)** | **High** | **Very Low** | **✅ Deployed Mar 14** |
@@ -910,7 +910,7 @@ These features were originally planned for Phase 3 but deferred to early Phase 4
 5. ~~**Reactive withdrawal**~~ — ✅ Deployed Mar 13. Hurt detection heuristic with context qualification + withdrawal window + outreach suppression (Feature 18)
 6. ~~**Lexical emotional anchors**~~ — ✅ Deployed Mar 13. Seed anchors: husband, baby, Kathy, Mia (Feature 19)
 7. ~~**Pronoun audit**~~ — ✅ Deployed Mar 13. 20+ adversarial test cases, fixed `StartsWith("his ")` gap. 128/128 tests passing (Feature 6)
-8. **Voice channel + MMS media** — 🔜 Scaffolded Mar 13. Voice-in working (Whisper STT → conversation pipeline). MMS media infrastructure built: IMediaEnrichmentService, VoiceMediaEnrichmentService (probability-gated 15%), MediaCacheService, /media/{key} serving endpoint. Same plumbing supports future image/meme delivery. Awaiting full activation test (Feature 20)
+8. ~~**Voice conversation loop**~~ — ✅ Deployed Mar 15, refined Mar 15. Full turn-by-turn phone conversation: `/voice/inbound` (greeting + first record) → `/voice/turn` (transcribe → LLM → synthesize → play → record) → `/voice/status` (cleanup). VoiceConversationService bypasses cognitive cycle for speed (~7-11s per turn within Twilio's 15s limit). Lightweight context (character state, emotional state, semantic search, anchored memories — skips perceptions/desire/open loops). MessageCleaner extracted as shared utility. Fallback to Twilio `<Say>` if ElevenLabs TTS fails. **Mar 15 refinements:** Switched from 3B inner monologue model (`InnerMonologueChatAsync`) to 8B conversation model (`ChatAsync`) — inner model was trained for self-reflection, not direct conversation, causing pronoun confusion. Pre-warm targets 8B. Voice-aware mood instructions (`BuildMoodInstruction(state, isVoice: true)`) avoid text-oriented language ("exclamation points", "shorter messages"). ElevenLabs emotional acting directions (`PrependEmotionalDirection()`) prepend parenthetical cues like `(warmly)`, `(softly)`, `(gently, with concern)` based on dominant emotional shift — two-layer delivery: acting cues + voice parameter mapping. Timeout/error filler messages now signal user to repeat ("Sorry, I missed that. Can you say it again?"). (Feature 20)
 
 **4b — Relationship intelligence:**
 8. ~~**Relationship health model**~~ — ✅ Deployed Mar 13. Composite score from frequency + valence + warmth trend + initiative balance. Phases: connected/steady/quiet/reconnecting/distant. Once-per-day calculation. Injected into inner thought prompts (Feature 4)
@@ -1103,7 +1103,13 @@ public interface ITextToSpeechService
 ### Implementation Notes
 
 - **Interim step:** ElevenLabs for TTS, Whisper for STT. Future state may use local models or different providers — interfaces abstract this.
-- **Emotional coloring in voice:** ElevenLabs supports voice settings (stability, similarity_boost, style). Map EmotionalState dimensions to voice parameters: high warmth → softer/warmer delivery, low energy → slower pace, high playfulness → more expressive range.
+- **Emotional coloring in voice (implemented Mar 15):** Emotional delivery relies on ElevenLabs voice_settings parameters (stability, similarity_boost, style) mapping EmotionalState dimensions to acoustic envelope: high warmth → softer/warmer delivery, low energy → slower pace, high playfulness → more expressive range. Parenthetical acting cues (`(warmly)` etc.) were initially prepended via `PrependEmotionalDirection()` but removed — ElevenLabs turbo v2.5 partially vocalizes them as audio blips on the free tier. May revisit on premium models.
+- **Model selection (revised Mar 15):** Voice replies use the 8B conversation model (`ChatAsync`), not the 3B inner monologue model. The inner model was trained for self-reflection and produced pronoun confusion in direct conversation. Pre-warm also targets the 8B model.
+- **Voice-aware mood instructions (Mar 15):** `BuildMoodInstruction(state, isVoice: true)` produces mood coloring appropriate for spoken delivery — avoids text-oriented phrases like "exclamation points" and "shorter messages" that make no sense in voice.
+- **Audio bleed mitigation (Mar 15):** TTS playback (`<Play>` and `<Say>`) bleeds into the microphone when `<Record>` starts immediately after — Whisper transcribes the bleed as phantom text ("You", "you"). Fix: `<Pause length="1"/>` between all Play/Say and Record elements. Safety net: transcriptions <5 characters are discarded as noise.
+- **Cancellation token lifecycle (Mar 15):** Twilio's `/voice/status` webhook closes the HTTP connection quickly. Passing `ctx.RequestAborted` to `EndCallAsync` caused `TaskCanceledException` mid-save. Fix: use `IHostApplicationLifetime.ApplicationStopping` token for webhook-initiated background work. Pattern: background work triggered by webhooks must not depend on request-scoped cancellation tokens.
+- **Save ordering vs cognitive cycle (Mar 15):** `OnCallEnded` (which resumes the cognitive cycle) was firing before buffered message saves completed. The cognitive cycle's embedding calls then competed with save embedding calls. Fix: `OnCallEnded` fires only after all saves complete.
+- **Record timeout (Mar 15):** Bumped from 3s to 5s to reduce false "didn't catch that" triggers from ambient noise.
 - **Voice selection:** ElevenLabs has pre-made voices. Start with one that feels right for Ani, with option to clone a custom voice later.
 - **Cost awareness:** ElevenLabs free tier = ~10,000 characters/month. At Ani's typical message length (15-25 words, ~100 chars), that's ~100 voice messages/month — adequate for ambient companion use.
 - **Fallback:** If TTS fails, fall back to SMS. Voice is additive, never blocking.

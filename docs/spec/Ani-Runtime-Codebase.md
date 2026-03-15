@@ -57,8 +57,10 @@ AniRuntime.sln
 │   │   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history, contradictions (Feature 15)
 │   │   │   ├── IConversationService.cs  # + GetThreadAsync, GetRecentThreadsAsync (Dashboard)
 │   │   │   └── IOllamaClient.cs
+│   │   ├── Utilities/
+│   │   │   └── MessageCleaner.cs     # Shared: Clean() + TruncateToSentences() — used by CognitiveCycle + Voice
 │   │   ├── VectorMath.cs              # Feature 9: SIMD-accelerated cosine similarity (shared)
-│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification config
+│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification, voice loop config
 │   │   └── AniRuntime.Core.csproj
 │   │
 │   ├── AniRuntime.Memory/           # SQLite persistence layer
@@ -101,9 +103,13 @@ AniRuntime.sln
 │   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
 │   │   └── AniRuntime.Dashboard.csproj
 │   │
-│   └── AniRuntime.Voice/            # Feature 20: Voice channel (scaffolded)
+│   └── AniRuntime.Voice/            # Feature 20: Voice channel (active)
 │       ├── ElevenLabsTtsService.cs
 │       ├── WhisperSttService.cs
+│       ├── TwilioVoiceHandler.cs
+│       ├── MediaCacheService.cs
+│       ├── VoiceConversationService.cs  # Turn-by-turn phone conversation orchestrator (8B conversation model, voice-aware mood, emotional acting directions)
+│       ├── VoiceCallSession.cs          # In-memory session state per active call
 │       └── AniRuntime.Voice.csproj
 │
 └── tests/
@@ -847,7 +853,7 @@ Implemented components (Phase 1–4):
 | Night window boundary (Feature 21) | 4 | Complete |
 | Fictional coherence gate (Feature 22) | 4 | Complete |
 | Nature grounding (Feature 23) | 4 | Complete |
-| Voice channel (Feature 20) | 4 | Scaffolded — awaiting activation |
+| Voice channel (Feature 20) | 4 | Complete — turn-by-turn phone conversation loop, VoiceConversationService, 3 endpoints. Refined Mar 15: 8B conversation model (fixes pronoun confusion), voice-aware mood, ElevenLabs acting directions (parenthetical cues removed — turbo v2.5 partially vocalizes them; relies on voice_settings only), `<Pause length="1"/>` gap between Play/Say and Record (fixes TTS audio bleed ghost transcriptions), <5 char transcription filter, `ApplicationStopping` token for webhook-initiated saves (fixes `TaskCanceledException` on `/voice/status`), save ordering before `OnCallEnded` (prevents embedding contention with cognitive cycle), Record timeout 3s→5s |
 | SIMD cosine similarity (Feature 9) | 4 | Complete — VectorMath.CosineSimilarity, 3 duplicates unified |
 | Bidirectional confidence gate (Feature 14) | 4 | Complete — 17-pattern heuristic + LLM claim extraction |
 | Memory contradiction flagging (Feature 15) | 4 | Complete — post-save cosine 0.6-0.85 + LLM evaluation + Layer 3 active prompt intervention |
@@ -913,7 +919,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
-| 0.9 | Mar 15, 2026 | Emotional model Phase 2. Tier promotion: `DetermineEffectiveTier()` on ImpactCategoryDefaults — severity ≥ 0.70 promotes Ambient→Conversation, ≥ 0.85 → Global from any tier. Global tier updated: maxDelta 0.35, half-life 12h (~84h gone). Feature 18 H1 deltas: W:−0.12, E:−0.10, Worry:−0.15, P:−0.10. Dashboard contribution expiry (DELETE endpoint + ✕ button). Homeostatic nudge options on AniOptions (disabled by default). `ExpireContributionAsync` on IMemoryService. 246 tests. |
+| 0.9 | Mar 15, 2026 | Emotional model Phase 2. Tier promotion: `DetermineEffectiveTier()` on ImpactCategoryDefaults — severity ≥ 0.70 promotes Ambient→Conversation, ≥ 0.85 → Global from any tier. Global tier updated: maxDelta 0.35, half-life 12h (~84h gone). Feature 18 H1 deltas: W:−0.12, E:−0.10, Worry:−0.15, P:−0.10. Dashboard contribution expiry (DELETE endpoint + ✕ button). Homeostatic nudge options on AniOptions (disabled by default). `ExpireContributionAsync` on IMemoryService. Feature 20 voice refinements: switched from 3B inner model to 8B conversation model (fixes pronoun confusion), voice-aware mood instructions (`BuildMoodInstruction(state, isVoice: true)`), ElevenLabs emotional acting directions (`PrependEmotionalDirection()` — parenthetical cues based on dominant emotional shift), clearer timeout/error filler messages. 246 tests. |
 | 0.8 | Mar 15, 2026 | Emotional model Phase 1a+1b. Concern→Worry rename (codebase-wide + SQLite backward compat via JsonPropertyName). 9-register family classification scoring prompt (Longing\|Delight\|Playfulness\|Curiosity\|Desire\|Tenderness\|Existential\|Wistful\|Frustration). Severity field (0.0–1.0) on EmotionalContribution, applied as multiplier in CurrentDeltas. IsOutreachReady flag (C3 Associative Spark). Describe() rewritten with compound W+E/W+Worry conditions. GetSelfAwarenessPrompt() rewritten with matching compound conditions. ParseEmotionalShift returns register+severity. ALTER TABLE migration for existing DBs. 239 tests. |
 | 0.7 | Mar 14, 2026 | Per-thought exponential decay emotional model — replaces global drift. EmotionalContribution with half-life decay, three impact tiers, semantic dedup, processed theme cycling. Attribution tracking in prompts. Six-type confabulation taxonomy. Feature 15 Layer 3 active contradiction grounding. 228 tests. |
 | 0.6 | Mar 14, 2026 | SIMD cosine similarity — VectorMath.CosineSimilarity shared (9). Bidirectional confidence gate — inbound claim verification (14). Blazor Server Dashboard — 16 REST endpoints, Pico CSS, in-process (Dashboard). Self-awareness feedback loop — outreach pattern detection (12). Memory contradiction flagging — post-save cosine + LLM (15). Feature 22 temporal refinement — time-of-day in coherence gate. Feature 6 name-as-subject — prompt + word-boundary safety net. V5 training data scan — 66 examples mined + generated. 209 tests. |

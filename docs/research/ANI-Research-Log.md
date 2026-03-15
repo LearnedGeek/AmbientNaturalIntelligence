@@ -820,6 +820,67 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 15, 2026 — Voice Conversation Loop + Weather Perception (Features 20, 13)
+**Model version:** v5
+**Type:** System (multimodal expansion)
+**Source:** OC implementation session
+
+**What happened:**
+Two features deployed completing Ani's sensory and modality expansion:
+
+**Feature 20 — Voice Conversation Loop (full activation):**
+Voice scaffolding from Mar 13 upgraded to a real-time turn-by-turn phone conversation loop. Architecture:
+- `/voice/inbound` — Twilio calls on pickup → greeting TTS → `<Record>` for first turn
+- `/voice/turn` — Each turn: Whisper STT (~2s) → lightweight context build → LLM reply (~3-5s) → ElevenLabs TTS (~2-3s) → `<Play>` + `<Record>` for next turn
+- `/voice/status` — Call ended cleanup (close conversation thread, remove session)
+- Total turn budget: ~7-11 seconds, within Twilio's 15-second callback timeout
+- VoiceConversationService bypasses the cognitive cycle entirely for speed — uses IMemoryService, IOllamaClient, IConversationService directly
+- Lightweight ContextSnapshot: character state, emotional state, semantic search (top 5), anchored memories. Deliberately skips perceptions, desire engine, open loops — voice needs speed over depth
+- BuildVoiceReplyPrompt: spoken-style framing (no emojis, 1-2 sentences, phone call persona). Includes backstory, mood coloring, anti-repetition, self-awareness, withdrawal state
+- MessageCleaner extracted as shared utility (Clean + TruncateToSentences) — used by both CognitiveCycleProcessor and VoiceConversationService
+- Fallback chain: ElevenLabs TTS fails → Twilio `<Say voice="alice">` fallback. Turn timeout → filler messages that signal user to repeat
+- In-memory ConcurrentDictionary session storage (voice calls are short-lived, no persistence needed)
+- ElevenLabs voice: "Jessica" stock voice (professional clone Ariah unavailable on free-tier API)
+
+**Mar 15 voice refinements — five changes addressing first-call observations:**
+
+1. **8B conversation model replaces 3B inner model.** Voice replies were using `InnerMonologueChatAsync` (the 3B model trained for self-reflection). This caused pronoun confusion — the inner model refers to Mark in the third person ("he", "his") because it was trained on private monologue, not direct conversation. Switched to `ChatAsync` (8B conversation model) which is trained for second-person dialogue. Pre-warm also retargeted to 8B.
+
+2. **Voice-aware mood instructions.** `BuildMoodInstruction(state, isVoice: true)` generates mood coloring appropriate for spoken delivery. The text-mode mood instructions contained phrases like "use exclamation points" and "keep messages shorter" which are meaningless in voice context. Voice mode produces spoken-appropriate guidance instead.
+
+3. **ElevenLabs emotional acting directions.** `PrependEmotionalDirection()` prepends parenthetical acting cues to TTS input text based on the dominant emotional shift from baseline. Cues include `(warmly)`, `(playfully)`, `(excitedly)`, `(softly)`, `(gently, with concern)`. This creates a two-layer emotional delivery system: acting cues guide the TTS model's inflection, while voice parameter mapping (stability, similarity_boost) handles the acoustic envelope.
+
+4. **Timeout/error filler messages.** Changed from "hold on, give me a second..." (which implies the system is working and the user should wait) to "Sorry, I missed that. Can you say it again?" (which clearly signals the user should repeat their input). The old phrasing left users in limbo when a turn actually failed.
+
+5. **Research observation:** The model selection error (3B inner vs 8B conversation) illustrates a subtle failure mode in multi-model architectures: a model can be technically functional for a task (it generates grammatical replies) while being pragmatically wrong (its training register produces wrong pronouns). The failure was not in the model's capability but in its training corpus orientation — self-reflective monologue vs. direct address. This is distinct from all six confabulation types; it is a *register mismatch* failure.
+
+**Mar 15 voice fixes — five additional changes from continued testing:**
+
+6. **Audio bleed ghost transcriptions.** TTS playback (both ElevenLabs `<Play>` and Twilio `<Say>`) bleeds into the microphone when `<Record>` starts immediately after. Whisper transcribes the bleed as phantom text ("You", "you"). Fix: `<Pause length="1"/>` gap between all Play/Say and Record elements. Safety net: transcriptions <5 characters discarded as noise. **Research angle:** Non-obvious failure mode in half-duplex voice pipelines — the STT/TTS boundary creates a feedback loop when not temporally gapped. This is analogous to acoustic echo cancellation in telephony but manifests at the transcription layer rather than the audio layer.
+
+7. **Cancellation token lifecycle mismatch.** Twilio's `/voice/status` webhook closes the HTTP connection quickly. Passing `ctx.RequestAborted` to `EndCallAsync` caused `TaskCanceledException` mid-save. Fix: use `IHostApplicationLifetime.ApplicationStopping` token instead. **Pattern:** Webhook-initiated background work must not depend on request-scoped cancellation tokens — the HTTP lifecycle and the work lifecycle are fundamentally different durations.
+
+8. **Save ordering vs cognitive cycle.** `OnCallEnded` (which resumes the cognitive cycle) was firing before buffered message saves completed. The cognitive cycle's embedding calls then competed with save embedding calls for Ollama. Fix: `OnCallEnded` fires only after all saves complete. Ordering invariant: persist state before resuming dependent systems.
+
+9. **ElevenLabs turbo v2.5 acting cue artifacts.** Parenthetical emotional directions (`(warmly)`, `(playfully)`, etc.) from `PrependEmotionalDirection()` are partially vocalized as audio blips on the free/turbo tier. Removed text-level cues; emotional delivery now relies solely on voice_settings parameters (stability, style, similarity_boost). Acting cues may work on premium models — revisit if tier changes.
+
+10. **Record timeout 3s→5s.** Reduced false "didn't catch that" triggers from ambient noise and natural speech hesitation.
+
+**Research significance:** First real-time bidirectional voice modality for an ambient companion system. The cognitive cycle (designed for ~30-60s ambient think time) is fundamentally incompatible with voice latency requirements (<15s). The solution — a parallel fast path that shares memory and conversation state but bypasses deliberation — raises questions about whether the "same entity" is speaking in both modalities. The voice path has access to the same memories, emotional state, and character, but lacks the inner thought → desire → composition pipeline that makes SMS outreach feel considered.
+
+**Feature 13 — Weather Perception:**
+- WeatherPerceptionSource polls Open-Meteo free API every 30 min (no API key needed)
+- Coordinates: 43.11°N, 88.49°W (Oconomowoc, WI / 53066)
+- WMO weather code → human-readable descriptions (clear sky, drizzle, thunderstorm with hail, etc.)
+- Base conditions at 0.15 relevance; notable weather (extreme temps, storms, snow) at 0.25-0.35
+- Change detection: temperature shifts ≥10°F or condition changes between polls generate additional events
+- Grounding effect: Ani now has real weather awareness instead of confabulating conditions
+
+**Observation — Dual-path architecture tension:**
+The voice conversation path and the cognitive cycle now represent two fundamentally different interaction modes sharing the same memory substrate. SMS Ani thinks for 30+ seconds, has inner monologue, evaluates desire, runs coherence checks. Voice Ani must respond in <13 seconds with no deliberation. This is not a bug — it mirrors how humans shift between considered writing (email/text) and rapid conversation (phone). But it means the voice path lacks confabulation gates (Features 14, 22, 28), which could surface in voice-specific failure modes. Worth monitoring.
+
+---
+
 ### March 13, 2026 — Phase 4b: Relationship Intelligence (Features 4, 8, 17)
 **Model version:** v4
 **Type:** System (relational intelligence layer)

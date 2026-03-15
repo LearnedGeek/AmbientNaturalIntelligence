@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
@@ -22,6 +23,12 @@ public class ElevenLabsTextToSpeechService : ITextToSpeechService
 
     private const string BaseUrl = "https://api.elevenlabs.io/v1";
 
+    private static readonly JsonSerializerOptions SnakeCaseJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     public ElevenLabsTextToSpeechService(
         HttpClient http,
         IOptions<VoiceOptions> options,
@@ -32,6 +39,11 @@ public class ElevenLabsTextToSpeechService : ITextToSpeechService
         _logger  = logger;
 
         _http.DefaultRequestHeaders.Add("xi-api-key", _options.ElevenLabsApiKey);
+        var keyPreview = _options.ElevenLabsApiKey.Length > 8
+            ? _options.ElevenLabsApiKey[..8] + "..."
+            : "(empty)";
+        _logger.LogInformation("ElevenLabs TTS initialized: key={KeyPreview}, voice={VoiceId}, model={ModelId}",
+            keyPreview, _options.ElevenLabsVoiceId, _options.ElevenLabsModelId);
     }
 
     public async Task<Stream> SynthesizeAsync(string text, EmotionalState? emotionalState = null, CancellationToken ct = default)
@@ -53,8 +65,13 @@ public class ElevenLabsTextToSpeechService : ITextToSpeechService
         _logger.LogDebug("ElevenLabs TTS: {Chars} chars, stability={Stability:F2}, similarity={Similarity:F2}",
             text.Length, voiceSettings.Stability, voiceSettings.SimilarityBoost);
 
-        var response = await _http.PostAsJsonAsync(url, payload, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        var response = await _http.PostAsJsonAsync(url, payload, SnakeCaseJson, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            _logger.LogError("ElevenLabs TTS failed: {Status} — {Body}", (int)response.StatusCode, errorBody);
+            response.EnsureSuccessStatusCode();
+        }
 
         var audioStream = new MemoryStream();
         await response.Content.CopyToAsync(audioStream, ct).ConfigureAwait(false);

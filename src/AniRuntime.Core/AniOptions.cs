@@ -155,7 +155,7 @@ public class VoiceOptions
     // ElevenLabs TTS
     public string ElevenLabsApiKey     { get; set; } = string.Empty;
     public string ElevenLabsVoiceId    { get; set; } = string.Empty;
-    public string ElevenLabsModelId    { get; set; } = "eleven_monolingual_v1";
+    public string ElevenLabsModelId    { get; set; } = "eleven_turbo_v2_5";
 
     // OpenAI Whisper STT
     public string WhisperApiKey        { get; set; } = string.Empty;
@@ -166,4 +166,10 @@ public class VoiceOptions
 
     // Public URL for serving media (ngrok URL) — Twilio needs to fetch audio from here
     public string PublicBaseUrl         { get; set; } = string.Empty;
+
+    // Voice conversation loop — turn-by-turn phone call settings
+    public string VoiceGreeting              { get; set; } = "Hey! What's up?";
+    public int    VoiceRecordMaxSeconds      { get; set; } = 30;
+    public int    VoiceRecordTimeoutSeconds  { get; set; } = 3;   // silence before Twilio stops recording
+    public int    VoiceTurnTimeoutMs         { get; set; } = 13000; // per-turn budget (Twilio allows ~15s)
 }

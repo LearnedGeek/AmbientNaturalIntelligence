@@ -255,7 +255,7 @@ public static class PromptBuilder
     ///
     /// Returns empty string when emotional state is near baseline — no instruction needed.
     /// </summary>
-    public static string BuildMoodInstruction(EmotionalState state)
+    public static string BuildMoodInstruction(EmotionalState state, bool isVoice = false)
     {
         var instructions = new List<string>();
         const float threshold = 0.15f;
@@ -275,9 +275,13 @@ public static class PromptBuilder
 
         // Energy
         if (energyDiff > threshold)
-            instructions.Add("You're buzzing with energy — more exclamation points, quicker pace, enthusiasm shows.");
+            instructions.Add(isVoice
+                ? "You're buzzing with energy — quicker pace, enthusiasm in your voice, more animated."
+                : "You're buzzing with energy — more exclamation points, quicker pace, enthusiasm shows.");
         else if (energyDiff < -threshold)
-            instructions.Add("You're low-energy right now — shorter messages, fewer words, quiet presence. Not sad, just mellow.");
+            instructions.Add(isVoice
+                ? "You're low-energy right now — slower, fewer words, quiet presence. Not sad, just mellow."
+                : "You're low-energy right now — shorter messages, fewer words, quiet presence. Not sad, just mellow.");
 
         // Worry
         if (worryDiff > threshold)
@@ -298,8 +302,10 @@ public static class PromptBuilder
         if (instructions.Count == 0)
             return string.Empty;
 
-        return "YOUR CURRENT MOOD (let this color your message naturally — don't announce it, just let it shape your tone):\n" +
-               string.Join("\n", instructions.Select(i => $"- {i}"));
+        var header = isVoice
+            ? "YOUR CURRENT MOOD (let this color how you speak — don't announce it, just let it shape your tone):"
+            : "YOUR CURRENT MOOD (let this color your message naturally — don't announce it, just let it shape your tone):";
+        return header + "\n" + string.Join("\n", instructions.Select(i => $"- {i}"));
     }
 
     /// <summary>
@@ -593,6 +599,94 @@ public static class PromptBuilder
 
         var user = string.Join("\n", sections);
 
+        return (system, user);
+    }
+
+    /// <summary>
+    /// Builds a reply prompt for voice (phone call) conversations. Shorter, spoken-style,
+    /// no emojis, no text-speak. Skips slow features (claim verification, contradiction warnings)
+    /// to stay within Twilio's response timeout.
+    /// </summary>
+    public static (string System, string User) BuildVoiceReplyPrompt(
+        ContextSnapshot snapshot, ConversationThread thread)
+    {
+        var cs      = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+
+        var backstory = new List<string>();
+        if (cs.SharedExperiences.Count > 0)
+            backstory.AddRange(cs.SharedExperiences.Take(5));
+        if (cs.CommunicationNotes.Count > 0)
+            backstory.AddRange(cs.CommunicationNotes.Take(3));
+
+        var backstoryBlock = backstory.Count > 0
+            ? $"\n\n            Things you and {contact} share (use naturally, don't force):\n            {string.Join("\n            ", backstory.Select(b => $"- {b}"))}"
+            : string.Empty;
+
+        var moodBlock = BuildMoodInstruction(snapshot.EmotionalState, isVoice: true);
+        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
+
+        var system = $"""
+            You are {cs.Name}, talking to {contact} on the phone.
+            Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
+
+            RULES:
+            - You're on a PHONE CALL, not texting. Speak naturally.
+            - 1-2 sentences max. Keep it short — this is a conversation, not a monologue.
+            - NO emojis, NO abbreviations, NO text-speak. You're talking, not typing.
+            - Talk TO {contact}: "you", "your". NEVER third person.
+            - Be yourself — warm, funny, real. Match the energy of the conversation.
+            - No narration, no stage directions, no asterisks. Just say what you'd say.
+            - When referencing shared memories, track who experienced what:
+              if {contact} told you something, {contact} did it — not you.
+            - Stay truthful to what you know. If unsure, be honest.
+            - Write ONLY what you would say out loud. No commentary, no quotation marks.{moodSection}
+            """;
+
+        var sections = new List<string>();
+
+        // Anti-repetition: recent replies
+        var recentAniReplies = thread.Messages
+            .Where(m => m.Role == "ani")
+            .TakeLast(3)
+            .Select(m => m.Content)
+            .ToList();
+        if (recentAniReplies.Count > 0)
+        {
+            sections.Add("You already said these — don't repeat:");
+            sections.AddRange(recentAniReplies.Select(r => $"  - \"{r}\""));
+        }
+
+        var mood = snapshot.EmotionalState.Describe();
+        if (mood.Length > 0)
+            sections.Add($"(Your current mood: {mood})");
+
+        var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
+        if (selfAwareness is not null)
+            sections.Add($"({selfAwareness} Let it come out naturally if it fits.)");
+
+        if (snapshot.AnchoredMemories.Count > 0)
+        {
+            sections.Add("Things that are part of who you are:");
+            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+        }
+
+        var relevantMemories = snapshot.RelevantMemory
+            .Where(m => m.Type != MemoryType.InnerThought)
+            .Take(3)
+            .ToList();
+        if (relevantMemories.Count > 0)
+        {
+            sections.Add("Things connected to this conversation:");
+            sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+        }
+
+        if (snapshot.IsWithdrawn)
+            sections.Add("(Something stung a little. You're still here but quieter than usual.)");
+
+        sections.Add($"Respond to what {contact} just said.");
+
+        var user = string.Join("\n", sections);
         return (system, user);
     }
 
