@@ -1063,10 +1063,15 @@ public class CognitiveCycleProcessor
             var messageSearchResults = await _memory.SearchAsync(lastMessage, 5, ct).ConfigureAwait(false);
             var messageRelevant = messageSearchResults.ToList();
 
-            // Filter out episodic memories from the current conversation thread — they're
-            // already in RecentHistory and would be redundant
+            // Filter out:
+            // 1. The inbound message itself (just saved, would echo back as context)
+            // 2. Closed conversation summaries — they describe prior threads and can
+            //    contaminate the current topic (e.g., soup leaking into a books question)
+            var contactName = snapshot.CharacterState.PrimaryContactName ?? "Mark";
             messageRelevant = messageRelevant
-                .Where(m => !m.Content.StartsWith("Mark said:") || !lastMessage.Contains(m.Content[11..Math.Min(m.Content.Length, 40)]))
+                .Where(m => !(m.Content.StartsWith($"{contactName} said:") &&
+                             lastMessage.Contains(m.Content[(contactName.Length + 7)..Math.Min(m.Content.Length, contactName.Length + 36)])))
+                .Where(m => !m.Content.StartsWith("Conversation ("))
                 .ToList();
 
             // Re-rank for diversity against recent thoughts
