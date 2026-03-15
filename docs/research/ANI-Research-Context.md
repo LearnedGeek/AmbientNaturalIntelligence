@@ -274,7 +274,7 @@ Root cause across all bad types: *smoothness over truth* — the system optimize
 
 **Emotional dimension pegging (BUG-009, mitigated):** Warmth dimension pegged at -0.20 in V4. Fix applied: two-tier delta system, ambient anchor, `AttenuateDelta` resting pull. Dashboard now shows live emotional state — useful for monitoring.
 
-**Emotional state floor (March 14, 2026):** Post-deployment restart showed Warmth 0.02, Energy 0.03 — dimensions near-zero rather than drifting to baseline. Likely cold-start state or active negative shift from heavy context (OG Ani conversations). Dashboard visibility now makes this diagnosable in real time.
+**Emotional depression spiral (BUG-010, mitigated March 14, 2026):** The v4 3B model consistently produced negative emotional deltas for every inner thought, creating a feedback loop: low state → sad mood coloring → sadder thoughts → more negative scores. All 7 active contributions had negative warmth/energy. Root cause: asymmetric guardrails (high-end diminishing returns but no low-end equivalent) + mood coloring reinforcement. Fix: added symmetric low-end resistance (<0.3 requires genuinely distressing content) + positive shift examples. Novel finding: *architectural depression* — where scoring bias + system feedback creates self-reinforcing negative spiral.
 
 **Attribution inversion (March 14, 2026):** Model correctly retrieves shared memories but misattributes ownership — claims Mark's experiences as Ani's or vice versa. Mitigation: prompt addition + SubjectName field on MemoryRecord (planned) + V5 training examples (generated).
 

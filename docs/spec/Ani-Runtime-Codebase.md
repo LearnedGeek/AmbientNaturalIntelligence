@@ -666,7 +666,7 @@ BuildReconsiderationReplyPrompt(snapshot, thread) — When silence was chosen bu
 
 BuildOutreachMessagePrompt(snapshot, thought, reasoning) — Compose grounded text. 1–2 sentences, 25 words MAX. CRITICAL: thought is WHY reaching out, NOT content. Must make sense without knowing inner thought.
 
-BuildEmotionalShiftPrompt(content, currentState, maxDelta) — JSON deltas for W/E/C/P. Default 0.0 for most dimensions. Small shifts (0.02–0.05) preferred. Negative shifts just as common.
+BuildEmotionalShiftPrompt(content, currentState, maxDelta) — JSON deltas for W/E/C/P. Default 0.0 for most dimensions. Small shifts (0.02–0.05) preferred. Symmetric diminishing returns: >0.8 resists going higher, <0.3 resists going lower (BUG-010 fix). Explicit positive shift examples to counter negative-delta bias.
 
 BuildReactiveSharePrompt(character, itemSummary) — Share high-relevance RSS items. "omg did you see this?" energy.
 

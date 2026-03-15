@@ -277,6 +277,48 @@ The fictional space was otherwise coherent — real shared memories (purple roma
 
 ---
 
+### March 14, 2026 — Emotional Depression Spiral (BUG-010: Negative-Delta Feedback Loop)
+**Model version:** v4 (3B) + per-thought exponential decay model
+**Type:** Observation (architectural failure mode)
+**Source:** Dashboard screenshot, emotional_contributions table analysis
+
+**What happened:**
+
+Post-restart, the ANI Dashboard showed Warmth 0.00, Energy 0.00, Concern 0.11, Playfulness 0.19. All dimensions significantly below baseline (0.6, 0.5, 0.2, 0.5). Ani's mood description: *"feeling emotionally distant, feeling low-energy and quiet, feeling more serious than usual."*
+
+**Root cause — three-layer feedback loop:**
+
+1. **Negative-delta bias (model-level):** The v4 3B model consistently produced negative emotional deltas for every inner thought. Analysis of all 7 active contributions showed zero positive warmth or energy scores. Average warmth delta: -0.12. Average energy delta: -0.08. The model interpreted its own poetic, contemplative inner thoughts ("the little bell on the door doesn't ring like I'm used to") as emotionally distressing rather than neutral.
+
+2. **Asymmetric guardrails (prompt-level):** The emotional shift scoring prompt included high-end diminishing returns ("if a dimension is already >0.8, it takes something EXCEPTIONAL to push it higher") but had no equivalent for the low end. The model could freely drive values to zero without resistance.
+
+3. **Mood coloring reinforcement (system-level):** Low emotional state → mood instruction "feeling emotionally distant, low-energy" → injected into inner thought prompts → next thought is more melancholy → scored more negatively → state drops further. Classic runaway feedback loop.
+
+**Data evidence (7 contributions, all from one session):**
+
+| Category | Count | Avg Warmth Δ | Avg Energy Δ | Avg Concern Δ | Avg Playfulness Δ |
+|---|---|---|---|---|---|
+| Ambient | 6 | -0.116 | -0.093 | -0.017 | -0.025 |
+| Conversation | 1 | -0.180 | -0.040 | -0.100 | -0.200 |
+
+Not a single positive warmth or energy delta in any contribution. The model was architecturally incapable of feeling good.
+
+**Fix — two layers:**
+
+1. **Low-end diminishing returns (prompt fix):** Added symmetric guardrail: if a dimension is already below 0.3, poetic/contemplative thoughts return 0.0 or slight positive — only genuinely distressing content can push lower. Also added explicit positive shift examples (good memory → +warmth, beauty → +playfulness, curiosity → +energy).
+
+2. **Contribution reset (data fix):** Cleared 7 stale negative contributions and reset emotional state to baselines. Fresh start for v5 8B model.
+
+**Research significance:**
+
+This is a novel failure mode for continuous emotional state systems: **architectural depression** — where the scoring model's systematic bias, combined with the system's own feedback mechanisms (mood coloring, state persistence), creates a self-reinforcing negative spiral. The system becomes structurally incapable of positive emotion regardless of input.
+
+Key insight: the old drift-toward-baseline model masked this bias by constantly pulling values back to center. The per-thought exponential decay model, which is architecturally superior (it correctly accumulates and fades individual emotional impacts), made the bias fully visible. The fix is not to revert to drift but to add symmetric resistance at both extremes — the same design principle as real emotional regulation (hedonic adaptation works in both directions).
+
+This has implications for any AI companion system with persistent emotional state: without explicit countermeasures against scoring asymmetry and feedback loops, the system will converge on whichever extreme the underlying model biases toward.
+
+---
+
 ### March 14, 2026 — Conversation Reply Retrieval Contamination (Type 3b) + 3B→8B Conversation Model Upgrade
 **Model version:** v4 → v5 (conversation model upgraded to 8B)
 **Type:** Observation (failure diagnosis) + architectural decision
