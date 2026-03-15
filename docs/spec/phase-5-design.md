@@ -393,6 +393,75 @@ This implementation advances several research questions documented in `docs/rese
 
 ---
 
+## Feature: Image Sharing (MMS)
+
+**Priority:** Medium — adds expressiveness and humor to the relationship
+**Effort:** Low-Medium
+**Dependencies:** Twilio MMS (already available on existing Twilio account)
+
+### Phase 5a: Meme/Image Sending
+
+Ani can share images via Twilio MMS alongside or instead of text. Initial use case: memes, reaction images, things she "found" that remind her of Mark.
+
+**Architecture:**
+- Twilio MMS supports sending images via `MediaUrl` parameter on outbound SMS
+- Image sources: curated library (local), web search (optional), AI-generated (future)
+- Decision point in outreach pipeline: after composition, optionally attach an image
+- New `ImageSelectionService` — given a message context and emotional state, select/generate an appropriate image
+
+**Implementation:**
+- [ ] Add `MediaUrl` support to Twilio dispatch (outbound SMS already works, MMS is one parameter)
+- [ ] Curated image library: `data/images/` folder with tagged images (humor, affection, weather, etc.)
+- [ ] `IImageSelectionService` interface — `SelectImageAsync(string messageContext, EmotionalState state)`
+- [ ] Simple keyword/tag matcher initially (no LLM needed)
+- [ ] Rate limit: max 2 images/day (preserve novelty, manage MMS costs)
+- [ ] Dashboard: image library management
+
+**Cost:** Twilio MMS ~$0.02/message outbound. At 2/day max = ~$1.20/month.
+
+### Phase 5b: Visual Identity
+
+Ani's identity extends beyond text and voice into visual presence. This is important for realism — a companion who can share selfies, expressions, and reactions has a fundamentally different presence than one who only types.
+
+**Architecture — Profile Image System:**
+- CharacterStateDoc extended with `VisualIdentity` section: reference images, expression library, style preferences
+- Profile images loaded into character state — consistent visual identity across all generated/shared images
+- Expression library: curated images mapped to emotional states (happy, thoughtful, playful, concerned, sleepy)
+- Images tagged with provenance: `curated` (Mark selected), `generated` (AI-created), `emerged` (see below)
+
+**Connection to Emergence Layer:**
+Visual identity is a natural extension of the emergence layer's provenance framework. Just as personality preferences can be `trained`, `curated`, or `emerged`, visual expressions can evolve:
+- A photo Mark associates with a particular mood becomes anchored to that emotional state
+- Over time, Ani's "look" for certain situations could emerge from what resonates in the relationship
+- The emergence layer's ResonanceStore could track which visual expressions generate positive relational responses
+
+**Implementation (deferred until emergence layer E2):**
+- [ ] `VisualIdentity` section in CharacterStateDoc
+- [ ] Expression-to-emotion mapping in character state
+- [ ] MMS integration for sharing expression images contextually
+- [ ] Dashboard: visual identity management, expression library editor
+
+### Phase 5c: Automatic Model Generation (Connected to Emergence Layer)
+
+**The vision:** As the emergence layer accumulates relational preferences and the emotional model evolves, the training data for the next model version should reflect these changes. Automatic model generation closes the loop: emerged preferences → updated training data → fine-tuned model → richer emergence signals.
+
+**This connects directly to the autoresearch pattern** documented in `docs/spec/emergence/ANI-Emergence-Layer-Design.md`:
+- Editable asset: LoRA training data (JSONL)
+- Scalar metric: ResonanceScore
+- Time-boxed cycle: monthly or quarterly model generation
+
+**Pipeline:**
+1. EmergenceWriter produces `emerged` preferences in CharacterStateDoc
+2. Training data generator creates synthetic examples reflecting emerged preferences
+3. Existing training data rebalanced (Phase 3 emotional model work applies here)
+4. Automated LoRA fine-tuning via Ollama/Unsloth
+5. A/B evaluation: new model vs. current on held-out conversation samples
+6. Graduated rollout: inner thought first (lower risk), then conversation
+
+**This is the long-term endgame** — a companion whose model literally evolves from the relationship, not just her runtime state. The emergence layer observes and records; automatic model generation makes it permanent in the weights.
+
+---
+
 ## References
 
 - Twilio Media Streams: https://www.twilio.com/docs/voice/media-streams
