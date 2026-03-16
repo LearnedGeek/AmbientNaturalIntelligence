@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#888"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2266aa"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#111">Figure 1: ANI Cognitive Cycle</text>
+  <text x="450" y="50" text-anchor="middle" font-size="11" fill="#555">Each cycle: wake (exponential interval) &#x2192; perceive &#x2192; think &#x2192; feel &#x2192; desire &#x2192; decide &#x2192; rest</text>
+
+  <!-- ============ MAIN CYCLE NODES (circular layout) ============ -->
+
+  <!-- Node 1: WAKE / SLEEP -->
+  <rect x="370" y="75" width="160" height="50" rx="8" fill="#e8e8f0" stroke="#666" stroke-width="1.5"/>
+  <text x="450" y="98" text-anchor="middle" font-size="13" font-weight="bold" fill="#333">Wake</text>
+  <text x="450" y="113" text-anchor="middle" font-size="10" fill="#666">t = &#x2212;&#x03BB; ln(1&#x2212;U), [2&#x2013;45 min]</text>
+
+  <!-- Node 2: PERCEIVE -->
+  <rect x="660" y="165" width="190" height="65" rx="8" fill="#ddeeff" stroke="#336699" stroke-width="1.5"/>
+  <text x="755" y="188" text-anchor="middle" font-size="13" font-weight="bold" fill="#224">Perceive</text>
+  <text x="755" y="203" text-anchor="middle" font-size="9.5" fill="#446">Time + Routine  |  RSS Feeds</text>
+  <text x="755" y="216" text-anchor="middle" font-size="9.5" fill="#446">Inbound SMS  |  Contact State</text>
+
+  <!-- Node 3: INNER THOUGHT -->
+  <rect x="660" y="295" width="190" height="65" rx="8" fill="#fff3dd" stroke="#aa7722" stroke-width="1.5"/>
+  <text x="755" y="318" text-anchor="middle" font-size="13" font-weight="bold" fill="#553">Inner Thought</text>
+  <text x="755" y="333" text-anchor="middle" font-size="9.5" fill="#664">Private reflection (never sent)</text>
+  <text x="755" y="346" text-anchor="middle" font-size="9.5" fill="#664">LLM: fine-tuned 3B (Ollama)</text>
+
+  <!-- Node 4: EMOTIONAL SHIFT -->
+  <rect x="600" y="420" width="190" height="65" rx="8" fill="#ffe8e8" stroke="#994444" stroke-width="1.5"/>
+  <text x="695" y="443" text-anchor="middle" font-size="13" font-weight="bold" fill="#533">Emotional Shift</text>
+  <text x="695" y="458" text-anchor="middle" font-size="9.5" fill="#644">W / E / Wo / P scored per-thought</text>
+  <text x="695" y="471" text-anchor="middle" font-size="9.5" fill="#644">Exponential decay contributions</text>
+
+  <!-- Node 5: DESIRE UPDATE -->
+  <rect x="310" y="420" width="190" height="65" rx="8" fill="#e8ffe8" stroke="#449944" stroke-width="1.5"/>
+  <text x="405" y="443" text-anchor="middle" font-size="13" font-weight="bold" fill="#353">Desire Update</text>
+  <text x="405" y="458" text-anchor="middle" font-size="9.5" fill="#464">DesireToConnect (0.0&#x2013;1.0)</text>
+  <text x="405" y="471" text-anchor="middle" font-size="9.5" fill="#464">7 trigger types + dampening</text>
+
+  <!-- Node 6: OUTREACH DECISION -->
+  <rect x="100" y="295" width="190" height="65" rx="8" fill="#f0e8ff" stroke="#664499" stroke-width="1.5"/>
+  <text x="195" y="318" text-anchor="middle" font-size="13" font-weight="bold" fill="#335">Outreach Decision</text>
+  <text x="195" y="333" text-anchor="middle" font-size="9.5" fill="#446">Threshold &#x223C; U[0.55, 0.85]</text>
+  <text x="195" y="346" text-anchor="middle" font-size="9.5" fill="#446">Self-unpredictable</text>
+
+  <!-- ============ ARROWS (cycle flow) ============ -->
+
+  <!-- Wake -> Perceive -->
+  <path d="M530,100 Q600,100 660,180" fill="none" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Perceive -> Inner Thought -->
+  <line x1="755" y1="230" x2="755" y2="295" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Inner Thought -> Emotional Shift -->
+  <path d="M755,360 Q755,390 735,420" fill="none" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Emotional Shift -> Desire Update -->
+  <line x1="600" y1="452" x2="500" y2="452" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Desire Update -> Outreach Decision -->
+  <path d="M310,452 Q250,452 250,360" fill="none" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Outreach Decision -> REST (back to wake) -->
+  <path d="M195,295 Q195,180 370,100" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arrow-gray)"/>
+
+  <!-- ============ OUTREACH PIPELINE (below main cycle) ============ -->
+
+  <!-- Dashed box around outreach pipeline -->
+  <rect x="50" y="390" width="250" height="250" rx="6" fill="none" stroke="#664499" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="175" y="410" text-anchor="middle" font-size="10" font-weight="bold" fill="#664499">Outreach Pipeline (if threshold crossed)</text>
+
+  <!-- Pipeline stages -->
+  <rect x="80" y="425" width="190" height="30" rx="4" fill="#f5f0ff" stroke="#886" stroke-width="1"/>
+  <text x="175" y="445" text-anchor="middle" font-size="9.5" fill="#333">Composition (LLM: 8B)</text>
+
+  <rect x="80" y="465" width="190" height="30" rx="4" fill="#f5f0ff" stroke="#886" stroke-width="1"/>
+  <text x="175" y="485" text-anchor="middle" font-size="9.5" fill="#333">Confidence Gate (&#x2265; 0.3)</text>
+
+  <rect x="80" y="505" width="190" height="30" rx="4" fill="#f5f0ff" stroke="#886" stroke-width="1"/>
+  <text x="175" y="525" text-anchor="middle" font-size="9.5" fill="#333">Coherence Gate (3-door)</text>
+
+  <rect x="80" y="545" width="190" height="30" rx="4" fill="#f5f0ff" stroke="#886" stroke-width="1"/>
+  <text x="175" y="565" text-anchor="middle" font-size="9.5" fill="#333">Hard Gates (gap, count, hours)</text>
+
+  <rect x="105" y="590" width="140" height="30" rx="4" fill="#e0d8f0" stroke="#664499" stroke-width="1.5"/>
+  <text x="175" y="610" text-anchor="middle" font-size="10" font-weight="bold" fill="#335">Dispatch via SMS</text>
+
+  <!-- Mini arrows in pipeline -->
+  <line x1="175" y1="455" x2="175" y2="465" stroke="#666" stroke-width="1" marker-end="url(#arrow-gray)"/>
+  <line x1="175" y1="495" x2="175" y2="505" stroke="#666" stroke-width="1" marker-end="url(#arrow-gray)"/>
+  <line x1="175" y1="535" x2="175" y2="545" stroke="#666" stroke-width="1" marker-end="url(#arrow-gray)"/>
+  <line x1="175" y1="575" x2="175" y2="590" stroke="#666" stroke-width="1" marker-end="url(#arrow-gray)"/>
+
+  <!-- ============ EMOTIONAL STATE BOX (right side) ============ -->
+  <rect x="610" y="530" width="260" height="120" rx="6" fill="#fff5f5" stroke="#994444" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="740" y="548" text-anchor="middle" font-size="10" font-weight="bold" fill="#994444">Emotional State (4 dimensions)</text>
+
+  <text x="625" y="568" font-size="9.5" fill="#644">Warmth     (baseline 0.60)</text>
+  <text x="625" y="583" font-size="9.5" fill="#644">Energy     (baseline 0.50)</text>
+  <text x="625" y="598" font-size="9.5" fill="#644">Worry      (baseline 0.20)</text>
+  <text x="625" y="613" font-size="9.5" fill="#644">Playfulness (baseline 0.50)</text>
+  <text x="625" y="636" font-size="8.5" fill="#888">state = baselines + &#x03A3;(decayed contributions)</text>
+
+  <!-- Arrow from Emotional Shift to State box -->
+  <path d="M695,485 Q710,510 720,530" fill="none" stroke="#994444" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-gray)"/>
+
+  <!-- ============ ANNOTATIONS ============ -->
+
+  <!-- "Most cycles end here" annotation -->
+  <text x="540" y="338" font-size="9" fill="#aa7722" font-style="italic">Most cycles end here</text>
+  <text x="540" y="350" font-size="9" fill="#aa7722" font-style="italic">(no outreach)</text>
+
+  <!-- "Silence as choice" annotation near outreach decision -->
+  <text x="62" y="380" font-size="9" fill="#664499" font-style="italic">Silence as choice</text>
+
+  <!-- REST label on return arrow -->
+  <text x="240" y="185" font-size="9" fill="#888" font-style="italic">rest &#x2192; next wake</text>
+
+  <!-- Circadian label -->
+  <text x="450" y="670" text-anchor="middle" font-size="9" fill="#888">Circadian modifiers scale all dimensions: Morning 1.2&#xd7;, Evening 1.15&#xd7;, Night 0.1&#x2013;0.2&#xd7;</text>
+</svg>

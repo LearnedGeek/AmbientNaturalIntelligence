@@ -151,6 +151,18 @@ public class StreamingVoiceOrchestrator
                 finally { wsSendLock.Release(); }
             }
 
+            // Resumes listening after client confirms audio playback is done.
+            // This prevents echo: mic stays muted until speaker finishes draining.
+            // Guard: only acts when IsAniSpeaking is true, so naturally idempotent.
+            async Task ResumeListeningAsync(CancellationToken token)
+            {
+                if (!session.IsAniSpeaking) return;
+                session.EndSpeaking();
+                debounce?.Clear();
+                await SendJsonToClient(new { type = "listening" }, token).ConfigureAwait(false);
+                _log.LogDebug("Streaming voice: playback done, resumed listening");
+            }
+
             stt.TranscriptReceived += transcript =>
             {
                 _ = Task.Run(async () =>
@@ -171,9 +183,21 @@ public class StreamingVoiceOrchestrator
                             SendJsonToClient, ct)
                             .ConfigureAwait(false);
 
-                        // After reply completes, clear any echo segments that Deepgram
-                        // accumulated while Ani was speaking through the speaker.
-                        debounce?.Clear();
+                        // Safety fallback: if client never sends "playback_done"
+                        // (disconnect, bug, etc.), resume listening after 5 seconds.
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await Task.Delay(5000, ct).ConfigureAwait(false);
+                                if (session.IsAniSpeaking)
+                                {
+                                    _log.LogWarning("Streaming voice: playback_done timeout, force-resuming");
+                                    await ResumeListeningAsync(ct).ConfigureAwait(false);
+                                }
+                            }
+                            catch (OperationCanceledException) { }
+                        });
                     }
                     catch (OperationCanceledException) { }
                     catch (Exception ex)
@@ -215,16 +239,28 @@ public class StreamingVoiceOrchestrator
             await SendJsonToClient(new { type = "session_started", sessionId }, ct)
                 .ConfigureAwait(false);
 
-            // Synthesize greeting
+            // Synthesize greeting — client will send "playback_done" when audio finishes
             await _pipeline.SynthesizeGreetingAsync(
                 session, _voiceOptions.VoiceGreeting, tts, SendJsonToClient, ct)
                 .ConfigureAwait(false);
 
-            // Clear any echo segments from greeting playback
-            debounce?.Clear();
+            // Safety fallback for greeting playback_done
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(5000, ct).ConfigureAwait(false);
+                    if (session.IsAniSpeaking)
+                    {
+                        _log.LogWarning("Streaming voice: greeting playback_done timeout, force-resuming");
+                        await ResumeListeningAsync(ct).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException) { }
+            });
 
             // Main receive loop — forward audio and handle control messages
-            await ReceiveLoopAsync(ws, session, stt, ct).ConfigureAwait(false);
+            await ReceiveLoopAsync(ws, session, stt, ResumeListeningAsync, ct).ConfigureAwait(false);
         }
         catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
         {
@@ -265,7 +301,9 @@ public class StreamingVoiceOrchestrator
 
     private async Task ReceiveLoopAsync(
         WebSocket ws, VoiceSessionState session,
-        IStreamingSpeechToTextService stt, CancellationToken ct)
+        IStreamingSpeechToTextService stt,
+        Func<CancellationToken, Task> resumeListening,
+        CancellationToken ct)
     {
         var buffer = new byte[4096];
         long totalAudioBytes = 0;
@@ -298,13 +336,19 @@ public class StreamingVoiceOrchestrator
             if (result.MessageType == WebSocketMessageType.Text)
             {
                 var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                var msg = JsonSerializer.Deserialize<ControlMessage>(json);
+                var msg = JsonSerializer.Deserialize<ControlMessage>(json, JsonOpts);
 
                 switch (msg?.Type)
                 {
                     case "end":
                         _log.LogInformation("Streaming voice: client sent end signal");
                         return;
+
+                    case "playback_done":
+                        // Client's AudioTrack has finished draining — safe to resume listening.
+                        // This is the ONLY path that unmutes the mic after Ani speaks.
+                        await resumeListening(ct).ConfigureAwait(false);
+                        break;
 
                     case "audio_start":
                         if (session.IsAniSpeaking)

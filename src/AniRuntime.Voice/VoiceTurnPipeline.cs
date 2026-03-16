@@ -128,12 +128,14 @@ public class VoiceTurnPipeline
                 });
             }
 
-            session.EndSpeaking();
-
             _log.LogInformation("VoiceTurnPipeline reply: \"{Reply}\"", reply);
 
             await sendJson(new { type = "reply_end" }, ct).ConfigureAwait(false);
-            await sendJson(new { type = "listening" }, ct).ConfigureAwait(false);
+
+            // Do NOT send "listening" or clear IsAniSpeaking here.
+            // The client's AudioTrack still has buffered audio playing through the speaker.
+            // The orchestrator will send "listening" when the client signals "playback_done",
+            // which ensures the mic stays muted until the speaker is silent.
 
             return reply;
         }
@@ -162,13 +164,10 @@ public class VoiceTurnPipeline
         await tts.SendTextAsync(greeting, ct).ConfigureAwait(false);
         await tts.FlushAsync(ct).ConfigureAwait(false);
 
-        // Brief pause for audio to finish streaming before signaling ready
-        await Task.Delay(500, ct).ConfigureAwait(false);
-
-        session.SetSpeaking(false);
-
         await sendJson(new { type = "reply_end" }, ct).ConfigureAwait(false);
-        await sendJson(new { type = "listening" }, ct).ConfigureAwait(false);
+
+        // Do NOT send "listening" or clear IsAniSpeaking here.
+        // The orchestrator handles this when the client signals "playback_done".
     }
 
     private async Task<ContextSnapshot> BuildVoiceContextAsync(CancellationToken ct)

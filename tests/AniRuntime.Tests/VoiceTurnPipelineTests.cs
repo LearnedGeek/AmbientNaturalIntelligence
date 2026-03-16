@@ -126,12 +126,16 @@ public class VoiceTurnPipelineTests
             session, "test utterance here", _mockTts.Object, NoOpSendJson, CancellationToken.None);
 
         wasSpeaking.Should().BeTrue("IsAniSpeaking should be true during LLM generation");
-        session.IsAniSpeaking.Should().BeFalse("IsAniSpeaking should be false after reply completes");
+        // IsAniSpeaking stays true after reply — it's only cleared when the client
+        // sends "playback_done" (handled by the orchestrator, not the pipeline).
+        session.IsAniSpeaking.Should().BeTrue("IsAniSpeaking should remain true until client confirms playback done");
     }
 
     [Fact]
-    public async Task ProcessTurnAsync_IncrementsTurnCount()
+    public async Task ProcessTurnAsync_DoesNotIncrementTurnCount()
     {
+        // Turn count is incremented by EndSpeaking() in the orchestrator
+        // when the client signals "playback_done", not by the pipeline.
         var pipeline = CreatePipeline();
         var session = CreateSession();
 
@@ -143,7 +147,7 @@ public class VoiceTurnPipelineTests
         await pipeline.ProcessTurnAsync(
             session, "test message here", _mockTts.Object, NoOpSendJson, CancellationToken.None);
 
-        session.TurnCount.Should().Be(1);
+        session.TurnCount.Should().Be(0, "turn count is incremented by orchestrator on playback_done, not by pipeline");
     }
 
     [Fact]
@@ -215,7 +219,8 @@ public class VoiceTurnPipelineTests
         sentTypes.Should().Contain("transcript");
         sentTypes.Should().Contain("reply_start");
         sentTypes.Should().Contain("reply_end");
-        sentTypes.Should().Contain("listening");
+        // "listening" is no longer sent by the pipeline — it's sent by the orchestrator
+        // when the client signals "playback_done" (echo prevention).
     }
 
     [Fact]
@@ -233,7 +238,8 @@ public class VoiceTurnPipelineTests
             session, "Hey Mark!", _mockTts.Object, NoOpSendJson, CancellationToken.None);
 
         wasSpeaking.Should().BeTrue("should be speaking during TTS");
-        session.IsAniSpeaking.Should().BeFalse("should be done after greeting");
+        // IsAniSpeaking stays true — cleared by orchestrator on playback_done
+        session.IsAniSpeaking.Should().BeTrue("should remain speaking until client confirms playback done");
     }
 
     [Fact]

@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 600" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#444"/>
+    </marker>
+    <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#2266aa"/>
+    </marker>
+    <marker id="arr-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#449944"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="460" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#111">Figure 2: Memory Architecture</text>
+  <text x="460" y="46" text-anchor="middle" font-size="11" fill="#555">SQLite-backed with auto-embedding, three-way retrieval scoring, and anchored memory tier</text>
+
+  <!-- ============ WRITE SOURCES (left column) ============ -->
+  <text x="90" y="80" text-anchor="middle" font-size="12" font-weight="bold" fill="#336">Write Sources</text>
+
+  <rect x="20" y="95" width="140" height="35" rx="5" fill="#ddeeff" stroke="#336699" stroke-width="1.2"/>
+  <text x="90" y="117" text-anchor="middle" font-size="10" fill="#224">Inner Thoughts</text>
+
+  <rect x="20" y="140" width="140" height="35" rx="5" fill="#ddeeff" stroke="#336699" stroke-width="1.2"/>
+  <text x="90" y="162" text-anchor="middle" font-size="10" fill="#224">Conversations</text>
+
+  <rect x="20" y="185" width="140" height="35" rx="5" fill="#ddeeff" stroke="#336699" stroke-width="1.2"/>
+  <text x="90" y="207" text-anchor="middle" font-size="10" fill="#224">Outreach Messages</text>
+
+  <rect x="20" y="230" width="140" height="35" rx="5" fill="#ddeeff" stroke="#336699" stroke-width="1.2"/>
+  <text x="90" y="252" text-anchor="middle" font-size="10" fill="#224">RSS / Perceptions</text>
+
+  <rect x="20" y="275" width="140" height="35" rx="5" fill="#ddeeff" stroke="#336699" stroke-width="1.2"/>
+  <text x="90" y="297" text-anchor="middle" font-size="10" fill="#224">Character Seed</text>
+
+  <!-- ============ AUTO-EMBEDDING (center-left) ============ -->
+  <rect x="200" y="155" width="130" height="50" rx="6" fill="#f0f0f0" stroke="#666" stroke-width="1.5"/>
+  <text x="265" y="176" text-anchor="middle" font-size="10" font-weight="bold" fill="#333">Auto-Embed</text>
+  <text x="265" y="191" text-anchor="middle" font-size="9" fill="#666">nomic-embed-text</text>
+  <text x="265" y="202" text-anchor="middle" font-size="8.5" fill="#888">768 dimensions</text>
+
+  <!-- Arrows from sources to auto-embed -->
+  <line x1="160" y1="112" x2="200" y2="170" stroke="#336699" stroke-width="1" marker-end="url(#arr-b)"/>
+  <line x1="160" y1="157" x2="200" y2="175" stroke="#336699" stroke-width="1" marker-end="url(#arr-b)"/>
+  <line x1="160" y1="202" x2="200" y2="185" stroke="#336699" stroke-width="1" marker-end="url(#arr-b)"/>
+  <line x1="160" y1="247" x2="200" y2="192" stroke="#336699" stroke-width="1" marker-end="url(#arr-b)"/>
+  <line x1="160" y1="292" x2="200" y2="198" stroke="#336699" stroke-width="1" marker-end="url(#arr-b)"/>
+
+  <!-- ============ SQLITE STORE (center) ============ -->
+  <rect x="370" y="80" width="210" height="280" rx="8" fill="#f8f8f0" stroke="#887744" stroke-width="2"/>
+  <text x="475" y="102" text-anchor="middle" font-size="12" font-weight="bold" fill="#553">SQLite Memory Store</text>
+  <text x="475" y="116" text-anchor="middle" font-size="9" fill="#886">ani-memory.db</text>
+
+  <!-- Memory types inside SQLite -->
+  <rect x="385" y="130" width="180" height="28" rx="4" fill="#fff3dd" stroke="#aa7722" stroke-width="1"/>
+  <text x="475" y="149" text-anchor="middle" font-size="10" fill="#553">Episodic (events, conversations)</text>
+
+  <rect x="385" y="165" width="180" height="28" rx="4" fill="#e8ffe8" stroke="#449944" stroke-width="1"/>
+  <text x="475" y="184" text-anchor="middle" font-size="10" fill="#353">Semantic (facts, knowledge)</text>
+
+  <rect x="385" y="200" width="180" height="28" rx="4" fill="#fff0e0" stroke="#cc8844" stroke-width="1"/>
+  <text x="475" y="219" text-anchor="middle" font-size="10" fill="#643">InnerThought (private)</text>
+
+  <rect x="385" y="235" width="180" height="28" rx="4" fill="#e0e8ff" stroke="#4466aa" stroke-width="1"/>
+  <text x="475" y="254" text-anchor="middle" font-size="10" fill="#335">Perception (RSS, time, weather)</text>
+
+  <rect x="385" y="270" width="180" height="28" rx="4" fill="#ffe8e8" stroke="#aa4444" stroke-width="1"/>
+  <text x="475" y="289" text-anchor="middle" font-size="10" fill="#533">OpenLoop (unresolved threads)</text>
+
+  <!-- Anchored tier (special) -->
+  <rect x="385" y="310" width="180" height="35" rx="4" fill="#f0e0ff" stroke="#8844aa" stroke-width="1.5"/>
+  <text x="475" y="327" text-anchor="middle" font-size="10" font-weight="bold" fill="#524">Anchored (never fade)</text>
+  <text x="475" y="341" text-anchor="middle" font-size="8.5" fill="#746">Foundation memories, character core</text>
+
+  <!-- Arrow from auto-embed to store -->
+  <path d="M330,180 L370,180" fill="none" stroke="#666" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="350" y="172" text-anchor="middle" font-size="8" fill="#888">write</text>
+
+  <!-- ============ RETRIEVAL SCORING (center-right) ============ -->
+  <rect x="620" y="120" width="200" height="140" rx="8" fill="#f5fff5" stroke="#449944" stroke-width="1.5"/>
+  <text x="720" y="142" text-anchor="middle" font-size="11" font-weight="bold" fill="#353">Three-Way Retrieval</text>
+  <text x="720" y="156" text-anchor="middle" font-size="9" fill="#464">(Park et al. 2023, adapted)</text>
+
+  <!-- Three scoring components -->
+  <rect x="635" y="168" width="170" height="22" rx="3" fill="#e8f5e8" stroke="#6a6" stroke-width="0.8"/>
+  <text x="720" y="183" text-anchor="middle" font-size="9.5" fill="#353">Cosine Similarity (semantic)</text>
+
+  <rect x="635" y="196" width="170" height="22" rx="3" fill="#e8f5e8" stroke="#6a6" stroke-width="0.8"/>
+  <text x="720" y="211" text-anchor="middle" font-size="9.5" fill="#353">Importance (feedback-boosted)</text>
+
+  <rect x="635" y="224" width="170" height="22" rx="3" fill="#e8f5e8" stroke="#6a6" stroke-width="0.8"/>
+  <text x="720" y="239" text-anchor="middle" font-size="9.5" fill="#353">Recency (type-aware decay)</text>
+
+  <!-- Arrow from store to retrieval -->
+  <path d="M580,200 L620,200" fill="none" stroke="#449944" stroke-width="1.5" marker-end="url(#arr-g)"/>
+  <text x="600" y="192" text-anchor="middle" font-size="8" fill="#888">query</text>
+
+  <!-- ============ DECAY RATES ============ -->
+  <rect x="620" y="280" width="200" height="80" rx="6" fill="#f8f8f0" stroke="#887744" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="720" y="298" text-anchor="middle" font-size="10" font-weight="bold" fill="#664">Type-Aware Decay</text>
+  <text x="635" y="316" font-size="9" fill="#664">Episodic / Semantic: ~14 days</text>
+  <text x="635" y="331" font-size="9" fill="#664">Perception: ~3.5 days</text>
+  <text x="635" y="346" font-size="9" fill="#664">Anchored: no decay (&#x221E;)</text>
+
+  <!-- ============ CONTEXT WINDOW (bottom) ============ -->
+  <rect x="250" y="420" width="440" height="150" rx="8" fill="#fafafa" stroke="#333" stroke-width="2"/>
+  <text x="470" y="442" text-anchor="middle" font-size="12" font-weight="bold" fill="#222">Context Window (LLM Input)</text>
+
+  <!-- Context components -->
+  <rect x="270" y="455" width="130" height="25" rx="3" fill="#e0e0f0" stroke="#668" stroke-width="0.8"/>
+  <text x="335" y="472" text-anchor="middle" font-size="9" fill="#335">Character State</text>
+
+  <rect x="270" y="488" width="130" height="25" rx="3" fill="#ffe8e8" stroke="#a66" stroke-width="0.8"/>
+  <text x="335" y="505" text-anchor="middle" font-size="9" fill="#533">Emotional State (4D)</text>
+
+  <rect x="270" y="521" width="130" height="25" rx="3" fill="#fff3dd" stroke="#a87" stroke-width="0.8"/>
+  <text x="335" y="538" text-anchor="middle" font-size="9" fill="#553">Recent Conversation</text>
+
+  <rect x="420" y="455" width="130" height="25" rx="3" fill="#e8f5e8" stroke="#6a6" stroke-width="0.8"/>
+  <text x="485" y="472" text-anchor="middle" font-size="9" fill="#353">Retrieved Memories</text>
+
+  <rect x="420" y="488" width="130" height="25" rx="3" fill="#f0e0ff" stroke="#86a" stroke-width="0.8"/>
+  <text x="485" y="505" text-anchor="middle" font-size="9" fill="#524">Anchored Memories</text>
+
+  <rect x="420" y="521" width="130" height="25" rx="3" fill="#e0e8ff" stroke="#68a" stroke-width="0.8"/>
+  <text x="485" y="538" text-anchor="middle" font-size="9" fill="#335">Perceptions</text>
+
+  <rect x="560" y="455" width="110" height="25" rx="3" fill="#f0f0e0" stroke="#886" stroke-width="0.8"/>
+  <text x="615" y="472" text-anchor="middle" font-size="9" fill="#553">Open Loops</text>
+
+  <rect x="560" y="488" width="110" height="25" rx="3" fill="#f0f0f0" stroke="#888" stroke-width="0.8"/>
+  <text x="615" y="505" text-anchor="middle" font-size="9" fill="#444">Chat History</text>
+
+  <!-- Arrow from retrieval to context window -->
+  <path d="M720,260 Q720,390 550,420" fill="none" stroke="#449944" stroke-width="1.5" marker-end="url(#arr-g)"/>
+  <text x="690" y="380" font-size="9" fill="#449944">top-k results</text>
+
+  <!-- Arrow from anchored to context window (direct path) -->
+  <path d="M475,345 Q475,395 470,420" fill="none" stroke="#8844aa" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <text x="510" y="388" font-size="8.5" fill="#8844aa">always included</text>
+
+  <!-- ============ IMPORTANCE FEEDBACK LOOP ============ -->
+  <path d="M580,520 Q850,520 850,200 Q850,180 820,180" fill="none" stroke="#449944" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arr-g)"/>
+  <text x="870" y="360" text-anchor="start" font-size="8.5" fill="#449944" transform="rotate(90, 870, 360)">importance +0.1 boost</text>
+
+  <!-- ============ FOOTER ============ -->
+  <text x="460" y="590" text-anchor="middle" font-size="9" fill="#888">Brute-force scoring in C# (no sqlite-vec). Auto-embedding on save via Ollama nomic-embed-text.</text>
+</svg>

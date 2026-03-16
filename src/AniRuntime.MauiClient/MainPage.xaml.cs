@@ -263,6 +263,13 @@ public partial class MainPage : ContentPage
 
                     case "reply_end":
                         TranscriptLabel.Text = "";
+                        // Keep mic muted until AudioTrack drains buffered audio,
+                        // then tell the server we're done playing so it can resume listening.
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(1500); // let AudioTrack buffer drain
+                            await SendJsonAsync(new { type = "playback_done" });
+                        });
                         break;
 
                     case "error":
