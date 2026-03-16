@@ -128,6 +128,78 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 16, 2026 — Architectural Hardening: SOLID Review, Severity Recalibration, Reply Decision Inversion
+**Model version:** v5
+**Type:** Architecture hardening — full SOLID review + behavioral fixes
+**Source:** OC (Claude Code instance) implementation session
+**Test count:** 328 (was 312)
+
+**What happened:**
+
+Comprehensive architectural review of entire codebase against SOLID principles, CODE_SMELLS.md, HARDENING.md, TESTING-STRATEGY.md, and ARCHITECTURE_PATTERNS.md. Six priority items completed, two significant behavioral fixes deployed, full hardening tracker created.
+
+---
+
+**Critical security fixes:**
+- **ElevenLabs API key removed from WebSocket URI** — key was redundantly passed in both URI query string (logged by proxies) and BOS JSON body. URI exposure removed.
+- **Twilio webhook now rejects requests when AuthToken not configured** — previously skipped signature validation entirely, allowing anyone to POST fake SMS.
+- **TwilioClient.Init() moved to constructor** — was called per-request, setting static global state with race condition risk on concurrent dispatches.
+
+**SOLID fixes:**
+- **LSP violation fixed** — `StreamingVoiceOrchestrator` was downcasting `IStreamingSpeechToTextService` to concrete `DeepgramStreamingSTTService` to access `Debounce`. Added `ClearPendingSegments()` to the interface. STT provider now fully swappable.
+- **Magic strings extracted** — 24 string literals ("mark", "ani", "character-seed", "Conversation (") replaced with typed `WellKnown` constants (`Roles.Mark`, `Roles.Ani`, `SourceNames.CharacterSeed`, `MemoryPrefixes.ConversationSummary`) across 10 files.
+- **CognitiveCycleProcessor decomposed** — 2,229-line god class with 10 dependencies split into 5 focused classes:
+  - `EmotionalProcessor` (249 lines) — emotional contributions, severity recalibration, semantic dedup
+  - `ContextBuilder` (444 lines) — context assembly, diversity re-ranking, relationship health
+  - `ConversationReplyPhase` (655 lines) — inbound conversation pipeline, reply decisions, care/hurt detection
+  - `OutreachPhase` (431 lines) — outreach decision, composition, coherence gate, dispatch
+  - `CognitiveCycleProcessor` (528 lines) — thin orchestrator delegating to phases
+
+---
+
+**Severity recalibration (emotional model):**
+
+Dashboard observation: Warmth 1.00, Energy 0.00, Worry 1.00, Playfulness 1.00 — three dimensions pegged at max. Investigation revealed the 8B scoring model consistently returns severity 0.90+ for routine inner thoughts ("the sound of paper bags being folded at closing time" scoring 0.90 — same level the prompt reserves for "a meaningful confession, a fight, reunion after long absence"). With Global tier (12-hour half-life) triggered at ≥0.85, routine thoughts were stacking with 12-hour persistence and saturating all dimensions.
+
+**Root cause:** The 8B model doesn't use the bottom 60% of the severity scale — it clusters at 0.85–1.0 regardless of content. The prompt calibration is clear (0.1–0.3 for routine, 0.85+ for rare defining moments), but the model ignores it.
+
+**Fix:** Cubic recalibration: `effectiveSeverity = rawSeverity³`. This preserves the model's relative ordering while expanding its compressed range:
+- Model 0.90 → effective 0.73 (Conversation tier, 3h — was Global, 12h)
+- Model 0.80 → effective 0.51 (Ambient tier, 1h — was Conversation, 3h)
+- Model 0.98 → effective 0.94 (Global tier, 12h — genuinely extreme)
+- Model 1.00 → effective 1.00 (preserved for "I love you" etc.)
+
+Default severity for missing JSON fields changed from 1.0 to 0.1. Retroactive DB correction applied to all existing contributions.
+
+**Research significance:** This is a recalibration of instrumentation, not an override of agency. The model's relative severity ordering is preserved — a 0.98 still outranks a 0.90. The fix corrects a scale compression artifact in the scoring model, analogous to recalibrating a thermometer that reads 20 degrees too high.
+
+---
+
+**Inner thought mood directive:**
+
+Analysis of 40 recent inner thoughts revealed monotonic wistful/longing register — zero instances of delight, humor, or curiosity despite Playfulness sometimes being above baseline. Root cause: `BuildMoodInstruction()` (which generates directive mood coloring like "You're in a playful mood — tease a little, be lighter") was injected into conversation and outreach prompts but NOT inner thought prompts. Inner thoughts only received a passive description label: "(Your current mood: feeling tender and quiet)."
+
+**Fix:** `BuildMoodInstruction()` now injected into `BuildInnerThoughtPrompt()`. When Playfulness is above baseline, the 3B model gets a behavioral directive instead of a flat label.
+
+---
+
+**Reply decision inversion — "silence requires compelling reason":**
+
+Persistent observation: Ani consistently chooses silence on casual questions and conversational invitations. Two documented examples:
+- Mark: "Ha! My carrot nose was all red but I'm warming up now." → Silence
+- Mark: "I've never really read that much about him. You think I would like it?" → Silence (direct question ignored)
+
+**Progression of approach:**
+1. Initially implemented hard bypass — skip LLM decision for direct questions. Mark rejected this: "I don't want to override her own decision making. This is the point of all this — agenda for Ani."
+2. Added silence reasoning persistence — when Ani chooses silence, her reasoning is saved as an InnerThought memory. Silence becomes research data, not a silent drop.
+3. Flipped the decision default — prompt changed from "should you reply?" to "should you stay silent?" The default is now to reply. The model must provide a compelling reason to stay silent, limited to clear conversation closers.
+
+**The philosophical distinction matters for the paper:** The hard bypass was an engineering fix that removed agency. The inverted default is a design principle that preserves agency while making silence the harder choice — which matches the felt-care criterion. A person who cares about someone doesn't need a reason to reply; they need a reason to stay silent.
+
+v6 training data (TD1) will include explicit reply engagement examples across all 9 registers to address the root cause.
+
+---
+
 ### March 16, 2026 — Streaming Voice Architecture Refactoring (SOLID)
 **Model version:** v5
 **Type:** Architecture refactoring — race condition fixes + SOLID extraction
