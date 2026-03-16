@@ -1,4 +1,5 @@
 @page "/emergence"
+@using System.Text.Json
 @using AniRuntime.Emergence
 @using AniRuntime.Emergence.Models
 @using Microsoft.Extensions.Options
@@ -8,6 +9,22 @@
 @if (_enabled)
 {
     <p><mark>Emergence: Active</mark></p>
+    <details>
+        <summary>How emergence scoring works</summary>
+        <p>
+            Every cognitive cycle is scored across four equally-weighted components (0.25 each):
+        </p>
+        <ul>
+            <li><strong>Emotional</strong> — magnitude of emotional shift (warmth, energy, worry, playfulness deltas)</li>
+            <li><strong>Novelty</strong> — valence extremity + presence of reflection</li>
+            <li><strong>Outreach</strong> — quality of external action (send &gt; reply &gt; threshold-crossed &gt; silence)</li>
+            <li><strong>Relational</strong> — conversation presence, desire intensity, severity</li>
+        </ul>
+        <p>
+            Cycles scoring <strong>&ge; 0.40</strong> create or bump a <em>resonance theme</em> — a recurring pattern
+            in Ani's relational experience. Themes accumulate score over time; higher = stronger signal.
+        </p>
+    </details>
 }
 else
 {
@@ -31,6 +48,13 @@ else
                 <header>Last Scored</header>
                 <p style="text-align: center;">@(_stats.LastScoredAt?.LocalDateTime.ToString("MMM d, h:mm tt") ?? "—")</p>
             </article>
+            @if (_logEntries.Count > 0)
+            {
+                <article>
+                    <header>Avg Score</header>
+                    <p style="font-size: 2em; text-align: center;">@AvgScore().ToString("F2")</p>
+                </article>
+            }
         </div>
     </section>
 }
@@ -58,7 +82,7 @@ else
                             <td><strong>@r.Theme</strong></td>
                             <td>@r.ResonanceScore.ToString("F2")</td>
                             <td>@r.OccurrenceCount</td>
-                            <td>@r.Type</td>
+                            <td><small>@r.Type</small></td>
                             <td>@r.FirstObserved.LocalDateTime.ToString("MMM d")</td>
                             <td>@r.LastObserved.LocalDateTime.ToString("MMM d, h:mm tt")</td>
                         </tr>
@@ -75,16 +99,86 @@ else
         <h3>Recent Emergence Log</h3>
         @foreach (var entry in _logEntries.Take(20))
         {
-            <blockquote>
-                <p>
-                    <strong>@entry.EntryType</strong>
-                    @if (entry.ResonanceScore.HasValue)
+            var details = ParseDetails(entry.DetailsJson);
+            var aboveThreshold = entry.ResonanceScore.HasValue && entry.ResonanceScore.Value >= 0.4f;
+
+            <article style="@(aboveThreshold ? "border-left: 3px solid #4caf50;" : "")">
+                <header style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>
+                        <strong>@entry.EntryType</strong>
+                        @if (details is not null)
+                        {
+                            if (!string.IsNullOrEmpty(details.Register))
+                            {
+                                <span> — @details.Register</span>
+                            }
+                            if (details.Conversation)
+                            {
+                                <small style="margin-left: 0.5em; color: #64b5f6;">conversation</small>
+                            }
+                            else if (details.Outcome == "send")
+                            {
+                                <small style="margin-left: 0.5em; color: #81c784;">outreach</small>
+                            }
+                            else if (details.Silence)
+                            {
+                                <small style="margin-left: 0.5em; color: #9e9e9e;">silence</small>
+                            }
+                        }
+                    </span>
+                    <span>
+                        @entry.Timestamp.LocalDateTime.ToString("MMM d, h:mm tt")
+                    </span>
+                </header>
+
+                @if (entry.ResonanceScore.HasValue)
+                {
+                    <div style="margin: 0.5em 0;">
+                        <div style="display: flex; align-items: center; gap: 0.5em;">
+                            <strong style="min-width: 4em;">@entry.ResonanceScore.Value.ToString("F2")</strong>
+                            <progress value="@entry.ResonanceScore.Value" max="1" style="flex: 1;"></progress>
+                            @if (aboveThreshold)
+                            {
+                                <small style="color: #4caf50;">resonance</small>
+                            }
+                        </div>
+                    </div>
+
+                    @if (details is not null)
                     {
-                        <span> — score: @entry.ResonanceScore.Value.ToString("F2")</span>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5em; font-size: 0.85em;">
+                            <div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Emotional</span>
+                                    <span style="color: @ComponentColor(details.Emotional)">@details.Emotional.ToString("F2")</span>
+                                </div>
+                                <progress value="@details.Emotional" max="1" style="height: 4px;"></progress>
+                            </div>
+                            <div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Novelty</span>
+                                    <span style="color: @ComponentColor(details.Novelty)">@details.Novelty.ToString("F2")</span>
+                                </div>
+                                <progress value="@details.Novelty" max="1" style="height: 4px;"></progress>
+                            </div>
+                            <div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Outreach</span>
+                                    <span style="color: @ComponentColor(details.Outreach)">@details.Outreach.ToString("F2")</span>
+                                </div>
+                                <progress value="@details.Outreach" max="1" style="height: 4px;"></progress>
+                            </div>
+                            <div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>Relational</span>
+                                    <span style="color: @ComponentColor(details.Relational)">@details.Relational.ToString("F2")</span>
+                                </div>
+                                <progress value="@details.Relational" max="1" style="height: 4px;"></progress>
+                            </div>
+                        </div>
                     }
-                </p>
-                <footer>@entry.Timestamp.LocalDateTime.ToString("MMM d, h:mm tt")</footer>
-            </blockquote>
+                }
+            </article>
         }
     </section>
 }
@@ -119,5 +213,56 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
         _stats = await store.GetStatsAsync();
         _resonanceRecords = (await store.GetResonanceRecordsAsync(50)).ToList();
         _logEntries = (await store.GetRecentLogEntriesAsync(20)).ToList();
+    }
+
+    private float AvgScore()
+    {
+        var scored = _logEntries.Where(e => e.ResonanceScore.HasValue).ToList();
+        return scored.Count > 0 ? scored.Average(e => e.ResonanceScore!.Value) : 0f;
+    }
+
+    private static LogDetails? ParseDetails(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<LogDetails>(json, JsonOpts);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ComponentColor(float value) =>
+        value >= 0.7f ? "#4caf50" : value >= 0.3f ? "#ff9800" : "#9e9e9e";
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    private record LogDetails
+    {
+        public float Score { get; init; }
+        public ComponentScores Components { get; init; } = new();
+        public string? Register { get; init; }
+        public float Severity { get; init; }
+        public float Valence { get; init; }
+        public string? Outcome { get; init; }
+        public bool Conversation { get; init; }
+        public bool Silence { get; init; }
+
+        public float Emotional => Components.Emotional;
+        public float Novelty => Components.Novelty;
+        public float Outreach => Components.Outreach;
+        public float Relational => Components.Relational;
+    }
+
+    private record ComponentScores
+    {
+        public float Emotional { get; init; }
+        public float Novelty { get; init; }
+        public float Outreach { get; init; }
+        public float Relational { get; init; }
     }
 }
