@@ -8,17 +8,17 @@
 
 ## Priority 1 — Critical (Security & Correctness)
 
-### [ ] C1: Remove ElevenLabs API key from WebSocket URI
+### [x] C1: Remove ElevenLabs API key from WebSocket URI
 **File:** `src/AniRuntime.Voice/ElevenLabsStreamingTTSService.cs:56, 274`
 **Issue:** API key passed as query parameter in WebSocket URI. URIs are logged by proxies/frameworks. Key is already sent in BOS JSON body — URI param is redundant and a security risk.
 **Fix:** Remove `&xi_api_key=` from URI construction. Auth via BOS body is sufficient.
 
-### [ ] C6: Fix Twilio webhook signature bypass
+### [x] C6: Fix Twilio webhook signature bypass
 **File:** `src/AniRuntime.Service/Program.cs:182`
 **Issue:** When `authToken` is empty/whitespace, Twilio signature validation is skipped entirely. Anyone can POST fake SMS to `/sms/inbound`.
 **Fix:** Log a warning and reject requests when auth token is not configured (except in Development environment).
 
-### [ ] C2: Move TwilioClient.Init to startup
+### [x] C2: Move TwilioClient.Init to startup
 **File:** `src/AniRuntime.Actions/TwilioSmsAction.cs:62`
 **Issue:** `TwilioClient.Init()` sets static global state on every `ExecuteAsync`. Race condition risk with concurrent dispatches.
 **Fix:** Move to constructor or DI registration (called once at startup).
@@ -27,7 +27,7 @@
 
 ## Priority 2 — SOLID Violations
 
-### [ ] S4: Fix LSP violation — STT downcast in orchestrator
+### [x] S4: Fix LSP violation — STT downcast in orchestrator
 **File:** `src/AniRuntime.Voice/StreamingVoiceOrchestrator.cs:114`
 **Issue:** `(stt as DeepgramStreamingSTTService)?.Debounce` violates Liskov Substitution — depends on concrete type.
 **Fix:** Add `DebouncedUtterance? Debounce { get; }` to `IStreamingSpeechToTextService` or pass debounce handler via DI.
@@ -42,7 +42,7 @@
 **Issue:** Mixes memory CRUD, character state, desire state, emotional state, relationship health.
 **Fix:** Split into `IMemoryStore`, `ICharacterStateStore`, `IDesireStateStore`, `IEmotionalStateStore`, `IRelationshipStore`. SqliteMemoryService implements all.
 
-### [ ] S1: Decompose CognitiveCycleProcessor (SRP)
+### [x] S1: Decompose CognitiveCycleProcessor (SRP)
 **File:** `src/AniRuntime.Loops/CognitiveCycleProcessor.cs` — 2,229 lines, 10 dependencies
 **Issue:** God class handling perception, thought, emotion, desire, outreach, conversation, emergence.
 **Fix:** Extract into phase classes: `PerceptionPhase`, `InnerThoughtPhase`, `EmotionalProcessor`, `OutreachPhase`, `ConversationReplyPhase`. CognitiveCycleProcessor becomes a thin orchestrator.
@@ -51,7 +51,7 @@
 
 ## Priority 3 — Code Smells
 
-### [ ] CS2: Extract magic strings to constants
+### [x] CS2: Extract magic strings to constants
 **Locations:** "mark" (role), "character-seed" (source), "Conversation (" (prefix), "sms" (action type)
 **Fix:** Add constants to Core project. Use existing `ActionTypes` class where applicable.
 
@@ -62,6 +62,16 @@
 ### [ ] CS4: Consolidate duplicate JsonSerializerOptions
 **Files:** `OllamaClient.cs`, `StreamingVoiceOrchestrator.cs`, `ElevenLabsStreamingTTSService.cs`, `EmergenceObserver.cs`
 **Fix:** Shared `JsonDefaults` static class.
+
+### [ ] CS5: LastEvaluatedMessageAt cross-class coupling
+**Files:** `ConversationReplyPhase.cs`, `AniHeartbeatService.cs`
+**Issue:** `LastEvaluatedMessageAt` gates whether Ani re-evaluates a silence decision. It lives in `ConversationReplyPhase` but `AniHeartbeatService` reads it for reconsideration triggers. This hidden coupling was invisible in the god class — now it's an explicit cross-class dependency that could cause subtle bugs if either side evolves independently.
+**Fix:** Extract into a shared `ConversationGateState` or expose via an interface that both classes depend on.
+
+### [ ] CS6: ReRankForDiversityAsync dual-consumer coupling
+**Files:** `ContextBuilder.cs`, `CognitiveCycleProcessor.cs`
+**Issue:** `ReRankForDiversityAsync` in `ContextBuilder` is called by both inner thought generation (orchestrator) and conversation reply (`ConversationReplyPhase`). Changes to re-ranking logic affect both paths without obvious indication.
+**Fix:** Document the dual usage clearly. Consider whether inner thought diversity re-ranking should use a separate method with its own tuning parameters.
 
 ---
 
