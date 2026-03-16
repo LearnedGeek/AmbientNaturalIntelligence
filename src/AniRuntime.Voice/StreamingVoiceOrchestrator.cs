@@ -110,9 +110,6 @@ public class StreamingVoiceOrchestrator
             stt = _services.GetRequiredService<IStreamingSpeechToTextService>();
             tts = _services.GetRequiredService<IStreamingTextToSpeechService>();
 
-            // Get the debounce handler so we can clear echo segments
-            var debounce = (stt as DeepgramStreamingSTTService)?.Debounce;
-
             // Wire TTS audio → client WebSocket (serialized to prevent concurrent SendAsync)
             var wsSendLock = new SemaphoreSlim(1, 1);
             tts.AudioChunkReceived += audioChunk =>
@@ -158,7 +155,7 @@ public class StreamingVoiceOrchestrator
             {
                 if (!session.IsAniSpeaking) return;
                 session.EndSpeaking();
-                debounce?.Clear();
+                stt.ClearPendingSegments();
                 await SendJsonToClient(new { type = "listening" }, token).ConfigureAwait(false);
                 _log.LogDebug("Streaming voice: playback done, resumed listening");
             }

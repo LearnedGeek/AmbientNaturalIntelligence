@@ -52,8 +52,7 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
 
         var uri = new Uri(
             $"wss://api.elevenlabs.io/v1/text-to-speech/{_options.ElevenLabsVoiceId}/stream-input" +
-            $"?model_id={_options.ElevenLabsStreamingModelId}&output_format=pcm_16000" +
-            $"&xi_api_key={_options.ElevenLabsApiKey}");
+            $"?model_id={_options.ElevenLabsStreamingModelId}&output_format=pcm_16000");
 
         await _ws.ConnectAsync(uri, ct).ConfigureAwait(false);
 
@@ -270,8 +269,7 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
         _ws = new ClientWebSocket();
         var uri = new Uri(
             $"wss://api.elevenlabs.io/v1/text-to-speech/{_options.ElevenLabsVoiceId}/stream-input" +
-            $"?model_id={_options.ElevenLabsStreamingModelId}&output_format=pcm_16000" +
-            $"&xi_api_key={_options.ElevenLabsApiKey}");
+            $"?model_id={_options.ElevenLabsStreamingModelId}&output_format=pcm_16000");
 
         await _ws.ConnectAsync(uri, ct).ConfigureAwait(false);
 

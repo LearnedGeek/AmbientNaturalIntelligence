@@ -178,8 +178,14 @@ try
         var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.Path}";
         var parameters = form.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToString());
 
+        if (string.IsNullOrWhiteSpace(authToken))
+        {
+            Log.Warning("Twilio AuthToken not configured — rejecting inbound SMS webhook. Set Twilio:AuthToken in appsettings.");
+            return Results.StatusCode(403);
+        }
+
         var validator = new RequestValidator(authToken);
-        if (!string.IsNullOrWhiteSpace(authToken) && !validator.Validate(requestUrl, parameters, signature))
+        if (!validator.Validate(requestUrl, parameters, signature))
         {
             Log.Warning("Rejected inbound SMS webhook — invalid Twilio signature");
             return Results.StatusCode(403);

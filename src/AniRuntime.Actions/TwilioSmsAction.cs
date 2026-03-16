@@ -25,6 +25,15 @@ public class TwilioSmsAction : IAniAction
         _options    = options.Value;
         _log        = log;
         _enrichment = enrichment;
+
+        // Initialize Twilio SDK once at construction — TwilioClient.Init sets
+        // static global state, so calling it per-request is wasteful and risks
+        // race conditions with concurrent dispatches.
+        if (!string.IsNullOrWhiteSpace(_options.AccountSid) &&
+            !string.IsNullOrWhiteSpace(_options.AuthToken))
+        {
+            TwilioClient.Init(_options.AccountSid, _options.AuthToken);
+        }
     }
 
     public async Task<bool> ExecuteAsync(OutreachDecision decision, CancellationToken ct = default)
@@ -58,8 +67,6 @@ public class TwilioSmsAction : IAniAction
                 _log.LogError(ex, "Media enrichment failed — sending text only");
             }
         }
-
-        TwilioClient.Init(_options.AccountSid, _options.AuthToken);
 
         var mediaUrls = decision.MediaUrls.Count > 0
             ? decision.MediaUrls.Select(u => u).ToList()

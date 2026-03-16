@@ -154,6 +154,8 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
         }
     }
 
+    public void ClearPendingSegments() => Debounce.Clear();
+
     public async ValueTask DisposeAsync()
     {
         Debounce.Dispose();

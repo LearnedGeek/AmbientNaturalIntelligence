@@ -21,4 +21,10 @@ public interface IStreamingSpeechToTextService : IAsyncDisposable
 
     /// <summary>Fires for interim/partial transcripts (for logging and UI display).</summary>
     event Action<string> PartialTranscriptReceived;
+
+    /// <summary>
+    /// Discard any accumulated segments that haven't fired yet (echo artifacts).
+    /// Implementations without debounce logic should no-op.
+    /// </summary>
+    void ClearPendingSegments();
 }
