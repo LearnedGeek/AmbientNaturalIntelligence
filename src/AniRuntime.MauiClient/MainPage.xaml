@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AniRuntime.MauiClient.MainPage"
+             BackgroundColor="#1a1a2e"
+             Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="20">
+
+        <!-- Status bar -->
+        <VerticalStackLayout Grid.Row="0" Spacing="4" Padding="0,40,0,0">
+            <Label x:Name="StatusLabel"
+                   Text="Ready"
+                   TextColor="#8888aa"
+                   FontSize="18"
+                   HorizontalTextAlignment="Center" />
+            <Label x:Name="TranscriptLabel"
+                   Text=""
+                   TextColor="#aaaacc"
+                   FontSize="14"
+                   HorizontalTextAlignment="Center"
+                   MaxLines="2"
+                   LineBreakMode="TailTruncation" />
+        </VerticalStackLayout>
+
+        <!-- Big talk button — driving safe, fills most of screen -->
+        <Button x:Name="TalkButton"
+                Grid.Row="1"
+                Text="Talk to Ani"
+                FontSize="36"
+                FontAttributes="Bold"
+                TextColor="White"
+                BackgroundColor="#4a4a8a"
+                CornerRadius="40"
+                Margin="30"
+                Clicked="OnTalkButtonClicked"
+                VerticalOptions="Center"
+                HorizontalOptions="Fill"
+                HeightRequest="250" />
+
+        <!-- Server URL (tap to edit) -->
+        <VerticalStackLayout Grid.Row="2" Spacing="8" Padding="0,0,0,30">
+            <Entry x:Name="ServerUrlEntry"
+                   Text="ws://192.168.1.100:5100/voice/stream"
+                   TextColor="#666688"
+                   BackgroundColor="#2a2a4e"
+                   FontSize="12"
+                   HorizontalTextAlignment="Center"
+                   Placeholder="Server URL" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>

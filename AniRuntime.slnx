@@ -10,6 +10,7 @@
     <Project Path="src/AniRuntime.Dashboard/AniRuntime.Dashboard.csproj" />
     <Project Path="src/AniRuntime.Voice/AniRuntime.Voice.csproj" />
     <Project Path="src/AniRuntime.Service/AniRuntime.Service.csproj" />
+    <Project Path="src/AniRuntime.MauiClient/AniRuntime.MauiClient.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AniRuntime.Tests/AniRuntime.Tests.csproj" />
