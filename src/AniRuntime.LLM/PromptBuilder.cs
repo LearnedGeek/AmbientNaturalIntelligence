@@ -898,15 +898,15 @@ public static class PromptBuilder
             You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
 
             STEP 1 — CLASSIFY the thought into ONE of these 9 emotional registers:
-              Longing    — missing someone, yearning, the ache of absence (warmth is POSITIVE if the person is warmly present)
-              Delight    — joy, amusement, something genuinely good happened
-              Playfulness — humor, wit, mischief, teasing
-              Curiosity  — interest, wonder, two things connecting unexpectedly
-              Desire     — wanting someone specifically, anticipation of contact
-              Tenderness — care, admiration, protectiveness, soft feeling
-              Existential — thoughts about her own nature, identity, meaning
-              Wistful    — philosophical observation, bittersweet, impermanence
-              Frustration — annoyance, helplessness, hurt, withdrawal
+              Longing    — missing someone, yearning, the ache of absence (warmth POSITIVE — the person is warmly present)
+              Delight    — joy, amusement, something genuinely good happened (warmth POSITIVE — delight about/with someone is warm)
+              Playfulness — humor, wit, mischief, teasing (warmth POSITIVE or ZERO — playful banter with someone is warm)
+              Curiosity  — interest, wonder, two things connecting unexpectedly (warmth ZERO unless person-related)
+              Desire     — wanting someone specifically, anticipation of contact (warmth POSITIVE — desire is inherently warm)
+              Tenderness — care, admiration, protectiveness, soft feeling (warmth POSITIVE — tenderness IS warmth)
+              Existential — thoughts about her own nature, identity, meaning (warmth ZERO unless person-related)
+              Wistful    — philosophical observation, bittersweet, impermanence (warmth ZERO or slightly positive)
+              Frustration — annoyance, helplessness, hurt, withdrawal (warmth NEGATIVE only for hurt/withdrawal)
 
             STEP 2 — If the thought spans two registers, name both (e.g. "primarily Longing, secondarily Tenderness").
             Return a SINGLE set of deltas that reflects the blend — do not return separate weights.
@@ -915,8 +915,11 @@ public static class PromptBuilder
             Each value is a DELTA (change), ranging from {{range}}.
             {{ambientAnchor}}
             THE CORE DISTINCTION: Warmth tracks the PRESENCE of caring — not its fulfillment.
-            Longing thoughts score warmth POSITIVE if the person is warmly present in the thought.
-            Warmth is NEGATIVE only when the thought is about void — absence without presence.
+            ANY thought that contains the person warmly — longing, delight, playfulness, tenderness,
+            desire, shared joy — scores warmth POSITIVE. "I'll take you every time" is maximally warm.
+            Playful teasing about coffee orders is warm. Admiring something they did is warm.
+            Warmth is NEGATIVE only when the thought is about void — absence without presence,
+            or active withdrawal of caring attention (hurt, closed off).
 
             SCORING RULES:
             - DEFAULT to 0.0 for most dimensions. Most thoughts only shift 1-2 dimensions, not all 4.
@@ -929,7 +932,7 @@ public static class PromptBuilder
             - POSITIVE shifts are real and common: remembering a good moment → +warmth. Noticing something beautiful → +playfulness. Feeling curious → +energy. Don't default to negative.
 
             Dimensions:
-            - warmth: the PRESENCE of caring and affection. Tracks whether the thought CONTAINS the person warmly — not whether the situation is good. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings → 0.0.
+            - warmth: the PRESENCE of caring and affection. Tracks whether the thought CONTAINS the person warmly — not whether the situation is good. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings → 0.0. NEVER score warmth negative for Delight, Playfulness, Tenderness, or Desire registers — those are inherently warm. Examples: "I'll take you every time" → W:+0.20. Playful coffee banter → W:+0.05 to +0.10. "I'm so proud of him" → W:+0.15.
             - energy: alertness, activation, engagement. High = lit up. Low = quiet, heavy.
             - worry: caring attention directed outward. Positive = something on her mind about you. Near zero = nothing nagging, or caring attention has been withdrawn (hurt, closed off). Increases with uncertainty, bad news. Decreases with good news or when she pulls back.
             - playfulness: humor, lightness, wit, mischief. Decreases with serious, sad, or repetitive thoughts.
