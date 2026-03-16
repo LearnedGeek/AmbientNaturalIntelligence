@@ -122,7 +122,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
                 {
                     thread = new ConversationThread
                     {
-                        InitiatedBy   = "mark",
+                        InitiatedBy   = Roles.Mark,
                         StartedAt     = msg.DateSent,
                         LastMessageAt = msg.DateSent,
                     };
@@ -132,7 +132,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
 
                 await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
                 {
-                    Role    = "mark",
+                    Role    = Roles.Mark,
                     Content = msg.Body,
                     SentAt  = msg.DateSent,
                 }, ct).ConfigureAwait(false);

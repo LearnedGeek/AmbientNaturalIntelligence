@@ -1,3 +1,5 @@
+using AniRuntime.Core;
+
 namespace AniRuntime.Core.Models;
 
 public class ConversationThread
@@ -6,13 +8,13 @@ public class ConversationThread
     public DateTimeOffset            StartedAt     { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset            LastMessageAt { get; set; } = DateTimeOffset.UtcNow;
     public bool                      IsActive      { get; set; } = true;
-    public string                    InitiatedBy   { get; set; } = "mark"; // "ani" | "mark"
+    public string                    InitiatedBy   { get; set; } = Roles.Mark; // "ani" | "mark"
     public List<ConversationMessage> Messages      { get; set; } = new();
 }
 
 public class ConversationMessage
 {
-    public string         Role    { get; set; } = "mark"; // "ani" | "mark"
+    public string         Role    { get; set; } = Roles.Mark; // "ani" | "mark"
     public string         Content { get; set; } = string.Empty;
     public DateTimeOffset SentAt  { get; set; } = DateTimeOffset.UtcNow;
 }

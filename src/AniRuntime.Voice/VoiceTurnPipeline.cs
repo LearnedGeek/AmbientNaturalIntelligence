@@ -72,7 +72,7 @@ public class VoiceTurnPipeline
         // Buffer Mark's message
         session.PendingMessages.Enqueue(new ConversationMessage
         {
-            Role = "mark", Content = transcript, SentAt = DateTimeOffset.UtcNow,
+            Role = Roles.Mark, Content = transcript, SentAt = DateTimeOffset.UtcNow,
         });
 
         // Create per-turn cancellation (for barge-in support)
@@ -101,7 +101,7 @@ public class VoiceTurnPipeline
             await foreach (var token in _ollama.ChatStreamAsync(
                 prompt.System,
                 allMessages.TakeLast(10).Select(m =>
-                    new ChatMessage(m.Role == "mark" ? "user" : "assistant", m.Content)),
+                    new ChatMessage(m.Role == Roles.Mark ? "user" : "assistant", m.Content)),
                 prompt.User, turnCt).ConfigureAwait(false))
             {
                 fullReply.Append(token);
@@ -124,7 +124,7 @@ public class VoiceTurnPipeline
             {
                 session.PendingMessages.Enqueue(new ConversationMessage
                 {
-                    Role = "ani", Content = reply, SentAt = DateTimeOffset.UtcNow,
+                    Role = Roles.Ani, Content = reply, SentAt = DateTimeOffset.UtcNow,
                 });
             }
 

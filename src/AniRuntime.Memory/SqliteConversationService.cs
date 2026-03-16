@@ -186,14 +186,14 @@ public class SqliteConversationService : IConversationService, IDisposable
         try
         {
             var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
-            var speakerName = message.Role == "ani" ? character.Name : character.PrimaryContactName;
+            var speakerName = message.Role == Roles.Ani ? character.Name : character.PrimaryContactName;
 
             await _memory.SaveAsync(new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
                 Content        = $"{speakerName} said: \"{message.Content}\"",
                 Importance     = 0.6f,
-                RelationalValence = message.Role == "mark" ? 0.7f : 0.5f,
+                RelationalValence = message.Role == Roles.Mark ? 0.7f : 0.5f,
                 SourceName     = "conversation",
                 OccurredAt     = message.SentAt,
             }, ct).ConfigureAwait(false);
@@ -282,7 +282,7 @@ public class SqliteConversationService : IConversationService, IDisposable
     {
         var lines = messages.Select(m =>
         {
-            var name = m.Role == "ani" ? companionName : contactName;
+            var name = m.Role == Roles.Ani ? companionName : contactName;
             return $"{name}: {m.Content}";
         });
 

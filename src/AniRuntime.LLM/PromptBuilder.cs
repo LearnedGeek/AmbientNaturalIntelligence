@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Models;
 
 namespace AniRuntime.LLM;
@@ -439,7 +440,7 @@ public static class PromptBuilder
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
         var last    = thread.Messages[^1];
 
-        var lastIsFromContact = last.Role != "ani";
+        var lastIsFromContact = last.Role != Roles.Ani;
         var contextNote = lastIsFromContact
             ? $"\n            IMPORTANT: {contact} sent the last message. Lean toward replying. Choosing silence when someone is talking to you feels like being ignored. Only choose silence for clear conversation closers like \"haha\", \"ok\", \"goodnight\", or single emoji."
             : $"\n            You sent the last message. You do NOT need to have the last word. Only reply if {contact}'s response genuinely invites more conversation.";
@@ -524,7 +525,7 @@ public static class PromptBuilder
 
         // Anti-repetition: show Ani her own recent replies so she doesn't repeat herself
         var recentAniReplies = thread.Messages
-            .Where(m => m.Role == "ani")
+            .Where(m => m.Role == Roles.Ani)
             .TakeLast(3)
             .Select(m => m.Content)
             .ToList();
@@ -661,7 +662,7 @@ public static class PromptBuilder
 
         // Anti-repetition: recent replies
         var recentAniReplies = thread.Messages
-            .Where(m => m.Role == "ani")
+            .Where(m => m.Role == Roles.Ani)
             .TakeLast(3)
             .Select(m => m.Content)
             .ToList();

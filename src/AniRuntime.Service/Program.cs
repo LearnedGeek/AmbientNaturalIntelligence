@@ -334,7 +334,7 @@ try
         // contact mentions Duck Norris, Ani's memory search finds the backstory.
         var charState = await memory.GetCharacterStateAsync();
         var existingSemantics = await memory.GetByTypeAsync(MemoryType.Semantic, 1);
-        var alreadySeeded = existingSemantics.Any(m => m.SourceName == "character-seed");
+        var alreadySeeded = existingSemantics.Any(m => m.SourceName == SourceNames.CharacterSeed);
 
         if (!alreadySeeded && charState.CoreTraits.Count > 0)
         {
@@ -365,7 +365,7 @@ try
                     Content        = content,
                     Importance     = importance,
                     RelationalValence = relationalValence,
-                    SourceName     = "character-seed",
+                    SourceName     = SourceNames.CharacterSeed,
                     OccurredAt     = DateTimeOffset.UtcNow,
                 });
             }

@@ -67,7 +67,7 @@ public class VoiceConversationService
         var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false)
                      ?? new ConversationThread
                      {
-                         InitiatedBy   = "mark",
+                         InitiatedBy   = Roles.Mark,
                          StartedAt     = DateTimeOffset.UtcNow,
                          LastMessageAt = DateTimeOffset.UtcNow,
                      };
@@ -169,7 +169,7 @@ public class VoiceConversationService
             // Step 2: Buffer Mark's message in-memory (no Ollama calls — saves at call end)
             var markMsg = new ConversationMessage
             {
-                Role = "mark", Content = text, SentAt = DateTimeOffset.UtcNow,
+                Role = Roles.Mark, Content = text, SentAt = DateTimeOffset.UtcNow,
             };
             session.PendingMessages.Enqueue(markMsg);
 
@@ -188,7 +188,7 @@ public class VoiceConversationService
             var prompt = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread ?? new ConversationThread());
             var reply = await _ollama.ChatAsync(
                 prompt.System, allMessages.TakeLast(10).Select(m =>
-                    new ChatMessage(m.Role == "mark" ? "user" : "assistant", m.Content)),
+                    new ChatMessage(m.Role == Roles.Mark ? "user" : "assistant", m.Content)),
                 prompt.User, turnCts.Token).ConfigureAwait(false);
 
             reply = MessageCleaner.Clean(reply);
@@ -204,7 +204,7 @@ public class VoiceConversationService
             // Step 5: Buffer Ani's reply (saved at call end)
             session.PendingMessages.Enqueue(new ConversationMessage
             {
-                Role = "ani", Content = reply, SentAt = DateTimeOffset.UtcNow,
+                Role = Roles.Ani, Content = reply, SentAt = DateTimeOffset.UtcNow,
             });
 
             // Step 6: Synthesize and return TwiML

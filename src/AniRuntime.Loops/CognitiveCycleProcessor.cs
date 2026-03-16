@@ -153,7 +153,7 @@ public class CognitiveCycleProcessor
         // Phase 2: Check for active conversation — if contact texted, route to reply mode
         var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
         var hasUnreadFromContact = activeThread?.Messages.Count > 0 &&
-                                   activeThread.Messages[^1].Role == "mark";
+                                   activeThread.Messages[^1].Role == Roles.Mark;
 
         if (hasUnreadFromContact)
         {
@@ -588,7 +588,7 @@ public class CognitiveCycleProcessor
         // happening in the contact's life right now. This feeds into inner thoughts,
         // outreach decisions, and outreach messages.
         var conversationSummary = recentEpisodic
-            .Where(m => m.Content.StartsWith("Conversation ("))
+            .Where(m => m.Content.StartsWith(MemoryPrefixes.ConversationSummary))
             .Select(m => m.Content)
             .FirstOrDefault();
 
@@ -1156,7 +1156,7 @@ public class CognitiveCycleProcessor
             messageRelevant = messageRelevant
                 .Where(m => !(m.Content.StartsWith($"{contactName} said:") &&
                              lastMessage.Contains(m.Content[(contactName.Length + 7)..Math.Min(m.Content.Length, contactName.Length + 36)])))
-                .Where(m => !m.Content.StartsWith("Conversation ("))
+                .Where(m => !m.Content.StartsWith(MemoryPrefixes.ConversationSummary))
                 .ToList();
 
             // Re-rank for diversity against recent thoughts
@@ -1175,7 +1175,7 @@ public class CognitiveCycleProcessor
 
         // Populate RecentHistory with the conversation thread so prompts have full context
         snapshot.RecentHistory = thread.Messages.Select(m => new ChatMessage(
-            m.Role == "ani" ? "assistant" : "user",
+            m.Role == Roles.Ani ? "assistant" : "user",
             m.Content
         )).ToList();
 
@@ -1353,7 +1353,7 @@ public class CognitiveCycleProcessor
         // Step 5: Record Ani's reply in the conversation thread
         await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
         {
-            Role    = "ani",
+            Role    = Roles.Ani,
             Content = reply,
             SentAt  = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);

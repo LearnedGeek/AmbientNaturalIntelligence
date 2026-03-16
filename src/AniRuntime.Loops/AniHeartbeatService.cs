@@ -132,7 +132,7 @@ public class AniHeartbeatService : BackgroundService
             // AND Ani hasn't already evaluated it (chose silence). Without this check, choosing
             // silence traps her in 45s cycles until the thread times out (BUG-001).
             var hasUnreadFromContact = activeThread.Messages.Count > 0 &&
-                                      activeThread.Messages[^1].Role == "mark";
+                                      activeThread.Messages[^1].Role == Roles.Mark;
             if (hasUnreadFromContact)
             {
                 var lastContactMsg = activeThread.Messages[^1];

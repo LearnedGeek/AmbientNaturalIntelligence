@@ -87,7 +87,7 @@ public class StreamingVoiceOrchestrator
             var thread = await _conversations.GetActiveThreadAsync(appCt).ConfigureAwait(false)
                          ?? new ConversationThread
                          {
-                             InitiatedBy   = "mark",
+                             InitiatedBy   = Roles.Mark,
                              StartedAt     = DateTimeOffset.UtcNow,
                              LastMessageAt = DateTimeOffset.UtcNow,
                          };
