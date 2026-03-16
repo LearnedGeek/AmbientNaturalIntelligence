@@ -122,6 +122,10 @@ try
 
     // ── Cognitive cycle ───────────────────────────────────────────────────────
     builder.Services.AddSingleton<AdminCommandHandler>();
+    builder.Services.AddSingleton<EmotionalProcessor>();
+    builder.Services.AddSingleton<ContextBuilder>();
+    builder.Services.AddSingleton<ConversationReplyPhase>();
+    builder.Services.AddSingleton<OutreachPhase>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
     builder.Services.AddHostedService<AniHeartbeatService>();
 

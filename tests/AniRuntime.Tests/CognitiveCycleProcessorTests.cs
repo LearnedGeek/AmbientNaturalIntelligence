@@ -71,6 +71,20 @@ public class CognitiveCycleProcessorTests : AniTestBase
             DefaultOptions,
             NullLogger<AdminCommandHandler>.Instance);
 
+        var emotional = new EmotionalProcessor(
+            MockMemory.Object, MockOllama.Object, DefaultOptions,
+            NullLogger<EmotionalProcessor>.Instance);
+        var contextBuilder = new ContextBuilder(
+            MockMemory.Object, MockOllama.Object, desire, DefaultOptions,
+            NullLogger<ContextBuilder>.Instance);
+        var conversationReply = new ConversationReplyPhase(
+            MockMemory.Object, MockOllama.Object, _mockConversations.Object,
+            dispatcher, desire, emotional, contextBuilder, DefaultOptions,
+            NullLogger<ConversationReplyPhase>.Instance);
+        var outreach = new OutreachPhase(
+            MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
+            NullLogger<OutreachPhase>.Instance);
+
         return new CognitiveCycleProcessor(
             MockMemory.Object,
             MockOllama.Object,
@@ -80,6 +94,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
             sources,
             adminHandler,
             new NullEmergenceObserver(),
+            emotional,
+            contextBuilder,
+            conversationReply,
+            outreach,
             DefaultOptions,
             NullLogger<CognitiveCycleProcessor>.Instance);
     }
