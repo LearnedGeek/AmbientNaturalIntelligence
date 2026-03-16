@@ -75,12 +75,22 @@ try
     var voiceEnabled = config.GetValue<bool>("Voice:Enabled");
     if (voiceEnabled)
     {
+        // Batch voice (Twilio Record webhooks)
         builder.Services.AddHttpClient<ITextToSpeechService, ElevenLabsTextToSpeechService>();
         builder.Services.AddHttpClient<ISpeechToTextService, WhisperSpeechToTextService>();
         builder.Services.AddSingleton<TwilioVoiceHandler>();
         builder.Services.AddSingleton<MediaCacheService>();
         builder.Services.AddSingleton<IMediaEnrichmentService, VoiceMediaEnrichmentService>();
         builder.Services.AddSingleton<VoiceConversationService>();
+
+        // Streaming voice (MAUI app WebSocket — Phase 5)
+        var streamingEnabled = config.GetValue<bool>("Voice:StreamingEnabled");
+        if (streamingEnabled)
+        {
+            builder.Services.AddTransient<IStreamingSpeechToTextService, DeepgramStreamingSTTService>();
+            builder.Services.AddTransient<IStreamingTextToSpeechService, ElevenLabsStreamingTTSService>();
+            builder.Services.AddSingleton<StreamingVoiceOrchestrator>();
+        }
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -126,6 +136,7 @@ try
     var app = builder.Build();
 
     app.UseForwardedHeaders();
+    app.UseWebSockets();
     app.UseStaticFiles();
 
     // ── Dashboard — REST API endpoints + Blazor Server ────────────────────
@@ -143,6 +154,14 @@ try
         var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
         voiceService.OnCallStarted = heartbeat.PauseForVoiceCall;
         voiceService.OnCallEnded   = heartbeat.ResumeAfterVoiceCall;
+
+        // Streaming voice (MAUI app) — same pause/resume pattern
+        var streamingOrchestrator = app.Services.GetService<StreamingVoiceOrchestrator>();
+        if (streamingOrchestrator is not null)
+        {
+            streamingOrchestrator.OnCallStarted = heartbeat.PauseForVoiceCall;
+            streamingOrchestrator.OnCallEnded   = heartbeat.ResumeAfterVoiceCall;
+        }
     }
 
     // ── Inbound SMS webhook ──────────────────────────────────────────────────
@@ -258,6 +277,22 @@ try
 
             return Results.Accepted();
         });
+
+        // ── Streaming voice WebSocket (Phase 5 — MAUI app direct connection) ────
+        var streamingOrch = app.Services.GetService<StreamingVoiceOrchestrator>();
+        if (streamingOrch is not null)
+        {
+            app.Map("/voice/stream", async (HttpContext ctx) =>
+            {
+                if (!ctx.WebSockets.IsWebSocketRequest)
+                    return Results.BadRequest("WebSocket connection required");
+
+                var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+                var appLifetime = ctx.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+                await streamingOrch.HandleConnectionAsync(ws, appLifetime.ApplicationStopping);
+                return Results.Empty;
+            });
+        }
     }
 
     // ── Seed character state on first run (idempotent) ────────────────────────

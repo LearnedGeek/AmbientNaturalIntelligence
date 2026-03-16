@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AniRuntime.Core;
@@ -76,6 +77,44 @@ public class OllamaClient : IOllamaClient
         return content;
     }
 
+    public async IAsyncEnumerable<string> ChatStreamAsync(
+        string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var messages = new List<object> { new { role = "system", content = systemPrompt } };
+        foreach (var m in history)
+            messages.Add(new { role = m.Role, content = m.Content });
+        messages.Add(new { role = "user", content = userMessage });
+
+        var request = new { model = _options.ChatModel, messages, stream = true, keep_alive = "5m" };
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/chat")
+        {
+            Content = JsonContent.Create(request, options: JsonOpts),
+        };
+
+        var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            ct.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(line)) continue;
+
+            var chunk = JsonSerializer.Deserialize<StreamChatChunk>(line, JsonOpts);
+            if (chunk?.Done == true) break;
+
+            var token = chunk?.Message?.Content;
+            if (!string.IsNullOrEmpty(token))
+                yield return token;
+        }
+    }
+
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
         // Short keep_alive for embeddings — the model is small but adds up.
@@ -112,6 +151,10 @@ public class OllamaClient : IOllamaClient
     private record ChatResponseMessage(
         [property: JsonPropertyName("role")]    string Role,
         [property: JsonPropertyName("content")] string Content);
+
+    private record StreamChatChunk(
+        [property: JsonPropertyName("message")] ChatResponseMessage? Message,
+        [property: JsonPropertyName("done")]    bool Done);
 
     private record EmbedResponse(
         [property: JsonPropertyName("embedding")] float[]? Embedding);

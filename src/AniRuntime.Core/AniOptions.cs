@@ -167,9 +167,17 @@ public class VoiceOptions
     // Public URL for serving media (ngrok URL) — Twilio needs to fetch audio from here
     public string PublicBaseUrl         { get; set; } = string.Empty;
 
-    // Voice conversation loop — turn-by-turn phone call settings
+    // Voice conversation loop — turn-by-turn phone call settings (batch/Twilio)
     public string VoiceGreeting              { get; set; } = "Hey! What's up?";
     public int    VoiceRecordMaxSeconds      { get; set; } = 30;
     public int    VoiceRecordTimeoutSeconds  { get; set; } = 3;   // silence before Twilio stops recording
     public int    VoiceTurnTimeoutMs         { get; set; } = 13000; // per-turn budget (Twilio allows ~15s)
+
+    // Streaming voice — MAUI app direct WebSocket (Phase 5)
+    public bool   StreamingEnabled           { get; set; } = false;
+
+    // Deepgram streaming STT
+    public string DeepgramApiKey             { get; set; } = string.Empty;
+    public string DeepgramModel              { get; set; } = "nova-3";
+    public int    DeepgramEndpointingMs      { get; set; } = 500;  // silence before finalizing utterance
 }
