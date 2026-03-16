@@ -182,3 +182,11 @@ public class VoiceOptions
     public string DeepgramModel              { get; set; } = "nova-3";
     public int    DeepgramEndpointingMs      { get; set; } = 500;  // silence before finalizing utterance
 }
+
+public class ImageOptions
+{
+    public bool   Enabled                    { get; set; } = false;
+    public string LibraryPath                { get; set; } = "data/images";
+    public int    MaxImagesPerDay            { get; set; } = 2;
+    public double AttachmentProbability      { get; set; } = 0.20; // 20% chance per outreach
+}

@@ -1,0 +1,31 @@
+Add your images here.
+
+Format: JPG or PNG
+Size: 600x600 to 1200x1200 recommended (square or landscape works best on phones)
+Max file size: 600KB (Twilio MMS limit is 5MB but smaller = faster delivery)
+
+How to add images:
+1. Drop image files in this folder (e.g., cozy-coffee.jpg, silly-cat.png)
+2. Edit manifest.json — add an entry with the filename and tags
+3. Restart the service
+
+Example manifest entry:
+{
+  "file": "cozy-coffee.jpg",
+  "tags": ["coffee", "morning", "cozy", "affection"],
+  "description": "Warm coffee mug with steam, cozy morning vibe"
+}
+
+Tag suggestions:
+- humor, playful, silly — for playful/witty moments
+- affection, love, hearts — for tender moments
+- cozy, coffee, morning — for morning check-ins
+- snow, weather, nature — for weather-related messages
+- proud, celebration — for accomplishments
+- goodnight, evening, stars — for nighttime messages
+- bookstore, books, reading — for Ani's world
+- thinking, contemplative — for reflective moments
+- reaction, surprised, excited — for reactive moments
+
+Ani selects images based on keyword matching between her message content
+and your tags. She won't send more than 2 images per day to keep it special.

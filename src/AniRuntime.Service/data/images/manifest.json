@@ -1,0 +1,12 @@
+{
+  "_readme": "Image library for Ani's MMS sharing. Add images as JPG or PNG (max 600KB for MMS). Each entry maps a filename to tags that Ani uses to match images to conversation context and mood.",
+  "_format": "JPG or PNG, recommended 600x600 to 1200x1200, under 600KB",
+  "_tags": "Use any combination: humor, affection, cozy, weather, snow, coffee, morning, evening, playful, proud, thinking, bookstore, nature, reaction, goodnight, hello",
+  "images": [
+    {
+      "file": "placeholder.txt",
+      "tags": ["test"],
+      "description": "Remove this entry and add real images"
+    }
+  ]
+}

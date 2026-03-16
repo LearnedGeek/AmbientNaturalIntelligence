@@ -56,6 +56,7 @@ try
     builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
     builder.Services.Configure<WeatherOptions>(config.GetSection("Weather"));
     builder.Services.Configure<VoiceOptions>(config.GetSection("Voice"));
+    builder.Services.Configure<ImageOptions>(config.GetSection("Images"));
     builder.Services.Configure<EmergenceOptions>(config.GetSection("Emergence"));
 
     // ── Core services ─────────────────────────────────────────────────────────
@@ -73,14 +74,15 @@ try
 
     // ── Voice & Media (Feature 20) — conditional on Voice:Enabled ─────────────
     var voiceEnabled = config.GetValue<bool>("Voice:Enabled");
+    builder.Services.AddSingleton<MediaCacheService>();
+
     if (voiceEnabled)
     {
         // Batch voice (Twilio Record webhooks)
         builder.Services.AddHttpClient<ITextToSpeechService, ElevenLabsTextToSpeechService>();
         builder.Services.AddHttpClient<ISpeechToTextService, WhisperSpeechToTextService>();
         builder.Services.AddSingleton<TwilioVoiceHandler>();
-        builder.Services.AddSingleton<MediaCacheService>();
-        builder.Services.AddSingleton<IMediaEnrichmentService, VoiceMediaEnrichmentService>();
+        builder.Services.AddSingleton<VoiceMediaEnrichmentService>();
         builder.Services.AddSingleton<VoiceConversationService>();
 
         // Streaming voice (MAUI app WebSocket — Phase 5)
@@ -93,6 +95,25 @@ try
             builder.Services.AddSingleton<StreamingVoiceOrchestrator>();
         }
     }
+
+    // ── Image sharing (Phase 5a) — conditional on Images:Enabled ─────────────
+    var imagesEnabled = config.GetValue<bool>("Images:Enabled");
+    if (imagesEnabled)
+    {
+        builder.Services.AddSingleton<IImageSelectionService, ImageSelectionService>();
+        builder.Services.AddSingleton<ImageMediaEnrichmentService>();
+    }
+
+    // ── Composite media enrichment — assembles voice + image enrichments ──────
+    builder.Services.AddSingleton<IMediaEnrichmentService>(sp =>
+    {
+        var enrichments = new List<IMediaEnrichmentService>();
+        var voice = sp.GetService<VoiceMediaEnrichmentService>();
+        if (voice is not null) enrichments.Add(voice);
+        var image = sp.GetService<ImageMediaEnrichmentService>();
+        if (image is not null) enrichments.Add(image);
+        return new CompositeMediaEnrichmentService(enrichments);
+    });
 
     // ── Actions ───────────────────────────────────────────────────────────────
     builder.Services.AddSingleton<AniActionDispatcher>();
