@@ -1194,13 +1194,24 @@ public class CognitiveCycleProcessor
                 decisionPrompt.System, snapshot.RecentHistory, decisionPrompt.User, ct)
                 .ConfigureAwait(false);
 
-            var shouldReply = ParseReplyDecision(decisionRaw);
+            var (shouldReply, reasoning) = ParseReplyDecision(decisionRaw);
 
             if (!shouldReply)
             {
                 // Lock this decision — don't re-evaluate the same message every cycle
                 LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
-                _log.LogInformation("Reply decision: NO — read it but chose silence");
+                _log.LogInformation("Reply decision: NO — read it but chose silence. Reasoning: {Reasoning}", reasoning);
+
+                // Persist the silence decision as an inner thought — this is Ani's agency.
+                // Her reasoning for choosing silence is data for emergence and research.
+                var silenceThought = $"I read Mark's message (\"{lastMessage}\") and chose not to reply. {reasoning}";
+                await _memory.SaveAsync(new MemoryRecord
+                {
+                    Type = MemoryType.InnerThought,
+                    Content = silenceThought,
+                    Importance = 0.5f,
+                }, ct).ConfigureAwait(false);
+
                 return;
             }
 
@@ -1577,6 +1588,35 @@ public class CognitiveCycleProcessor
         return contributions;
     }
 
+    /// Detects whether a message ends with a direct question — the final sentence
+    /// contains a question mark. This avoids false positives like "what!? that's amazing!"
+    /// where the question mark appears mid-message but the final sentence is a statement.
+    /// </summary>
+    internal static bool EndsWithDirectQuestion(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return false;
+
+        var trimmed = message.Trim();
+
+        // Split on sentence-ending punctuation, keeping the delimiters.
+        // We want the last non-empty segment.
+        var sentences = trimmed.Split(['.', '!', '?'], StringSplitOptions.RemoveEmptyEntries);
+        if (sentences.Length == 0) return false;
+
+        // The question mark needs to be what FOLLOWS the last sentence segment.
+        // Find the position of the last sentence's end in the original string.
+        var lastSentence = sentences[^1].Trim();
+        var lastSentenceEnd = trimmed.LastIndexOf(lastSentence, StringComparison.Ordinal) + lastSentence.Length;
+
+        // Look at the punctuation that follows the last sentence segment
+        var trailing = trimmed[lastSentenceEnd..].Trim();
+
+        // If the trailing punctuation contains '?', the message ends with a question.
+        // Also handle the case where the very last char of the message is '?'
+        return trailing.Contains('?') || trimmed[^1] == '?';
+    }
+
+    /// <summary>
     /// Detects messages that naturally end a conversation and don't need a reply.
     /// "haha", "lol", heart emoji, "goodnight", "ttyl", "ok", single emoji, etc.
     /// </summary>
@@ -1599,13 +1639,15 @@ public class CognitiveCycleProcessor
         return terminals.Contains(trimmed);
     }
 
-    private bool ParseReplyDecision(string raw)
+    private (bool ShouldReply, string Reasoning) ParseReplyDecision(string raw)
     {
         try
         {
             var doc = JsonDocument.Parse(raw.Trim());
-            if (doc.RootElement.TryGetProperty("shouldReply", out var sr))
-                return sr.GetBoolean();
+            var shouldReply = doc.RootElement.TryGetProperty("shouldReply", out var sr) && sr.GetBoolean();
+            var reasoning = doc.RootElement.TryGetProperty("reasoning", out var r)
+                ? r.GetString() ?? "" : "";
+            return (shouldReply, reasoning);
         }
         catch
         {
@@ -1613,7 +1655,7 @@ public class CognitiveCycleProcessor
         }
 
         // Default to replying if we can't parse — better to respond than ignore
-        return true;
+        return (true, "");
     }
 
     /// <summary>
@@ -1870,9 +1912,18 @@ public class CognitiveCycleProcessor
                 ? regVal.GetString() ?? "Wistful"
                 : "Wistful";
 
-            var severity = root.TryGetProperty("severity", out var sevVal)
+            var rawSeverity = root.TryGetProperty("severity", out var sevVal)
                 ? (float)Math.Clamp(sevVal.GetDouble(), 0.0, 1.0)
-                : 1.0f;
+                : 0.1f;  // missing field = routine thought, not defining moment
+
+            // Recalibrate: the 8B scoring model consistently inflates severity
+            // (routine musings score 0.90+ when they should be 0.1–0.3).
+            // Apply a cubic curve that compresses the upper range:
+            //   model 0.90 → effective 0.73, model 0.80 → effective 0.51,
+            //   model 0.98 → effective 0.94, model 0.60 → effective 0.22
+            // This preserves ordering while making Global promotion (≥0.85) genuinely rare
+            // and Conversation promotion (≥0.70) reserved for notable events.
+            var severity = rawSeverity * rawSeverity * rawSeverity;
 
             return (
                 ClampDelta(root, "warmth"),

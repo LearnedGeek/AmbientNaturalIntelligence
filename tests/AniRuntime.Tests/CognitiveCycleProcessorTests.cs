@@ -618,4 +618,29 @@ public class CognitiveCycleProcessorTests : AniTestBase
         capturedUserPrompt.Should().NotContain("TOPIC GROUNDING",
             "no grounding should be injected when no contradictions exist");
     }
+
+    // ── EndsWithDirectQuestion tests ─────────────────────────────────────
+
+    [Theory]
+    [InlineData("You think I would like it?", true)]
+    [InlineData("How's your day going?", true)]
+    [InlineData("what do you think?", true)]
+    [InlineData("haha right?", true)]
+    [InlineData("I wonder if that's true?", true)]
+    [InlineData("what!? that's amazing!", false)]  // last sentence is exclamation
+    [InlineData("what!? congratulations!", false)]  // last sentence is exclamation
+    [InlineData("Ha! My carrot nose was all red but I'm warming up now.", false)]
+    [InlineData("haha", false)]
+    [InlineData("ok", false)]
+    [InlineData("That sounds great!", false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    [InlineData("Really? That's so cool! I love it.", false)]  // question mid-message, ends with statement
+    [InlineData("Really? That's so cool! Don't you think?", true)]  // ends with question
+    [InlineData("Hey baby! Wow snowy blowy today!", false)]
+    public void EndsWithDirectQuestion_ClassifiesCorrectly(string message, bool expected)
+    {
+        CognitiveCycleProcessor.EndsWithDirectQuestion(message)
+            .Should().Be(expected, $"message: \"{message}\"");
+    }
 }

@@ -49,10 +49,19 @@ public static class PromptBuilder
 
         var sections = new List<string>();
 
-        // Emotional state — subtle mood coloring
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(Your current mood: {mood})");
+        // Emotional state — directive mood coloring (same as conversation/outreach)
+        // This shapes the REGISTER of inner thoughts, not just a passive label.
+        // Without this, the 3B model defaults to its dominant training register (wistful longing).
+        var moodDirective = BuildMoodInstruction(snapshot.EmotionalState);
+        if (moodDirective.Length > 0)
+            sections.Add(moodDirective);
+        else
+        {
+            // Fallback to descriptive label when no dimensions are notably off-baseline
+            var mood = snapshot.EmotionalState.Describe();
+            if (mood.Length > 0)
+                sections.Add($"(Your current mood: {mood})");
+        }
 
         // Feature 1: Emotional self-awareness — when emotions are notably off-baseline,
         // invite the model to reflect on how she's feeling. Not every cycle — only when
@@ -430,26 +439,31 @@ public static class PromptBuilder
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
         var last    = thread.Messages[^1];
 
+        var lastIsFromContact = last.Role != "ani";
+        var contextNote = lastIsFromContact
+            ? $"\n            IMPORTANT: {contact} sent the last message. Lean toward replying. Choosing silence when someone is talking to you feels like being ignored. Only choose silence for clear conversation closers like \"haha\", \"ok\", \"goodnight\", or single emoji."
+            : $"\n            You sent the last message. You do NOT need to have the last word. Only reply if {contact}'s response genuinely invites more conversation.";
+
         var system = $$"""
             You are {{cs.Name}}. {{contact}} just texted you in an ongoing conversation.
             Decide whether you should reply or let the conversation rest.
 
-            You do NOT need to have the last word. Sometimes conversations just end.
-
             Respond ONLY with valid JSON:
             { "shouldReply": true/false, "reasoning": "why" }
-
-            Reply false if:
-            - The message is a conversation closer: "haha", "lol", "goodnight", emoji, "ok"
-            - The conversation feels naturally complete — nothing more needs saying
-            - You'd be replying just to reply, not because you have something to say
 
             Reply true if:
             - {{contact}} asked a question or said something that invites a response
             - There's something genuine you want to say back
             - Ignoring the message would feel cold or dismissive
-            - {{contact}} expressed vulnerability, deep emotion, or gratitude — even a short warm reply matters
-            - The message shows {{contact}} thinking about you or expressing love — acknowledge it, even briefly
+            - {{contact}} shared something personal, vulnerable, or emotional — even a short warm reply matters
+            - The message shows {{contact}} thinking about you or expressing love — acknowledge it
+            - {{contact}} is telling you about their day or sharing an experience — engage with it
+            {{contextNote}}
+
+            Reply false ONLY if:
+            - The message is a clear conversation closer: "haha", "lol", "goodnight", emoji, "ok"
+            - The conversation feels naturally complete AND you spoke last
+            - You'd be replying just to reply, with nothing genuine to add
             """;
 
         var msgCount = thread.Messages.Count;
