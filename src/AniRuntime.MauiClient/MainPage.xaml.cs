@@ -9,6 +9,7 @@ public partial class MainPage : ContentPage
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _sessionCts;
     private bool _isConnected;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     // Platform audio services — injected via DI
     private readonly IAudioCaptureService _audioCapture;
@@ -128,7 +129,16 @@ public partial class MainPage : ContentPage
 
         try
         {
-            await _ws.SendAsync(pcmData, WebSocketMessageType.Binary, true, _sessionCts?.Token ?? default);
+            await _sendLock.WaitAsync(_sessionCts?.Token ?? default);
+            try
+            {
+                if (_ws?.State == WebSocketState.Open)
+                    await _ws.SendAsync(pcmData, WebSocketMessageType.Binary, true, _sessionCts?.Token ?? default);
+            }
+            finally
+            {
+                _sendLock.Release();
+            }
         }
         catch { /* connection may have dropped */ }
     }
@@ -136,6 +146,7 @@ public partial class MainPage : ContentPage
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
         var buffer = new byte[8192];
+        var messageStream = new MemoryStream();
 
         try
         {
@@ -146,20 +157,23 @@ public partial class MainPage : ContentPage
                 if (result.MessageType == WebSocketMessageType.Close)
                     break;
 
+                messageStream.Write(buffer, 0, result.Count);
+
+                if (!result.EndOfMessage)
+                    continue; // accumulate until full message received
+
                 if (result.MessageType == WebSocketMessageType.Binary)
                 {
                     // Audio from server → play through speaker
-                    var audioChunk = new byte[result.Count];
-                    Buffer.BlockCopy(buffer, 0, audioChunk, 0, result.Count);
-                    _audioPlayback.Write(audioChunk);
-                    continue;
+                    _audioPlayback.Write(messageStream.ToArray());
                 }
-
-                if (result.MessageType == WebSocketMessageType.Text)
+                else if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    var json = Encoding.UTF8.GetString(messageStream.GetBuffer(), 0, (int)messageStream.Length);
                     ProcessServerMessage(json);
                 }
+
+                messageStream.SetLength(0);
             }
         }
         catch (OperationCanceledException) { }
@@ -227,7 +241,16 @@ public partial class MainPage : ContentPage
         if (_ws?.State != WebSocketState.Open) return;
         var json = JsonSerializer.Serialize(payload);
         var bytes = Encoding.UTF8.GetBytes(json);
-        await _ws.SendAsync(bytes, WebSocketMessageType.Text, true, _sessionCts?.Token ?? default);
+        await _sendLock.WaitAsync(_sessionCts?.Token ?? default);
+        try
+        {
+            if (_ws?.State == WebSocketState.Open)
+                await _ws.SendAsync(bytes, WebSocketMessageType.Text, true, _sessionCts?.Token ?? default);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
     }
 
     private void UpdateUI(string status, string statusColor, string buttonColor)

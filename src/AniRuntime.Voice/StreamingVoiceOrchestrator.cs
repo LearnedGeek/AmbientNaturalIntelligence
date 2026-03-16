@@ -181,7 +181,7 @@ public class StreamingVoiceOrchestrator
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Streaming voice: unhandled error (session {SessionId})", sessionId);
+            _log.LogError(ex, "Streaming voice: unhandled error (session {SessionId}): {Error}", sessionId, ex.Message);
         }
         finally
         {

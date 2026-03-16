@@ -50,7 +50,8 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
 
         var uri = new Uri(
             $"wss://api.elevenlabs.io/v1/text-to-speech/{_options.ElevenLabsVoiceId}/stream-input" +
-            $"?model_id={_options.ElevenLabsModelId}&output_format=pcm_16000");
+            $"?model_id={_options.ElevenLabsStreamingModelId}&output_format=pcm_16000" +
+            $"&xi_api_key={_options.ElevenLabsApiKey}");
 
         await _ws.ConnectAsync(uri, ct).ConfigureAwait(false);
 
@@ -126,8 +127,10 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
-        // ElevenLabs streams a mix of binary audio and JSON status messages
+        // ElevenLabs sends large base64-encoded audio in JSON text frames that can
+        // exceed a single WebSocket frame. Accumulate until EndOfMessage is true.
         var buffer = new byte[8192];
+        var messageStream = new MemoryStream();
 
         try
         {
@@ -138,21 +141,24 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
                 if (result.MessageType == WebSocketMessageType.Close)
                     break;
 
+                messageStream.Write(buffer, 0, result.Count);
+
+                if (!result.EndOfMessage)
+                    continue; // more frames coming for this message
+
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    // JSON status message — log but don't forward
-                    var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    var json = Encoding.UTF8.GetString(messageStream.GetBuffer(), 0, (int)messageStream.Length);
                     ProcessStatusMessage(json);
-                    continue;
                 }
-
-                // Binary = PCM audio chunk — forward to client
-                if (result.Count > 0)
+                else if (messageStream.Length > 0)
                 {
-                    var audioChunk = new byte[result.Count];
-                    Buffer.BlockCopy(buffer, 0, audioChunk, 0, result.Count);
+                    // Binary = PCM audio chunk — forward to client
+                    var audioChunk = messageStream.ToArray();
                     AudioChunkReceived?.Invoke(audioChunk);
                 }
+
+                messageStream.SetLength(0);
             }
         }
         catch (OperationCanceledException) { }
@@ -166,18 +172,32 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
     {
         try
         {
-            var msg = JsonSerializer.Deserialize<ElevenLabsStatusMessage>(json);
-            if (msg?.Audio is not null)
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // ElevenLabs sends audio as base64 in the "audio" field
+            if (root.TryGetProperty("audio", out var audioProp) &&
+                audioProp.ValueKind == JsonValueKind.String)
             {
-                // Some responses include base64-encoded audio in JSON
-                var audioBytes = Convert.FromBase64String(msg.Audio);
-                if (audioBytes.Length > 0)
-                    AudioChunkReceived?.Invoke(audioBytes);
+                var base64 = audioProp.GetString();
+                if (!string.IsNullOrEmpty(base64))
+                {
+                    var audioBytes = Convert.FromBase64String(base64);
+                    if (audioBytes.Length > 0)
+                    {
+                        _log.LogDebug("ElevenLabs: audio chunk received ({Bytes} bytes)", audioBytes.Length);
+                        AudioChunkReceived?.Invoke(audioBytes);
+                    }
+                }
+            }
+            else
+            {
+                _log.LogDebug("ElevenLabs status: {Json}", json);
             }
         }
-        catch (JsonException)
+        catch (Exception ex)
         {
-            _log.LogDebug("ElevenLabs: non-parseable status message");
+            _log.LogDebug("ElevenLabs: failed to process message: {Error} | {Json}", ex.Message, json);
         }
     }
 
