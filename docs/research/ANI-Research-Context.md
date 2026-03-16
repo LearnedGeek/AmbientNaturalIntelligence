@@ -1,7 +1,7 @@
 # ANI — Research Context Briefing
 **For: OC and any fresh AI context working on this project**  
 **Author: Mark McArthey, Learned Geek Consulting**  
-**Last updated: March 15, 2026**  
+**Last updated: March 16, 2026**  
 **GitHub:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---
@@ -86,9 +86,10 @@ AniRuntime.sln
 │   ├── AniRuntime.Actions/       — outreach dispatch
 │   ├── AniRuntime.LLM/           — Ollama integration, prompt builders
 │   ├── AniRuntime.Dashboard/    — Blazor companion dashboard
-│   └── AniRuntime.Voice/        — Voice channel (ElevenLabs TTS + Whisper STT, active — 8B conversation model, emotional acting directions)
+│   ├── AniRuntime.Voice/        — Voice channel: batch (Whisper STT + ElevenLabs TTS, Feature 20) + streaming (Deepgram STT + ElevenLabs WS TTS + Ollama streaming, Phase 5)
+│   └── AniRuntime.MauiClient/   — Phase 5: Android voice app (MAUI, direct WebSocket, PCM 16kHz)
 └── tests/
-    └── AniRuntime.Tests/         — 246 tests passing as of Phase 4
+    └── AniRuntime.Tests/         — 280 tests passing as of Phase 5
 ```
 
 ---
@@ -168,10 +169,14 @@ AniRuntime.sln
 - Dashboard — Blazor Server RCL, 16 REST endpoints, Pico CSS
 - Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work)
 
-**Phase 5** — Design complete, awaiting implementation:
-- Real-time streaming voice via Twilio Media Streams (three-WebSocket pipeline)
-- Image sharing (MMS) — Phase 5a
-- Visual identity system — Phase 5b
+**Phase 5** — Streaming voice deployed, testing (March 15-16, 2026):
+- Real-time streaming voice via direct WebSocket from MAUI Android app (architecture pivoted from Twilio Media Streams to direct client for zero Twilio voice cost)
+- Pipeline: MAUI mic → WebSocket → Deepgram Nova-3 STT → Ollama ChatStreamAsync (8B) → TokenBuffer → ElevenLabs WebSocket TTS → WebSocket → MAUI speaker
+- Sub-2-second perceived latency vs ~12-16s batch. Audio format: PCM 16kHz 16-bit mono throughout (zero transcoding)
+- Key fixes deployed: per-utterance TTS reconnect (ElevenLabs closes after flush), speech_final utterance accumulation (Deepgram), WebSocket send serialization, using-block async callback safety
+- Remaining: audio quality polish (initial static), VAD barge-in (Silero), latency tuning
+- Image sharing (MMS) — Phase 5a (not started)
+- Visual identity system — Phase 5b (not started)
 - Automatic model generation pipeline — Phase 5c (see `docs/spec/ANI-Phase5c-AutoModel-Design.md`)
 
 ---

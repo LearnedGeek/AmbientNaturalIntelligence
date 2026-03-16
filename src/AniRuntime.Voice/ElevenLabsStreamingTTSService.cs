@@ -25,6 +25,8 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
     private Task? _receiveTask;
     private bool _isFirstChunk = true;
     private EmotionalState? _emotionalState;
+    private TaskCompletionSource<bool>? _flushTcs;
+    private bool _needsReconnect;
 
     public event Action<ReadOnlyMemory<byte>>? AudioChunkReceived;
 
@@ -80,7 +82,18 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
 
     public async Task SendTextAsync(string textChunk, CancellationToken ct = default)
     {
-        if (_ws?.State != WebSocketState.Open || string.IsNullOrEmpty(textChunk))
+        if (string.IsNullOrEmpty(textChunk))
+            return;
+
+        // Lazy reconnect: after a flush (end of utterance), reconnect only when
+        // we actually have new text to send. Avoids ElevenLabs 20-second idle timeout.
+        if (_needsReconnect)
+        {
+            await ReconnectAsync(ct).ConfigureAwait(false);
+            _needsReconnect = false;
+        }
+
+        if (_ws?.State != WebSocketState.Open)
             return;
 
         // Prepend emotional tag to the first real text chunk only
@@ -98,9 +111,29 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
     {
         if (_ws?.State != WebSocketState.Open) return;
 
-        // Empty text with no trigger signals end of input — flushes remaining audio
+        // Set up completion signal before sending flush
+        _flushTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Empty text signals end of input — flushes remaining audio
         var msg = new { text = "" };
         await SendJsonAsync(msg, ct).ConfigureAwait(false);
+
+        // Wait for ElevenLabs to send all audio and the isFinal signal
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+            await _flushTcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            _log.LogDebug("ElevenLabs: flush timed out waiting for isFinal");
+        }
+
+        // Mark for lazy reconnect — don't reconnect now because ElevenLabs has a 20-second
+        // idle timeout. If we reconnect immediately after the greeting, the connection will
+        // die before the user finishes speaking and the LLM generates a reply.
+        _needsReconnect = true;
     }
 
     public async Task StopAsync(CancellationToken ct = default)
@@ -194,11 +227,80 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
             {
                 _log.LogDebug("ElevenLabs status: {Json}", json);
             }
+
+            // Detect isFinal signal — utterance generation is complete
+            if (root.TryGetProperty("isFinal", out var isFinalProp) &&
+                isFinalProp.ValueKind == JsonValueKind.True)
+            {
+                _log.LogDebug("ElevenLabs: isFinal received, utterance complete");
+                _flushTcs?.TrySetResult(true);
+            }
         }
         catch (Exception ex)
         {
             _log.LogDebug("ElevenLabs: failed to process message: {Error} | {Json}", ex.Message, json);
         }
+    }
+
+    /// <summary>
+    /// Close the current ElevenLabs WebSocket and open a fresh one for the next utterance.
+    /// ElevenLabs treats each BOS→EOS cycle as one utterance — after FlushAsync signals EOS,
+    /// the session won't accept more text without a new connection.
+    /// </summary>
+    private async Task ReconnectAsync(CancellationToken ct)
+    {
+        // Stop current receive loop
+        _receiveCts?.Cancel();
+        if (_receiveTask is not null)
+        {
+            try { await _receiveTask.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+        }
+
+        // Close old WebSocket
+        try
+        {
+            if (_ws?.State == WebSocketState.Open)
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", ct).ConfigureAwait(false);
+        }
+        catch (WebSocketException) { }
+        _ws?.Dispose();
+
+        // Open fresh connection
+        _ws = new ClientWebSocket();
+        var uri = new Uri(
+            $"wss://api.elevenlabs.io/v1/text-to-speech/{_options.ElevenLabsVoiceId}/stream-input" +
+            $"?model_id={_options.ElevenLabsStreamingModelId}&output_format=pcm_16000" +
+            $"&xi_api_key={_options.ElevenLabsApiKey}");
+
+        await _ws.ConnectAsync(uri, ct).ConfigureAwait(false);
+
+        // Send BOS with voice settings
+        var voiceSettings = ElevenLabsTextToSpeechService.MapEmotionalStateToVoiceSettings(_emotionalState);
+        var bos = new
+        {
+            text = " ",
+            voice_settings = new
+            {
+                stability = voiceSettings.Stability,
+                similarity_boost = voiceSettings.SimilarityBoost,
+                style = voiceSettings.Style,
+            },
+            xi_api_key = _options.ElevenLabsApiKey,
+            try_trigger_generation = false,
+        };
+        await SendJsonAsync(bos, ct).ConfigureAwait(false);
+
+        // Reset for next utterance
+        _isFirstChunk = true;
+        _flushTcs = null;
+
+        // Restart receive loop
+        _receiveCts?.Dispose();
+        _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _receiveTask = Task.Run(() => ReceiveLoopAsync(_receiveCts.Token), _receiveCts.Token);
+
+        _log.LogDebug("ElevenLabs: reconnected for next utterance");
     }
 
     private async Task SendJsonAsync(object payload, CancellationToken ct)
@@ -222,10 +324,4 @@ public class ElevenLabsStreamingTTSService : IStreamingTextToSpeechService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private record ElevenLabsStatusMessage
-    {
-        [JsonPropertyName("audio")]        public string? Audio        { get; init; }
-        [JsonPropertyName("isFinal")]      public bool?   IsFinal      { get; init; }
-        [JsonPropertyName("normalizedAlignment")] public object? Alignment { get; init; }
-    }
 }

@@ -9,6 +9,7 @@ public partial class MainPage : ContentPage
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _sessionCts;
     private bool _isConnected;
+    private volatile bool _isMuted; // suppress mic → server while Ani speaks
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     // Platform audio services — injected via DI
@@ -27,6 +28,27 @@ public partial class MainPage : ContentPage
         // Load saved server URL
         var savedUrl = Preferences.Get("server_url", "ws://192.168.1.100:5100/voice/stream");
         ServerUrlEntry.Text = savedUrl;
+
+        // Global crash handler — show on UI instead of silently dying
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            var ex = e.ExceptionObject as Exception;
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                StatusLabel.Text = $"CRASH: {ex?.Message}";
+                StatusLabel.TextColor = Color.FromArgb("#ff4444");
+            });
+        };
+
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            e.SetObserved();
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                StatusLabel.Text = $"TASK ERR: {e.Exception?.InnerException?.Message}";
+                StatusLabel.TextColor = Color.FromArgb("#ff4444");
+            });
+        };
     }
 
     private async void OnTalkButtonClicked(object? sender, EventArgs e)
@@ -125,7 +147,7 @@ public partial class MainPage : ContentPage
 
     private async void OnAudioCaptured(byte[] pcmData)
     {
-        if (_ws?.State != WebSocketState.Open) return;
+        if (_ws?.State != WebSocketState.Open || _isMuted) return;
 
         try
         {
@@ -146,7 +168,7 @@ public partial class MainPage : ContentPage
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
         var buffer = new byte[8192];
-        var messageStream = new MemoryStream();
+        using var messageStream = new MemoryStream();
 
         try
         {
@@ -188,8 +210,27 @@ public partial class MainPage : ContentPage
     {
         try
         {
-            using var doc = JsonDocument.Parse(json);
-            var type = doc.RootElement.GetProperty("type").GetString();
+            // Extract all values before posting to UI thread — JsonDocument
+            // is disposed when this method returns, before the lambda runs.
+            string? type;
+            string? transcriptText = null;
+            bool transcriptIsFinal = false;
+            string? errorMessage = null;
+
+            using (var doc = JsonDocument.Parse(json))
+            {
+                type = doc.RootElement.GetProperty("type").GetString();
+
+                if (type == "transcript")
+                {
+                    transcriptText = doc.RootElement.GetProperty("text").GetString() ?? "";
+                    transcriptIsFinal = doc.RootElement.TryGetProperty("isFinal", out var f) && f.GetBoolean();
+                }
+                else if (type == "error")
+                {
+                    errorMessage = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "Unknown error";
+                }
+            }
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
@@ -200,22 +241,21 @@ public partial class MainPage : ContentPage
                         break;
 
                     case "listening":
+                        _isMuted = false; // resume sending audio to server
                         StatusLabel.Text = "Listening...";
                         StatusLabel.TextColor = Color.FromArgb("#44cc44");
                         TalkButton.BackgroundColor = Color.FromArgb("#2a6a2a");
                         break;
 
                     case "transcript":
-                        var text = doc.RootElement.GetProperty("text").GetString() ?? "";
-                        var isFinal = doc.RootElement.TryGetProperty("isFinal", out var f) && f.GetBoolean();
-                        TranscriptLabel.Text = text;
-                        if (isFinal)
-                            TranscriptLabel.TextColor = Color.FromArgb("#ffffff");
-                        else
-                            TranscriptLabel.TextColor = Color.FromArgb("#aaaacc");
+                        TranscriptLabel.Text = transcriptText;
+                        TranscriptLabel.TextColor = transcriptIsFinal
+                            ? Color.FromArgb("#ffffff")
+                            : Color.FromArgb("#aaaacc");
                         break;
 
                     case "reply_start":
+                        _isMuted = true; // stop sending audio while Ani speaks
                         StatusLabel.Text = "Ani is speaking...";
                         StatusLabel.TextColor = Color.FromArgb("#aa66cc");
                         TalkButton.BackgroundColor = Color.FromArgb("#4a2a6a");
@@ -226,8 +266,7 @@ public partial class MainPage : ContentPage
                         break;
 
                     case "error":
-                        var msg = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "Unknown error";
-                        StatusLabel.Text = $"Error: {msg}";
+                        StatusLabel.Text = $"Error: {errorMessage}";
                         StatusLabel.TextColor = Color.FromArgb("#cc4444");
                         break;
                 }

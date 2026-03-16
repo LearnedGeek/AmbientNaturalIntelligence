@@ -128,6 +128,48 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 16, 2026 — Streaming Voice Architecture Refactoring (SOLID)
+**Model version:** v5
+**Type:** Architecture refactoring — race condition fixes + SOLID extraction
+**Source:** OC (Claude Code instance) implementation session
+
+**What happened:**
+
+Architecture review of the Phase 5 streaming voice pipeline revealed 3 critical race conditions and significant SRP violations in `StreamingVoiceOrchestrator`. The god class (6 responsibilities, 500+ lines) made concurrency bugs invisible because state mutations were scattered across interleaved concerns. Full SOLID refactoring deployed with 32 new tests (280 → 312 total, 0 warnings).
+
+---
+
+**Race conditions identified and fixed:**
+
+1. **`IsAniSpeaking` — plain `bool`, no synchronization.** Written from 3 threads (greeting, reply processing, barge-in handler), read from the receive loop for audio gating. Stale reads caused audio to leak to Deepgram during speech or remain blocked after speech stopped. This was the root cause of the "deaf after Ani speaks" bug. **Fix:** `volatile` field with synchronized access in new `VoiceSessionState` class.
+
+2. **`CurrentTurnCts` — disposed/recreated without coordination.** Barge-in (receive loop thread) cancelled the token while `ProcessTranscriptAsync` (fire-and-forget thread) disposed and recreated it. Could produce `ObjectDisposedException`. **Fix:** All CTS access under `lock` in `VoiceSessionState`.
+
+3. **`_pendingSegments` in Deepgram STT — `List<string>`, not thread-safe.** Written by WebSocket receive loop, read/cleared by debounce timer (`Task.Run`), and cleared by echo cleanup — three different threads, no lock. This was a contributing factor to the "repeating/riffing" bug: segments could be partially flushed or flushed twice, causing multiple `TranscriptReceived` events for a single utterance. **Fix:** All accumulation under `lock` in extracted `DebouncedUtterance` class.
+
+---
+
+**SOLID extraction — new components:**
+
+| Component | Responsibility | Tests |
+|-----------|---------------|-------|
+| `VoiceSessionState` | Thread-safe session state (`volatile`, `Interlocked`, `lock`) | 10 |
+| `DebouncedUtterance` | Turn detection — segment accumulation + timer, thread-safe | 11 |
+| `VoiceTurnPipeline` | Single turn flow: transcript → context → LLM stream → TTS. No fire-and-forget, all async awaited. | 11 |
+| `StreamingVoiceOrchestrator` | Slimmed to thin WebSocket handler — lifecycle, audio routing, wiring only | — |
+
+**ISP fix:** Removed `ClearPendingSegments()` from `IStreamingSpeechToTextService` interface (was Deepgram-specific). Echo clearing now done via `DebouncedUtterance.Clear()` directly.
+
+---
+
+**Client-side echo mitigation (MAUI):**
+
+Architecture review of the MAUI Android client revealed the mic was never muted during Ani's playback — audio capture ran continuously. Even though the server gates audio forwarding via `IsAniSpeaking`, the race window at transitions and the AudioTrack buffer drain meant echo audio reached Deepgram. **Fix:** Added `_isMuted` volatile flag in `MainPage.xaml.cs`, set `true` on `reply_start`, `false` on `listening`. This is the first line of defense — server-side gating is the second.
+
+**Research significance:** The refactoring demonstrates that streaming voice's concurrency model (multiple async sources: STT events, TTS events, WebSocket frames, debounce timers) requires explicit state synchronization that batch voice's sequential webhook model avoids entirely. This is a fundamental complexity difference that should be characterized in the paper.
+
+---
+
 **Emotional Model Phase 1a+1b — deployed:**
 
 Implementation session with OC completed the full Phase 1b scope from `ANI-Emotional-Model-Handoff-v2.md`:
@@ -2244,6 +2286,46 @@ The training data requirements are a direct operationalization of the epistemic 
 
 ---
 
+### March 15-16, 2026 — Phase 5 Streaming Voice Pipeline Deployed
+**Type:** Major feature deployment
+**What happened:**
+Replaced the batch voice architecture (Twilio Record + Whisper STT + batch TTS, ~12-16s per turn) with a fully streaming pipeline. Architecture pivoted from the original Twilio Media Streams design to a direct WebSocket from a MAUI Android client, eliminating Twilio voice costs entirely.
+
+**Pipeline:** MAUI mic (AudioRecord, PCM 16kHz 16-bit mono, 20ms chunks) → WebSocket binary frames → ASP.NET Core → Deepgram Nova-3 WebSocket STT → Ollama ChatStreamAsync (8B, IAsyncEnumerable) → TokenBuffer (sentence boundary detection) → ElevenLabs WebSocket TTS (eleven_multilingual_v2, pcm_16000) → WebSocket binary frames → MAUI speaker (AudioTrack)
+
+**Key technical discoveries:**
+1. **ElevenLabs per-utterance WebSocket lifecycle:** ElevenLabs streaming TTS treats each BOS→flush(EOS) cycle as one utterance. After `FlushAsync` sends `{"text":""}`, ElevenLabs responds with `{"audio":null,"isFinal":true}` and will not accept more text on that connection. Fix: detect `isFinal`, close WebSocket, reconnect with fresh BOS for next utterance. Each greeting and reply gets its own TTS session.
+2. **Deepgram `is_final` vs `speech_final`:** `is_final: true` means a *segment* is finalized (no more revisions), NOT that the user stopped speaking. `speech_final: true` fires when endpointing detects actual silence. Triggering LLM on every `is_final` caused Ani to reply to each segment independently, producing repetitive cascading responses. Fix: accumulate `is_final` segments, fire `TranscriptReceived` only on `speech_final`.
+3. **WebSocket.SendAsync is NOT thread-safe:** Android AudioRecord fires callbacks every 20ms from a capture thread. Concurrent `SendAsync` calls crash. Fix: `SemaphoreSlim` on all WebSocket send paths (both MAUI client and server orchestrator).
+4. **`using` block + async callback anti-pattern:** `JsonDocument` from `using var doc` gets disposed before `MainThread.BeginInvokeOnMainThread` lambda executes. Fix: extract all values into plain variables before the `using` scope ends. Showed up as `JavaProxyThrowable` with no useful stack trace on Android.
+5. **AudioTrack buffer underrun:** Default `GetMinBufferSize()` (~640 bytes) causes clicks/pops when network jitter creates gaps between audio chunks. Fix: 4x minimum or 1 second of PCM, whichever is larger.
+6. **ElevenLabs WebSocket auth:** `.NET ClientWebSocket.Options.SetRequestHeader` does not send custom headers during WebSocket upgrade in all environments. Fix: pass API key as `xi_api_key` query parameter. Model `eleven_v3` rejected on WebSocket endpoint; `eleven_multilingual_v2` works.
+
+**Perceived quality:** "She sounded really like herself — genuine and warm." Emotional voice settings (stability, similarity_boost, style mapped from EmotionalState) carry through the streaming pipeline. Sub-2-second perceived latency.
+
+**Status:** End-to-end working. Remaining: initial audio static at playback start, Silero VAD barge-in (deferred), latency measurement.
+
+**Research significance:**
+- Demonstrates that emotional delivery (audio tags + voice_settings) is preserved through a streaming pipeline — first-token audio generation starts before the full reply is complete
+- The architecture pivot from PSTN (Twilio) to direct WebSocket reveals a design principle: ambient companions benefit from always-on LAN connectivity rather than phone-call framing
+- 280 tests passing, 0 warnings
+
+---
+
+### March 15, 2026 — Emergence Layer E1 Deployed
+**Type:** Feature deployment
+**What happened:**
+Passive observation of cognitive cycles deployed behind feature flag (`Emergence:Enabled`, default false). Separate SQLite DB (`ani-emergence.db`). Components: ResonanceScorer (4-component: emotional shift, outreach correlation, relational repair, silence quality), EmergenceStore, EmergenceObserver. Dashboard `/emergence` tab with self-documenting score breakdowns, threshold indicators, and context tags. 23 new tests.
+
+---
+
+### March 15, 2026 — Voice Cancellation Fix
+**Type:** Bug fix
+**What happened:**
+All voice endpoints (ElevenLabs TTS, Whisper STT) were using `ctx.RequestAborted` as their cancellation token. When Twilio webhooks close the HTTP connection after receiving the TwiML response, `RequestAborted` fires — cancelling the in-flight STT/TTS HTTP calls. Fix: voice endpoints now use `ApplicationStopping` token instead.
+
+---
+
 ## Observation Backlog (Needs Recovery)
 
 | Observation | Status | Notes |
@@ -2272,7 +2354,7 @@ The training data requirements are a direct operationalization of the epistemic 
 | Outreach gate evaluations (Mar 10) | 71 | Serilog (grep "Outreach gate") |
 | Git commits | 60+ | Full repository history |
 | Design iterations tracked | 23+ | phase-3-design.md, phase-4-design.md (Features 1-23 deployed) |
-| Test count | 220 | xUnit, 0 warnings |
+| Test count | 280 | xUnit, 0 warnings (as of Phase 5, Mar 16) |
 | Model versions trained | 5 | v1(8B) → v1.5(3B) → v2(3B) → v3(dual 3B) → v4(3B) → v5(8B conv/3B inner) |
 
 ### Per-day Outreach (confirmed from Serilog, unique Twilio SIDs)

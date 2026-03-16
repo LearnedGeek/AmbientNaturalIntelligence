@@ -70,15 +70,23 @@ public class AudioCaptureService : IAudioCaptureService
     {
         var buffer = new byte[ChunkSizeBytes];
 
-        while (_isRecording && _recorder?.RecordingState == RecordState.Recording)
+        try
         {
-            var bytesRead = _recorder.Read(buffer, 0, buffer.Length);
-            if (bytesRead > 0)
+            while (_isRecording && _recorder?.RecordingState == RecordState.Recording)
             {
-                var chunk = new byte[bytesRead];
-                Buffer.BlockCopy(buffer, 0, chunk, 0, bytesRead);
-                AudioDataAvailable?.Invoke(chunk);
+                var bytesRead = _recorder.Read(buffer, 0, buffer.Length);
+                if (bytesRead > 0)
+                {
+                    var chunk = new byte[bytesRead];
+                    Buffer.BlockCopy(buffer, 0, chunk, 0, bytesRead);
+                    AudioDataAvailable?.Invoke(chunk);
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"AudioCapture error: {ex.Message}");
+            _isRecording = false;
         }
     }
 }

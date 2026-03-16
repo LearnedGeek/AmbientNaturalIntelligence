@@ -89,6 +89,7 @@ try
         {
             builder.Services.AddTransient<IStreamingSpeechToTextService, DeepgramStreamingSTTService>();
             builder.Services.AddTransient<IStreamingTextToSpeechService, ElevenLabsStreamingTTSService>();
+            builder.Services.AddSingleton<VoiceTurnPipeline>();
             builder.Services.AddSingleton<StreamingVoiceOrchestrator>();
         }
     }

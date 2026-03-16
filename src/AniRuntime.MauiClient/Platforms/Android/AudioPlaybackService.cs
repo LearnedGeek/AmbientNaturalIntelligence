@@ -16,7 +16,10 @@ public class AudioPlaybackService : IAudioPlaybackService
 
     public void Start()
     {
-        var bufferSize = AudioTrack.GetMinBufferSize(SampleRate, Channel, AudioEncoding);
+        // Use 4x minimum buffer to absorb network jitter and prevent underrun clicks/pops.
+        // At 16kHz mono 16-bit, min is ~640 bytes; 4x gives ~80ms of buffered audio.
+        var minBuffer = AudioTrack.GetMinBufferSize(SampleRate, Channel, AudioEncoding);
+        var bufferSize = Math.Max(minBuffer * 4, SampleRate * 2); // at least 1 second of PCM
 
         _track = new AudioTrack.Builder()
             .SetAudioAttributes(new AudioAttributes.Builder()

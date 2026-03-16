@@ -1,7 +1,7 @@
 # Phase 5 Design: Real-Time Voice — Streaming Conversational Presence
 
 **Date:** March 15, 2026
-**Status:** Design Complete, Awaiting Implementation
+**Status:** Streaming Voice Pipeline Deployed, Testing (Direct WebSocket — MAUI Android Client)
 **Authors:** Mark McArthey, Claude (pair design session)
 **Dependencies:** Phase 4 Feature 20 interim voice (deployed), ElevenLabs Starter tier (active)
 
@@ -284,63 +284,81 @@ The privacy posture is equivalent to making a phone call (Twilio) while using a 
 ## Implementation Sequence
 
 ### Task 1: Streaming Infrastructure
-- [ ] Add `app.UseWebSockets()` middleware
-- [ ] Create `/voice/stream` WebSocket endpoint
-- [ ] Parse Twilio Media Stream JSON protocol (`connected`, `start`, `media`, `stop`, `mark`)
-- [ ] Update `/voice/inbound` TwiML to use `<Connect><Stream>` instead of `<Record>`
-- [ ] Enhanced `VoiceCallSession` with three WebSocket references
-- [ ] SSL/WSS via ngrok (already configured for HTTP, verify WebSocket upgrade works)
+- [x] Add `app.UseWebSockets()` middleware
+- [x] Create `/voice/stream` WebSocket endpoint
+- [ ] Parse Twilio Media Stream JSON protocol (`connected`, `start`, `media`, `stop`, `mark`) — **deferred; using direct MAUI WebSocket instead of Twilio Media Streams**
+- [ ] Update `/voice/inbound` TwiML to use `<Connect><Stream>` — **deferred; MAUI client bypasses Twilio entirely**
+- [x] Enhanced `VoiceCallSession` with WebSocket references + `IsAniSpeaking` + `CurrentTurnCts`
+- [x] Kestrel bound to `0.0.0.0:5100` for LAN/emulator access
+
+> **Architecture pivot:** Instead of Twilio Media Streams (mulaw 8kHz, PSTN), the v1 implementation uses a direct WebSocket from the MAUI Android app. Audio is PCM 16kHz 16-bit mono throughout — zero transcoding. This eliminates Twilio voice costs entirely and simplifies the pipeline (two WebSockets instead of three). Twilio Media Streams remain an option for PSTN access later.
 
 ### Task 2: Deepgram Streaming STT
-- [ ] Add `Deepgram.SDK` NuGet package
-- [ ] Create `IStreamingSpeechToTextService` interface
-- [ ] Implement `DeepgramStreamingSTTService` — open WebSocket, forward mulaw, receive transcripts
-- [ ] Wire Twilio inbound audio → Deepgram with zero transcoding
-- [ ] Handle `is_final` and `speech_final` events for turn detection
-- [ ] Configurable endpointing threshold (default 500ms)
-- [ ] Interim result logging for diagnostics
+- [ ] ~~Add `Deepgram.SDK` NuGet package~~ — using raw `ClientWebSocket` (no SDK needed)
+- [x] Create `IStreamingSpeechToTextService` interface
+- [x] Implement `DeepgramStreamingSTTService` — WebSocket to `wss://api.deepgram.com/v1/listen`, PCM 16kHz
+- [x] Wire MAUI client audio → Deepgram with zero transcoding
+- [x] Handle `is_final` segment accumulation + `speech_final` for utterance-level turn detection
+- [x] Configurable endpointing threshold (default 500ms)
+- [x] Interim result forwarding to client for live transcript display
 
 ### Task 3: Ollama Streaming Output
-- [ ] Add `ChatStreamAsync` to `IOllamaClient` — returns `IAsyncEnumerable<string>`
-- [ ] Implement in `OllamaClient` using Ollama's `stream: true` parameter
-- [ ] Token buffer: accumulate until sentence boundary or word limit, then yield chunk
-- [ ] CancellationToken support for barge-in abort
+- [x] Add `ChatStreamAsync` to `IOllamaClient` — returns `IAsyncEnumerable<string>`
+- [x] Implement in `OllamaClient` using Ollama's `stream: true` parameter
+- [x] `TokenBuffer`: accumulate until sentence boundary (`. ! ? —`) or 20-word limit, yield chunk
+- [x] CancellationToken support for barge-in abort
 
 ### Task 4: ElevenLabs Streaming TTS
-- [ ] Create `IStreamingTextToSpeechService` interface
-- [ ] Implement `ElevenLabsStreamingTTSService` — WebSocket to `/stream-input` endpoint
-- [ ] Output format: `ulaw_8000` (direct Twilio compatibility)
-- [ ] Accept text chunks, return audio chunks
-- [ ] Preserve `MapEmotionalStateToVoiceSettings` + `PrependEmotionalTag` logic
-- [ ] `flush: true` signal for end of generation
-- [ ] CancellationToken support for barge-in abort
+- [x] Create `IStreamingTextToSpeechService` interface
+- [x] Implement `ElevenLabsStreamingTTSService` — WebSocket to `/stream-input` endpoint
+- [x] Output format: `pcm_16000` (direct MAUI client compatibility)
+- [x] Accept text chunks, return audio chunks (base64 in JSON → decoded PCM)
+- [x] Preserve `MapEmotionalStateToVoiceSettings` + `PrependEmotionalTag` logic
+- [x] Flush signal (`{"text":""}`) + `isFinal` detection + automatic reconnect per utterance
+- [x] CancellationToken support for barge-in abort
+- [x] Model: `eleven_multilingual_v2` for WebSocket (v3 not supported on WS endpoint)
 
 ### Task 5: Pipeline Orchestration
-- [ ] `StreamingVoiceConversationService` — replaces batch `VoiceConversationService`
-- [ ] Wire: Deepgram transcript → voice context (SQLite) → Ollama stream → token buffer → ElevenLabs stream → Twilio
-- [ ] Track `IsAniSpeaking` state for barge-in detection
-- [ ] `mark` messages for playback position tracking
-- [ ] Greeting synthesis via streaming TTS
+- [x] `StreamingVoiceOrchestrator` — manages full pipeline per WebSocket connection
+- [x] Wire: Deepgram transcript → voice context (SQLite) → Ollama stream → TokenBuffer → ElevenLabs stream → MAUI client
+- [x] Track `IsAniSpeaking` state for barge-in detection
+- [x] Greeting synthesis via streaming TTS
+- [x] Session-level CancellationTokenSource for clean shutdown
+- [x] SemaphoreSlim on WebSocket sends (both client-side and server-side)
+- [x] Message buffering + batch save on session end
 
 ### Task 6: Silero VAD + Barge-In
 - [ ] Add `VadSharp` or `Microsoft.ML.OnnxRuntime` NuGet
 - [ ] Download Silero ONNX model (~2MB)
 - [ ] Run VAD on inbound audio while `IsAniSpeaking == true`
 - [ ] Duration gate: ignore speech < 500ms
-- [ ] On barge-in: send `clear` to Twilio, cancel ElevenLabs CTS, record delivered content
-- [ ] Interruption context in next LLM prompt ("you were saying X when Mark interrupted")
+- [ ] On barge-in: cancel ElevenLabs CTS, record delivered content
+- [ ] Interruption context in next LLM prompt
+> **Note:** Basic barge-in (client sends `audio_start` during `IsAniSpeaking`) is wired but not yet tested. Silero VAD for server-side detection is deferred.
 
 ### Task 7: Testing + Refinement
-- [ ] Unit tests for token buffering, VAD threshold, session lifecycle
-- [ ] Integration test: mock WebSocket connections, verify full pipeline flow
-- [ ] Live call testing: measure actual latency, tune endpointing/VAD thresholds
-- [ ] Backchannel filtering tuning (300ms/500ms gates)
-- [ ] Stress test: multiple concurrent calls (if needed)
+- [x] Unit tests for token buffering (sentence boundary, word overflow, ellipsis, flush)
+- [x] Unit tests for ChatStreamAsync (token yielding, cancellation)
+- [x] Live testing: MAUI app → server → Deepgram → Ollama → ElevenLabs → MAUI speaker (working)
+- [ ] Latency measurement and tuning
+- [ ] Audio quality refinement (initial static at playback start)
+- [ ] Stress test: concurrent connections
 
 ### Task 8: Interim Voice Deprecation
-- [ ] Keep `<Record>` webhook endpoints as fallback if WebSocket connection fails
-- [ ] Feature flag: `Voice.UseMediaStreams` (default true, falls back to batch)
-- [ ] Remove batch-specific workarounds (reply truncation, timeout tuning) once streaming is stable
+- [ ] Keep batch `<Record>` webhook endpoints as fallback
+- [ ] Feature flag: `Voice.StreamingEnabled` (added to config, default false)
+- [ ] Remove batch-specific workarounds once streaming is stable
+
+### Task 9: MAUI Android Client (added)
+- [x] `AniRuntime.MauiClient` project — net10.0-android, minimal MAUI app
+- [x] Dark UI with large "Talk to Ani" button, status indicator, transcript display
+- [x] `AudioCaptureService` — Android `AudioRecord`, PCM 16kHz/16-bit/mono, 20ms chunks
+- [x] `AudioPlaybackService` — Android `AudioTrack`, PCM 16kHz/16-bit/mono, 1s buffer, speakerphone routing
+- [x] WebSocket client with binary audio + JSON control messages
+- [x] SemaphoreSlim for concurrent WebSocket send protection
+- [x] Multi-frame message accumulation (MemoryStream until EndOfMessage)
+- [x] RECORD_AUDIO + FOREGROUND_SERVICE_MICROPHONE permissions
+- [x] Server URL saved in app preferences
 
 ---
 

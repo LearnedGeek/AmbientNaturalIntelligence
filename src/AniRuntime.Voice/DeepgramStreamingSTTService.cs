@@ -13,6 +13,9 @@ namespace AniRuntime.Voice;
 /// Deepgram Nova-3 streaming STT via WebSocket. Accepts PCM 16kHz 16-bit mono audio
 /// directly from the MAUI client (zero transcoding). Fires events on final and interim transcripts.
 /// Each instance manages one STT session — create per voice call via IServiceProvider.
+///
+/// Turn detection is delegated to <see cref="DebouncedUtterance"/> which accumulates
+/// is_final segments and fires the complete utterance after a silence period.
 /// </summary>
 public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
 {
@@ -21,6 +24,14 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
+
+    private const int DebounceMs = 1500;
+
+    /// <summary>
+    /// Debounce handler for accumulating is_final segments into complete utterances.
+    /// Exposed so the orchestrator can call Clear() to discard echo artifacts.
+    /// </summary>
+    public DebouncedUtterance Debounce { get; }
 
     public event Action<string>? TranscriptReceived;
     public event Action<string>? PartialTranscriptReceived;
@@ -31,6 +42,8 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
     {
         _options = options.Value;
         _log     = log;
+        Debounce = new DebouncedUtterance(DebounceMs, log);
+        Debounce.UtteranceReady += utterance => TranscriptReceived?.Invoke(utterance);
     }
 
     public async Task StartAsync(CancellationToken ct = default)
@@ -66,9 +79,10 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
 
     public async Task StopAsync(CancellationToken ct = default)
     {
+        Debounce.Flush();
+
         if (_ws?.State == WebSocketState.Open)
         {
-            // Send empty byte array to signal end of audio (Deepgram close signal)
             await _ws.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Binary,
                 endOfMessage: true, ct).ConfigureAwait(false);
 
@@ -107,6 +121,7 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
                     continue;
 
                 var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                _log.LogDebug("Deepgram response: {Json}", json.Length > 200 ? json[..200] + "..." : json);
                 ProcessTranscriptMessage(json);
             }
         }
@@ -124,15 +139,11 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
             var msg = JsonSerializer.Deserialize<DeepgramResponse>(json);
             var transcript = msg?.Channel?.Alternatives?.FirstOrDefault()?.Transcript;
 
-            if (string.IsNullOrWhiteSpace(transcript))
-                return;
-
-            if (msg?.IsFinal == true)
+            if (msg?.IsFinal == true && !string.IsNullOrWhiteSpace(transcript))
             {
-                _log.LogDebug("Deepgram final: \"{Transcript}\"", transcript);
-                TranscriptReceived?.Invoke(transcript);
+                Debounce.AddSegment(transcript);
             }
-            else
+            else if (msg?.IsFinal != true && !string.IsNullOrWhiteSpace(transcript))
             {
                 PartialTranscriptReceived?.Invoke(transcript);
             }
@@ -145,6 +156,7 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
 
     public async ValueTask DisposeAsync()
     {
+        Debounce.Dispose();
         await StopAsync().ConfigureAwait(false);
         _ws?.Dispose();
         _receiveCts?.Dispose();
@@ -154,8 +166,9 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
 
     private record DeepgramResponse
     {
-        [JsonPropertyName("channel")]  public DeepgramChannel? Channel  { get; init; }
-        [JsonPropertyName("is_final")] public bool             IsFinal  { get; init; }
+        [JsonPropertyName("channel")]      public DeepgramChannel? Channel     { get; init; }
+        [JsonPropertyName("is_final")]     public bool             IsFinal     { get; init; }
+        [JsonPropertyName("speech_final")] public bool             SpeechFinal { get; init; }
     }
 
     private record DeepgramChannel

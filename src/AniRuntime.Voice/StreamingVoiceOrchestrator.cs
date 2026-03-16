@@ -5,7 +5,6 @@ using System.Text.Json;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
-using AniRuntime.Core.Utilities;
 using AniRuntime.LLM;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -14,40 +13,49 @@ using Microsoft.Extensions.Options;
 namespace AniRuntime.Voice;
 
 /// <summary>
-/// Orchestrates streaming voice conversations over a direct WebSocket from the MAUI app.
-/// Pipeline: MAUI audio → Deepgram STT → Ollama streaming → TokenBuffer → ElevenLabs TTS → MAUI playback.
-/// Replaces the batch Twilio Record+webhook model for real-time voice with sub-2-second latency.
+/// Thin WebSocket handler for streaming voice sessions. Responsibilities:
+/// 1. WebSocket lifecycle (connect, receive loop, cleanup)
+/// 2. Audio routing (client ↔ STT/TTS)
+/// 3. Session tracking
+///
+/// Business logic is delegated to:
+/// - <see cref="VoiceTurnPipeline"/> — transcript → LLM → TTS flow
+/// - <see cref="VoiceSessionState"/> — thread-safe session state
+/// - <see cref="DebouncedUtterance"/> — turn detection (via DeepgramStreamingSTTService)
 /// </summary>
 public class StreamingVoiceOrchestrator
 {
     private readonly IServiceProvider _services;
-    private readonly IMemoryService _memory;
     private readonly IConversationService _conversations;
     private readonly IOllamaClient _ollama;
     private readonly OllamaOptions _ollamaOptions;
+    private readonly IMemoryService _memory;
     private readonly VoiceOptions _voiceOptions;
+    private readonly VoiceTurnPipeline _pipeline;
     private readonly ILogger<StreamingVoiceOrchestrator> _log;
 
-    private readonly ConcurrentDictionary<string, VoiceCallSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, VoiceSessionState> _sessions = new();
 
     public Action? OnCallStarted { get; set; }
     public Action? OnCallEnded { get; set; }
 
     public StreamingVoiceOrchestrator(
         IServiceProvider services,
-        IMemoryService memory,
         IConversationService conversations,
         IOllamaClient ollama,
         IOptions<OllamaOptions> ollamaOptions,
+        IMemoryService memory,
         IOptions<VoiceOptions> voiceOptions,
+        VoiceTurnPipeline pipeline,
         ILogger<StreamingVoiceOrchestrator> log)
     {
         _services      = services;
-        _memory        = memory;
         _conversations = conversations;
         _ollama        = ollama;
         _ollamaOptions = ollamaOptions.Value;
+        _memory        = memory;
         _voiceOptions  = voiceOptions.Value;
+        _pipeline      = pipeline;
         _log           = log;
     }
 
@@ -62,11 +70,12 @@ public class StreamingVoiceOrchestrator
 
         IStreamingSpeechToTextService? stt = null;
         IStreamingTextToSpeechService? tts = null;
+        VoiceSessionState? session = null;
+        using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
 
         try
         {
-            // Wait for start message
-            var startMsg = await ReceiveJsonAsync(ws, appCt).ConfigureAwait(false);
+            var startMsg = await ReceiveJsonAsync(ws, sessionCts.Token).ConfigureAwait(false);
             if (startMsg?.Type != "start")
             {
                 await SendJsonAsync(ws, new { type = "error", message = "Expected start message" }, appCt)
@@ -74,7 +83,7 @@ public class StreamingVoiceOrchestrator
                 return;
             }
 
-            // Create session
+            // Create or get conversation thread
             var thread = await _conversations.GetActiveThreadAsync(appCt).ConfigureAwait(false)
                          ?? new ConversationThread
                          {
@@ -85,40 +94,95 @@ public class StreamingVoiceOrchestrator
             if (thread.Messages.Count == 0)
                 await _conversations.SaveThreadAsync(thread, appCt).ConfigureAwait(false);
 
-            var session = new VoiceCallSession
-            {
-                CallSid      = sessionId,
-                ThreadId     = thread.Id,
-                StartedAt    = DateTimeOffset.UtcNow,
-                ClientSocket = ws,
-            };
+            session = new VoiceSessionState(sessionId, thread.Id, ws);
             _sessions[sessionId] = session;
             OnCallStarted?.Invoke();
 
             _log.LogInformation("Streaming voice session started: {SessionId}, thread {ThreadId}",
                 sessionId, thread.Id);
 
+            var ct = sessionCts.Token;
+
             // Warm the conversation model
-            var warmTask = _ollama.WarmModelAsync(_ollamaOptions.ChatModel, appCt);
+            var warmTask = _ollama.WarmModelAsync(_ollamaOptions.ChatModel, ct);
 
             // Create per-session streaming services
             stt = _services.GetRequiredService<IStreamingSpeechToTextService>();
             tts = _services.GetRequiredService<IStreamingTextToSpeechService>();
 
-            // Wire STT transcript → LLM → TTS → client
-            stt.TranscriptReceived += transcript =>
+            // Get the debounce handler so we can clear echo segments
+            var debounce = (stt as DeepgramStreamingSTTService)?.Debounce;
+
+            // Wire TTS audio → client WebSocket (serialized to prevent concurrent SendAsync)
+            var wsSendLock = new SemaphoreSlim(1, 1);
+            tts.AudioChunkReceived += audioChunk =>
             {
-                // Fire-and-forget the async pipeline — errors are logged inside
+                // Fire-and-forget is acceptable here — audio delivery is best-effort
+                // and the lock prevents concurrent WebSocket sends.
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await ProcessTranscriptAsync(session, transcript, stt, tts, appCt)
-                            .ConfigureAwait(false);
+                        await wsSendLock.WaitAsync(ct).ConfigureAwait(false);
+                        try
+                        {
+                            if (ws.State == WebSocketState.Open)
+                                await ws.SendAsync(audioChunk, WebSocketMessageType.Binary,
+                                    endOfMessage: true, ct).ConfigureAwait(false);
+                        }
+                        finally { wsSendLock.Release(); }
                     }
+                    catch (OperationCanceledException) { }
+                    catch (WebSocketException) { /* client disconnected */ }
+                });
+            };
+
+            // Wire STT transcript → pipeline (drop if busy, no queuing)
+            var replyLock = new SemaphoreSlim(1, 1);
+
+            // Delegates for the pipeline to send data to the client
+            async Task SendJsonToClient(object payload, CancellationToken token)
+            {
+                await wsSendLock.WaitAsync(token).ConfigureAwait(false);
+                try
+                {
+                    await SendJsonAsync(ws, payload, token).ConfigureAwait(false);
+                }
+                finally { wsSendLock.Release(); }
+            }
+
+            stt.TranscriptReceived += transcript =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    // Drop transcripts that arrive while a reply is in progress.
+                    // This prevents Ani from generating multiple sequential replies
+                    // to fragments of the same utterance.
+                    if (!await replyLock.WaitAsync(0, ct).ConfigureAwait(false))
+                    {
+                        _log.LogDebug("Streaming voice: dropping transcript (reply in progress): \"{Text}\"",
+                            transcript.Length > 60 ? transcript[..60] + "..." : transcript);
+                        return;
+                    }
+                    try
+                    {
+                        await _pipeline.ProcessTurnAsync(
+                            session, transcript, tts,
+                            SendJsonToClient, ct)
+                            .ConfigureAwait(false);
+
+                        // After reply completes, clear any echo segments that Deepgram
+                        // accumulated while Ani was speaking through the speaker.
+                        debounce?.Clear();
+                    }
+                    catch (OperationCanceledException) { }
                     catch (Exception ex)
                     {
                         _log.LogError(ex, "Streaming voice: pipeline error for transcript");
+                    }
+                    finally
+                    {
+                        replyLock.Release();
                     }
                 });
             };
@@ -129,47 +193,38 @@ public class StreamingVoiceOrchestrator
                 {
                     try
                     {
-                        await SendJsonAsync(ws, new { type = "transcript", text = partial, isFinal = false }, appCt)
+                        await SendJsonToClient(
+                            new { type = "transcript", text = partial, isFinal = false }, ct)
                             .ConfigureAwait(false);
                     }
                     catch { /* best-effort partial transcript display */ }
                 });
             };
 
-            // Wire TTS audio → client WebSocket
-            tts.AudioChunkReceived += audioChunk =>
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        if (ws.State == WebSocketState.Open)
-                            await ws.SendAsync(audioChunk, WebSocketMessageType.Binary,
-                                endOfMessage: true, appCt).ConfigureAwait(false);
-                    }
-                    catch { /* client may have disconnected */ }
-                });
-            };
-
             // Start STT and TTS connections
-            var emotionalState = await _memory.GetEmotionalStateAsync(appCt).ConfigureAwait(false);
+            var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
             await Task.WhenAll(
-                stt.StartAsync(appCt),
-                tts.StartAsync(emotionalState, appCt)
+                stt.StartAsync(ct),
+                tts.StartAsync(emotionalState, ct)
             ).ConfigureAwait(false);
 
             // Ensure model is warm
             try { await warmTask.ConfigureAwait(false); }
             catch (Exception ex) { _log.LogWarning(ex, "Streaming voice: model warm failed"); }
 
-            await SendJsonAsync(ws, new { type = "session_started", sessionId }, appCt)
+            await SendJsonToClient(new { type = "session_started", sessionId }, ct)
                 .ConfigureAwait(false);
 
             // Synthesize greeting
-            await SynthesizeGreetingAsync(session, tts, appCt).ConfigureAwait(false);
+            await _pipeline.SynthesizeGreetingAsync(
+                session, _voiceOptions.VoiceGreeting, tts, SendJsonToClient, ct)
+                .ConfigureAwait(false);
+
+            // Clear any echo segments from greeting playback
+            debounce?.Clear();
 
             // Main receive loop — forward audio and handle control messages
-            await ReceiveLoopAsync(ws, session, stt, appCt).ConfigureAwait(false);
+            await ReceiveLoopAsync(ws, session, stt, ct).ConfigureAwait(false);
         }
         catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
         {
@@ -185,31 +240,36 @@ public class StreamingVoiceOrchestrator
         }
         finally
         {
-            // Cleanup
+            sessionCts.Cancel();
+
             if (stt is not null) await stt.DisposeAsync().ConfigureAwait(false);
             if (tts is not null) await tts.DisposeAsync().ConfigureAwait(false);
 
-            if (_sessions.TryRemove(sessionId, out var endedSession))
+            if (_sessions.TryRemove(sessionId, out _) && session is not null)
             {
-                await SavePendingMessagesAsync(endedSession, appCt).ConfigureAwait(false);
-                await _conversations.CloseThreadAsync(endedSession.ThreadId, appCt).ConfigureAwait(false);
+                await SavePendingMessagesAsync(session, appCt).ConfigureAwait(false);
+                await _conversations.CloseThreadAsync(session.ThreadId, appCt).ConfigureAwait(false);
 
                 if (_sessions.IsEmpty)
                     OnCallEnded?.Invoke();
 
                 _log.LogInformation(
                     "Streaming voice session ended: {SessionId}, {Turns} turns, duration {Duration}",
-                    sessionId, endedSession.TurnCount,
-                    (DateTimeOffset.UtcNow - endedSession.StartedAt).ToString(@"m\:ss"));
+                    sessionId, session.TurnCount,
+                    (DateTimeOffset.UtcNow - session.StartedAt).ToString(@"m\:ss"));
             }
+
+            session?.Dispose();
         }
     }
 
     private async Task ReceiveLoopAsync(
-        WebSocket ws, VoiceCallSession session,
+        WebSocket ws, VoiceSessionState session,
         IStreamingSpeechToTextService stt, CancellationToken ct)
     {
         var buffer = new byte[4096];
+        long totalAudioBytes = 0;
+        int audioFrameCount = 0;
 
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
@@ -220,7 +280,16 @@ public class StreamingVoiceOrchestrator
 
             if (result.MessageType == WebSocketMessageType.Binary)
             {
-                // Audio from MAUI client → forward to Deepgram STT
+                // Skip forwarding audio while Ani is speaking to prevent echo
+                if (session.IsAniSpeaking)
+                    continue;
+
+                totalAudioBytes += result.Count;
+                audioFrameCount++;
+                if (audioFrameCount == 1 || audioFrameCount % 500 == 0)
+                    _log.LogDebug("Streaming voice: audio forwarded to Deepgram ({Frames} frames, {KB:F1} KB total)",
+                        audioFrameCount, totalAudioBytes / 1024.0);
+
                 await stt.SendAudioAsync(new ReadOnlyMemory<byte>(buffer, 0, result.Count), ct)
                     .ConfigureAwait(false);
                 continue;
@@ -238,176 +307,21 @@ public class StreamingVoiceOrchestrator
                         return;
 
                     case "audio_start":
-                        // User started speaking while Ani is talking — barge-in
                         if (session.IsAniSpeaking)
                         {
                             _log.LogInformation("Streaming voice: barge-in detected");
-                            session.CurrentTurnCts?.Cancel();
-                            session.IsAniSpeaking = false;
+                            session.CancelCurrentTurn();
                         }
                         break;
 
                     case "audio_stop":
-                        // User stopped speaking — Deepgram endpointing handles this
                         break;
                 }
             }
         }
     }
 
-    private async Task ProcessTranscriptAsync(
-        VoiceCallSession session, string transcript,
-        IStreamingSpeechToTextService stt, IStreamingTextToSpeechService tts,
-        CancellationToken appCt)
-    {
-        if (string.IsNullOrWhiteSpace(transcript) || transcript.Trim().Length < 3)
-        {
-            _log.LogDebug("Streaming voice: transcript too short, skipping");
-            return;
-        }
-
-        // Send final transcript to client
-        if (session.ClientSocket?.State == WebSocketState.Open)
-        {
-            await SendJsonAsync(session.ClientSocket,
-                new { type = "transcript", text = transcript, isFinal = true }, appCt)
-                .ConfigureAwait(false);
-        }
-
-        _log.LogInformation("Streaming voice turn {Turn}: \"{Text}\"", session.TurnCount + 1, transcript);
-
-        // Buffer Mark's message
-        session.PendingMessages.Enqueue(new ConversationMessage
-        {
-            Role = "mark", Content = transcript, SentAt = DateTimeOffset.UtcNow,
-        });
-
-        // Per-turn cancellation for barge-in support
-        session.CurrentTurnCts?.Dispose();
-        session.CurrentTurnCts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
-        var turnCt = session.CurrentTurnCts.Token;
-
-        try
-        {
-            // Build context (SQLite only — no Ollama embedding during voice)
-            var snapshot = await BuildVoiceContextAsync(turnCt).ConfigureAwait(false);
-
-            var thread = await _conversations.GetThreadAsync(session.ThreadId, turnCt)
-                .ConfigureAwait(false);
-            var allMessages = new List<ConversationMessage>(thread?.Messages ?? new List<ConversationMessage>());
-            allMessages.AddRange(session.PendingMessages.ToArray());
-
-            // Generate streaming reply
-            var prompt = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread ?? new ConversationThread());
-
-            if (session.ClientSocket?.State == WebSocketState.Open)
-                await SendJsonAsync(session.ClientSocket, new { type = "reply_start" }, turnCt)
-                    .ConfigureAwait(false);
-
-            session.IsAniSpeaking = true;
-            var tokenBuffer = new TokenBuffer();
-            var fullReply = new StringBuilder();
-
-            await foreach (var token in _ollama.ChatStreamAsync(
-                prompt.System,
-                allMessages.TakeLast(10).Select(m =>
-                    new ChatMessage(m.Role == "mark" ? "user" : "assistant", m.Content)),
-                prompt.User, turnCt).ConfigureAwait(false))
-            {
-                fullReply.Append(token);
-
-                var sentence = tokenBuffer.Add(token);
-                if (sentence is not null)
-                    await tts.SendTextAsync(sentence, turnCt).ConfigureAwait(false);
-            }
-
-            // Flush remaining tokens
-            var remaining = tokenBuffer.Flush();
-            if (remaining is not null)
-                await tts.SendTextAsync(remaining, turnCt).ConfigureAwait(false);
-
-            await tts.FlushAsync(turnCt).ConfigureAwait(false);
-
-            // Clean and buffer Ani's reply
-            var reply = MessageCleaner.Clean(fullReply.ToString());
-            if (!string.IsNullOrWhiteSpace(reply))
-            {
-                session.PendingMessages.Enqueue(new ConversationMessage
-                {
-                    Role = "ani", Content = reply, SentAt = DateTimeOffset.UtcNow,
-                });
-            }
-
-            session.TurnCount++;
-            session.LastTurnAt = DateTimeOffset.UtcNow;
-            session.IsAniSpeaking = false;
-
-            _log.LogInformation("Streaming voice reply: \"{Reply}\"", reply);
-
-            if (session.ClientSocket?.State == WebSocketState.Open)
-            {
-                await SendJsonAsync(session.ClientSocket, new { type = "reply_end" }, appCt)
-                    .ConfigureAwait(false);
-                await SendJsonAsync(session.ClientSocket, new { type = "listening" }, appCt)
-                    .ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            session.IsAniSpeaking = false;
-            _log.LogInformation("Streaming voice: turn cancelled (barge-in or disconnect)");
-        }
-    }
-
-    private async Task SynthesizeGreetingAsync(
-        VoiceCallSession session, IStreamingTextToSpeechService tts, CancellationToken ct)
-    {
-        var greeting = _voiceOptions.VoiceGreeting;
-        session.IsAniSpeaking = true;
-
-        if (session.ClientSocket?.State == WebSocketState.Open)
-            await SendJsonAsync(session.ClientSocket, new { type = "reply_start" }, ct)
-                .ConfigureAwait(false);
-
-        await tts.SendTextAsync(greeting, ct).ConfigureAwait(false);
-        await tts.FlushAsync(ct).ConfigureAwait(false);
-
-        // Brief pause for audio to finish streaming before signaling ready
-        await Task.Delay(500, ct).ConfigureAwait(false);
-
-        session.IsAniSpeaking = false;
-
-        if (session.ClientSocket?.State == WebSocketState.Open)
-        {
-            await SendJsonAsync(session.ClientSocket, new { type = "reply_end" }, ct)
-                .ConfigureAwait(false);
-            await SendJsonAsync(session.ClientSocket, new { type = "listening" }, ct)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async Task<ContextSnapshot> BuildVoiceContextAsync(CancellationToken ct)
-    {
-        var characterTask = _memory.GetCharacterStateAsync(ct);
-        var emotionalTask = _memory.GetEmotionalStateAsync(ct);
-        var anchoredTask  = _memory.GetAnchoredMemoriesAsync(ct);
-        await Task.WhenAll(characterTask, emotionalTask, anchoredTask).ConfigureAwait(false);
-
-        return new ContextSnapshot
-        {
-            CharacterState   = characterTask.Result,
-            EmotionalState   = emotionalTask.Result,
-            RelevantMemory   = new List<MemoryRecord>(),
-            AnchoredMemories = anchoredTask.Result.ToList(),
-            RecentMemory     = new List<MemoryRecord>(),
-            Perceptions      = new List<PerceptionEvent>(),
-            OpenLoops        = new List<OpenLoop>(),
-            RecentHistory    = new List<ChatMessage>(),
-            BuiltAt          = DateTimeOffset.UtcNow,
-        };
-    }
-
-    private async Task SavePendingMessagesAsync(VoiceCallSession session, CancellationToken ct)
+    private async Task SavePendingMessagesAsync(VoiceSessionState session, CancellationToken ct)
     {
         var pending = session.PendingMessages.ToArray();
         if (pending.Length == 0) return;

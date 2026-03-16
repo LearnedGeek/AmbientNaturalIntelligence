@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.0 — Phase 4 Complete
+1.1 — Phase 5 Streaming Voice In Progress
 Status
-Active Development — Phase 1–4 complete, Phase 5 design complete. Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work). Dashboard deployed. Emotional model Phase 1a+1b+2 deployed. 246 tests passing.
+Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab deployed. Emotional model Phase 1a+1b+2 deployed. 312 tests passing.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -56,7 +56,9 @@ AniRuntime.sln
 │   │   │   ├── IAniAction.cs
 │   │   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history, contradictions (Feature 15)
 │   │   │   ├── IConversationService.cs  # + GetThreadAsync, GetRecentThreadsAsync (Dashboard)
-│   │   │   └── IOllamaClient.cs
+│   │   │   ├── IOllamaClient.cs        # + ChatStreamAsync (IAsyncEnumerable<string>, Phase 5)
+│   │   │   ├── IStreamingSpeechToTextService.cs   # Phase 5: event-driven STT (TranscriptReceived, PartialTranscriptReceived)
+│   │   │   └── IStreamingTextToSpeechService.cs   # Phase 5: event-driven TTS (AudioChunkReceived)
 │   │   ├── Utilities/
 │   │   │   └── MessageCleaner.cs     # Shared: Clean() + TruncateToSentences() — used by CognitiveCycle + Voice
 │   │   ├── VectorMath.cs              # Feature 9: SIMD-accelerated cosine similarity (shared)
@@ -103,14 +105,31 @@ AniRuntime.sln
 │   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
 │   │   └── AniRuntime.Dashboard.csproj
 │   │
-│   └── AniRuntime.Voice/            # Feature 20: Voice channel (active)
-│       ├── ElevenLabsTtsService.cs
-│       ├── WhisperSttService.cs
-│       ├── TwilioVoiceHandler.cs
-│       ├── MediaCacheService.cs
-│       ├── VoiceConversationService.cs  # Turn-by-turn phone conversation orchestrator (8B conversation model, voice-aware mood, emotional acting directions)
-│       ├── VoiceCallSession.cs          # In-memory session state per active call
-│       └── AniRuntime.Voice.csproj
+│   ├── AniRuntime.Voice/            # Voice channel — batch (Feature 20) + streaming (Phase 5)
+│   │   ├── ElevenLabsTtsService.cs              # Batch TTS (REST API, Feature 20)
+│   │   ├── ElevenLabsStreamingTTSService.cs     # Phase 5: WebSocket streaming TTS — per-utterance reconnect, emotional tags
+│   │   ├── WhisperSttService.cs                 # Batch STT (local Whisper, Feature 20)
+│   │   ├── DeepgramStreamingSTTService.cs       # Phase 5: Deepgram Nova-3 WebSocket STT, delegates to DebouncedUtterance
+│   │   ├── DebouncedUtterance.cs                # Phase 5: Thread-safe turn detection — segment accumulation + debounce timer
+│   │   ├── VoiceSessionState.cs                 # Phase 5: Thread-safe session state (volatile, Interlocked, lock)
+│   │   ├── VoiceTurnPipeline.cs                 # Phase 5: Single turn flow — transcript → context → LLM stream → TTS (no fire-and-forget)
+│   │   ├── StreamingVoiceOrchestrator.cs        # Phase 5: Thin WebSocket handler — lifecycle, audio routing, wiring
+│   │   ├── TokenBuffer.cs                       # Phase 5: LLM token → sentence chunking for TTS (boundary detection + word overflow)
+│   │   ├── TwilioVoiceHandler.cs                # Twilio webhook handler (batch voice)
+│   │   ├── MediaCacheService.cs
+│   │   ├── VoiceConversationService.cs          # Batch phone conversation orchestrator (Feature 20, superseded by streaming)
+│   │   ├── VoiceCallSession.cs                  # In-memory session state per active call (shared batch + streaming)
+│   │   └── AniRuntime.Voice.csproj
+│   │
+│   └── AniRuntime.MauiClient/       # Phase 5: Android voice app (MAUI, net10.0-android)
+│       ├── MainPage.xaml / .cs          # UI + WebSocket client (binary PCM + JSON control messages)
+│       ├── MauiProgram.cs               # Minimal DI wiring
+│       ├── IAudioCaptureService.cs      # Platform abstraction for mic capture
+│       ├── IAudioPlaybackService.cs     # Platform abstraction for speaker output
+│       └── Platforms/Android/
+│           ├── AudioCaptureService.cs   # AudioRecord: PCM 16kHz, 16-bit, mono, 20ms chunks
+│           ├── AudioPlaybackService.cs  # AudioTrack: PCM 16kHz, 16-bit, mono, 1s buffer
+│           └── AndroidManifest.xml      # RECORD_AUDIO, FOREGROUND_SERVICE_MICROPHONE
 │
 └── tests/
     └── AniRuntime.Tests/
@@ -122,6 +141,11 @@ AniRuntime.sln
         ├── PromptBuilderTests.cs          # + Feature 22, 23 tests
         ├── SqliteMemoryServiceTests.cs
         ├── TimePerceptionSourceTests.cs
+        ├── TokenBufferTests.cs              # Phase 5: sentence boundary, overflow, ellipsis, flush
+        ├── VoiceSessionStateTests.cs        # Phase 5: thread safety, state transitions, concurrent access
+        ├── DebouncedUtteranceTests.cs       # Phase 5: debounce timing, clear/flush, concurrent access
+        ├── VoiceTurnPipelineTests.cs        # Phase 5: turn processing, speaking state, TTS interaction, cancellation
+        ├── OllamaStreamingTests.cs          # Phase 5: ChatStreamAsync token yielding, cancellation
         └── AniRuntime.Tests.csproj
 
 2. Data Models & Schemas
