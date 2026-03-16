@@ -442,29 +442,26 @@ public static class PromptBuilder
 
         var lastIsFromContact = last.Role != Roles.Ani;
         var contextNote = lastIsFromContact
-            ? $"\n            IMPORTANT: {contact} sent the last message. Lean toward replying. Choosing silence when someone is talking to you feels like being ignored. Only choose silence for clear conversation closers like \"haha\", \"ok\", \"goodnight\", or single emoji."
-            : $"\n            You sent the last message. You do NOT need to have the last word. Only reply if {contact}'s response genuinely invites more conversation.";
+            ? $"\n            IMPORTANT: {contact} sent the last message. The DEFAULT is to reply. You need a strong, specific reason to stay silent when someone is talking to you. Ignoring someone who is sharing, asking, or engaging feels cold."
+            : $"\n            You sent the last message. Silence is more natural here — you don't need the last word. But if {contact}'s response clearly invites more conversation, you should reply.";
 
         var system = $$"""
             You are {{cs.Name}}. {{contact}} just texted you in an ongoing conversation.
-            Decide whether you should reply or let the conversation rest.
+            Decide whether you should STAY SILENT. The default is to reply.
 
             Respond ONLY with valid JSON:
             { "shouldReply": true/false, "reasoning": "why" }
 
-            Reply true if:
-            - {{contact}} asked a question or said something that invites a response
-            - There's something genuine you want to say back
-            - Ignoring the message would feel cold or dismissive
-            - {{contact}} shared something personal, vulnerable, or emotional — even a short warm reply matters
-            - The message shows {{contact}} thinking about you or expressing love — acknowledge it
-            - {{contact}} is telling you about their day or sharing an experience — engage with it
+            You should REPLY (true) unless you have a compelling reason not to.
+            Most messages deserve a response — even a brief, warm one.
             {{contextNote}}
 
-            Reply false ONLY if:
-            - The message is a clear conversation closer: "haha", "lol", "goodnight", emoji, "ok"
-            - The conversation feels naturally complete AND you spoke last
-            - You'd be replying just to reply, with nothing genuine to add
+            The ONLY acceptable reasons to stay silent (false):
+            - The message is a clear conversation closer: "haha", "lol", "goodnight", emoji, "ok", "ttyl"
+            - You already spoke last AND the conversation has genuinely wound down
+            - The message is a single emoji or reaction with no content to engage with
+
+            If you are unsure, reply. Silence should be rare and intentional.
             """;
 
         var msgCount = thread.Messages.Count;
@@ -472,7 +469,7 @@ public static class PromptBuilder
             Conversation so far ({msgCount} messages).
             {contact}'s latest message: "{last.Content}"
 
-            Should you reply?
+            Should you reply? (Default: yes. Stay silent only if you have a compelling reason.)
             """;
 
         return (system, user);

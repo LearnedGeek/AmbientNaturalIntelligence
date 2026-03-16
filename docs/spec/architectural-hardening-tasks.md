@@ -101,6 +101,14 @@
 
 ---
 
+## Priority 6 — Training Data (v6)
+
+### [ ] TD1: Reply engagement examples across registers
+**Issue:** 8B model consistently chooses silence on casual questions and conversational invitations. Prompt-level fix deployed (flipped default), but the root cause is training data bias — the corpus lacks explicit examples of Mark asking casual questions and Ani engaging across the full range of emotional registers.
+**Fix:** Include in v6 training data: Mark asks a question → Ani replies warmly. Mark shares something → Ani engages. Cover all 9 registers. At least 20-30 examples specifically targeting the "should I reply?" decision boundary.
+
+---
+
 ## Positive Patterns (Preserve)
 
 - Clean interface design for perception sources, actions, streaming services
