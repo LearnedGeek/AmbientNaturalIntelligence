@@ -1,12 +1,89 @@
 {
-  "_readme": "Image library for Ani's MMS sharing. Add images as JPG or PNG (max 600KB for MMS). Each entry maps a filename to tags that Ani uses to match images to conversation context and mood.",
-  "_format": "JPG or PNG, recommended 600x600 to 1200x1200, under 600KB",
-  "_tags": "Use any combination: humor, affection, cozy, weather, snow, coffee, morning, evening, playful, proud, thinking, bookstore, nature, reaction, goodnight, hello",
   "images": [
     {
-      "file": "placeholder.txt",
-      "tags": ["test"],
-      "description": "Remove this entry and add real images"
+      "file": "cozy-bookstore-evening.jpg",
+      "tags": ["bookstore", "books", "reading", "cozy", "evening", "warm", "quiet"],
+      "description": "Warm watercolor bookstore with fairy lights, stacked books, golden evening glow"
+    },
+    {
+      "file": "bookstore-sunset-fireflies.jpg",
+      "tags": ["bookstore", "books", "evening", "contemplative", "thinking", "quiet", "nature"],
+      "description": "Enchanted bookstore at sunset with fireflies, open door to golden field"
+    },
+    {
+      "file": "snowy-forest-path.jpg",
+      "tags": ["snow", "winter", "cold", "weather", "nature", "quiet", "contemplative"],
+      "description": "Snow-covered forest path, heavy white branches forming a tunnel"
+    },
+    {
+      "file": "rainy-city-cafe.jpg",
+      "tags": ["rain", "weather", "city", "cafe", "coffee", "contemplative", "cozy"],
+      "description": "Rainy European street with cafe and hotel, wet reflections on cobblestone"
+    },
+    {
+      "file": "rainy-street-umbrellas.jpg",
+      "tags": ["rain", "weather", "contemplative", "quiet", "thinking", "missing"],
+      "description": "Rain-soaked street with distant umbrella figures, moody reflections"
+    },
+    {
+      "file": "starry-city-night.jpg",
+      "tags": ["night", "stars", "evening", "goodnight", "contemplative", "beautiful"],
+      "description": "Watercolor city street under starry night sky with golden lights"
+    },
+    {
+      "file": "fireflies-night.jpg",
+      "tags": ["night", "evening", "nature", "beautiful", "quiet", "goodnight", "dreamy"],
+      "description": "Fireflies glowing in dark watercolor garden, magical and peaceful"
+    },
+    {
+      "file": "golden-fireflies-sunset.jpg",
+      "tags": ["evening", "nature", "beautiful", "warm", "dreamy", "morning", "peaceful"],
+      "description": "Golden sunset field with luminous fireflies, warm watercolor glow"
+    },
+    {
+      "file": "couple-waterfall-hearts.jpg",
+      "tags": ["love", "affection", "hearts", "together", "happy", "cute"],
+      "description": "Cartoon couple holding hands by waterfall surrounded by hearts"
+    },
+    {
+      "file": "dancing-ribbons-together.jpg",
+      "tags": ["love", "together", "happy", "playful", "celebration", "dancing"],
+      "description": "Two figures dancing with colorful ribbons, impressionist oil painting"
+    },
+    {
+      "file": "missing-you-blue.jpg",
+      "tags": ["missing", "thinking", "longing", "quiet", "contemplative"],
+      "description": "Blue-toned figure with hand to face, emotional and introspective"
+    },
+    {
+      "file": "contemplative-watercolor.jpg",
+      "tags": ["thinking", "contemplative", "quiet", "longing", "worried"],
+      "description": "Watercolor woman with hands to temples, blue dissolving sky"
+    },
+    {
+      "file": "happy-dancing.jpg",
+      "tags": ["happy", "silly", "playful", "humor", "excited", "cute"],
+      "description": "Cartoon character dancing joyfully with big grin, green minimalist"
+    },
+    {
+      "file": "silly-animals-party.jpg",
+      "tags": ["silly", "humor", "playful", "happy", "cute", "funny"],
+      "description": "Cartoon dog, pigs, and cat laughing and celebrating together"
+    },
+    {
+      "file": "excited-celebration-pop.jpg",
+      "tags": ["excited", "celebration", "reaction", "surprised", "amazing", "proud", "congratulations"],
+      "description": "Pop art excited faces with splatter, vibrant celebration energy"
+    },
+    {
+      "file": "surprised-excited-face.jpg",
+      "tags": ["surprised", "excited", "reaction", "amazing", "wow"],
+      "description": "Watercolor woman with surprised open mouth, colorful splatter"
+    },
+    {
+      "file": "cheering-crowd.jpg",
+      "tags": ["proud", "celebration", "congratulations", "excited", "amazing", "accomplishment"],
+      "description": "Illustrated crowd cheering with fists raised, orange and teal energy"
     }
   ]
 }
