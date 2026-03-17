@@ -131,7 +131,10 @@
 - Feature 15 contradiction detection elevated to block (not just flag) in conversation replies when confidence is high — but risks blocking legitimate playful callbacks
 - A "claim verification" step for conversation replies (currently only runs on outreach) — but adds latency to every reply
 - Accept it as a model capability ceiling at 8B and revisit with larger models or v6 training
-**Research note:** This may be the clearest example of "smoothness over truth" at the behavioral level. Documented in research log as a potential seventh confabulation type: charming dishonesty.
+**Root cause (OC research Claude):** The "OWN it" prompt instruction was weaponized in the wrong direction. "Own it" was meant to produce "I made that up, here's where I'm at." The model applied it as "I knew all along and was testing you" — false confidence ownership instead of creative ownership. v6 needs explicit examples showing the difference:
+- Correct: "okay I totally made that up lol — tell me for real"
+- Incorrect: "of course I knew, I was testing you"
+**Research note:** This may be the clearest example of "smoothness over truth" at the behavioral level. Documented in research log as a potential seventh confabulation type: charming dishonesty. The cheering crowd image timing is documented as a concrete example of how multiple systems (confabulation + image selection) can compound to produce sophisticated distraction.
 
 ---
 
