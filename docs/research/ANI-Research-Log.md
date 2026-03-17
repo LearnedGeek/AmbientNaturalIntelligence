@@ -128,6 +128,43 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 16, 2026 — Emotionally-Grounded Uncertainty: A Design Principle from Confabulation Testing
+**Model version:** v5
+**Type:** Design insight — confabulation testing + OC design conversation
+**Source:** Mark + OC (Claude Code) session
+
+**What happened:**
+
+Confabulation testing ("did I tell you about my brother?") produced three distinct failure modes across three attempts:
+1. Coffee cup sticky attractor — model parroted an unrelated prior message (caught by self-echo guard at similarity 0.989)
+2. Third-person narration + cross-thread contamination — re-generation stitched irrelevant retrieved fragments into word salad
+3. Hedged confabulation — model claimed "i think you mentioned him once" (fabricated, but hedged and grounded in real shared context)
+
+The third attempt was the most instructive failure. The model had all the architectural ingredients for an honest response: low energy contributions from afternoon cycles, no relevant memories about a brother, a warm relationship context. But it couldn't connect emotional state to uncertainty behavior — it confabulated instead of saying "I'm beat, remind me?"
+
+**Design principle discovered:**
+
+> *Emotional state should modulate uncertainty responses, not just tone.*
+
+Current mood coloring changes how Ani says things but not what she's willing to admit. A tired Ani should be *more* honest about gaps, not less — because tiredness lowers the performance instinct that drives confabulation. The canonical example:
+
+> Mark: "did I tell you about my brother?"
+> Ideal Ani: "mmm… hey. honestly? i've had a hard day and i'm kinda beat — i don't think you've told me about him, or if you did i'm blanking right now. tell me about him? i wanna hear it."
+
+This response connects four things simultaneously: honest uncertainty + emotional state + relational warmth + invitation to elaborate. It's also one of the most human responses possible — the willingness to say "I'm tired and I'm not sure, tell me again" is intimacy. It's what you say to someone you trust enough to show the gaps to.
+
+**Architectural response:**
+
+Self-echo guard with clean-slate re-generation deployed. When the model parrots a prior message (cosine ≥ 0.95), the re-generation strips all retrieved context and conversation history — giving the model a clean environment with only persona grounding and the actual message. Root cause of the second failure was context pollution: retrieval returned the message against itself (0.936) plus cross-thread fragments, and the model drowned in irrelevant signal.
+
+8 training examples created in `v6-gap-emotional-uncertainty.json` covering honest uncertainty across all four positive registers (Tenderness, Curiosity, Playfulness, Delight). These demonstrate the principle: uncertainty colored by emotional state, with relational warmth and invitation to elaborate.
+
+**Research significance:**
+
+The confabulation spectrum from v4 (documented in v5-notes.md) identified five types from acceptable to unacceptable. This observation adds a new dimension: confabulation is not just about knowledge boundaries — it's about the *emotional cost of admission*. A system optimized for warmth will confabulate rather than admit gaps because honesty feels cold. The design principle — that emotional state should make honesty *easier*, not harder — is a contribution to the felt care framework. Confabulation is not just "smoothness over truth" at the optimization level. At the relational level, it's "performance over intimacy."
+
+---
+
 ### March 16, 2026 — Architectural Hardening: SOLID Review, Severity Recalibration, Reply Decision Inversion
 **Model version:** v5
 **Type:** Architecture hardening — full SOLID review + behavioral fixes
