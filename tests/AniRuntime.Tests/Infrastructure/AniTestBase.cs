@@ -34,6 +34,8 @@ public abstract class AniTestBase
         MaxOutreachPerDay      = 4,
     });
 
+    protected IOptions<OllamaOptions> DefaultOllamaOptions => Options.Create(new OllamaOptions());
+
     protected static DesireState FreshDesireState() => new()
     {
         DesireToConnect  = 0.0f,

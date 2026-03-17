@@ -79,7 +79,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             NullLogger<ContextBuilder>.Instance);
         var conversationReply = new ConversationReplyPhase(
             MockMemory.Object, MockOllama.Object, _mockConversations.Object,
-            dispatcher, desire, emotional, contextBuilder, DefaultOptions,
+            dispatcher, desire, emotional, contextBuilder, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
             MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
@@ -171,7 +171,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
         // Step 2: message composition + Step 3: rewrite pass (both use ChatAsync)
         MockOllama.Setup(o => o.ChatAsync(
                       It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                      It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                      It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))
                   .ReturnsAsync("hey mark, thinking of you today.");
 
         _mockSmsAction.Setup(a => a.ExecuteAsync(It.IsAny<OutreachDecision>(), It.IsAny<CancellationToken>()))
@@ -545,9 +545,9 @@ public class CognitiveCycleProcessorTests : AniTestBase
         // Capture the reply prompt to verify grounding injection
         string? capturedUserPrompt = null;
         MockOllama.Setup(o => o.ChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                  .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken>(
-                      (system, history, user, ct) => capturedUserPrompt = user)
+                                           It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))
+                  .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken, float?>(
+                      (system, history, user, ct, temp) => capturedUserPrompt = user)
                   .ReturnsAsync("Oh I'm rereading The Odyssey right now!");
 
         var processor = CreateProcessor();
@@ -561,6 +561,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
         // SearchAsync returns both memories (simulating retrieval contamination)
         MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new[] { bookMemory, soupMemory });
+        // AC1: Scored search — conversation reply now uses SearchWithScoresAsync
+        // Both memories above confidence floor so contradiction test works
+        MockMemory.Setup(m => m.SearchWithScoresAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new[] { new ScoredMemory(bookMemory, 0.8f, 0.7f), new ScoredMemory(soupMemory, 0.7f, 0.6f) });
 
         // Contradiction flagged: soup memory conflicts with prior context
         MockMemory.Setup(m => m.GetFlaggedContradictionsAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
@@ -615,9 +619,9 @@ public class CognitiveCycleProcessorTests : AniTestBase
 
         string? capturedUserPrompt = null;
         MockOllama.Setup(o => o.ChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                  .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken>(
-                      (system, history, user, ct) => capturedUserPrompt = user)
+                                           It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))
+                  .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken, float?>(
+                      (system, history, user, ct, temp) => capturedUserPrompt = user)
                   .ReturnsAsync("Reading The Odyssey!");
 
         var processor = CreateProcessor();
@@ -629,6 +633,8 @@ public class CognitiveCycleProcessorTests : AniTestBase
                           .Returns(Task.CompletedTask);
         MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new[] { bookMemory });
+        MockMemory.Setup(m => m.SearchWithScoresAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new[] { new ScoredMemory(bookMemory, 0.8f, 0.7f) });
 
         await processor.RunAsync(CancellationToken.None);
 

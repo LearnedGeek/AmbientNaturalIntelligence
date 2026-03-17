@@ -31,22 +31,22 @@ public class OllamaClient : IOllamaClient
 
     public Task<string> ChatAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
-        CancellationToken ct = default)
-        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, format: null, ct);
+        CancellationToken ct = default, float? temperature = null)
+        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, format: null, ct, temperature);
 
     public Task<string> ChatJsonAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
         CancellationToken ct = default)
-        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, format: "json", ct);
+        => SendChatAsync(_options.ChatModel, systemPrompt, history, userMessage, format: "json", ct, temperature: null);
 
     public Task<string> InnerMonologueChatAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
         CancellationToken ct = default)
-        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: null, ct);
+        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: null, ct, temperature: null);
 
     private async Task<string> SendChatAsync(
         string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
-        string? format, CancellationToken ct)
+        string? format, CancellationToken ct, float? temperature = null)
     {
         var messages = new List<object>
         {
@@ -60,9 +60,17 @@ public class OllamaClient : IOllamaClient
 
         // keep_alive controls how long the model stays loaded in VRAM after this request.
         // 5 minutes keeps the model warm between cognitive cycles without squatting on VRAM forever.
-        object request = format is not null
-            ? new { model, messages, stream = false, format, keep_alive = "5m" }
-            : new { model, messages, stream = false, keep_alive = "5m" };
+        // AC4: Temperature splitting — when provided, override Ollama's default (0.8).
+        // Lower temperature for memory-grounded responses reduces confabulation.
+        object request;
+        if (format is not null && temperature.HasValue)
+            request = new { model, messages, stream = false, format, keep_alive = "5m", options = new { temperature = temperature.Value } };
+        else if (format is not null)
+            request = new { model, messages, stream = false, format, keep_alive = "5m" };
+        else if (temperature.HasValue)
+            request = new { model, messages, stream = false, keep_alive = "5m", options = new { temperature = temperature.Value } };
+        else
+            request = new { model, messages, stream = false, keep_alive = "5m" };
 
         var response = await _http.PostAsJsonAsync(
             "/api/chat", request, JsonOpts, ct).ConfigureAwait(false);

@@ -98,4 +98,11 @@ public class ContextSnapshot
     /// on the current topic rather than contaminated context. Injected into reply prompt.
     /// </summary>
     public List<string> ContradictionWarnings { get; set; } = new();
+
+    /// <summary>
+    /// AC1: True when no retrieved memory exceeded the cosine similarity confidence floor.
+    /// Signals to prompt builders that no relevant memories exist — they should inject
+    /// an explicit null-result instruction (AC3) rather than leaving context ambiguously empty.
+    /// </summary>
+    public bool RetrievalBelowConfidenceFloor { get; set; }
 }

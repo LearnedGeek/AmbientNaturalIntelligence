@@ -61,6 +61,13 @@ public class AniOptions
     public double RetrievalWeightRecency    { get; set; } = 0.2;
     public double RetrievalRecencyDecayHours { get; set; } = 168.0; // λ for e^(-t/λ), ~7 day half-life
 
+    // AC1: Retrieval confidence thresholding — minimum cosine similarity for a memory
+    // to be considered relevant. Below this, the memory is filtered out and the model
+    // is told explicitly that no relevant memories exist (AC3: null-result injection).
+    // Uses cosine similarity (not composite score) because composite can be inflated
+    // by importance/recency of semantically unrelated memories.
+    public double RetrievalConfidenceFloor  { get; set; } = 0.55;
+
     // Conversation mode — active back-and-forth with Mark
     public double ConversationHeartbeatSeconds  { get; set; } = 45.0;
     public double ConversationTimeoutMinutes    { get; set; } = 15.0;
@@ -112,6 +119,12 @@ public class OllamaOptions
     public string ChatModel            { get; set; } = "llama3.2";
     public string? InnerMonologueModel { get; set; }
     public string EmbedModel           { get; set; } = "nomic-embed-text";
+
+    // AC4: Temperature splitting — lower temperature for memory-grounded responses
+    // (factual recall, past conversations) to reduce confabulation. Standard temperature
+    // for creative/emotional expression (playful banter, inner thoughts).
+    public float MemoryGroundedTemperature { get; set; } = 0.3f;
+    public float CreativeTemperature       { get; set; } = 0.8f;
 
     public string ResolvedInnerMonologueModel => InnerMonologueModel ?? ChatModel;
 }

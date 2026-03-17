@@ -569,6 +569,14 @@ public static class PromptBuilder
             sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
         }
 
+        // AC3: Explicit null-result injection — when no memories exceeded the confidence
+        // floor, tell the model explicitly rather than leaving context ambiguously empty.
+        // This converts silence from the retrieval layer into an unambiguous signal.
+        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0)
+        {
+            sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you have no memory of, say so honestly — \"I don't think we've talked about that\" or \"hmm, remind me?\" is always the right answer when you don't have a memory. Do NOT invent or guess at past conversations.)");
+        }
+
         if (snapshot.Perceptions.Count > 0)
         {
             var relevant = snapshot.Perceptions
@@ -697,6 +705,12 @@ public static class PromptBuilder
         {
             sections.Add("Things connected to this conversation:");
             sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+        }
+
+        // AC3: Null-result injection for voice
+        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0)
+        {
+            sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you don't remember, be honest — \"I don't think we've talked about that\" is better than guessing.)");
         }
 
         if (snapshot.IsWithdrawn)
@@ -872,6 +886,13 @@ public static class PromptBuilder
                 sections.Add($"\nMessages you already sent recently (do NOT repeat these topics or phrases):");
                 sections.AddRange(recentOutreach.Select(m => $"  - {m.Content[outreachPrefix.Length..].Trim()}"));
             }
+        }
+
+        // AC3: Null-result injection for outreach — when no specific memories were retrieved
+        // above the confidence floor, steer toward honest feeling instead of fabricated callbacks.
+        if (snapshot.RetrievalBelowConfidenceFloor)
+        {
+            sections.Add($"\n(IMPORTANT: No specific memories were retrieved for this outreach. Do NOT reference shared experiences or past conversations — lead with honest feeling instead: \"been thinking about you\" or \"miss you tonight\" is always better than a fabricated callback.)");
         }
 
         sections.Add($"\nNow write a normal, grounded text to {contact} — something they'd smile at and reply to:");

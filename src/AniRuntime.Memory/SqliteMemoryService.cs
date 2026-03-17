@@ -236,6 +236,60 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         return ranked.Select(x => x.record);
     }
 
+    public async Task<IEnumerable<ScoredMemory>> SearchWithScoresAsync(
+        string query, int topK = 10, CancellationToken ct = default)
+    {
+        if (_ollama is null)
+        {
+            _log.LogDebug("Scored search unavailable (no embedding client) — returning empty");
+            return Enumerable.Empty<ScoredMemory>();
+        }
+
+        float[] queryEmbedding;
+        try
+        {
+            queryEmbedding = await _ollama.EmbedAsync(query, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to embed search query for scored search — returning empty");
+            return Enumerable.Empty<ScoredMemory>();
+        }
+
+        if (queryEmbedding.Length == 0)
+            return Enumerable.Empty<ScoredMemory>();
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL";
+
+        var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+
+        var ranked = candidates
+            .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
+            .Select(r =>
+            {
+                var cosine = CosineSimilarity(queryEmbedding, r.Embedding!);
+                var composite = ComputeRetrievalScore(queryEmbedding, r);
+                return new ScoredMemory(r, composite, cosine);
+            })
+            .OrderByDescending(x => x.CompositeScore)
+            .Take(topK)
+            .ToList();
+
+        if (ranked.Count > 0)
+        {
+            var top = ranked[0];
+            _log.LogDebug(
+                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}): {Content}",
+                candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Type,
+                top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
+        }
+
+        return ranked;
+    }
+
     public async Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(
         string query, MemoryType type, int topK = 5, CancellationToken ct = default)
     {

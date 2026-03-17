@@ -23,6 +23,7 @@ public class ConversationReplyPhase
     private readonly EmotionalProcessor _emotional;
     private readonly ContextBuilder _contextBuilder;
     private readonly AniOptions _aniOptions;
+    private readonly OllamaOptions _ollamaOptions;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -46,6 +47,7 @@ public class ConversationReplyPhase
         EmotionalProcessor emotional,
         ContextBuilder contextBuilder,
         IOptions<AniOptions> aniOptions,
+        IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log)
     {
         _memory = memory;
@@ -56,6 +58,7 @@ public class ConversationReplyPhase
         _emotional = emotional;
         _contextBuilder = contextBuilder;
         _aniOptions = aniOptions.Value;
+        _ollamaOptions = ollamaOptions.Value;
         _log = log;
     }
 
@@ -85,10 +88,36 @@ public class ConversationReplyPhase
         var snapshot = await _contextBuilder.BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
         // Re-search relevant memories using Mark's actual message, not the perception queue.
+        // AC1: Use scored search to apply confidence thresholding on cosine similarity.
         try
         {
-            var messageSearchResults = await _memory.SearchAsync(lastMessage, 5, ct).ConfigureAwait(false);
-            var messageRelevant = messageSearchResults.ToList();
+            var scoredResults = await _memory.SearchWithScoresAsync(lastMessage, 5, ct).ConfigureAwait(false);
+            var scoredList = scoredResults.ToList();
+            var confidenceFloor = (float)_aniOptions.RetrievalConfidenceFloor;
+
+            // AC1: Filter out memories below the cosine similarity confidence floor.
+            // Low-cosine matches are the primary driver of confabulation — the model
+            // over-generalizes from semantically unrelated memories that happen to be
+            // important or recent.
+            var aboveFloor = scoredList.Where(s => s.CosineSimilarity >= confidenceFloor).ToList();
+            var belowFloor = scoredList.Count - aboveFloor.Count;
+
+            if (belowFloor > 0)
+            {
+                _log.LogDebug("AC1: Filtered {Filtered} memories below confidence floor {Floor:F2} (kept {Kept})",
+                    belowFloor, confidenceFloor, aboveFloor.Count);
+            }
+
+            // AC1 + AC3: If ALL results fell below the floor, set the flag so prompt builders
+            // inject an explicit null-result instruction instead of leaving context ambiguously empty.
+            if (aboveFloor.Count == 0 && scoredList.Count > 0)
+            {
+                snapshot.RetrievalBelowConfidenceFloor = true;
+                _log.LogInformation("AC1: All {Total} retrieved memories below confidence floor {Floor:F2} — null-result flag set",
+                    scoredList.Count, confidenceFloor);
+            }
+
+            var messageRelevant = aboveFloor.Select(s => s.Record).ToList();
 
             // Filter out:
             // 1. The inbound message itself (just saved, would echo back as context)
@@ -107,7 +136,8 @@ public class ConversationReplyPhase
                 .ConfigureAwait(false);
 
             snapshot.RelevantMemory = messageRelevant;
-            _log.LogDebug("Conversation context: re-searched with message text, {Count} relevant memories", messageRelevant.Count);
+            _log.LogDebug("Conversation context: re-searched with message text, {Count} relevant memories (confidence floor={Floor:F2})",
+                messageRelevant.Count, confidenceFloor);
         }
         catch (Exception ex)
         {
@@ -241,11 +271,19 @@ public class ConversationReplyPhase
         }
 
         // Step 2: Generate reply (free text, using conversation model)
+        // AC4: Temperature splitting — use lower temperature when memories are grounded
+        // (reduces confabulation on factual claims) vs standard for creative expression.
+        var hasGroundedMemories = snapshot.RelevantMemory.Count > 0 && !snapshot.RetrievalBelowConfidenceFloor;
+        var replyTemperature = hasGroundedMemories
+            ? _ollamaOptions.MemoryGroundedTemperature
+            : _ollamaOptions.CreativeTemperature;
+        _log.LogDebug("AC4: Temperature={Temperature:F1} (grounded={Grounded})", replyTemperature, hasGroundedMemories);
+
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
             : PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
         var reply = await _ollama.ChatAsync(
-            replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct)
+            replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct, replyTemperature)
             .ConfigureAwait(false);
 
         reply = CleanOutreachMessage(reply);
@@ -255,6 +293,40 @@ public class ConversationReplyPhase
         {
             _log.LogWarning("Conversation reply was empty — skipping");
             return;
+        }
+
+        // AC2: Source attribution verification — if Ani's reply references past conversations
+        // or shared experiences, verify those claims against actually-retrieved memories.
+        // Ungrounded memory claims are the most dangerous form of confabulation.
+        if (ContainsMemoryClaimInOutput(reply) && snapshot.RelevantMemory.Count == 0)
+        {
+            _log.LogWarning("AC2: Reply contains memory claims but no memories were retrieved — re-generating with grounding");
+            var cs2 = snapshot.CharacterState;
+            var contact2 = cs2.PrimaryContactName ?? "Mark";
+            var cleanSystem = $"""
+                You are {cs2.Name}. You are in a warm, established relationship with {contact2}.
+                Your personality: {string.Join("; ", cs2.CoreTraits)}.
+
+                RULES:
+                - Respond naturally to what they just said. This is a real conversation.
+                - 1-3 sentences max. Thumb-typed phone text.
+                - You have NO memory of past conversations about this topic. That's okay.
+                - Be honest — "I don't think we've talked about that" or "wait, tell me more" is warm and real.
+                - Do NOT say "remember when" or "you told me about" — you don't have that memory.
+                - Do NOT invent details, do NOT narrate what they did, do NOT use third person.
+                - Write ONLY the text message. No commentary, no quotation marks.
+                """;
+            var cleanUser = $"They just said: \"{lastMessage}\"";
+            var retryReply = await _ollama.ChatAsync(
+                cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct,
+                _ollamaOptions.MemoryGroundedTemperature).ConfigureAwait(false);
+            retryReply = CleanOutreachMessage(retryReply);
+
+            if (!string.IsNullOrWhiteSpace(retryReply))
+            {
+                _log.LogInformation("AC2: Re-generated without memory claims: {Reply}", retryReply);
+                reply = retryReply;
+            }
         }
 
         // Echo guard: if the reply is nearly identical to something already in the thread
@@ -563,6 +635,33 @@ public class ConversationReplyPhase
             "we talked about", "we discussed", "you brought up",
             "you called me", "you texted me", "earlier you",
             "yesterday you", "the other day you",
+        ];
+
+        foreach (var pattern in patterns)
+        {
+            if (lower.Contains(pattern))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// AC2: Detects whether Ani's reply output contains claims about past conversations
+    /// or shared experiences. These are first-person memory claims where Ani asserts she
+    /// remembers something — the most dangerous form of confabulation when ungrounded.
+    /// </summary>
+    internal static bool ContainsMemoryClaimInOutput(string reply)
+    {
+        var lower = reply.ToLowerInvariant();
+
+        string[] patterns =
+        [
+            "remember when we", "remember that time", "you told me about",
+            "last time we talked", "we were talking about", "you mentioned",
+            "that time you", "didn't you tell me", "you said something about",
+            "we talked about this", "i remember you", "you brought up",
+            "when you told me", "you were saying",
         ];
 
         foreach (var pattern in patterns)
