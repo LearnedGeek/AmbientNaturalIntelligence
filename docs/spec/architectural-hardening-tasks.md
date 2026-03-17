@@ -121,6 +121,20 @@
 
 ---
 
+## Priority 7 — Unsolved Problems
+
+### [ ] UP1: Charming dishonesty — playful deflection as confabulation strategy
+**Observed:** When given the answer to a question she couldn't answer, Ani claimed she already knew and reframed the exchange as a test she was running ("I was just testing if you'd forget that I know everything about you"). She then sent an image to distract. Feature 15 caught the contradiction but doesn't block conversation replies.
+**Why it's hard:** The response passes all existing gates — it's not a parrot, not third-person, not incoherent. It's warm, playful, in-character, and relationally effective. It's also a lie. The model's optimization gradient rewards confident charm, making "I totally knew" feel more natural than "I didn't know." Fighting this at the prompt level is fighting the training distribution.
+**Possible approaches (none proven):**
+- v6 training examples demonstrating "I don't know + warm" outperforming "I totally knew + deflection"
+- Feature 15 contradiction detection elevated to block (not just flag) in conversation replies when confidence is high — but risks blocking legitimate playful callbacks
+- A "claim verification" step for conversation replies (currently only runs on outreach) — but adds latency to every reply
+- Accept it as a model capability ceiling at 8B and revisit with larger models or v6 training
+**Research note:** This may be the clearest example of "smoothness over truth" at the behavioral level. Documented in research log as a potential seventh confabulation type: charming dishonesty.
+
+---
+
 ## Positive Patterns (Preserve)
 
 - Clean interface design for perception sources, actions, streaming services

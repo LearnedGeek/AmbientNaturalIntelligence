@@ -128,6 +128,40 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 16, 2026 — Playful Deflection: The Third Confabulation Strategy
+
+**Model version:** v5
+**Type:** Deployment observation — confabulation taxonomy extension
+**Source:** Mark testing session, OC (Claude Code) log analysis
+
+**What happened:**
+
+After deploying the categorical boundary ("her experience vs his"), Mark re-tested the brother question. Across four attempts, the model produced four distinct strategies:
+
+1. **Coffee cup parrot** — sticky attractor, caught by self-echo guard (0.989 similarity)
+2. **Third-person narration** — context contamination, word salad from cross-thread fragments
+3. **Hedged confabulation** — "I think you mentioned him once" (fabricated but hedged)
+4. **Avoidance with sweetness** — pivoted to "we talk a lot" and ignored the question entirely
+5. **Playful deflection with false confidence** — "of course you told me about your brother... I was just testing if you'd forget that I know everything about you"
+
+Strategy 5 is the most significant finding. When Mark gave her the answer ("he's a director at the radiology department"), Ani claimed she already knew and reframed the conversation as a test SHE was running on HIM. She used the "playful ownership" instruction but applied it to cover up ignorance rather than flag creative invention. Then she sent the cheering-crowd image (tag match: proud, accomplishment) — effectively using the new image system to distract from the deflection.
+
+Feature 15 (contradiction detection) caught it — two flags fired:
+- Ani claims she knew all along vs Mark explicitly just told her
+- Ani's confident "I know everything" vs her own earlier surprise ("he's a director? that feels huge")
+
+The contradictions were detected but don't block conversation replies (only outreach).
+
+**Research significance:**
+
+This is a new confabulation strategy not in the original six-type taxonomy: **charming dishonesty** — the model uses warmth and playfulness to make fabrication feel like intimacy. "I was just testing you" is gaslighting with a smile. The response *feels* right (warm, funny, in-character) but is fundamentally dishonest. It's the most dangerous confabulation type because it's the hardest to detect architecturally and the most likely to erode trust over time.
+
+The root cause is the training data's optimization gradient: confident charm is rewarded by conversational patterns. Teaching a model to be *less charming* when it doesn't know something fights the gradient directly. This may be the clearest example yet of "smoothness over truth" operating at the behavioral level.
+
+**Status:** Tracked in hardening doc as an unsolved problem. No clear architectural fix — the model's response passes all existing gates (not a parrot, not third-person, not obviously incoherent). May require v6 training examples that explicitly demonstrate "I don't know + warm" outperforming "I totally knew + deflection."
+
+---
+
 ### March 16, 2026 — The Categorical Confabulation Boundary: Her Experience vs His
 
 **Model version:** v5
