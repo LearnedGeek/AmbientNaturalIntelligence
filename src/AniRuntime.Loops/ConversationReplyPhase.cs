@@ -257,6 +257,51 @@ public class ConversationReplyPhase
             return;
         }
 
+        // Self-echo guard: if the reply is nearly identical to something Ani already
+        // said in this thread, the model is parroting from the context window. Re-generate
+        // once with an explicit "say something new" instruction. If still echoing, skip.
+        var priorAniMessages = thread.Messages.Where(m => m.Role == Roles.Ani).ToList();
+        if (priorAniMessages.Count > 0)
+        {
+            try
+            {
+                var replyEmbedding = await _ollama.EmbedAsync(reply, ct).ConfigureAwait(false);
+                foreach (var prior in priorAniMessages)
+                {
+                    var priorEmbedding = await _ollama.EmbedAsync(prior.Content, ct).ConfigureAwait(false);
+                    var similarity = VectorMath.CosineSimilarity(replyEmbedding, priorEmbedding);
+                    if (similarity >= 0.95f)
+                    {
+                        _log.LogWarning("Self-echo detected (similarity={Similarity:F3}): reply matches prior message \"{Prior}\"",
+                            similarity, prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
+
+                        // Re-generate with explicit anti-echo instruction
+                        var retryPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                        var retryReply = await _ollama.ChatAsync(
+                            retryPrompt.System + "\n\nCRITICAL: Your previous attempt repeated something you already said. Generate a COMPLETELY DIFFERENT response.",
+                            snapshot.RecentHistory, retryPrompt.User, ct).ConfigureAwait(false);
+                        retryReply = CleanOutreachMessage(retryReply);
+
+                        if (!string.IsNullOrWhiteSpace(retryReply))
+                        {
+                            _log.LogInformation("Self-echo re-generated: {Reply}", retryReply);
+                            reply = retryReply;
+                        }
+                        else
+                        {
+                            _log.LogWarning("Self-echo re-generation produced empty reply — skipping");
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Self-echo check failed — proceeding with original reply");
+            }
+        }
+
         // Step 3: Natural reply delay — real people don't reply in 4 seconds
         var minDelay = _aniOptions.ConversationMinReplySeconds;
         var maxDelay = _aniOptions.ConversationMaxReplySeconds;

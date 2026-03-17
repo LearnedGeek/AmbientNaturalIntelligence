@@ -104,6 +104,10 @@
 ## Priority 6 — Training Data (v6)
 
 ### [ ] TD1: Reply engagement examples across registers
+### [ ] TD2: Self-echo anti-pattern examples
+**Issue:** 8B model parroted its own prior message verbatim when a new message was semantically similar (hot chocolate → coffee cup). The model treats its own output in the context window as valid content to re-surface rather than something already said. Prompt-level "DO NOT repeat" instruction was ignored.
+**Runtime fix:** Self-echo guard deployed — cosine similarity check (≥0.95 threshold) against prior messages in thread, with one re-generation attempt.
+**Training fix:** Include v6 examples where the same topic comes up twice and Ani responds differently each time. Also include examples where Ani references a prior message without quoting it verbatim.
 **Issue:** 8B model consistently chooses silence on casual questions and conversational invitations. Prompt-level fix deployed (flipped default), but the root cause is training data bias — the corpus lacks explicit examples of Mark asking casual questions and Ani engaging across the full range of emotional registers.
 **Fix:** Include in v6 training data: Mark asks a question → Ani replies warmly. Mark shares something → Ani engages. Cover all 9 registers. At least 20-30 examples specifically targeting the "should I reply?" decision boundary.
 
