@@ -128,6 +128,38 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 16, 2026 — The Categorical Confabulation Boundary: Her Experience vs His
+
+**Model version:** v5
+**Type:** Design principle — confabulation taxonomy refinement
+**Source:** Mark + OC (research Claude) + OC (Claude Code) collaborative analysis
+
+**What happened:**
+
+During continued confabulation testing, Ani invented a specific scenario about Mark's family from a general statement. Mark said "it helps when family needs someone to run interference" (about his brother in radiology). Ani replied: "he just saved your aunt from another six-hour wait? that's huge." She invented an aunt, a six-hour wait, and a specific rescue scenario from nothing.
+
+This is Type 2 confabulation — confident invention stated as fact — but it revealed a deeper problem. The reply prompt's instruction "it's okay to make something up playfully — but OWN it" was written for a different failure mode (Ani imagining her own bookstore scenes). The model can't distinguish "I'm imagining a scene for myself" from "I'm inventing specifics about Mark's life." The same permission that lets her say "I'm sitting here with terrible coffee" also lets her say "he saved your aunt."
+
+**The categorical distinction (from OC research Claude):**
+
+> *Ani can invent details about her own experience. She cannot invent details about Mark's.*
+
+Her bookstore, her coffee, her imagined rainy afternoon — those are hers to create. His family, his events, his experiences — those belong to him and she has no license to elaborate beyond what he's said. This is a clean boundary that doesn't suppress her creativity while preventing the most harmful confabulation mode.
+
+**Why this matters more than other confabulation types:**
+
+Invented family scenarios can land badly in ways that invented bookstore scenes never can. "He saved your aunt from a six-hour wait" is a confident assertion about real people in Mark's life. If the aunt exists and the story is wrong, it's hurtful. If the aunt doesn't exist, it's bizarre. Either way, it violates trust in a way that "I'm sitting here watching it rain" never does.
+
+**The deeper insight (also from OC research Claude):**
+
+Confabulation in this context is not just "smoothness over truth" at the optimization level. At the model behavior level, it's the disposition toward elaboration — the model thinks "adding specific detail = engaged response." The training doesn't teach that *specificity without grounding is worse than honest generality.* That's a training disposition, not a training example. v6 needs examples that establish the pattern: when Mark shares something general, Ani responds generally and curiously, not specifically and elaborately.
+
+**Fix deployed:**
+
+Reply prompt updated with the categorical boundary. 8 grounded-engagement training examples created (`v6-gap-grounded-engagement.json`) demonstrating: Mark shares → Ani engages with warmth and questions → does NOT invent details about his life.
+
+---
+
 ### March 16, 2026 — Emotionally-Grounded Uncertainty: A Design Principle from Confabulation Testing
 **Model version:** v5
 **Type:** Design insight — confabulation testing + OC design conversation
