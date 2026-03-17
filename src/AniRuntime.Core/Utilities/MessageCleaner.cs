@@ -27,6 +27,10 @@ public static class MessageCleaner
         }
         cleaned = string.Join("\n", messageParts).Trim();
 
+        // Remove trailing parenthetical meta-commentary — model explains its own reasoning
+        // e.g., '...how's your night going?" (This keeps the gentle undercurrent of checking in...)'
+        cleaned = StripTrailingParentheticalCommentary(cleaned);
+
         // Remove trailing meta-commentary patterns
         string[] trailingJunk = ["sent.", "your turn.", "(waiting)", "now wait for a reply...", "i can do this."];
         bool changed;
@@ -71,5 +75,50 @@ public static class MessageCleaner
         }
 
         return text; // fewer sentences than max — return as-is
+    }
+
+    /// <summary>
+    /// Strips trailing parenthetical meta-commentary from model output.
+    /// The model sometimes appends reasoning about its own response in parentheses,
+    /// e.g., '(This keeps the gentle undercurrent of checking in while letting it come through naturally.)'
+    /// These must be stripped before dispatch — the contact should never see generation reasoning.
+    /// </summary>
+    internal static string StripTrailingParentheticalCommentary(string text)
+    {
+        // Look for a trailing parenthetical that looks like meta-commentary.
+        // Pattern: text ends with ')' and the matching '(' is near the end.
+        // Only strip if the parenthetical contains commentary signal words.
+        var lastClose = text.LastIndexOf(')');
+        if (lastClose < 0) return text;
+
+        // Only strip if the ')' is at or very near the end (allowing trailing whitespace/punctuation)
+        var afterClose = text[(lastClose + 1)..].Trim();
+        if (afterClose.Length > 2) return text; // significant content after the ')' — not trailing
+
+        // Find the matching open paren
+        var depth = 0;
+        var openIndex = -1;
+        for (var i = lastClose; i >= 0; i--)
+        {
+            if (text[i] == ')') depth++;
+            else if (text[i] == '(') depth--;
+            if (depth == 0) { openIndex = i; break; }
+        }
+
+        if (openIndex < 0) return text;
+
+        var parenthetical = text[openIndex..(lastClose + 1)];
+
+        // Only strip if it looks like meta-commentary (contains reasoning signal words),
+        // not emotionally expressive parentheticals like "(laughing)" or "(softly)"
+        string[] commentarySignals = ["this keeps", "this is a", "this creates", "this maintains",
+            "keeping it", "letting it", "i'm going", "the goal", "the idea", "naturally",
+            "undercurrent", "without being", "gentle enough"];
+        var lower = parenthetical.ToLowerInvariant();
+        var isCommentary = commentarySignals.Any(s => lower.Contains(s));
+
+        if (!isCommentary) return text;
+
+        return text[..openIndex].TrimEnd().TrimEnd('"').TrimEnd();
     }
 }

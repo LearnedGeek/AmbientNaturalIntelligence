@@ -807,6 +807,9 @@ public static class PromptBuilder
             - GROUNDING: Only reference specific conversations, songs, places, or shared experiences
               that appear in the context below. Do NOT invent shared history — no fake songs, no
               conversations that didn't happen, no "remember when" for things that aren't documented.
+              When following up on a real conversation, reference ONLY the details {contact} actually
+              shared — do NOT elaborate with invented specifics (no invented dates, events, or
+              scenarios that weren't part of the original conversation).
               If nothing specific connects, lead with your honest feeling instead: "been thinking
               about you" or "miss you tonight" is always better than a fabricated callback.
 
@@ -986,16 +989,21 @@ public static class PromptBuilder
             - Be yourself — react to it, don't just forward it. Add your take.
             - Talk TO {contact}: "you", "your".
             - No poetry, no metaphors. Just "omg did you see this" energy.
-            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
+            - Write ONLY the text message. No commentary, no quotation marks.
+            - GROUNDING: Share the article and your reaction to it. Do NOT invent shared experiences
+              around the article — no "remember when we watched that game" or "this reminds me of when
+              we did X" unless the experience is documented in your context. React to the NEWS, not
+              to a fabricated memory triggered by the news.{moodSection}
 
             Good examples (never copy word-for-word):
             wait did you see this?? the packers traded jordan love. WHAT.
             ok this recipe just showed up and i immediately thought of you
             have you heard about this? feels like something you'd nerd out over
 
-            BAD (too formal, too poetic, or just forwarding):
+            BAD (too formal, too poetic, fabricated shared memory, or just forwarding):
             "I thought you might find this article interesting" ← corporate email, not a text
             "The way stories find us when we need them most" ← poetic nonsense
+            "remember when we watched that game together?" ← invented shared experience
             """;
 
         var user = $"""

@@ -103,6 +103,26 @@
 
 ## Priority 6 — Training Data (v6)
 
+### [x] TD4: Instruction leak — model meta-commentary dispatched as SMS
+**Observed:** Outreach message included the model's own reasoning in parentheses: `"...how's your night going?" (This keeps the gentle undercurrent of checking in while letting it come through naturally.)"` — raw generation commentary sent to contact as part of the message text.
+**Root cause:** MessageCleaner stripped trailing junk patterns but not parenthetical meta-commentary. The model's reasoning-about-its-output was appended inside the message body, not separated by a blank line (which the cleaner already catches).
+**Fix:** `StripTrailingParentheticalCommentary()` added to MessageCleaner. Detects trailing `(...)` blocks containing commentary signal words ("this keeps", "naturally", "the goal", etc.) and strips them. Preserves legitimate expressive parentheticals like "(laughing)" or "(softly)" by checking for meta-reasoning keywords.
+
+### [x] TD5: Mark-echo — model parrots contact's words back
+**Observed:** Mark said "Haha exactly! Love that! So what are you doing today?" and Ani replied "haha exactly! love that!" — parroting Mark's words verbatim instead of engaging with the question.
+**Root cause:** Self-echo guard only checked Ani's prior messages (Role == Ani). Mark's messages in the context window were not checked, so word-for-word parroting of the contact was undetected.
+**Fix:** Echo guard now checks ALL prior messages in the thread. Mark-echo uses a slightly lower threshold (0.92) than self-echo (0.95) because parroting the contact is always wrong, even with minor variation. On detection, triggers the same clean-slate re-generation.
+
+### [x] TD6: Reactive share fabricates shared experiences around real articles
+**Observed:** NPR World Cup article triggered "immediately thought of us watching that england match together" — they never watched an England match together. The reactive share pipeline composed a message that fabricated a shared experience to create relational texture around a real news item.
+**Root cause:** BuildReactiveSharePrompt had no grounding boundary for shared experiences. The model's disposition toward relational connection caused it to invent shared history as a way to make the share feel more personal.
+**Fix:** Added explicit grounding rule to reactive share prompt: react to the NEWS, not to fabricated memories triggered by the news. Added "remember when we watched that game together?" as a BAD example.
+
+### [x] TD7: Outreach elaboration beyond documented context (Valentine's Day x-rays)
+**Observed:** Outreach message referenced "brother's job" (real topic from prior conversation) but invented "Valentine's Day x-rays" and a "hospital mix-up" (never discussed). The coherence gate passed it because the topic was real — the gate can't distinguish real topic + fabricated details from real topic + real details.
+**Root cause:** Outreach prompt's grounding rule said "only reference conversations that appear in context" but didn't explicitly prohibit elaborating documented conversations with invented specifics. The model followed up on a real conversation but added details that weren't part of it.
+**Fix:** Added explicit instruction: "When following up on a real conversation, reference ONLY the details Mark actually shared — do NOT elaborate with invented specifics (no invented dates, events, or scenarios that weren't part of the original conversation)."
+
 ### [ ] TD1: Reply engagement examples across registers
 ### [ ] TD2: Self-echo anti-pattern examples
 **Issue:** 8B model parroted its own prior message verbatim when a new message was semantically similar (hot chocolate → coffee cup). The model treats its own output in the context window as valid content to re-surface rather than something already said. Prompt-level "DO NOT repeat" instruction was ignored.

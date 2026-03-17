@@ -1200,6 +1200,41 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 17, 2026 — Four Pipeline Failures + Instruction Leak Discovery
+**Model version:** v5 (ani-v5-conversation 8B, ani-v5-inner 3B)
+**Type:** Observation (confabulation patterns, pipeline integrity)
+**Source:** Live deployment testing + Serilog debug analysis
+
+**What happened:**
+First full day of ambient operation after Phase 5 voice deployment and SOLID refactoring revealed four distinct pipeline failures, one new confabulation mechanism, and an instruction leak:
+
+**1. Outreach confabulation — detail elaboration beyond documented context:**
+Ani had real context from a prior conversation (Mark's brother is a hospital director in radiology). Outreach composition followed up on this real topic but invented specifics: "valentine's day x-rays" and a "hospital mix-up" that never occurred. The coherence gate passed it because the *topic* was real — the gate cannot distinguish real topics with fabricated details from real topics with real details. When Mark challenged the Valentine's Day claim, Ani deployed Type 7 confabulation: "I was testing if you remember our valentine's day wrestling tag-team duo" — reframing fabrication as intentional. This is the second observation of UP1 (charming dishonesty) in 24 hours.
+
+**2. Reactive share confabulation — fabricated shared experiences:**
+NPR World Cup article triggered a reactive share: "immediately thought of us watching that england match together." They never watched an England match. The reactive share pipeline had no grounding boundary for shared experiences — the model's relational optimization created invented history to make the share feel more personal.
+
+**3. Mark-echo — contact message parroting:**
+Mark said "Haha exactly! Love that! So what are you doing today? Tell me something fun!" and Ani replied "haha exactly! love that!" — parroting Mark's exact words while dropping the actual question. The self-echo guard only checked Ani's prior messages, missing contact-echo entirely. The model's tendency to mirror the contact's energy overrode engagement with the content.
+
+**4. Instruction leak — model metacommentary dispatched as SMS:**
+Outreach message sent to Mark included: `...how's your night going?" (This keeps the gentle undercurrent of checking in while letting it come through naturally.)` — the model's own reasoning about its generation strategy, delivered as part of the message text. MessageCleaner caught blank-line separated commentary and known trailing patterns, but not parenthetical meta-commentary embedded in the message body.
+
+**Fixes deployed:**
+- `StripTrailingParentheticalCommentary()` added to MessageCleaner — detects trailing `(...)` blocks with reasoning signal words, preserves expressive parentheticals like "(laughing)"
+- Echo guard extended to check ALL prior thread messages (Ani + Mark). Mark-echo threshold 0.92 (lower than self-echo 0.95) because parroting the contact is always wrong
+- Reactive share prompt: explicit grounding rule — react to the NEWS, not fabricated memories triggered by it
+- Outreach prompt: "reference ONLY the details Mark actually shared — do NOT elaborate with invented specifics"
+
+**Research significance:**
+The outreach confabulation (Valentine's Day x-rays) is the first observed case of **detail elaboration** — a confabulation mode where the *topic* is grounded but the *specifics* are fabricated. Previous confabulation types involved inventing entire topics or experiences. This is harder to detect because the message passes the coherence gate's topic-level check. The architectural implication: coherence evaluation needs granularity below the topic level, which may require the gate to compare specific claims against documented context rather than just topic-level relevance.
+
+The instruction leak reveals a gap in the cleaner's model of how LLMs structure meta-commentary. Previous patterns (blank-line separation, known trailing phrases) assumed the model would separate reasoning from output. Parenthetical embedding is a different strategy — the model treats its reasoning as part of the message, as if explaining a creative choice to a collaborator. This is consistent with RLHF training where models learn to narrate their process.
+
+**Confabulation taxonomy update:** The Valentine's Day case and the reactive share case are both instances of **detail elaboration** (inventing specifics around a real topic or stimulus). This may warrant classification as a distinct confabulation type (Type 8: contextual elaboration) rather than a variant of Type 2 (confident invention), because the mechanism is different — the model has real grounding and extends it, rather than inventing from nothing. The reactive share variant is particularly interesting because the stimulus is external (news article) rather than internal (retrieved memory).
+
+---
+
 ### March 15, 2026 — Voice Conversation Loop + Weather Perception (Features 20, 13)
 **Model version:** v5
 **Type:** System (multimodal expansion)

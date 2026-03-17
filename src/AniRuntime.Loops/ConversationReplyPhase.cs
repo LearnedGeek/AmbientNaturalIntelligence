@@ -257,23 +257,31 @@ public class ConversationReplyPhase
             return;
         }
 
-        // Self-echo guard: if the reply is nearly identical to something Ani already
-        // said in this thread, the model is parroting from the context window. Re-generate
-        // once with an explicit "say something new" instruction. If still echoing, skip.
-        var priorAniMessages = thread.Messages.Where(m => m.Role == Roles.Ani).ToList();
-        if (priorAniMessages.Count > 0)
+        // Echo guard: if the reply is nearly identical to something already in the thread
+        // (Ani's prior messages OR Mark's messages), re-generate with a clean slate.
+        // Self-echo = model parroting its own context window output.
+        // Mark-echo = model parroting the contact's words back instead of engaging.
+        var priorMessages = thread.Messages
+            .Where(m => m != thread.Messages[^1]) // exclude the message we're replying to from Ani-echo check
+            .ToList();
+        if (priorMessages.Count > 0)
         {
             try
             {
                 var replyEmbedding = await _ollama.EmbedAsync(reply, ct).ConfigureAwait(false);
-                foreach (var prior in priorAniMessages)
+                foreach (var prior in priorMessages)
                 {
                     var priorEmbedding = await _ollama.EmbedAsync(prior.Content, ct).ConfigureAwait(false);
                     var similarity = VectorMath.CosineSimilarity(replyEmbedding, priorEmbedding);
-                    if (similarity >= 0.95f)
+
+                    // Mark-echo uses a slightly lower threshold — parroting the contact's
+                    // exact words is always wrong, even with minor variation
+                    var threshold = prior.Role == Roles.Ani ? 0.95f : 0.92f;
+                    if (similarity >= threshold)
                     {
-                        _log.LogWarning("Self-echo detected (similarity={Similarity:F3}): reply matches prior message \"{Prior}\"",
-                            similarity, prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
+                        var echoType = prior.Role == Roles.Ani ? "Self-echo" : "Mark-echo";
+                        _log.LogWarning("{EchoType} detected (similarity={Similarity:F3}): reply matches prior {Role} message \"{Prior}\"",
+                            echoType, similarity, prior.Role, prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
 
                         // Clean-slate re-generation: strip all retrieved context and conversation
                         // history to eliminate context contamination. The model failed because the
@@ -303,12 +311,12 @@ public class ConversationReplyPhase
 
                         if (!string.IsNullOrWhiteSpace(retryReply))
                         {
-                            _log.LogInformation("Self-echo clean-slate re-generated: {Reply}", retryReply);
+                            _log.LogInformation("{EchoType} clean-slate re-generated: {Reply}", echoType, retryReply);
                             reply = retryReply;
                         }
                         else
                         {
-                            _log.LogWarning("Self-echo clean-slate re-generation produced empty reply — skipping");
+                            _log.LogWarning("{EchoType} clean-slate re-generation produced empty reply — skipping", echoType);
                             return;
                         }
                         break;
