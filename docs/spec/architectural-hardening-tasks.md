@@ -145,24 +145,24 @@
 
 *Inspired by medical RAG system design (Infanzia/physician triage). Cross-pollinated from a project where hallucination has liability consequences. These techniques address the same fundamental problem: the model fills retrieval gaps with confident fabrication.*
 
-### [ ] AC1: Retrieval confidence thresholding
+### [x] AC1: Retrieval confidence thresholding
 **Current state:** Three-way memory retrieval (cosine + importance + recency) returns best matches regardless of absolute score. Low-confidence results are still injected into context.
 **Problem:** The model over-generalizes from weak matches. A memory about "truck" with 0.4 similarity gets treated as evidence for a claim about "the truck we talked about." This is Failure Mode 2 from medical RAG: results retrieved but misapplied.
 **Fix:** Add a minimum confidence floor to `ContextBuilder`. If no memory exceeds the threshold for a given query, inject an explicit system message: *"No memories were found related to [topic]. Do not reference past conversations about this subject."* Silence from the retrieval layer is ambiguous — an explicit null signal is not.
 **Tuning:** Threshold needs empirical calibration. Start at 0.65 cosine and adjust based on false-negative rate (legitimate memories rejected) vs false-positive rate (confabulations enabled).
 
-### [ ] AC2: Source attribution enforcement for memory claims
+### [x] AC2: Source attribution enforcement for memory claims
 **Current state:** Coherence gates (Features 27/28) check whether outreach messages are *coherent* — but not whether specific claims map to specific memories.
 **Problem:** "Remember when we talked about your brother's job?" passes coherence if "brother" appears anywhere in context. But the model may have fabricated details about *what* was said. Coherence ≠ grounding.
 **Fix:** When the model references a past conversation or shared experience, require it to cite the memory source. Implementable as a post-generation verification step: parse the response for memory claims ("remember when," "you told me," "last time we talked about"), check each against retrieved memory IDs. If a claim doesn't map to a retrieved memory, flag or regenerate. This is the PMID-citation pattern from medical RAG applied to conversational memory.
 **Scope:** Conversation replies and outreach. Inner monologue is exempt (private thoughts don't need attribution).
 
-### [ ] AC3: Explicit null-result injection
+### [x] AC3: Explicit null-result injection
 **Current state:** When memory retrieval returns nothing relevant, the model receives no memories in context — but isn't told *why* the context is empty.
 **Problem:** The model interprets empty context as "I should fill this gap" rather than "there's nothing here to reference." This is the primary driver of confabulation on unknown topics (see TD3).
 **Fix:** When retrieval returns zero results above the confidence floor (AC1), inject an explicit instruction: *"No relevant memories exist for this topic. If asked about something you have no memory of, say so honestly. Do not invent or guess at past conversations."* This converts ambiguous silence into an unambiguous signal. Complements the clean-slate re-generation already deployed in TD3.
 
-### [ ] AC4: Temperature splitting by response type
+### [x] AC4: Temperature splitting by response type
 **Current state:** Temperature is fixed per model (conversation 8B, inner 3B). All conversation replies use the same temperature regardless of whether the response requires factual recall or creative expression.
 **Problem:** A playful riff and a memory recall require different levels of creative freedom. High temperature aids P/D register diversity but increases confabulation risk on factual claims.
 **Fix:** Detect whether the response requires memory grounding (references to past events, shared experiences, specific facts Mark told her) vs creative/emotional expression (feelings, observations, banter). Use lower temperature (0.2–0.3) for memory-grounded responses, standard temperature for creative/emotional. Detection heuristic: if retrieved memories are injected into context, lower the temperature for that generation.
