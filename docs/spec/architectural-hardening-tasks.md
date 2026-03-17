@@ -110,9 +110,12 @@
 **Training fix:** Include v6 examples where the same topic comes up twice and Ani responds differently each time. Also include examples where Ani references a prior message without quoting it verbatim.
 
 ### [ ] TD3: Confabulation on unknown topics in conversation replies
-**Issue:** When asked "did I tell you about my brother?" (never discussed), model invented context ("he's still out there somewhere") instead of admitting uncertainty. The self-echo guard caught the first attempt (coffee cup parrot, similarity=0.988) and re-generated, but the re-generation confabulated. The v5 `uncertainty-admission` gap files (12 examples) are insufficient — the behavior still leaks through.
-**Runtime fix:** Anti-echo re-generation prompt now explicitly guides toward honest uncertainty ("hmm I don't think you've told me about that" or "wait, tell me more").
-**Training fix:** v6 needs stronger uncertainty-admission examples specifically for the "did I tell you about X?" pattern — the correct response is curiosity ("no, tell me!"), not invention. Include 10+ examples across different topics (family, places, events, memories).
+**Issue:** When asked "did I tell you about my brother?" (never discussed), two failure modes:
+1. First attempt: coffee cup parrot (sticky attractor, caught by self-echo guard at 0.989)
+2. Re-generation: third-person narration + cross-thread contamination ("he just texted 'i've never really read that much about him'") — model stitched fragments from irrelevant retrieved context
+**Root cause:** Context pollution. Retrieval returned the message against itself (0.936) plus fragments from unrelated conversations sharing surface-level tokens. The model drowned in irrelevant signal and produced word salad.
+**Runtime fix:** Clean-slate re-generation (Option C). On self-echo detection, strip ALL retrieved context and conversation history. Give the model only persona grounding + the actual message + permission to be honest. Empty history prevents context contamination. Model still generates — agency preserved.
+**Training fix:** v6 needs honest-uncertainty examples: "I don't think you've mentioned that — tell me about him?" as a warm, curious response. 10+ examples across topics (family, places, events, memories). The correct register is Curiosity (C1), not clinical uncertainty.
 **Issue:** 8B model consistently chooses silence on casual questions and conversational invitations. Prompt-level fix deployed (flipped default), but the root cause is training data bias — the corpus lacks explicit examples of Mark asking casual questions and Ani engaging across the full range of emotional registers.
 **Fix:** Include in v6 training data: Mark asks a question → Ani replies warmly. Mark shares something → Ani engages. Cover all 9 registers. At least 20-30 examples specifically targeting the "should I reply?" decision boundary.
 

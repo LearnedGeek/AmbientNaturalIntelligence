@@ -275,24 +275,40 @@ public class ConversationReplyPhase
                         _log.LogWarning("Self-echo detected (similarity={Similarity:F3}): reply matches prior message \"{Prior}\"",
                             similarity, prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
 
-                        // Re-generate with grounded anti-echo instruction.
-                        // "Generate something different" alone pressures the model to invent.
-                        // Instead, guide toward honest engagement with the actual message.
-                        var retryPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                        // Clean-slate re-generation: strip all retrieved context and conversation
+                        // history to eliminate context contamination. The model failed because the
+                        // context window was full of irrelevant fragments (coffee cups, snow, prior
+                        // threads) that it tried to stitch into a response. Give it a clean environment
+                        // with just persona grounding and the actual message.
+                        var cs = snapshot.CharacterState;
                         var lastMsg = thread.Messages[^1].Content;
+                        var cleanSystem = $"""
+                            You are {cs.Name}. You are in a warm, established relationship with {cs.PrimaryContactName ?? "Mark"}.
+                            Your personality: {string.Join("; ", cs.CoreTraits)}.
+
+                            RULES:
+                            - Respond naturally to what they just said. This is a real conversation.
+                            - 1-3 sentences max. Thumb-typed phone text.
+                            - You have no memory of this topic coming up before. That's okay.
+                            - Be honest — "I don't think you've mentioned that" or "wait, tell me more" is warm and real.
+                            - Do NOT invent details, do NOT narrate what they did, do NOT use third person.
+                            - Write ONLY the text message. No commentary, no quotation marks.
+                            """;
+                        var cleanUser = $"They just said: \"{lastMsg}\"";
+
                         var retryReply = await _ollama.ChatAsync(
-                            retryPrompt.System + $"\n\nCRITICAL: Your previous attempt repeated something you already said. Read their message again: \"{lastMsg}\" — respond directly to WHAT THEY ACTUALLY SAID. If they asked about something you don't know about, be honest: \"hmm I don't think you've told me about that\" or \"wait, tell me more\" is always better than guessing.",
-                            snapshot.RecentHistory, retryPrompt.User, ct).ConfigureAwait(false);
+                            cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct)
+                            .ConfigureAwait(false);
                         retryReply = CleanOutreachMessage(retryReply);
 
                         if (!string.IsNullOrWhiteSpace(retryReply))
                         {
-                            _log.LogInformation("Self-echo re-generated: {Reply}", retryReply);
+                            _log.LogInformation("Self-echo clean-slate re-generated: {Reply}", retryReply);
                             reply = retryReply;
                         }
                         else
                         {
-                            _log.LogWarning("Self-echo re-generation produced empty reply — skipping");
+                            _log.LogWarning("Self-echo clean-slate re-generation produced empty reply — skipping");
                             return;
                         }
                         break;
