@@ -275,10 +275,13 @@ public class ConversationReplyPhase
                         _log.LogWarning("Self-echo detected (similarity={Similarity:F3}): reply matches prior message \"{Prior}\"",
                             similarity, prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
 
-                        // Re-generate with explicit anti-echo instruction
+                        // Re-generate with grounded anti-echo instruction.
+                        // "Generate something different" alone pressures the model to invent.
+                        // Instead, guide toward honest engagement with the actual message.
                         var retryPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                        var lastMsg = thread.Messages[^1].Content;
                         var retryReply = await _ollama.ChatAsync(
-                            retryPrompt.System + "\n\nCRITICAL: Your previous attempt repeated something you already said. Generate a COMPLETELY DIFFERENT response.",
+                            retryPrompt.System + $"\n\nCRITICAL: Your previous attempt repeated something you already said. Read their message again: \"{lastMsg}\" — respond directly to WHAT THEY ACTUALLY SAID. If they asked about something you don't know about, be honest: \"hmm I don't think you've told me about that\" or \"wait, tell me more\" is always better than guessing.",
                             snapshot.RecentHistory, retryPrompt.User, ct).ConfigureAwait(false);
                         retryReply = CleanOutreachMessage(retryReply);
 

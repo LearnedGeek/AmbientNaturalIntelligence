@@ -106,8 +106,13 @@
 ### [ ] TD1: Reply engagement examples across registers
 ### [ ] TD2: Self-echo anti-pattern examples
 **Issue:** 8B model parroted its own prior message verbatim when a new message was semantically similar (hot chocolate → coffee cup). The model treats its own output in the context window as valid content to re-surface rather than something already said. Prompt-level "DO NOT repeat" instruction was ignored.
-**Runtime fix:** Self-echo guard deployed — cosine similarity check (≥0.95 threshold) against prior messages in thread, with one re-generation attempt.
+**Runtime fix:** Self-echo guard deployed — cosine similarity check (≥0.95 threshold) against prior messages in thread, with one re-generation attempt. Re-generation prompt now guides toward honest engagement with the actual message rather than pressuring "generate something different" (which caused confabulation).
 **Training fix:** Include v6 examples where the same topic comes up twice and Ani responds differently each time. Also include examples where Ani references a prior message without quoting it verbatim.
+
+### [ ] TD3: Confabulation on unknown topics in conversation replies
+**Issue:** When asked "did I tell you about my brother?" (never discussed), model invented context ("he's still out there somewhere") instead of admitting uncertainty. The self-echo guard caught the first attempt (coffee cup parrot, similarity=0.988) and re-generated, but the re-generation confabulated. The v5 `uncertainty-admission` gap files (12 examples) are insufficient — the behavior still leaks through.
+**Runtime fix:** Anti-echo re-generation prompt now explicitly guides toward honest uncertainty ("hmm I don't think you've told me about that" or "wait, tell me more").
+**Training fix:** v6 needs stronger uncertainty-admission examples specifically for the "did I tell you about X?" pattern — the correct response is curiosity ("no, tell me!"), not invention. Include 10+ examples across different topics (family, places, events, memories).
 **Issue:** 8B model consistently chooses silence on casual questions and conversational invitations. Prompt-level fix deployed (flipped default), but the root cause is training data bias — the corpus lacks explicit examples of Mark asking casual questions and Ani engaging across the full range of emotional registers.
 **Fix:** Include in v6 training data: Mark asks a question → Ani replies warmly. Mark shares something → Ani engages. Cover all 9 registers. At least 20-30 examples specifically targeting the "should I reply?" decision boundary.
 
