@@ -1,6 +1,7 @@
 using AniRuntime.Actions;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Tests.Infrastructure;
 using FluentAssertions;
@@ -77,9 +78,12 @@ public class CognitiveCycleProcessorTests : AniTestBase
         var contextBuilder = new ContextBuilder(
             MockMemory.Object, MockOllama.Object, desire, DefaultOptions,
             NullLogger<ContextBuilder>.Instance);
+        var keywordExtractor = new KeywordExtractor(
+            MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var conversationReply = new ConversationReplyPhase(
             MockMemory.Object, MockOllama.Object, _mockConversations.Object,
-            dispatcher, desire, emotional, contextBuilder, DefaultOptions, DefaultOllamaOptions,
+            dispatcher, desire, emotional, contextBuilder, keywordExtractor,
+            DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
             MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,

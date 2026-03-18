@@ -22,6 +22,7 @@ public class ConversationReplyPhase
     private readonly DesireEngine _desire;
     private readonly EmotionalProcessor _emotional;
     private readonly ContextBuilder _contextBuilder;
+    private readonly KeywordExtractor _keywords;
     private readonly AniOptions _aniOptions;
     private readonly OllamaOptions _ollamaOptions;
     private readonly ILogger<ConversationReplyPhase> _log;
@@ -46,6 +47,7 @@ public class ConversationReplyPhase
         DesireEngine desire,
         EmotionalProcessor emotional,
         ContextBuilder contextBuilder,
+        KeywordExtractor keywords,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log)
@@ -57,6 +59,7 @@ public class ConversationReplyPhase
         _desire = desire;
         _emotional = emotional;
         _contextBuilder = contextBuilder;
+        _keywords = keywords;
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
         _log = log;
@@ -89,10 +92,30 @@ public class ConversationReplyPhase
 
         // Re-search relevant memories using Mark's actual message, not the perception queue.
         // AC1: Use scored search to apply confidence thresholding on cosine similarity.
+        // TF-IDF dual search: also search with extracted keywords to find topic-specific
+        // memories that casual greeting noise would otherwise bury.
         try
         {
             var scoredResults = await _memory.SearchWithScoresAsync(lastMessage, 5, ct).ConfigureAwait(false);
             var scoredList = scoredResults.ToList();
+
+            // TF-IDF keyword extraction: search with distinctive words to find
+            // topic-specific memories ("consulting business" → "Learned Geek")
+            // that the full message embedding misses due to casual noise.
+            var keywordQuery = await _keywords.ExtractSearchQueryAsync(lastMessage, 5, ct).ConfigureAwait(false);
+            if (keywordQuery is not null)
+            {
+                var keywordResults = await _memory.SearchWithScoresAsync(keywordQuery, 5, ct).ConfigureAwait(false);
+                var existingIds = new HashSet<Guid>(scoredList.Select(s => s.Record.Id));
+                var newFromKeywords = keywordResults.Where(s => !existingIds.Contains(s.Record.Id)).ToList();
+                if (newFromKeywords.Count > 0)
+                {
+                    _log.LogDebug("TF-IDF dual search: keyword query \"{Query}\" found {Count} additional memories",
+                        keywordQuery, newFromKeywords.Count);
+                    scoredList.AddRange(newFromKeywords);
+                }
+            }
+
             var confidenceFloor = (float)_aniOptions.RetrievalConfidenceFloor;
 
             // AC1: Filter out memories below the cosine similarity confidence floor.
