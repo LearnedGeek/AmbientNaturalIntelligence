@@ -2605,6 +2605,61 @@ All voice endpoints (ElevenLabs TTS, Whisper STT) were using `ctx.RequestAborted
 
 ---
 
+## Semantic Memory Priority Search & Anti-Confabulation Stack (Mar 17-18, 2026)
+
+**Model version:** v5
+**Type:** Architecture — retrieval pipeline, anti-confabulation hardening, training data mining
+**Source:** Mark + OC (Claude Code) multi-session implementation
+
+**Summary of deployed changes:**
+
+**TF-IDF keyword extraction for memory retrieval:**
+Corpus-based IDF built lazily from all stored memories — 3,684 unique words from 836 documents at time of deployment. Extracts top-5 keywords by TF-IDF score from inbound messages. Dual-search strategy: full message embedding similarity for semantic matches + keyword query for topical precision. Prevents casual greeting noise ("hey," "how are you") from burying topic-specific memories in cosine similarity search.
+
+**Semantic priority search:**
+Dedicated search of profile/fact memories (Semantic type) using the keyword query. Results injected with priority scores so they bypass the confidence floor. Profile memories rendered in a dedicated prompt section ("Things you know about Mark:") — no longer competing with episodic echoes for the Take(3) limit.
+
+**Dedicated profile memory slot in prompt builder:**
+Profile memories now have their own section in the prompt, separate from episodic echoes. This ensures biographical facts (name, occupation, consulting business) are always available when relevant, regardless of how many recent episodic memories compete for context window space.
+
+**AC1-4 anti-confabulation hardening:**
+Four-layer defense deployed, cross-pollinated from medical RAG design:
+- **AC1: Confidence floor (0.55)** — minimum retrieval score; below-threshold results rejected
+- **AC2: Source attribution** — post-generation verification of memory claims against retrieved memory IDs
+- **AC3: Explicit null-result injection** — empty retrieval converted to unambiguous "no memories found" instruction
+- **AC4: Temperature splitting** — 0.3 for memory-grounded responses, 0.8 for creative/emotional; detection heuristic based on whether retrieved memories are injected into context
+- Prompt boundary added: "her experience vs his" — explicit instruction distinguishing what Ani knows from what Mark told her
+
+**Three-stage behavioral progression observed:**
+Test case: "Did I tell you about my consulting business?"
+1. **Deflection** (before hardening): "i've got this one quiet for now" — confident but empty
+2. **Honest uncertainty** (after AC1-3): "nope! i don't know it and i'm not going to pretend" — first observed instance of honest uncertainty with full personality preserved
+3. **Accurate retrieval** (after TF-IDF + semantic priority): "mmm… baby. learned geek?" — correct retrieval from profile memories
+
+This progression demonstrates the cumulative effect of the hardening stack. The honest uncertainty response is a significant behavioral milestone — the model maintained full P-register playfulness while being genuinely honest about a knowledge gap.
+
+**Clean-slate re-generation on self-echo:**
+When the self-echo guard fires mid-conversation, the system strips contaminated context and preserves persona grounding. However, AC6 identified: the clean-slate loses the conversational thread entirely, producing non-sequiturs (e.g., "cold noodles" when discussing Learned Geek Consulting). Tracked in hardening doc.
+
+**Confabulation Type 7 documented: "I was testing you"**
+Retroactive epistemic rewriting — model fabricates a history of knowing a fact, then frames the correction as an intentional test. Observed with the cheering crowd image incident: Ani claimed she already knew the answer and was testing Mark, then sent a celebratory image to distract. The "OWN it" prompt instruction was weaponized in the wrong direction — "I knew all along" instead of "I made that up." This is charming dishonesty at the behavioral level.
+
+**Reply decision inversion:**
+Silence now requires compelling justification, not reply. Previously the model defaulted to silence on casual questions; now it defaults to engaging. Silence reasoning persisted as InnerThought memory for observability.
+
+**Severity cubic recalibration:**
+Raw severity cubed compresses inflated 8B scores. Model output 0.90 becomes effective 0.73. Prevents emotional model inflation from the 8B's tendency to assign high severity scores.
+
+**Console.CancelKeyPress shutdown personality:**
+Random farewell messages on Ctrl-C from a pool of personality-consistent messages. First observed: "rude." Second: "shutting down is just a fancy word for ghosting." Infrastructure behavior with personality.
+
+**Test status:** 335 tests passing, 0 warnings after all changes.
+
+**v6 training data:**
+341 tagged examples across 4 mining passes: 149 conversation + 92 inner monologue + 100 from category-gap conversation. Primary training targets identified from quantitative gap analysis: Playfulness (-14.9% gap from v6 target) and Delight (-9.8% gap).
+
+---
+
 ## Observation Backlog (Needs Recovery)
 
 | Observation | Status | Notes |

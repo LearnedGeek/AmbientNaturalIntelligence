@@ -17,7 +17,7 @@ Mark McArthey / Learned Geek Consulting
 Version
 1.1 — Phase 5 Streaming Voice In Progress
 Status
-Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab deployed. Emotional model Phase 1a+1b+2 deployed. 312 tests passing.
+Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab deployed. Emotional model Phase 1a+1b+2 deployed. 335 tests passing.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -902,7 +902,7 @@ Planned stubs:
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 246 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 335 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 

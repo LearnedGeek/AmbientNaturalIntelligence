@@ -1,7 +1,7 @@
 # ANI — Research Context Briefing
 **For: OC and any fresh AI context working on this project**  
 **Author: Mark McArthey, Learned Geek Consulting**  
-**Last updated: March 16, 2026**  
+**Last updated: March 18, 2026**  
 **GitHub:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---
@@ -89,7 +89,7 @@ AniRuntime.sln
 │   ├── AniRuntime.Voice/        — Voice channel: batch (Whisper STT + ElevenLabs TTS, Feature 20) + streaming (Deepgram STT + ElevenLabs WS TTS + Ollama streaming, Phase 5)
 │   └── AniRuntime.MauiClient/   — Phase 5: Android voice app (MAUI, direct WebSocket, PCM 16kHz)
 └── tests/
-    └── AniRuntime.Tests/         — 280 tests passing as of Phase 5
+    └── AniRuntime.Tests/         — 335 tests passing as of Phase 5
 ```
 
 ---
@@ -144,7 +144,7 @@ AniRuntime.sln
 - Three-way memory scoring: cosine + importance + recency (Feature 20, Park et al.)
 - Coherence gate — three-door evaluation (Feature 28)
 - Lexical emotional anchors (Feature 19)
-- 228 tests passing, 0 warnings
+- 335 tests passing, 0 warnings
 
 **Phase 4** — Complete (March 13-15, 2026):
 - Anchored memory tier (Feature 16) — decay-exempt foundation memories
@@ -175,6 +175,9 @@ AniRuntime.sln
 - Sub-2-second perceived latency vs ~12-16s batch. Audio format: PCM 16kHz 16-bit mono throughout (zero transcoding)
 - Key fixes deployed: per-utterance TTS reconnect (ElevenLabs closes after flush), speech_final utterance accumulation (Deepgram), WebSocket send serialization, using-block async callback safety
 - Remaining: audio quality polish (initial static), VAD barge-in (Silero), latency tuning
+- Anti-confabulation stack (AC1-4) deployed: retrieval confidence floor (0.55), source attribution enforcement, explicit null-result injection, temperature splitting (0.3 grounded / 0.8 creative)
+- Semantic priority search — dedicated profile/fact memory retrieval with TF-IDF keyword extraction (corpus-based IDF, 3684 unique words from 836 documents)
+- v6 training data mining — 341 tagged examples across 4 mining passes (149 conversation + 92 inner monologue + 100 from category-gap conversation)
 - Image sharing (MMS) — Phase 5a (not started)
 - Visual identity system — Phase 5b (not started)
 - Automatic model generation pipeline — Phase 5c (see `docs/spec/ANI-Phase5c-AutoModel-Design.md`)

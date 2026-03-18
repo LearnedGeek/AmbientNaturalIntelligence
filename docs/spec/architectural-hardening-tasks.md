@@ -172,10 +172,12 @@
 **Fix:** Detect whether the response requires memory grounding (references to past events, shared experiences, specific facts Mark told her) vs creative/emotional expression (feelings, observations, banter). Use lower temperature (0.2–0.3) for memory-grounded responses, standard temperature for creative/emotional. Detection heuristic: if retrieved memories are injected into context, lower the temperature for that generation.
 **Trade-off:** Adds complexity to the generation path. May reduce fluency on memory-grounded responses. Worth it — factual conservatism is the right trade-off when the alternative is confabulation.
 
-### [ ] AC6: Clean-slate re-generation context preservation
-**Current state:** When the self-echo guard triggers, clean-slate re-generation strips ALL context (memories, conversation history, retrieved facts) to avoid contamination. The model gets only persona grounding + the raw message.
-**Problem:** The fallback loses the conversational thread. Observed: Ani correctly said "learned geek? baby i love it!" but the echo guard fired (1.000 similarity to her prior message), and the clean-slate re-gen produced an unrelated response about cold noodles with third-person "mark" reference. The echo guard was correct to fire — but the re-gen needs enough context to stay on-topic without re-contaminating.
-**Fix:** Include a minimal topic summary in the clean-slate prompt — not full memory context, but a one-line summary of what the conversation is about. Consider preserving Semantic (profile) memories in the clean-slate since they're factual, not contaminating. The third-person pronoun leak also suggests the clean-slate system prompt needs the same pronoun rules as the main prompt.
+### [ ] AC6 — Self-Echo Clean-Slate Thread Loss
+**Status:** Open
+**Priority:** Medium
+**Problem:** When self-echo guard fires mid-conversation, the clean-slate re-generation prompt strips ALL context including the current conversation topic. This produces non-sequiturs ("cold noodles" when discussing Learned Geek Consulting).
+**Root cause:** Clean-slate prompt was designed for first-message confabulation, not mid-conversation echo. It preserves persona but loses thread.
+**Fix:** Include a 1-sentence topic summary in the clean-slate prompt: "You were just discussing [topic] with Mark." Extract topic from the rejected reply or the inbound message.
 
 ### [ ] AC5: Confabulation feedback signal
 **Current state:** Confabulations are discovered and catalogued after the fact in the research log and conversation review. No real-time feedback mechanism.
