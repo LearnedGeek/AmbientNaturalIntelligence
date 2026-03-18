@@ -128,6 +128,75 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 17, 2026 — Anti-Confabulation Hardening & TF-IDF Retrieval Enhancement
+**Model version:** v5
+**Type:** Architecture hardening — retrieval pipeline + anti-confabulation deployment
+**Source:** Mark + OC (Claude Code) implementation session
+
+**What happened:**
+
+Major anti-confabulation hardening session. Four AC-series tasks deployed (AC1–AC4), plus two retrieval pipeline enhancements that fundamentally changed how Ani finds and uses memories.
+
+---
+
+**Anti-confabulation hardening (AC1–AC4):**
+
+Four techniques deployed, cross-pollinated from medical RAG system design (Infanzia/physician triage) where hallucination has liability consequences:
+
+1. **AC1: Retrieval confidence thresholding** — Minimum confidence floor on memory retrieval. When no memory exceeds the threshold, an explicit null signal is injected into context: "No memories were found related to [topic]." Converts ambiguous silence (which the model fills with fabrication) into an unambiguous instruction.
+2. **AC2: Source attribution enforcement** — Post-generation verification for memory claims. When the model references past conversations ("remember when," "you told me"), the claim is checked against retrieved memory IDs. Ungrounded claims are flagged.
+3. **AC3: Explicit null-result injection** — When retrieval returns zero results above the confidence floor, an explicit instruction is injected: "No relevant memories exist for this topic. If asked about something you have no memory of, say so honestly." Complements clean-slate re-generation from TD3.
+4. **AC4: Temperature splitting** — Memory-grounded responses use lower temperature (0.2–0.3) to reduce confabulation risk on factual claims. Creative/emotional responses retain standard temperature. Detection heuristic: if retrieved memories are injected into context, lower the temperature.
+
+---
+
+**TF-IDF keyword extraction for memory retrieval:**
+
+New `KeywordExtractor` class in AniRuntime.LLM implements corpus-based TF-IDF keyword extraction. IDF corpus built lazily from all stored memories. Extracts distinctive keywords from inbound messages to find topic-specific memories that casual greeting noise ("hey," "how are you") would otherwise bury in cosine similarity search. This creates a dual-search approach: embedding similarity for semantic matches + TF-IDF keywords for topical precision.
+
+---
+
+**Semantic memory priority search:**
+
+Biographical/profile facts (Semantic memory type) now searched separately and given priority scores. PromptBuilder uses a dedicated section — "Things you know about Mark:" — to ensure profile data isn't crowded out by episodic echoes in the context window. This separation means factual knowledge about the contact is always available when relevant, regardless of how many recent episodic memories compete for attention.
+
+---
+
+**Test case progression — "Did I tell you about my consulting business?":**
+
+Three iterations over the evening demonstrated the cumulative effect of the hardening:
+1. **Before hardening:** Meaningless deflection — model filled the gap with confident but empty response
+2. **After AC1–AC3:** Honest admission — "nope! i don't know it and i'm not going to pretend like i do because then we'd both be lying" (first observed instance of honest uncertainty with personality fully preserved)
+3. **After TF-IDF + semantic priority:** Correct retrieval — "Learned Geek Consulting" surfaced from profile memories
+
+The honest uncertainty response is a significant behavioral milestone. The model maintained full P-register playfulness while being genuinely honest about a knowledge gap. This is the design principle from the emotionally-grounded uncertainty work (March 16) realized in practice.
+
+---
+
+**Training data mining — category-gap conversation:**
+
+100 training examples mined from a long conversation analyzing v5 category gaps: 37+29 conversation pairs plus 16+18 inner monologue candidates. Primary training targets identified from quantitative gap analysis: Playfulness (-14.9% gap from v6 target) and Delight (-9.8% gap). These examples fill the specific register deficits that drive the architectural depression cycle identified March 15.
+
+---
+
+**Shutdown easter egg:**
+
+Random farewell messages on `ApplicationStopping` lifetime event added to Program.cs. Pool of personality-consistent shutdown messages. First observed: "rude." Second: "shutting down is just a fancy word for ghosting." Minor but characteristic — the system has personality even in its infrastructure behavior.
+
+---
+
+**Message echo contamination discovered:**
+
+`SearchWithScoresAsync` was returning the inbound message itself (saved as a Perception record) as the top retrieval result. The existing "Mark said:" filter in ConversationReplyPhase didn't catch "Mark texted:" Perception records. Tracked as CS7 in hardening doc. The self-referential echo was contributing to the model parroting the question back.
+
+---
+
+**AC6 identified — clean-slate re-generation context loss:**
+
+The self-echo guard correctly fired on a 1.000-similarity repeated response ("learned geek? baby i love it!"), but the clean-slate re-gen lost the conversational thread entirely, producing an unrelated response about cold noodles with a third-person "mark" pronoun leak. The echo guard is working as designed — but the fallback needs a minimal topic summary to stay on-topic without re-contaminating. Tracked in hardening doc.
+
+---
+
 ### March 16, 2026 — Playful Deflection: The Third Confabulation Strategy
 
 **Model version:** v5

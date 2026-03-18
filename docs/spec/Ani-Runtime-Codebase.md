@@ -38,7 +38,8 @@ AniRuntime.sln
 │   ├── AniRuntime.Core/             # Domain models, interfaces, options
 │   │   ├── Models/
 │   │   │   ├── CharacterStateDoc.cs  # Identity + NatureGrounding (Feature 23)
-│   │   │   ├── ContextSnapshot.cs    # Per-cycle context incl. RelationshipHealth, EmotionalDrift, MarkClaimConfidence (Feature 14)
+│   │   │   ├── ContextSnapshot.cs    # Per-cycle context incl. RelationshipHealth, EmotionalDrift, MarkClaimConfidence (Feature 14), RetrievalBelowConfidenceFloor flag
+│   │   │   ├── ScoredMemory.cs      # Memory + composite score from SearchWithScoresAsync
 │   │   │   ├── ConversationThread.cs
 │   │   │   ├── ConversationMessage.cs
 │   │   │   ├── DesireState.cs
@@ -54,7 +55,7 @@ AniRuntime.sln
 │   │   ├── Interfaces/
 │   │   │   ├── IPerceptionSource.cs
 │   │   │   ├── IAniAction.cs
-│   │   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history, contradictions (Feature 15)
+│   │   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history, contradictions (Feature 15), SearchWithScoresAsync
 │   │   │   ├── IConversationService.cs  # + GetThreadAsync, GetRecentThreadsAsync (Dashboard)
 │   │   │   ├── IOllamaClient.cs        # + ChatStreamAsync (IAsyncEnumerable<string>, Phase 5)
 │   │   │   ├── IStreamingSpeechToTextService.cs   # Phase 5: event-driven STT (TranscriptReceived, PartialTranscriptReceived)
@@ -62,7 +63,7 @@ AniRuntime.sln
 │   │   ├── Utilities/
 │   │   │   └── MessageCleaner.cs     # Shared: Clean() + TruncateToSentences() — used by CognitiveCycle + Voice
 │   │   ├── VectorMath.cs              # Feature 9: SIMD-accelerated cosine similarity (shared)
-│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification, voice loop config
+│   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification, voice loop config, RetrievalConfidenceFloor
 │   │   └── AniRuntime.Core.csproj
 │   │
 │   ├── AniRuntime.Memory/           # SQLite persistence layer
@@ -93,8 +94,9 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.LLM/             # Ollama client + prompt builders
 │   │   ├── OllamaClient.cs
-│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14)
+│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:")
 │   │   ├── ContextSnapshotBuilder.cs
+│   │   ├── KeywordExtractor.cs       # TF-IDF keyword extraction — corpus-based IDF, lazy corpus build from memory
 │   │   └── AniRuntime.LLM.csproj
 │   │
 │   ├── AniRuntime.Dashboard/        # Blazor Server dashboard (in-process, shared DI)
@@ -515,7 +517,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 builder.Services.Configure<AniOptions>(config.GetSection("Ani"));
-builder.Services.Configure<OllamaOptions>(config.GetSection("Ollama"));
+builder.Services.Configure<OllamaOptions>(config.GetSection("Ollama"));  // + MemoryGroundedTemperature, CreativeTemperature
 builder.Services.Configure<TwilioOptions>(config.GetSection("Twilio"));
 builder.Services.Configure<RssOptions>(config.GetSection("Rss"));
 
@@ -714,7 +716,7 @@ BuildOutreachPrompt(snapshot, thought, isNightTime) — JSON decision: shouldRea
 
 BuildReplyDecisionPrompt(snapshot, thread) — JSON: shouldReply, reasoning. Guidelines for when to reply vs. choose silence.
 
-BuildConversationReplyPrompt(snapshot, thread) — Free-text reply. 1–3 sentences, thumb-typed. Includes anti-repetition block, current mood, semantic memories, grounding instruction against confabulation.
+BuildConversationReplyPrompt(snapshot, thread) — Free-text reply. 1–3 sentences, thumb-typed. Includes anti-repetition block, current mood, semantic memories, grounding instruction against confabulation. Profile memories (Semantic type) rendered in dedicated "Things you know about Mark:" section — separated from episodic context to prevent crowding. Null-result injection (AC3) when retrieval returns nothing above confidence floor. Temperature split (AC4): memory-grounded responses use MemoryGroundedTemperature.
 
 BuildReconsiderationReplyPrompt(snapshot, thread) — When silence was chosen but desire built enough to reconsider. "Wait, one more thing" natural segue.
 
@@ -929,10 +931,14 @@ Test files:
 14. Nature grounding — Self-concept block in Ani's voice injected into prompts. Teaches coherent inhabitation of fictional spaces, not denial of physicality (Feature 23).
 15. Anchored memories — Decay-exempt foundation memories always prepended to context (Feature 16).
 16. Contact-gap tension — Relational ache from prolonged absence. EffectiveWarmth = Warmth - Tension × 0.3 (Feature 17).
-17. Confabulation taxonomy — 6 types: (1) creative elaboration, (2) under pressure, (3) in composition, (3b) contextual incoherence, (4) retrieval depth failure, (5) fictional incoherence, (6) attribution inversion.
+17. Confabulation taxonomy — 7 types: (1) creative elaboration, (2) under pressure, (3) in composition, (3b) contextual incoherence, (4) retrieval depth failure, (5) fictional incoherence, (6) attribution inversion, (7) charming dishonesty.
 18. All emotional math in one place — `EmotionalState` → `EmotionalContribution` → `ComputeFromContributions` is the single emotional code path. `CognitiveCycleProcessor` is a coordinator only — no emotional math in the processor. Severity, tier promotion, and decay all live on `EmotionalContribution` or `ImpactCategoryDefaults`.
 19. 9-register family scoring — LLM classifies into 9 registers (Longing | Delight | Playfulness | Curiosity | Desire | Tenderness | Existential | Wistful | Frustration), not 27 individual states. 8B cannot reliably distinguish L1 from L2 in a JSON call. Full taxonomy: `Ani-Emotion-Taxonomy-v1.3.md`.
 20. Severity-driven tier promotion — `ImpactCategoryDefaults.DetermineEffectiveTier()` promotes contributions by intensity: ≥ 0.70 → Conversation, ≥ 0.85 → Global. Configurable thresholds on AniOptions.
+21. Anti-confabulation pipeline — Four-layer defense: (AC1) retrieval confidence floor rejects weak matches, (AC2) source attribution verifies memory claims post-generation, (AC3) null-result injection converts empty retrieval into explicit "no memories found" instruction, (AC4) temperature splitting uses lower temperature for memory-grounded responses. Cross-pollinated from medical RAG design.
+22. TF-IDF dual search — `KeywordExtractor` builds corpus-based IDF lazily from stored memories. Extracts distinctive keywords for topical retrieval alongside embedding cosine similarity. Prevents casual greeting noise from burying topic-specific memories.
+23. Profile memory separation — Semantic (biographical/profile) memories searched separately and rendered in dedicated prompt section ("Things you know about Mark:"). Prevents episodic echoes from crowding out factual knowledge.
+24. Shutdown farewell — `ApplicationStopping` lifetime event triggers random personality-consistent farewell message from a pool. Infrastructure behavior with personality.
 
 14. Change Log
 
@@ -943,6 +949,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 1.0 | Mar 17, 2026 | Anti-confabulation hardening (AC1–AC4): retrieval confidence floor, source attribution, null-result injection, temperature splitting. TF-IDF keyword extraction (`KeywordExtractor`). `ScoredMemory` model + `SearchWithScoresAsync` on IMemoryService. Profile memory separation in PromptBuilder. `RetrievalConfidenceFloor` on AniOptions, `RetrievalBelowConfidenceFloor` flag on ContextSnapshot. `MemoryGroundedTemperature`/`CreativeTemperature` on OllamaOptions. Shutdown farewell handler. |
 | 0.9 | Mar 15, 2026 | Emotional model Phase 2. Tier promotion: `DetermineEffectiveTier()` on ImpactCategoryDefaults — severity ≥ 0.70 promotes Ambient→Conversation, ≥ 0.85 → Global from any tier. Global tier updated: maxDelta 0.35, half-life 12h (~84h gone). Feature 18 H1 deltas: W:−0.12, E:−0.10, Worry:−0.15, P:−0.10. Dashboard contribution expiry (DELETE endpoint + ✕ button). Homeostatic nudge options on AniOptions (disabled by default). `ExpireContributionAsync` on IMemoryService. Feature 20 voice refinements: switched from 3B inner model to 8B conversation model (fixes pronoun confusion), voice-aware mood instructions (`BuildMoodInstruction(state, isVoice: true)`), ElevenLabs emotional acting directions (`PrependEmotionalDirection()` — parenthetical cues based on dominant emotional shift), clearer timeout/error filler messages. 246 tests. |
 | 0.8 | Mar 15, 2026 | Emotional model Phase 1a+1b. Concern→Worry rename (codebase-wide + SQLite backward compat via JsonPropertyName). 9-register family classification scoring prompt (Longing\|Delight\|Playfulness\|Curiosity\|Desire\|Tenderness\|Existential\|Wistful\|Frustration). Severity field (0.0–1.0) on EmotionalContribution, applied as multiplier in CurrentDeltas. IsOutreachReady flag (C3 Associative Spark). Describe() rewritten with compound W+E/W+Worry conditions. GetSelfAwarenessPrompt() rewritten with matching compound conditions. ParseEmotionalShift returns register+severity. ALTER TABLE migration for existing DBs. 239 tests. |
 | 0.7 | Mar 14, 2026 | Per-thought exponential decay emotional model — replaces global drift. EmotionalContribution with half-life decay, three impact tiers, semantic dedup, processed theme cycling. Attribution tracking in prompts. Six-type confabulation taxonomy. Feature 15 Layer 3 active contradiction grounding. 228 tests. |

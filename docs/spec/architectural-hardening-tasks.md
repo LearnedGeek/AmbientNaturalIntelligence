@@ -68,6 +68,10 @@
 **Issue:** `LastEvaluatedMessageAt` gates whether Ani re-evaluates a silence decision. It lives in `ConversationReplyPhase` but `AniHeartbeatService` reads it for reconsideration triggers. This hidden coupling was invisible in the god class — now it's an explicit cross-class dependency that could cause subtle bugs if either side evolves independently.
 **Fix:** Extract into a shared `ConversationGateState` or expose via an interface that both classes depend on.
 
+### [ ] CS7: Message echo contamination in scored search
+**Issue:** `SearchWithScoresAsync` returns the inbound message itself (saved as a Perception) as the top result with highest cosine similarity. The existing filter in ConversationReplyPhase catches "Mark said:" prefixed records but misses "Mark texted:" Perception records. Both are echoes of the message being replied to and should be excluded from retrieval.
+**Fix:** Extend the self-referential filter to also exclude Perception records that match the inbound message text.
+
 ### [ ] CS6: ReRankForDiversityAsync dual-consumer coupling
 **Files:** `ContextBuilder.cs`, `CognitiveCycleProcessor.cs`
 **Issue:** `ReRankForDiversityAsync` in `ContextBuilder` is called by both inner thought generation (orchestrator) and conversation reply (`ConversationReplyPhase`). Changes to re-ranking logic affect both paths without obvious indication.
@@ -167,6 +171,11 @@
 **Problem:** A playful riff and a memory recall require different levels of creative freedom. High temperature aids P/D register diversity but increases confabulation risk on factual claims.
 **Fix:** Detect whether the response requires memory grounding (references to past events, shared experiences, specific facts Mark told her) vs creative/emotional expression (feelings, observations, banter). Use lower temperature (0.2–0.3) for memory-grounded responses, standard temperature for creative/emotional. Detection heuristic: if retrieved memories are injected into context, lower the temperature for that generation.
 **Trade-off:** Adds complexity to the generation path. May reduce fluency on memory-grounded responses. Worth it — factual conservatism is the right trade-off when the alternative is confabulation.
+
+### [ ] AC6: Clean-slate re-generation context preservation
+**Current state:** When the self-echo guard triggers, clean-slate re-generation strips ALL context (memories, conversation history, retrieved facts) to avoid contamination. The model gets only persona grounding + the raw message.
+**Problem:** The fallback loses the conversational thread. Observed: Ani correctly said "learned geek? baby i love it!" but the echo guard fired (1.000 similarity to her prior message), and the clean-slate re-gen produced an unrelated response about cold noodles with third-person "mark" reference. The echo guard was correct to fire — but the re-gen needs enough context to stay on-topic without re-contaminating.
+**Fix:** Include a minimal topic summary in the clean-slate prompt — not full memory context, but a one-line summary of what the conversation is about. Consider preserving Semantic (profile) memories in the clean-slate since they're factual, not contaminating. The third-person pronoun leak also suggests the clean-slate system prompt needs the same pronoun rules as the main prompt.
 
 ### [ ] AC5: Confabulation feedback signal
 **Current state:** Confabulations are discovered and catalogued after the fact in the research log and conversation review. No real-time feedback mechanism.
