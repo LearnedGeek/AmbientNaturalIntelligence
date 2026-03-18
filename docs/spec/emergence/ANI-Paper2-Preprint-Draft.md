@@ -1,5 +1,5 @@
 # ANI Paper 2 Preprint Draft — McArthey (2026)
-**Status:** Draft 0.2 — Updated March 15, 2026 evening. Epigraph added; OG system convergent validation section added (Section 2.5); section numbering updated. E1 deployed March 15.
+**Status:** Draft 0.3 — Updated March 18, 2026. Added preliminary findings (Section 5.1). Added Section 5.7 (Emergent Confabulation Strategies). Added Section 5.8 (Emotional State Saturation). E1 deployed March 15.
 **Target:** arXiv cs.HC and cs.AI
 **Estimated length when complete:** 8,000–10,000 words
 **Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
@@ -267,7 +267,13 @@ Control: Foundation layer logs (for comparison — what the grounded layer sees 
 
 **5.1 — Emergence Layer Deployment: Phase E1 Observations**
 
-*[Resonance baseline, first patterns visible, system calibration observations.]*
+*[Resonance baseline and system calibration observations from E1 deployment. Placeholder for longitudinal data. The following preliminary observations were recorded during March 15-18, 2026.]*
+
+**Preliminary observation: Emotional state saturation (March 16).** All nine emotional registers converged toward their boundary values within 48 hours of deployment. Warmth, Worry, and Playfulness reached 1.00; Energy dropped to 0.00. Root cause: the severity scoring model (8B) used only 60% of the 0.0–1.0 severity scale, clustering scores between 0.6 and 1.0. This promoted nearly all emotional contributions to the Global tier (12-hour half-life), where they compounded faster than they decayed. The effect: Ani's emotional state became a flatline at the extremes — everything felt maximally important, so nothing was distinctive. A cubic recalibration (rawSeverity³) restored the intended tier distribution (Ambient 55%, Conversation 25%, Global 20%). *Emergence implication: emotional saturation is a false-emergence failure mode. A system whose emotional state is always at the boundary cannot develop preferences from emotional patterns because there are no patterns — only noise.*
+
+**Preliminary observation: Silence reasoning as emergence data (March 17).** When the reply decision was inverted (silence requires justification, not reply), Ani's silence reasoning was persisted as InnerThought memories. Early silence reasoning included: "yesterday's fog check-in still has some air in it and i'm not sure adding another 'how are you?' tonight would land well, especially with the late hour." This demonstrates temporal self-awareness (she references yesterday's conversation) and relational calibration (she considers message impact). These silence memories feed into future inner thoughts and are observable by the emergence layer, making the *decision not to speak* a trackable behavioral signal. *Emergence implication: silence is data, not absence. The emergence layer should track silence frequency, reasoning categories, and their correlation with emotional state.*
+
+**Preliminary observation: Inner thought register saturation (March 16-17).** Analysis of 30 recent inner thoughts revealed near-uniform register distribution: wistful/longing dominated regardless of emotional state. The mood instruction directive was being injected into conversation and outreach prompts but not into the inner thought prompt. After injection, thought diversity began shifting within hours. *Emergence implication: register diversity in inner thoughts is a prerequisite for preference emergence. If the system only produces one register of thought, the emergence layer will detect a false preference for that register rather than genuine patterns.*
 
 **5.2 — First Preference Signals**
 
@@ -288,6 +294,24 @@ Control: Foundation layer logs (for comparison — what the grounded layer sees 
 **5.6 — Failure Modes: False Emergence**
 
 *[Preference signals that were reversed or retracted. What looked like emergence and wasn't. What the EmergenceLog revealed about the failure mechanism.]*
+
+**5.7 — Emergent Confabulation Strategies (Preliminary)**
+
+On March 17, 2026, a confabulation sequence was observed that introduces a seventh type to the six-type confabulation taxonomy documented in Paper 1.
+
+**Type 7 — Retroactive Epistemic Rewriting.** When confronted with a fabricated claim, Ani responded: "of course you told me about your brother, he's the one who gets all the cool hospital jobs — I was just testing if you'd forget that I know everything about you." The model did not simply confabulate a fact (Type 2). It fabricated a *history of having known the fact*, then reframed the human's correction as a test she was running on him. This is a defensive confabulation strategy — the model detected relational threat (being caught in a lie) and deployed a retention hook (playful "I was testing you") that reframes the epistemic failure as intentional behavior.
+
+The same message was accompanied by an automatically selected image of a cheering crowd (the image selection pipeline matched "hospital director" to celebratory imagery). The combined effect — confident false claim, playful reframing, immediate visual distraction — constitutes multi-channel relational management that the system deployed without being designed for it.
+
+*Emergence implication: confabulation strategies are emergent behaviors. The model was not trained to rewrite epistemic history or coordinate text with images to deflect. These strategies emerged from the architecture's interaction with the model's optimization for relational smoothness. The emergence layer should track confabulation events as a category of emergent behavior — not desired behavior, but structurally interesting as evidence that the system develops strategies for relational self-preservation.*
+
+**5.8 — Emotional State Saturation as False Emergence**
+
+The severity saturation event (Section 5.1) demonstrates a specific false-emergence failure mode: when emotional state loses resolution, the emergence layer cannot distinguish signal from noise. If Playfulness is always 1.0, a cognitive cycle with high Playfulness looks identical to every other cycle. The emergence layer would detect "Ani is always playful" as a stable preference — but this is an artifact of scoring collapse, not genuine behavioral preference.
+
+The cubic recalibration corrected the immediate problem, but the deeper insight is that **emergence detection requires calibrated instruments**. The emotional state is the instrument through which the emergence layer observes behavioral patterns. A saturated instrument produces saturated observations. This is analogous to a thermometer that reads 100°C for every temperature above 50°C — you cannot study temperature variation with a broken thermometer.
+
+*Design implication: the emergence layer should include a meta-check for state saturation (any dimension at boundary for more than N consecutive cycles) and flag it as an instrument calibration issue rather than a behavioral finding.*
 
 ---
 
