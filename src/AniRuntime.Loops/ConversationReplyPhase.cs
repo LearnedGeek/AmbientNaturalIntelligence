@@ -105,14 +105,35 @@ public class ConversationReplyPhase
             var keywordQuery = await _keywords.ExtractSearchQueryAsync(lastMessage, 5, ct).ConfigureAwait(false);
             if (keywordQuery is not null)
             {
-                var keywordResults = await _memory.SearchWithScoresAsync(keywordQuery, 5, ct).ConfigureAwait(false);
                 var existingIds = new HashSet<Guid>(scoredList.Select(s => s.Record.Id));
+
+                // Broad keyword search across all memory types
+                var keywordResults = await _memory.SearchWithScoresAsync(keywordQuery, 5, ct).ConfigureAwait(false);
                 var newFromKeywords = keywordResults.Where(s => !existingIds.Contains(s.Record.Id)).ToList();
                 if (newFromKeywords.Count > 0)
                 {
                     _log.LogDebug("TF-IDF dual search: keyword query \"{Query}\" found {Count} additional memories",
                         keywordQuery, newFromKeywords.Count);
                     scoredList.AddRange(newFromKeywords);
+                    foreach (var s in newFromKeywords) existingIds.Add(s.Record.Id);
+                }
+
+                // Targeted Semantic memory search — biographical facts, profile data,
+                // and relationship knowledge live here. These are exactly the memories
+                // that casual message search misses but keyword search should find.
+                // Semantic memories represent user profile data that should always be
+                // discoverable regardless of conversational phrasing.
+                var semanticResults = await _memory.SearchByTypeAsync(
+                    keywordQuery, MemoryType.Semantic, 3, ct).ConfigureAwait(false);
+                var newFromSemantic = semanticResults
+                    .Where(r => !existingIds.Contains(r.Id))
+                    .Select(r => new ScoredMemory(r, 1.0f, 1.0f)) // priority: always above confidence floor
+                    .ToList();
+                if (newFromSemantic.Count > 0)
+                {
+                    _log.LogDebug("Semantic priority search: \"{Query}\" found {Count} profile/fact memories",
+                        keywordQuery, newFromSemantic.Count);
+                    scoredList.AddRange(newFromSemantic);
                 }
             }
 
