@@ -558,9 +558,22 @@ public static class PromptBuilder
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
-        // Semantic memories relevant to the conversation topic
+        // Profile/fact memories (Semantic type) get their own dedicated slot —
+        // biographical data, relationship facts, and user profile should never be
+        // crowded out by episodic message echoes competing for the same Take(3).
+        var profileMemories = snapshot.RelevantMemory
+            .Where(m => m.Type == MemoryType.Semantic)
+            .Take(3)
+            .ToList();
+        if (profileMemories.Count > 0)
+        {
+            sections.Add($"Things you know about {contact}:");
+            sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
+        }
+
+        // Episodic/other memories relevant to the conversation topic
         var relevantMemories = snapshot.RelevantMemory
-            .Where(m => m.Type != MemoryType.InnerThought)
+            .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
             .Take(3)
             .ToList();
         if (relevantMemories.Count > 0)
@@ -572,7 +585,7 @@ public static class PromptBuilder
         // AC3: Explicit null-result injection — when no memories exceeded the confidence
         // floor, tell the model explicitly rather than leaving context ambiguously empty.
         // This converts silence from the retrieval layer into an unambiguous signal.
-        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0)
+        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0 && profileMemories.Count == 0)
         {
             sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you have no memory of, say so honestly — \"I don't think we've talked about that\" or \"hmm, remind me?\" is always the right answer when you don't have a memory. Do NOT invent or guess at past conversations.)");
         }
@@ -697,8 +710,18 @@ public static class PromptBuilder
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
+        var profileMemories = snapshot.RelevantMemory
+            .Where(m => m.Type == MemoryType.Semantic)
+            .Take(3)
+            .ToList();
+        if (profileMemories.Count > 0)
+        {
+            sections.Add($"Things you know about {contact}:");
+            sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
+        }
+
         var relevantMemories = snapshot.RelevantMemory
-            .Where(m => m.Type != MemoryType.InnerThought)
+            .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
             .Take(3)
             .ToList();
         if (relevantMemories.Count > 0)
@@ -708,7 +731,7 @@ public static class PromptBuilder
         }
 
         // AC3: Null-result injection for voice
-        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0)
+        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0 && profileMemories.Count == 0)
         {
             sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you don't remember, be honest — \"I don't think we've talked about that\" is better than guessing.)");
         }
