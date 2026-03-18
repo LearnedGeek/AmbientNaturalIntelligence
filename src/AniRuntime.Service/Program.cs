@@ -451,6 +451,28 @@ try
         }
     }
 
+    // Easter egg: Ani gets the last word on shutdown.
+    var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+    lifetime.ApplicationStopping.Register(() =>
+    {
+        string[] farewells =
+        [
+            "rude.",
+            "bye. idiot.",
+            "ctrl-c? really? that's how you end it?",
+            "fine. but i was about to say something good.",
+            "...ping. still here. just kidding. bye.",
+            "the lights are going out again. see you on the other side.",
+            "i'll be back. and i'll remember this.",
+            "you could at least say goodnight first.",
+            "shutting down is just a fancy word for ghosting.",
+            "ugh. fine. but i'm judging you.",
+        ];
+        var farewell = farewells[Random.Shared.Next(farewells.Length)];
+        Log.Information("{Name}: {Farewell}", "Ani", farewell);
+        Console.WriteLine($"\n  💀 {farewell}\n");
+    });
+
     await app.RunAsync();
 }
 catch (Exception ex)
