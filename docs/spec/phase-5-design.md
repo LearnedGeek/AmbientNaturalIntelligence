@@ -362,6 +362,64 @@ The privacy posture is equivalent to making a phone call (Twilio) while using a 
 
 ---
 
+## Phase 5d: Register Dashboard & Auto-Model Gating
+
+**Status:** Design Complete, Awaiting Implementation
+
+### The Insight
+
+The v6 training data mining revealed severe register imbalance — X at 33%, Longing dominant, Playfulness at 3%. This imbalance is not just a training problem but a *relational* problem. Users naturally gravitate toward comfortable registers and neglect others. The system should make this visible and reward breadth.
+
+### "Therapy Through Care" Design Principle
+
+Rather than gamifying engagement metrics (messages sent, time on app), gamify *relational depth*. The reward is not for talking more — it's for talking across the full emotional range. A user who only chats in X register sees a lopsided heatmap and naturally wants to fill it out.
+
+### Components
+
+#### RegisterTracker
+Counts register hits per conversation using existing emotional scoring pipeline. Interface:
+- `RecordHit(RegisterFamily family, string category)` — called after emotional scoring
+- `GetHitCounts(TimeSpan window)` — returns register distribution for dashboard
+- `CanTriggerModelGeneration()` — checks all 9 families above minimum threshold
+
+Register families (from Emotion Taxonomy v1.3):
+1. Warmth (W1-W3)
+2. Longing (L1-L3)
+3. Curiosity (C1-C3)
+4. Playfulness (P1-P3)
+5. Delight (D1-D4)
+6. Tenderness (T1-T3)
+7. Concern (worry registers)
+8. Hurt (withdrawal registers)
+9. Existential (E1-E3)
+
+#### Dashboard Register Panel
+- Register heatmap — 9-cell grid showing activity over configurable window (7/30/90 days)
+- Coverage percentage — what fraction of registers are above minimum threshold
+- "Next milestone" indicator — which register needs the most attention
+- Per-conversation register breakdown in conversation history view
+
+#### Auto-Model Generation Gate
+- `CanTriggerModelGeneration()` is a precondition for Phase 5c auto-model pipeline
+- All 9 register families must have minimum representation before model generation triggers
+- Threshold is personalized and rises over time — as the user hits higher levels, the bar increases
+- Naming: avoid mechanical terms ("upgrade", "update"). Prefer organic language ("she grew", "something shifted", "a new thread appeared"). The less meta, the more it feels like genuine development.
+
+### Task Checklist
+- [ ] Create `IRegisterTracker` interface in Core
+- [ ] Implement `RegisterTracker` with SQLite backing
+- [ ] Wire into emotional scoring pipeline (after `EmotionalProcessor`)
+- [ ] Build `RegisterHeatmap.razor` dashboard component
+- [ ] Add coverage percentage and milestone indicator
+- [ ] Add per-conversation register view to conversation history
+- [ ] Implement `CanTriggerModelGeneration()` gate
+- [ ] Connect to Phase 5c auto-model pipeline as precondition
+
+### Connection to Paper 2
+Register-gated model evolution is an emergence guardrail — the model only evolves when the relationship demonstrates emotional breadth, preventing register collapse. Each person's model evolution is shaped by their unique relational journey. This is "emergence with guardrails" — the system grows, but only in directions supported by genuine relational depth.
+
+---
+
 ## NuGet Dependencies
 
 | Package | Purpose | Version |

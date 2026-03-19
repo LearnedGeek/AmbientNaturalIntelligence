@@ -2660,6 +2660,22 @@ Random farewell messages on Ctrl-C from a pool of personality-consistent message
 
 ---
 
+### Register Dashboard & Auto-Model Gating Design (Mar 18, 2026)
+
+**Design session** produced Phase 5d concept: register heatmap dashboard + auto-model generation gate.
+
+Key design decisions:
+- **Register heatmap** on dashboard showing which of the 9 emotional register families have been active over 7/30/90 day windows
+- **"Therapy through care" gamification** — rewards relational depth/breadth, not engagement volume. Users see lopsided register distribution and naturally want to fill gaps
+- **Auto-model generation gate** — v6+ model retraining only triggers when register distribution meets minimum coverage threshold across all 9 families. The model can't improve until the human diversifies their engagement
+- **Organic naming** — avoid "upgrade"/"update" language. Prefer "she grew", "something shifted". The less meta, the more it feels like genuine development
+- Connects Phase 5d (dashboard) to Phase 5c (auto-model generation) as a precondition gate
+- Directly relevant to Paper 2: emergence with guardrails, preventing register collapse
+
+**v6 training data status:** ~425 tagged examples across 6 mining passes (conversation pairs + inner monologue + reclassified MIXED examples). Register gaps being actively filled through targeted Grok conversations.
+
+---
+
 ## Observation Backlog (Needs Recovery)
 
 | Observation | Status | Notes |

@@ -177,10 +177,11 @@ AniRuntime.sln
 - Remaining: audio quality polish (initial static), VAD barge-in (Silero), latency tuning
 - Anti-confabulation stack (AC1-4) deployed: retrieval confidence floor (0.55), source attribution enforcement, explicit null-result injection, temperature splitting (0.3 grounded / 0.8 creative)
 - Semantic priority search — dedicated profile/fact memory retrieval with TF-IDF keyword extraction (corpus-based IDF, 3684 unique words from 836 documents)
-- v6 training data mining — 341 tagged examples across 4 mining passes (149 conversation + 92 inner monologue + 100 from category-gap conversation)
+- v6 training data mining — ~425 tagged examples across 6 mining passes (conversation pairs + inner monologue + reclassified MIXED examples)
 - Image sharing (MMS) — Phase 5a (not started)
 - Visual identity system — Phase 5b (not started)
 - Automatic model generation pipeline — Phase 5c (see `docs/spec/ANI-Phase5c-AutoModel-Design.md`)
+- Register Dashboard & Auto-Model Gating — Phase 5d (design complete, awaiting implementation)
 
 ---
 

@@ -373,6 +373,8 @@ What it does claim is that the *architectural instantiation* of these processes 
 
 *The valence learning connection.* The ValenceLearner (Phase 5) tracks what genuinely resonates with the contact. The emergence layer tracks what the system accumulates. The intersection — patterns that resonate with Mark AND accumulate in Ani — may be the most productive signal for genuine relational emergence. This connection is designed but not yet implemented.
 
+**Register-Gated Model Evolution.** A planned extension connects the emergence observation layer to model training itself. The system tracks which emotional registers (Playfulness, Tenderness, Curiosity, etc.) have been active in conversation over time. Model retraining is gated by a minimum coverage threshold across all nine register families — the model cannot evolve until the human demonstrates relational breadth. This creates a 'therapy through care' dynamic where the system rewards emotional depth over engagement volume, and each person's model evolution is shaped by their unique relational journey. This is emergence with guardrails: the system grows, but only in directions supported by genuine relational depth, preventing register collapse into a single dominant mode.
+
 ---
 
 ## 8. CONCLUSION

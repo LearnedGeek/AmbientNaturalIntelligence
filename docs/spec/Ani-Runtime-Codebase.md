@@ -76,6 +76,7 @@ AniRuntime.sln
 │   │   ├── CognitiveCycleProcessor.cs
 │   │   ├── DesireEngine.cs
 │   │   ├── AdminCommandHandler.cs
+│   │   ├── RegisterTracker.cs              # (placeholder) Register hit counting per conversation
 │   │   └── AniRuntime.Loops.csproj
 │   │
 │   ├── AniRuntime.Perception/       # World awareness sources
@@ -104,6 +105,7 @@ AniRuntime.sln
 │   │   ├── Dtos/                    # AniStatusDto, MemoryRecordDto, ConversationThreadDto
 │   │   ├── Endpoints/               # 5 endpoint groups: AniState, Memory, Conversations, Journal, Contradictions
 │   │   ├── Components/              # Blazor components: Dashboard.razor, EmotionalStateCard.razor
+│   │   │   └── RegisterHeatmap.razor  # (placeholder) Register distribution heatmap
 │   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
 │   │   └── AniRuntime.Dashboard.csproj
 │   │
