@@ -61,7 +61,15 @@ try
     builder.Services.Configure<EmergenceOptions>(config.GetSection("Emergence"));
 
     // ── Core services ─────────────────────────────────────────────────────────
-    builder.Services.AddSingleton<IMemoryService, SqliteMemoryService>();
+    // ISP: Single SqliteMemoryService instance registered against all interfaces.
+    // Consumers should depend on the narrowest interface they need.
+    builder.Services.AddSingleton<SqliteMemoryService>();
+    builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    builder.Services.AddSingleton<IStateStore>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<SqliteMemoryService>());
     builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
     builder.Services.AddSingleton<DesireEngine>();
 
