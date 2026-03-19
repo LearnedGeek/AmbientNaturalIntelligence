@@ -149,12 +149,11 @@ try
     builder.Services.AddSingleton<ConversationReplyPhase>();
     builder.Services.AddSingleton<OutreachPhase>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
-    // S6: Register AniHeartbeatService as singleton so ISessionNotifier resolves to the
-    // same instance as the hosted service. Voice services and perception sources inject
-    // ISessionNotifier via DI instead of fragile Action callbacks.
-    builder.Services.AddSingleton<AniHeartbeatService>();
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<AniHeartbeatService>());
-    builder.Services.AddSingleton<ISessionNotifier>(sp => sp.GetRequiredService<AniHeartbeatService>());
+    // S6: SessionNotifier is a lightweight singleton with no dependencies — breaks the
+    // circular DI chain. AniHeartbeatService wires itself as the handler in its constructor.
+    builder.Services.AddSingleton<SessionNotifier>();
+    builder.Services.AddSingleton<ISessionNotifier>(sp => sp.GetRequiredService<SessionNotifier>());
+    builder.Services.AddHostedService<AniHeartbeatService>();
 
     // ── Forwarded headers — needed for Twilio signature validation behind ngrok
     builder.Services.Configure<ForwardedHeadersOptions>(options =>

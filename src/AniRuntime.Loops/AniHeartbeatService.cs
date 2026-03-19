@@ -20,11 +20,12 @@ namespace AniRuntime.Loops;
 /// Early wake support: when the contact texts, TwilioInboundPerceptionSource calls
 /// RequestEarlyWake() to cancel the current sleep and trigger an immediate cycle.
 /// </summary>
-public class AniHeartbeatService : BackgroundService, ISessionNotifier
+public class AniHeartbeatService : BackgroundService
 {
     private readonly CognitiveCycleProcessor       _cycle;
     private readonly DesireEngine                  _desire;
     private readonly IConversationService          _conversations;
+    private readonly SessionNotifier               _notifier;
     private readonly AniOptions                    _aniOptions;
     private readonly ILogger<AniHeartbeatService>  _log;
 
@@ -35,14 +36,19 @@ public class AniHeartbeatService : BackgroundService, ISessionNotifier
         CognitiveCycleProcessor      cycle,
         DesireEngine                 desire,
         IConversationService         conversations,
+        SessionNotifier              notifier,
         IOptions<AniOptions>         aniOptions,
         ILogger<AniHeartbeatService> log)
     {
         _cycle         = cycle;
         _desire        = desire;
         _conversations = conversations;
+        _notifier      = notifier;
         _aniOptions    = aniOptions.Value;
         _log           = log;
+
+        // Wire ourselves as the handler for session events
+        _notifier.SetHandlers(PauseForVoiceCall, ResumeAfterVoiceCall, RequestEarlyWake);
     }
 
     /// <summary>
@@ -60,12 +66,6 @@ public class AniHeartbeatService : BackgroundService, ISessionNotifier
     public void PauseForVoiceCall() => Interlocked.Exchange(ref _voiceCallActive, 1);
     public void ResumeAfterVoiceCall() => Interlocked.Exchange(ref _voiceCallActive, 0);
     public bool IsVoiceCallActive => _voiceCallActive == 1;
-
-    // S6: ISessionNotifier — replaces fragile Action callbacks wired in Program.cs.
-    // Voice services and perception sources inject ISessionNotifier via DI instead.
-    void ISessionNotifier.OnCallStarted() => PauseForVoiceCall();
-    void ISessionNotifier.OnCallEnded() => ResumeAfterVoiceCall();
-    void ISessionNotifier.OnMessageReceived() => RequestEarlyWake();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
