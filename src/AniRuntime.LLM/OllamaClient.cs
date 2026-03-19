@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -16,11 +17,7 @@ public class OllamaClient : IOllamaClient
     private readonly OllamaOptions         _options;
     private readonly ILogger<OllamaClient> _log;
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy        = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition      = JsonIgnoreCondition.WhenWritingNull,
-    };
+    private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
 
     public OllamaClient(HttpClient http, IOptions<OllamaOptions> options, ILogger<OllamaClient> log)
     {

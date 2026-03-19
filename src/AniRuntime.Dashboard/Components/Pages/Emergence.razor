@@ -1,5 +1,6 @@
 @page "/emergence"
 @using System.Text.Json
+@using AniRuntime.Core.Utilities
 @using AniRuntime.Emergence
 @using AniRuntime.Emergence.Models
 @using Microsoft.Extensions.Options
@@ -236,10 +237,7 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
     private static string ComponentColor(float value) =>
         value >= 0.7f ? "#4caf50" : value >= 0.3f ? "#ff9800" : "#9e9e9e";
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
 
     private record LogDetails
     {

@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using AniRuntime.Core;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
@@ -404,10 +405,7 @@ public class StreamingVoiceOrchestrator
         return JsonSerializer.Deserialize<ControlMessage>(json, JsonOpts);
     }
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
 
     private record ControlMessage
     {

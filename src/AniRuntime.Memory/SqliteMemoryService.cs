@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniRuntime.Core;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Data.Sqlite;
@@ -575,8 +576,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         if (string.IsNullOrEmpty(raw))
             return new CharacterStateDoc();
 
-        return JsonSerializer.Deserialize<CharacterStateDoc>(raw,
-                   new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        return JsonSerializer.Deserialize<CharacterStateDoc>(raw, JsonDefaults.CaseInsensitive)
                ?? new CharacterStateDoc();
     }
 

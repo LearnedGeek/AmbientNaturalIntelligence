@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using AniRuntime.Core;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -48,8 +49,7 @@ public class WhisperSpeechToTextService : ISpeechToTextService
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        var result = JsonSerializer.Deserialize<WhisperResponse>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var result = JsonSerializer.Deserialize<WhisperResponse>(json, JsonDefaults.CaseInsensitive);
 
         var text = result?.Text?.Trim() ?? string.Empty;
         _logger.LogInformation("Whisper STT: transcribed → {Length} chars", text.Length);

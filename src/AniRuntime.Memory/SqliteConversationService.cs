@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniRuntime.Core;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Data.Sqlite;
@@ -25,10 +26,7 @@ public class SqliteConversationService : IConversationService, IDisposable
     private readonly ILogger<SqliteConversationService>    _log;
     private readonly SqliteConnection                      _keepAlive;
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
 
     public SqliteConversationService(
         IOptions<AniOptions> options,

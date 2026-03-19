@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniRuntime.Core;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -145,10 +146,13 @@ public class ImageSelectionService : IImageSelectionService
         }
     }
 
+    // Extends JsonDefaults.CamelCase with comment handling for manifest.json
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        ReadCommentHandling = JsonCommentHandling.Skip,
+        PropertyNamingPolicy        = JsonDefaults.CamelCase.PropertyNamingPolicy,
+        PropertyNameCaseInsensitive = JsonDefaults.CamelCase.PropertyNameCaseInsensitive,
+        DefaultIgnoreCondition      = JsonDefaults.CamelCase.DefaultIgnoreCondition,
+        ReadCommentHandling         = JsonCommentHandling.Skip,
     };
 
     private record ImageManifest

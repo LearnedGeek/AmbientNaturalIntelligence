@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Actions;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
@@ -328,8 +329,7 @@ try
             if (File.Exists(seedPath))
             {
                 var json = await File.ReadAllTextAsync(seedPath);
-                var doc  = JsonSerializer.Deserialize<CharacterStateDoc>(json,
-                               new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var doc  = JsonSerializer.Deserialize<CharacterStateDoc>(json, JsonDefaults.CaseInsensitive);
                 if (doc is not null)
                 {
                     await memory.SaveCharacterStateAsync(doc);

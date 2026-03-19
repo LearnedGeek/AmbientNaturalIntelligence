@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniRuntime.Core.Interfaces;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Models;
 using AniRuntime.Emergence.Models;
 using Microsoft.Extensions.Logging;
@@ -20,11 +21,7 @@ public class EmergenceObserver : IEmergenceObserver
     private readonly EmergenceStore _store;
     private readonly ILogger<EmergenceObserver> _log;
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        WriteIndented = false,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
 
     /// <summary>Cycles scoring above this threshold get a resonance record.</summary>
     private const float ResonanceThreshold = 0.4f;
