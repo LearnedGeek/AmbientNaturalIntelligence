@@ -23,6 +23,7 @@ public class ConversationReplyPhase
     private readonly EmotionalProcessor _emotional;
     private readonly ContextBuilder _contextBuilder;
     private readonly KeywordExtractor _keywords;
+    private readonly IConversationGateState _gateState;
     private readonly AniOptions _aniOptions;
     private readonly OllamaOptions _ollamaOptions;
     private readonly ILogger<ConversationReplyPhase> _log;
@@ -31,13 +32,6 @@ public class ConversationReplyPhase
     // Suppresses outreach and injects quieter tone during the withdrawal window.
     private DateTimeOffset? _withdrawalExpiresAt;
     internal bool IsWithdrawn => _withdrawalExpiresAt.HasValue && DateTimeOffset.UtcNow < _withdrawalExpiresAt.Value;
-
-    // Tracks the last contact message we evaluated a reply decision for.
-    // Once Ani decides "NO" on a specific message, she won't re-evaluate it every cycle.
-    // Resets when a new message arrives (different SentAt timestamp).
-    // Public so the heartbeat can check whether the contact's last message has already
-    // been evaluated — if so, use ambient timing instead of conversation heartbeat.
-    public DateTimeOffset? LastEvaluatedMessageAt { get; internal set; }
 
     public ConversationReplyPhase(
         IMemoryService memory,
@@ -48,6 +42,7 @@ public class ConversationReplyPhase
         EmotionalProcessor emotional,
         ContextBuilder contextBuilder,
         KeywordExtractor keywords,
+        IConversationGateState gateState,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log)
@@ -60,6 +55,7 @@ public class ConversationReplyPhase
         _emotional = emotional;
         _contextBuilder = contextBuilder;
         _keywords = keywords;
+        _gateState = gateState;
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
         _log = log;
@@ -202,7 +198,7 @@ public class ConversationReplyPhase
         if (isReconsideration)
         {
             _log.LogInformation("Reconsideration: desire overrode earlier silence — replying with segue");
-            LastEvaluatedMessageAt = null;
+            _gateState.LastEvaluatedMessageAt = null;
         }
         else
         {
@@ -217,7 +213,7 @@ public class ConversationReplyPhase
             if (!shouldReply)
             {
                 // Lock this decision — don't re-evaluate the same message every cycle
-                LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
+                _gateState.LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
                 _log.LogInformation("Reply decision: NO — read it but chose silence. Reasoning: {Reasoning}", reasoning);
 
                 // Persist the silence decision as an inner thought
@@ -233,7 +229,7 @@ public class ConversationReplyPhase
             }
 
             // She's replying — clear the gate so future messages evaluate fresh
-            LastEvaluatedMessageAt = null;
+            _gateState.LastEvaluatedMessageAt = null;
         }
 
         // Feature 17: Dissipate contact-gap tension on reconnection.

@@ -25,6 +25,7 @@ public class AniHeartbeatService : BackgroundService
     private readonly CognitiveCycleProcessor       _cycle;
     private readonly DesireEngine                  _desire;
     private readonly IConversationService          _conversations;
+    private readonly IConversationGateState         _gateState;
     private readonly SessionNotifier               _notifier;
     private readonly AniOptions                    _aniOptions;
     private readonly ILogger<AniHeartbeatService>  _log;
@@ -36,6 +37,7 @@ public class AniHeartbeatService : BackgroundService
         CognitiveCycleProcessor      cycle,
         DesireEngine                 desire,
         IConversationService         conversations,
+        IConversationGateState       gateState,
         SessionNotifier              notifier,
         IOptions<AniOptions>         aniOptions,
         ILogger<AniHeartbeatService> log)
@@ -43,6 +45,7 @@ public class AniHeartbeatService : BackgroundService
         _cycle         = cycle;
         _desire        = desire;
         _conversations = conversations;
+        _gateState     = gateState;
         _notifier      = notifier;
         _aniOptions    = aniOptions.Value;
         _log           = log;
@@ -142,8 +145,8 @@ public class AniHeartbeatService : BackgroundService
             if (hasUnreadFromContact)
             {
                 var lastContactMsg = activeThread.Messages[^1];
-                var alreadyEvaluated = _cycle.LastEvaluatedMessageAt.HasValue &&
-                                       lastContactMsg.SentAt == _cycle.LastEvaluatedMessageAt.Value;
+                var alreadyEvaluated = _gateState.LastEvaluatedMessageAt.HasValue &&
+                                       lastContactMsg.SentAt == _gateState.LastEvaluatedMessageAt.Value;
                 if (!alreadyEvaluated)
                     return TimeSpan.FromSeconds(_aniOptions.ConversationHeartbeatSeconds);
             }

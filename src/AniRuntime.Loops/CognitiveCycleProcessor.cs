@@ -34,6 +34,7 @@ public class CognitiveCycleProcessor
     private readonly ContextBuilder                  _contextBuilder;
     private readonly ConversationReplyPhase          _conversationReply;
     private readonly OutreachPhase                   _outreach;
+    private readonly IConversationGateState           _gateState;
     private readonly AniOptions                      _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor> _log;
 
@@ -43,12 +44,6 @@ public class CognitiveCycleProcessor
     // every cycle. Key = summary text, Value = when it was last persisted.
     private readonly Dictionary<string, DateTimeOffset> _recentPerceptions = new();
     private static readonly TimeSpan PerceptionDedupeWindow = TimeSpan.FromHours(4);
-
-    /// <summary>
-    /// Tracks the last contact message we evaluated a reply decision for.
-    /// Delegated to ConversationReplyPhase but exposed here for heartbeat service access.
-    /// </summary>
-    public DateTimeOffset? LastEvaluatedMessageAt => _conversationReply.LastEvaluatedMessageAt;
 
     public CognitiveCycleProcessor(
         IMemoryService                 memory,
@@ -63,6 +58,7 @@ public class CognitiveCycleProcessor
         ContextBuilder                 contextBuilder,
         ConversationReplyPhase         conversationReply,
         OutreachPhase                  outreach,
+        IConversationGateState         gateState,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
@@ -77,6 +73,7 @@ public class CognitiveCycleProcessor
         _contextBuilder    = contextBuilder;
         _conversationReply = conversationReply;
         _outreach          = outreach;
+        _gateState         = gateState;
         _aniOptions        = aniOptions.Value;
         _log               = log;
     }
@@ -165,7 +162,7 @@ public class CognitiveCycleProcessor
             }
 
             // If we already evaluated this exact message and decided NO, don't re-ask.
-            if (LastEvaluatedMessageAt.HasValue && lastMsg.SentAt == LastEvaluatedMessageAt.Value)
+            if (_gateState.LastEvaluatedMessageAt.HasValue && lastMsg.SentAt == _gateState.LastEvaluatedMessageAt.Value)
             {
                 _log.LogDebug("Already evaluated reply for message at {SentAt} — skipping to ambient mode",
                     lastMsg.SentAt);
@@ -247,7 +244,7 @@ public class CognitiveCycleProcessor
         // Phase 6: Outreach — only if desire crosses threshold
         if (activeThread is not null)
         {
-            if (hasUnreadFromContact && LastEvaluatedMessageAt.HasValue &&
+            if (hasUnreadFromContact && _gateState.LastEvaluatedMessageAt.HasValue &&
                 await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
             {
                 _log.LogInformation("Desire built after choosing silence — reconsidering reply");
