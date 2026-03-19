@@ -92,22 +92,24 @@ public class CognitiveCycleProcessorTests : AniTestBase
         var outreach = new OutreachPhase(
             MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
             NullLogger<OutreachPhase>.Instance);
+        var perception = new PerceptionPhase(
+            sources, MockMemory.Object, NullLogger<PerceptionPhase>.Instance);
+        var innerThought = new InnerThoughtPhase(
+            MockOllama.Object, NullLogger<InnerThoughtPhase>.Instance);
 
         return new CognitiveCycleProcessor(
             MockMemory.Object,
             MockMemory.Object,
             MockMemory.Object,
             MockMemory.Object,
-            MockMemory.Object,
-            MockOllama.Object,
             desire,
-            dispatcher,
             _mockConversations.Object,
-            sources,
             adminHandler,
             new NullEmergenceObserver(),
             emotional,
             contextBuilder,
+            perception,
+            innerThought,
             conversationReply,
             outreach,
             gateState,

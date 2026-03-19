@@ -156,6 +156,8 @@ try
     builder.Services.AddSingleton<ContextBuilder>();
     builder.Services.AddSingleton<AniRuntime.LLM.KeywordExtractor>();
     builder.Services.AddSingleton<IConversationGateState, ConversationGateState>();
+    builder.Services.AddSingleton<PerceptionPhase>();
+    builder.Services.AddSingleton<InnerThoughtPhase>();
     builder.Services.AddSingleton<ConversationReplyPhase>();
     builder.Services.AddSingleton<OutreachPhase>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
