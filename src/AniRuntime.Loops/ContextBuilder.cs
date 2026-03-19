@@ -262,6 +262,15 @@ public class ContextBuilder
     /// Computes a "thought centroid" from recent thought embeddings, then scores each
     /// candidate by (1 - similarity_to_centroid). Higher novelty = ranked first.
     /// </summary>
+    /// <summary>
+    /// Re-ranks memory candidates by novelty relative to recent inner thoughts.
+    /// Memories most dissimilar to the thought centroid rank highest (diversity over echo).
+    ///
+    /// CS6: Dual-consumer — called by both BuildThoughtContextAsync (inner thought diversity)
+    /// and ConversationReplyPhase (conversation context diversity). Changes to this method
+    /// affect BOTH paths. If inner thought and conversation reply need different re-ranking
+    /// strategies in the future, split into two methods with separate tuning parameters.
+    /// </summary>
     public async Task<List<MemoryRecord>> ReRankForDiversityAsync(
         List<MemoryRecord> candidates, List<MemoryRecord> recentThoughts, CancellationToken ct)
     {

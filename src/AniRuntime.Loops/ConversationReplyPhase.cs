@@ -175,6 +175,7 @@ public class ConversationReplyPhase
             // Re-rank for diversity against recent thoughts
             var recentThoughts = (await _memory.GetByTypeAsync(MemoryType.InnerThought, 5, ct)
                 .ConfigureAwait(false)).ToList();
+            // CS6: Shared with BuildThoughtContextAsync — see ContextBuilder.ReRankForDiversityAsync
             messageRelevant = await _contextBuilder.ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
                 .ConfigureAwait(false);
 

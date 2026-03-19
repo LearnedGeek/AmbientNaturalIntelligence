@@ -71,10 +71,10 @@
 **Issue:** `SearchWithScoresAsync` returns the inbound message itself (saved as a Perception) as the top result with highest cosine similarity. The existing filter in ConversationReplyPhase catches "Mark said:" prefixed records but misses "Mark texted:" Perception records.
 **Fix:** `IsMessageEcho()` helper at line 806 now checks both "said" and "texted" prefixes, using first 30 chars of inbound message as anchor. Applied at line 175 in the search pipeline.
 
-### [ ] CS6: ReRankForDiversityAsync dual-consumer coupling
-**Files:** `ContextBuilder.cs`, `CognitiveCycleProcessor.cs`
-**Issue:** `ReRankForDiversityAsync` in `ContextBuilder` is called by both inner thought generation (orchestrator) and conversation reply (`ConversationReplyPhase`). Changes to re-ranking logic affect both paths without obvious indication.
-**Fix:** Document the dual usage clearly. Consider whether inner thought diversity re-ranking should use a separate method with its own tuning parameters.
+### [x] CS6: ReRankForDiversityAsync dual-consumer coupling
+**Files:** `ContextBuilder.cs`, `ConversationReplyPhase.cs`
+**Issue:** `ReRankForDiversityAsync` called by both inner thought and conversation reply paths. Changes affect both silently.
+**Fix:** Added XML doc with CS6 note on the method explaining dual usage. Added CS6 cross-reference comment at ConversationReplyPhase call site. Method remains shared — splitting would create divergent logic with no current justification. Comment trail ensures future changes consider both paths.
 
 ---
 
