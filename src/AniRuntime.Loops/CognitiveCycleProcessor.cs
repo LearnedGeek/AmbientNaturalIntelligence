@@ -23,7 +23,11 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class CognitiveCycleProcessor
 {
-    private readonly IMemoryService                  _memory;
+    private readonly IStateStore                      _state;
+    private readonly IMemoryPersistence               _persist;
+    private readonly IMemorySearch                    _search;
+    private readonly IMemoryAnalytics                 _analytics;
+    private readonly IMemoryMaintenance               _maintenance;
     private readonly IOllamaClient                   _ollama;
     private readonly DesireEngine                    _desire;
     private readonly IEnumerable<IPerceptionSource>  _sources;
@@ -46,7 +50,11 @@ public class CognitiveCycleProcessor
     private static readonly TimeSpan PerceptionDedupeWindow = TimeSpan.FromHours(4);
 
     public CognitiveCycleProcessor(
-        IMemoryService                 memory,
+        IStateStore                    state,
+        IMemoryPersistence             persist,
+        IMemorySearch                  search,
+        IMemoryAnalytics               analytics,
+        IMemoryMaintenance             maintenance,
         IOllamaClient                  ollama,
         DesireEngine                   desire,
         AniActionDispatcher            dispatcher,
@@ -62,7 +70,11 @@ public class CognitiveCycleProcessor
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
-        _memory            = memory;
+        _state             = state;
+        _persist           = persist;
+        _search            = search;
+        _analytics         = analytics;
+        _maintenance       = maintenance;
         _ollama            = ollama;
         _desire            = desire;
         _conversations     = conversations;
@@ -91,13 +103,13 @@ public class CognitiveCycleProcessor
         // Phase 0: Emotional state — compute from active contributions.
         // Each contribution decays independently via its own half-life.
         // The emotional state is baselines + sum of all decayed contributions.
-        var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-        var activeContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+        var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var activeContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
         emotionalState.ComputeFromContributions(activeContributions);
         obs.EmotionalState = emotionalState;
 
         // Periodic cleanup of fully-decayed contributions (> 24h old)
-        await _memory.CleanupDecayedContributionsAsync(ct).ConfigureAwait(false);
+        await _maintenance.CleanupDecayedContributionsAsync(ct).ConfigureAwait(false);
 
         // Feature 2: Open loops as emotional weight — unresolved threads create gentle
         // worry pressure. Proportional to count and age of oldest loop.
@@ -122,7 +134,7 @@ public class CognitiveCycleProcessor
             }
         }
 
-        await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+        await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
 
         // Phase 1: Perception (includes Twilio inbound polling + conversation timeout checks)
         var perceptions = await PollPerceptionSourcesAsync(ct).ConfigureAwait(false);
@@ -133,7 +145,7 @@ public class CognitiveCycleProcessor
         await PersistNotablePerceptionsAsync(perceptions, ct).ConfigureAwait(false);
 
         // Load character state early — needed for dynamic name references in logs and memory
-        var charState = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+        var charState = await _state.GetCharacterStateAsync(ct).ConfigureAwait(false);
 
         // Phase 2: Check for active conversation — if contact texted, route to reply mode
         var activeThread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
@@ -197,7 +209,7 @@ public class CognitiveCycleProcessor
             ? $"{thought} [reflection: {reflection}]"
             : thought;
 
-        await _memory.SaveAsync(new MemoryRecord
+        await _persist.SaveAsync(new MemoryRecord
         {
             Type        = MemoryType.InnerThought,
             Content     = contentForStorage,
@@ -221,8 +233,8 @@ public class CognitiveCycleProcessor
             isAmbientCycle: true, category: ImpactCategory.Ambient).ConfigureAwait(false);
 
         // Re-read emotional state after shift for emergence observation deltas
-        var postShift = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-        var postContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+        var postShift = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var postContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
         postShift.ComputeFromContributions(postContributions);
         obs.WarmthDelta = postShift.Warmth - preShiftW;
         obs.EnergyDelta = postShift.Energy - preShiftE;
@@ -377,7 +389,7 @@ public class CognitiveCycleProcessor
 
             try
             {
-                await _memory.SaveAsync(new MemoryRecord
+                await _persist.SaveAsync(new MemoryRecord
                 {
                     Type        = MemoryType.Perception,
                     Content     = p.Summary,

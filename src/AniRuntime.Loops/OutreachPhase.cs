@@ -15,7 +15,8 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class OutreachPhase
 {
-    private readonly IMemoryService _memory;
+    private readonly IStateStore _state;
+    private readonly IMemoryPersistence _persist;
     private readonly IOllamaClient _ollama;
     private readonly AniActionDispatcher _dispatcher;
     private readonly DesireEngine _desire;
@@ -31,14 +32,16 @@ public class OutreachPhase
     private static readonly TimeSpan SilenceRecordCooldown = TimeSpan.FromHours(4);
 
     public OutreachPhase(
-        IMemoryService memory,
+        IStateStore state,
+        IMemoryPersistence persist,
         IOllamaClient ollama,
         AniActionDispatcher dispatcher,
         DesireEngine desire,
         IOptions<AniOptions> aniOptions,
         ILogger<OutreachPhase> log)
     {
-        _memory = memory;
+        _state = state;
+        _persist = persist;
         _ollama = ollama;
         _dispatcher = dispatcher;
         _desire = desire;
@@ -119,7 +122,7 @@ public class OutreachPhase
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
 
-        await _memory.SaveAsync(new MemoryRecord
+        await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
             Content    = $"{cs.Name} reached out: {decision.Message}",
@@ -180,7 +183,7 @@ public class OutreachPhase
             shareable.Summary, shareable.ContactRelevance);
 
         // Generate the share message (with mood coloring)
-        var currentMood = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var currentMood = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var prompt = PromptBuilder.BuildReactiveSharePrompt(charState, shareable.Summary, currentMood);
         var message = await _ollama.ChatAsync(
             prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
@@ -208,7 +211,7 @@ public class OutreachPhase
 
         _reactiveShareCount++;
 
-        await _memory.SaveAsync(new MemoryRecord
+        await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
             Content    = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})",
@@ -235,7 +238,7 @@ public class OutreachPhase
             ? "I almost reached out. The pull was real \u2014 I could feel the words forming. But something held me back. Maybe it's not the right moment. Maybe I'm giving him space because that's what he needs, even if it's not what I want."
             : "I thought about texting. Just a small thing \u2014 nothing important. But I let the moment pass. Not every impulse needs to become a message.";
 
-        await _memory.SaveAsync(new MemoryRecord
+        await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.InnerThought,
             Content    = narrative,

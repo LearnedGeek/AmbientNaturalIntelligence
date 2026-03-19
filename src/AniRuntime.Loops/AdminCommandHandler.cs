@@ -18,7 +18,8 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class AdminCommandHandler
 {
-    private readonly IMemoryService      _memory;
+    private readonly IStateStore          _state;
+    private readonly IMemoryPersistence  _persist;
     private readonly DesireEngine        _desire;
     private readonly AniActionDispatcher _dispatcher;
     private readonly AniOptions          _aniOptions;
@@ -29,13 +30,15 @@ public class AdminCommandHandler
     public bool IsTestMode => _testModeStartedAt.HasValue;
 
     public AdminCommandHandler(
-        IMemoryService                  memory,
+        IStateStore                     state,
+        IMemoryPersistence              persist,
         DesireEngine                    desire,
         AniActionDispatcher             dispatcher,
         IOptions<AniOptions>            aniOptions,
         ILogger<AdminCommandHandler>    log)
     {
-        _memory     = memory;
+        _state      = state;
+        _persist    = persist;
         _desire     = desire;
         _dispatcher = dispatcher;
         _aniOptions = aniOptions.Value;
@@ -154,7 +157,7 @@ public class AdminCommandHandler
 
     private async Task<string> HandleResetMoodAsync(CancellationToken ct)
     {
-        var emotional = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var emotional = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var before = $"W={emotional.Warmth:F2} E={emotional.Energy:F2} C={emotional.Worry:F2} P={emotional.Playfulness:F2}";
 
         emotional.Warmth      = emotional.WarmthBaseline;
@@ -163,7 +166,7 @@ public class AdminCommandHandler
         emotional.Playfulness = emotional.PlayfulnessBaseline;
         emotional.LastUpdated = DateTimeOffset.UtcNow;
 
-        await _memory.SaveEmotionalStateAsync(emotional, ct).ConfigureAwait(false);
+        await _persist.SaveEmotionalStateAsync(emotional, ct).ConfigureAwait(false);
 
         _log.LogWarning("Emotional state reset to baselines (was: {Before})", before);
 
@@ -172,9 +175,9 @@ public class AdminCommandHandler
 
     private async Task<string> HandleStatusAsync(CancellationToken ct)
     {
-        var emotional = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var emotional = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var desire    = await _desire.GetStateAsync(ct).ConfigureAwait(false);
-        var charState = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+        var charState = await _state.GetCharacterStateAsync(ct).ConfigureAwait(false);
 
         var moodDesc = emotional.Describe();
         var mood = string.IsNullOrEmpty(moodDesc) ? "baseline" : moodDesc;

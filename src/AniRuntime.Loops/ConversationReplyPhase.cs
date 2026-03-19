@@ -15,7 +15,10 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class ConversationReplyPhase
 {
-    private readonly IMemoryService _memory;
+    private readonly IStateStore _state;
+    private readonly IMemoryPersistence _persist;
+    private readonly IMemorySearch _search;
+    private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly IConversationService _conversations;
     private readonly AniActionDispatcher _dispatcher;
@@ -34,7 +37,10 @@ public class ConversationReplyPhase
     internal bool IsWithdrawn => _withdrawalExpiresAt.HasValue && DateTimeOffset.UtcNow < _withdrawalExpiresAt.Value;
 
     public ConversationReplyPhase(
-        IMemoryService memory,
+        IStateStore state,
+        IMemoryPersistence persist,
+        IMemorySearch search,
+        IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IConversationService conversations,
         AniActionDispatcher dispatcher,
@@ -47,7 +53,10 @@ public class ConversationReplyPhase
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log)
     {
-        _memory = memory;
+        _state = state;
+        _persist = persist;
+        _search = search;
+        _analytics = analytics;
         _ollama = ollama;
         _conversations = conversations;
         _dispatcher = dispatcher;
@@ -92,7 +101,7 @@ public class ConversationReplyPhase
         // memories that casual greeting noise would otherwise bury.
         try
         {
-            var scoredResults = await _memory.SearchWithScoresAsync(lastMessage, 5, ct).ConfigureAwait(false);
+            var scoredResults = await _search.SearchWithScoresAsync(lastMessage, 5, ct).ConfigureAwait(false);
             var scoredList = scoredResults.ToList();
 
             // TF-IDF keyword extraction: search with distinctive words to find
@@ -104,7 +113,7 @@ public class ConversationReplyPhase
                 var existingIds = new HashSet<Guid>(scoredList.Select(s => s.Record.Id));
 
                 // Broad keyword search across all memory types
-                var keywordResults = await _memory.SearchWithScoresAsync(keywordQuery, 5, ct).ConfigureAwait(false);
+                var keywordResults = await _search.SearchWithScoresAsync(keywordQuery, 5, ct).ConfigureAwait(false);
                 var newFromKeywords = keywordResults.Where(s => !existingIds.Contains(s.Record.Id)).ToList();
                 if (newFromKeywords.Count > 0)
                 {
@@ -119,7 +128,7 @@ public class ConversationReplyPhase
                 // that casual message search misses but keyword search should find.
                 // Semantic memories represent user profile data that should always be
                 // discoverable regardless of conversational phrasing.
-                var semanticResults = await _memory.SearchByTypeAsync(
+                var semanticResults = await _search.SearchByTypeAsync(
                     keywordQuery, MemoryType.Semantic, 3, ct).ConfigureAwait(false);
                 var newFromSemantic = semanticResults
                     .Where(r => !existingIds.Contains(r.Id))
@@ -173,7 +182,7 @@ public class ConversationReplyPhase
                 .ToList();
 
             // Re-rank for diversity against recent thoughts
-            var recentThoughts = (await _memory.GetByTypeAsync(MemoryType.InnerThought, 5, ct)
+            var recentThoughts = (await _search.GetByTypeAsync(MemoryType.InnerThought, 5, ct)
                 .ConfigureAwait(false)).ToList();
             // CS6: Shared with BuildThoughtContextAsync — see ContextBuilder.ReRankForDiversityAsync
             messageRelevant = await _contextBuilder.ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
@@ -219,7 +228,7 @@ public class ConversationReplyPhase
 
                 // Persist the silence decision as an inner thought
                 var silenceThought = $"I read Mark's message (\"{lastMessage}\") and chose not to reply. {reasoning}";
-                await _memory.SaveAsync(new MemoryRecord
+                await _persist.SaveAsync(new MemoryRecord
                 {
                     Type = MemoryType.InnerThought,
                     Content = silenceThought,
@@ -246,7 +255,7 @@ public class ConversationReplyPhase
                 _log.LogInformation("Contact-gap tension dissipating: {Previous:F3} → {New:F3}",
                     previousTension, emotionalState.ContactGapTension);
             }
-            await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+            await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
         }
 
         // Feature 10: Receiving Care — detect when contact is checking in on Ani
@@ -266,11 +275,11 @@ public class ConversationReplyPhase
             if (anchorContributions.Count > 0)
             {
                 foreach (var ac in anchorContributions)
-                    await _memory.SaveEmotionalContributionAsync(ac, ct).ConfigureAwait(false);
+                    await _persist.SaveEmotionalContributionAsync(ac, ct).ConfigureAwait(false);
 
-                var allContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                var allContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
                 emotionalState.ComputeFromContributions(allContributions);
-                await _memory.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+                await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
                 _log.LogInformation("Lexical anchors triggered: {Count} — contributions created", anchorContributions.Count);
             }
         }
@@ -288,7 +297,7 @@ public class ConversationReplyPhase
             _log.LogInformation("Withdrawal active until {Expires}", _withdrawalExpiresAt.Value.ToString("HH:mm"));
 
             // Save as inner thought so future cycles can reference "something felt off"
-            await _memory.SaveAsync(new MemoryRecord
+            await _persist.SaveAsync(new MemoryRecord
             {
                 Type       = MemoryType.InnerThought,
                 Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
@@ -510,10 +519,10 @@ public class ConversationReplyPhase
     {
         try
         {
-            var related = await _memory.SearchAsync(contactMessage, 3, ct).ConfigureAwait(false);
+            var related = await _search.SearchAsync(contactMessage, 3, ct).ConfigureAwait(false);
             foreach (var record in related)
             {
-                await _memory.AdjustImportanceAsync(record.Id, 0.1f, ct).ConfigureAwait(false);
+                await _persist.AdjustImportanceAsync(record.Id, 0.1f, ct).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -766,7 +775,7 @@ public class ConversationReplyPhase
 
             var retrievedIds = new HashSet<Guid>(retrieved.Select(m => m.Id));
 
-            var contradictions = await _memory.GetFlaggedContradictionsAsync(includeResolved: false, ct)
+            var contradictions = await _analytics.GetFlaggedContradictionsAsync(includeResolved: false, ct)
                 .ConfigureAwait(false);
 
             var relevant = contradictions
@@ -846,7 +855,7 @@ public class ConversationReplyPhase
 
             foreach (var claim in claims)
             {
-                var matches = await _memory.SearchAsync(
+                var matches = await _search.SearchAsync(
                     claim, _aniOptions.ClaimVerificationMaxMemories, ct).ConfigureAwait(false);
 
                 var matchList = matches.ToList();

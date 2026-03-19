@@ -1,7 +1,11 @@
 @page "/"
 @using AniRuntime.Core.Interfaces
 @using AniRuntime.Core.Models
-@inject IMemoryService Memory
+@inject IStateStore StateStore
+@inject IMemorySearch MemorySearch
+@inject IMemoryAnalytics MemoryAnalytics
+@inject IMemoryPersistence MemoryPersist
+@inject IMemoryMaintenance MemoryMaintenance
 @inject IConversationService Conversations
 
 <h1>ANI Dashboard</h1>
@@ -91,11 +95,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _charState = await Memory.GetCharacterStateAsync();
-        _emotional = await Memory.GetEmotionalStateAsync();
-        _recentThoughts = (await Memory.GetByTypeAsync(MemoryType.InnerThought, 5)).ToList();
-        _contributions = await Memory.GetActiveContributionsAsync();
-        _allContributions = await Memory.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));
+        _charState = await StateStore.GetCharacterStateAsync();
+        _emotional = await StateStore.GetEmotionalStateAsync();
+        _recentThoughts = (await MemorySearch.GetByTypeAsync(MemoryType.InnerThought, 5)).ToList();
+        _contributions = await MemoryAnalytics.GetActiveContributionsAsync();
+        _allContributions = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));
         _activeThread = await Conversations.GetActiveThreadAsync();
     }
 
@@ -109,11 +113,11 @@
 
     private async Task ExpireContribution(Guid id)
     {
-        await Memory.ExpireContributionAsync(id);
-        var state = await Memory.GetEmotionalStateAsync();
-        _contributions = await Memory.GetActiveContributionsAsync();
+        await MemoryMaintenance.ExpireContributionAsync(id);
+        var state = await StateStore.GetEmotionalStateAsync();
+        _contributions = await MemoryAnalytics.GetActiveContributionsAsync();
         state.ComputeFromContributions(_contributions);
-        await Memory.SaveEmotionalStateAsync(state);
+        await MemoryPersist.SaveEmotionalStateAsync(state);
         _emotional = state;
     }
 

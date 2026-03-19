@@ -10,7 +10,7 @@ namespace AniRuntime.Tests;
 
 public class DesireEngineTests : AniTestBase
 {
-    private DesireEngine CreateEngine() => new(MockMemory.Object, DefaultOptions, NullLogger<DesireEngine>.Instance);
+    private DesireEngine CreateEngine() => new(MockMemory.Object, MockMemory.Object, DefaultOptions, NullLogger<DesireEngine>.Instance);
 
     // ── ComputeNextWakeTime ────────────────────────────────────────────────────
 

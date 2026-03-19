@@ -57,7 +57,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
         _mockSmsAction.Setup(a => a.ActionType).Returns(ActionTypes.Sms);
 
         var sources    = new[] { _mockSource.Object };
-        var desire     = new DesireEngine(MockMemory.Object, DefaultOptions, NullLogger<DesireEngine>.Instance);
+        var desire     = new DesireEngine(MockMemory.Object, MockMemory.Object, DefaultOptions, NullLogger<DesireEngine>.Instance);
         var dispatcher = new AniActionDispatcher(
             new[] { _mockSmsAction.Object },
             NullLogger<AniActionDispatcher>.Instance);
@@ -66,31 +66,38 @@ public class CognitiveCycleProcessorTests : AniTestBase
                           .ReturnsAsync((ConversationThread?)null);
 
         var adminHandler = new AdminCommandHandler(
-            MockMemory.Object,
+            MockMemory.Object, MockMemory.Object,
             desire,
             dispatcher,
             DefaultOptions,
             NullLogger<AdminCommandHandler>.Instance);
 
         var emotional = new EmotionalProcessor(
-            MockMemory.Object, MockOllama.Object, DefaultOptions,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object,
+            MockOllama.Object, DefaultOptions,
             NullLogger<EmotionalProcessor>.Instance);
         var contextBuilder = new ContextBuilder(
-            MockMemory.Object, MockOllama.Object, desire, DefaultOptions,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
+            MockOllama.Object, desire, DefaultOptions,
             NullLogger<ContextBuilder>.Instance);
         var keywordExtractor = new KeywordExtractor(
             MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();
         var conversationReply = new ConversationReplyPhase(
-            MockMemory.Object, MockOllama.Object, _mockConversations.Object,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
+            MockOllama.Object, _mockConversations.Object,
             dispatcher, desire, emotional, contextBuilder, keywordExtractor,
             gateState, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
-            MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
+            MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
             NullLogger<OutreachPhase>.Instance);
 
         return new CognitiveCycleProcessor(
+            MockMemory.Object,
+            MockMemory.Object,
+            MockMemory.Object,
+            MockMemory.Object,
             MockMemory.Object,
             MockOllama.Object,
             desire,

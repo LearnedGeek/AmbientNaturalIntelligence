@@ -15,7 +15,8 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class DesireEngine
 {
-    private readonly IMemoryService         _memory;
+    private readonly IStateStore             _state;
+    private readonly IMemoryPersistence      _persist;
     private readonly AniOptions             _options;
     private readonly ILogger<DesireEngine>  _log;
 
@@ -31,9 +32,10 @@ public class DesireEngine
     private int  _morningSendCount;
     private bool _wasMorningWindow;
 
-    public DesireEngine(IMemoryService memory, IOptions<AniOptions> options, ILogger<DesireEngine> log)
+    public DesireEngine(IStateStore state, IMemoryPersistence persist, IOptions<AniOptions> options, ILogger<DesireEngine> log)
     {
-        _memory  = memory;
+        _state   = state;
+        _persist = persist;
         _options = options.Value;
         _log     = log;
     }
@@ -76,14 +78,14 @@ public class DesireEngine
     /// </summary>
     public async Task<bool> ShouldReachOutAsync(CancellationToken ct = default)
     {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
         // Auto-expire cooldown
         if (state.CooldownActive && DateTimeOffset.UtcNow >= state.CooldownUntil)
         {
             state.CooldownActive = false;
             _log.LogDebug("Cooldown expired — lifting");
-            await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
         }
 
         if (state.CooldownActive)
@@ -153,7 +155,7 @@ public class DesireEngine
     // ── State reads ───────────────────────────────────────────────────────────
 
     public async Task<DesireState> GetStateAsync(CancellationToken ct = default)
-        => await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        => await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
     // ── State mutations (single code path per write) ──────────────────────────
 
@@ -171,7 +173,7 @@ public class DesireEngine
     /// </summary>
     public async Task ApplyDriftAsync(CancellationToken ct = default)
     {
-        var state   = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state   = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
         // Use the more recent of LastContactInbound or LastOutreach — Ani's own messages
         // partially satisfy her connection need, so drift should slow after she texts too
@@ -180,7 +182,7 @@ public class DesireEngine
         var elapsed = DateTimeOffset.UtcNow - lastConnection;
 
         // Compute satisfaction from available signals
-        var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var satisfaction = ComputeSatisfaction(state, emotionalState, elapsed);
 
         var previousDesire = state.DesireToConnect;
@@ -200,7 +202,7 @@ public class DesireEngine
             "Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (base={BaseDrift:F2}, satisfaction={Satisfaction:F2}, dampening={Dampening:F2}, elapsed={Hours:F1}h, circadian={Circadian:F2})",
             previousDesire, drift, state.DesireToConnect, baseDrift, satisfaction, dampening, elapsed.TotalHours, state.CircadianModifier);
 
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -210,7 +212,7 @@ public class DesireEngine
     public async Task AddTriggerAsync(
         TriggerType type, float weight, string description, CancellationToken ct = default)
     {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
         state.ActiveTriggers.Add(new DesireTrigger
         {
@@ -226,7 +228,7 @@ public class DesireEngine
         _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2}",
             type, weight, bump, state.DesireToConnect);
 
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -235,11 +237,11 @@ public class DesireEngine
     /// </summary>
     public async Task ApplyCooldownAsync(TimeSpan duration, CancellationToken ct = default)
     {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
         state.CooldownActive = true;
         state.CooldownUntil  = DateTimeOffset.UtcNow + duration;
         _log.LogDebug("Cooldown activated until {Until} (desire={Desire:F2})", state.CooldownUntil, state.DesireToConnect);
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -248,10 +250,10 @@ public class DesireEngine
     /// </summary>
     public async Task RecordInboundContactAsync(CancellationToken ct = default)
     {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
         state.LastContactInbound = DateTimeOffset.UtcNow;
         _log.LogDebug("Inbound contact recorded at {Time}", state.LastContactInbound);
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -260,7 +262,7 @@ public class DesireEngine
     /// </summary>
     public async Task ResetAfterOutreachAsync(CancellationToken ct = default)
     {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
         _log.LogInformation("Outreach reset: desire {Previous:F2} → 0.00, clearing {TriggerCount} triggers",
             state.DesireToConnect, state.ActiveTriggers.Count);
         state.DesireToConnect = 0.0f;
@@ -278,7 +280,7 @@ public class DesireEngine
         _log.LogInformation("Cooldown activated until {Until} ({Minutes} min)",
             state.CooldownUntil, _options.MinOutreachGapMinutes);
 
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -288,12 +290,12 @@ public class DesireEngine
     /// </summary>
     public async Task DecayDesireAsync(float fraction, string reason, CancellationToken ct = default)
     {
-        var state = await _memory.GetDesireStateAsync(ct).ConfigureAwait(false);
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
         var previous = state.DesireToConnect;
         state.DesireToConnect *= (1.0f - fraction);
         _log.LogInformation("Desire decay: {Previous:F2} → {New:F2} ({Fraction:P0} reduction) — {Reason}",
             previous, state.DesireToConnect, fraction, reason);
-        await _memory.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     // ── Private ───────────────────────────────────────────────────────────────

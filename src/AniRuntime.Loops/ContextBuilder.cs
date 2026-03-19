@@ -14,20 +14,29 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class ContextBuilder
 {
-    private readonly IMemoryService _memory;
+    private readonly IStateStore _state;
+    private readonly IMemorySearch _search;
+    private readonly IMemoryPersistence _persist;
+    private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly DesireEngine _desire;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<ContextBuilder> _log;
 
     public ContextBuilder(
-        IMemoryService memory,
+        IStateStore state,
+        IMemorySearch search,
+        IMemoryPersistence persist,
+        IMemoryAnalytics analytics,
         IOllamaClient ollama,
         DesireEngine desire,
         IOptions<AniOptions> aniOptions,
         ILogger<ContextBuilder> log)
     {
-        _memory = memory;
+        _state = state;
+        _search = search;
+        _persist = persist;
+        _analytics = analytics;
         _ollama = ollama;
         _desire = desire;
         _aniOptions = aniOptions.Value;
@@ -38,18 +47,18 @@ public class ContextBuilder
         List<PerceptionEvent> perceptions, CancellationToken ct,
         EmotionalState? emotionalState = null)
     {
-        var charState    = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
+        var charState    = await _state.GetCharacterStateAsync(ct).ConfigureAwait(false);
         var desireState  = await _desire.GetStateAsync(ct).ConfigureAwait(false);
-        var recentEpisodic = await _memory.GetByTypeAsync(MemoryType.Episodic, 10, ct).ConfigureAwait(false);
-        var recentThoughts = await _memory.GetByTypeAsync(MemoryType.InnerThought, 5, ct).ConfigureAwait(false);
+        var recentEpisodic = await _search.GetByTypeAsync(MemoryType.Episodic, 10, ct).ConfigureAwait(false);
+        var recentThoughts = await _search.GetByTypeAsync(MemoryType.InnerThought, 5, ct).ConfigureAwait(false);
         var recentMem    = recentEpisodic.Concat(recentThoughts).ToList();
-        var openLoops    = await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false);
+        var openLoops    = await _analytics.GetOpenLoopsAsync(ct).ConfigureAwait(false);
 
         // Feature 16: Load anchored (foundation) memories — always present in context
         var anchoredMemories = new List<MemoryRecord>();
         try
         {
-            anchoredMemories = (await _memory.GetAnchoredMemoriesAsync(ct).ConfigureAwait(false)).ToList();
+            anchoredMemories = (await _search.GetAnchoredMemoriesAsync(ct).ConfigureAwait(false)).ToList();
         }
         catch (Exception ex)
         {
@@ -64,7 +73,7 @@ public class ContextBuilder
             var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
             try
             {
-                var results = await _memory.SearchAsync(searchQuery, 5, ct).ConfigureAwait(false);
+                var results = await _search.SearchAsync(searchQuery, 5, ct).ConfigureAwait(false);
                 relevantMem = results.ToList();
                 _log.LogDebug("Semantic search returned {Count} relevant memories", relevantMem.Count);
             }
@@ -91,7 +100,7 @@ public class ContextBuilder
             var thoughtQuery = string.Join(". ", perceptions.Select(p => p.Summary));
             try
             {
-                var results = await _memory.SearchByTypeAsync(
+                var results = await _search.SearchByTypeAsync(
                     thoughtQuery, MemoryType.InnerThought, 3, ct).ConfigureAwait(false);
                 similarThoughts = results.ToList();
             }
@@ -108,7 +117,7 @@ public class ContextBuilder
         relevantMem = await ReRankForDiversityAsync(
             relevantMem, recentThoughts.ToList(), ct).ConfigureAwait(false);
 
-        emotionalState ??= await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        emotionalState ??= await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
 
         // Feature 27: Assemble recent outreach context for continuity awareness
         var outreachContext = BuildOutreachContext(recentMem, desireState, charState);
@@ -117,14 +126,14 @@ public class ContextBuilder
         RelationshipHealth? relationshipHealth = null;
         try
         {
-            relationshipHealth = await _memory.GetRelationshipHealthAsync(ct).ConfigureAwait(false);
+            relationshipHealth = await _state.GetRelationshipHealthAsync(ct).ConfigureAwait(false);
 
             // Recalculate if stale (>24h since last calculation)
             if ((DateTimeOffset.UtcNow - relationshipHealth.LastCalculated).TotalHours >= 24)
             {
                 relationshipHealth = await ComputeRelationshipHealthAsync(
                     relationshipHealth, emotionalState, ct).ConfigureAwait(false);
-                await _memory.SaveRelationshipHealthAsync(relationshipHealth, ct).ConfigureAwait(false);
+                await _persist.SaveRelationshipHealthAsync(relationshipHealth, ct).ConfigureAwait(false);
                 _log.LogInformation("Relationship health recalculated: score={Score:F2}, phase={Phase}",
                     relationshipHealth.ConnectionScore, relationshipHealth.Phase);
             }
@@ -139,7 +148,7 @@ public class ContextBuilder
         try
         {
             // Use the history already fetched for health (or fetch if needed)
-            var driftHistory = await _memory.GetEmotionalHistoryAsync(48, ct).ConfigureAwait(false);
+            var driftHistory = await _state.GetEmotionalHistoryAsync(48, ct).ConfigureAwait(false);
             if (driftHistory.Count >= 4)
             {
                 var midpoint = driftHistory.Count / 2;
@@ -171,7 +180,7 @@ public class ContextBuilder
         }
 
         // Processed themes — topics whose emotional contributions have fully decayed
-        var processedThemes = await _memory.GetProcessedThemesAsync(5, ct).ConfigureAwait(false);
+        var processedThemes = await _analytics.GetProcessedThemesAsync(5, ct).ConfigureAwait(false);
 
         return new ContextSnapshot
         {
@@ -339,22 +348,22 @@ public class ContextBuilder
         var days = _aniOptions.RelationshipHealthWindowDays;
 
         // 1. Message frequency: conversations per day, normalized (0 = no conversations, 1 = 3+/day)
-        var msgCount = await _memory.GetRecentMessageCountAsync(days, ct).ConfigureAwait(false);
+        var msgCount = await _analytics.GetRecentMessageCountAsync(days, ct).ConfigureAwait(false);
         var msgsPerDay = (double)msgCount / days;
         var frequencyScore = Math.Min(1.0, msgsPerDay / 3.0);
 
         // 2. Conversation quality: average valence (0.0-1.0, center at 0.5)
-        var avgValence = await _memory.GetAverageConversationValenceAsync(days, ct).ConfigureAwait(false);
+        var avgValence = await _analytics.GetAverageConversationValenceAsync(days, ct).ConfigureAwait(false);
         var qualityScore = Math.Clamp(avgValence, 0.0, 1.0);
 
         // 3. Warmth trend: average warmth from emotional state history
-        var history = await _memory.GetEmotionalHistoryAsync(days * 24, ct).ConfigureAwait(false);
+        var history = await _state.GetEmotionalHistoryAsync(days * 24, ct).ConfigureAwait(false);
         var warmthScore = history.Count > 0
             ? Math.Clamp(history.Average(h => h.Warmth), 0.0, 1.0)
             : 0.5;
 
         // 4. Initiative balance: penalize when one side dominates
-        var (outreach, inbound) = await _memory.GetInitiativeBalanceAsync(days, ct).ConfigureAwait(false);
+        var (outreach, inbound) = await _analytics.GetInitiativeBalanceAsync(days, ct).ConfigureAwait(false);
         var total = outreach + inbound;
         var balanceScore = total > 0
             ? 1.0 - Math.Abs((double)(outreach - inbound) / total)  // 1.0 = perfectly balanced
@@ -384,7 +393,7 @@ public class ContextBuilder
     internal async Task<string?> AnalyzeOutreachPatternsAsync(string characterName, CancellationToken ct)
     {
         // Get recent outreach memories (episodic records where Ani reached out)
-        var recentEpisodic = (await _memory.GetByTypeAsync(MemoryType.Episodic, 20, ct)
+        var recentEpisodic = (await _search.GetByTypeAsync(MemoryType.Episodic, 20, ct)
             .ConfigureAwait(false)).ToList();
 
         var outreachPrefix = $"{characterName} reached out:";

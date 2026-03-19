@@ -19,7 +19,8 @@ public class VoiceConversationService
     private readonly TwilioVoiceHandler _voiceHandler;
     private readonly ITextToSpeechService _tts;
     private readonly MediaCacheService _cache;
-    private readonly IMemoryService _memory;
+    private readonly IStateStore _state;
+    private readonly IMemorySearch _search;
     private readonly IConversationService _conversations;
     private readonly IOllamaClient _ollama;
     private readonly OllamaOptions _ollamaOptions;
@@ -33,7 +34,8 @@ public class VoiceConversationService
         TwilioVoiceHandler voiceHandler,
         ITextToSpeechService tts,
         MediaCacheService cache,
-        IMemoryService memory,
+        IStateStore state,
+        IMemorySearch search,
         IConversationService conversations,
         IOllamaClient ollama,
         IOptions<OllamaOptions> ollamaOptions,
@@ -44,7 +46,8 @@ public class VoiceConversationService
         _voiceHandler   = voiceHandler;
         _tts            = tts;
         _cache          = cache;
-        _memory         = memory;
+        _state          = state;
+        _search         = search;
         _conversations  = conversations;
         _ollama         = ollama;
         _ollamaOptions  = ollamaOptions.Value;
@@ -93,7 +96,7 @@ public class VoiceConversationService
 
         try
         {
-            var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+            var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
             var audioStream = await _tts.SynthesizeAsync(greeting, emotionalState, ct).ConfigureAwait(false);
             using var ms = new MemoryStream();
             await audioStream.CopyToAsync(ms, ct).ConfigureAwait(false);
@@ -270,9 +273,9 @@ public class VoiceConversationService
         string userMessage, VoiceCallSession session, CancellationToken ct)
     {
         // All three are SQLite reads — no Ollama calls, fast
-        var characterTask = _memory.GetCharacterStateAsync(ct);
-        var emotionalTask = _memory.GetEmotionalStateAsync(ct);
-        var anchoredTask = _memory.GetAnchoredMemoriesAsync(ct);
+        var characterTask = _state.GetCharacterStateAsync(ct);
+        var emotionalTask = _state.GetEmotionalStateAsync(ct);
+        var anchoredTask = _search.GetAnchoredMemoriesAsync(ct);
         await Task.WhenAll(characterTask, emotionalTask, anchoredTask).ConfigureAwait(false);
 
         return new ContextSnapshot
@@ -298,7 +301,7 @@ public class VoiceConversationService
     {
         try
         {
-            var emotionalState = await _memory.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+            var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
             var audioStream = await _tts.SynthesizeAsync(reply, emotionalState, ct)
                 .ConfigureAwait(false);
             using var ms = new MemoryStream();

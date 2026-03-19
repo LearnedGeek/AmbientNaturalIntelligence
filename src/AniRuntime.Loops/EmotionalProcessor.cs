@@ -15,18 +15,24 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class EmotionalProcessor
 {
-    private readonly IMemoryService _memory;
+    private readonly IStateStore _state;
+    private readonly IMemoryPersistence _persist;
+    private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<EmotionalProcessor> _log;
 
     public EmotionalProcessor(
-        IMemoryService memory,
+        IStateStore state,
+        IMemoryPersistence persist,
+        IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IOptions<AniOptions> aniOptions,
         ILogger<EmotionalProcessor> log)
     {
-        _memory = memory;
+        _state = state;
+        _persist = persist;
+        _analytics = analytics;
         _ollama = ollama;
         _aniOptions = aniOptions.Value;
         _log = log;
@@ -82,7 +88,7 @@ public class EmotionalProcessor
 
             if (embedding is not null)
             {
-                var existing = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                var existing = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
                 var match = existing.FirstOrDefault(e =>
                     e.Embedding is not null &&
                     VectorMath.CosineSimilarity(embedding, e.Embedding) > 0.85f);
@@ -99,12 +105,12 @@ public class EmotionalProcessor
                     match.Register = register;
                     match.CreatedAt = DateTimeOffset.UtcNow;
                     match.SourceContent = sourceContent;
-                    await _memory.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
+                    await _persist.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
                     _log.LogDebug("Refreshed existing emotional contribution (semantic match)");
 
-                    var allContributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                    var allContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
                     state.ComputeFromContributions(allContributions);
-                    await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
+                    await _persist.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
 
                     _log.LogDebug("Emotional contribution refreshed ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
                         category, register, severity, halfLife, warmth, energy, worry, playfulness);
@@ -127,12 +133,12 @@ public class EmotionalProcessor
                 Register = register,
             };
 
-            await _memory.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
+            await _persist.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
 
             // Recompute state from all active contributions
-            var contributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+            var contributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
             state.ComputeFromContributions(contributions);
-            await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
+            await _persist.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
 
             _log.LogDebug("Emotional contribution ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
                 effectiveCategory, register, severity, halfLife, warmth, energy, worry, playfulness);
@@ -163,11 +169,11 @@ public class EmotionalProcessor
             HalfLifeHours = halfLife,
             Category = category,
         };
-        await _memory.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
+        await _persist.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
 
-        var contributions = await _memory.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+        var contributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
         state.ComputeFromContributions(contributions);
-        await _memory.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
+        await _persist.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -178,7 +184,7 @@ public class EmotionalProcessor
     {
         try
         {
-            var openLoops = (await _memory.GetOpenLoopsAsync(ct).ConfigureAwait(false)).ToList();
+            var openLoops = (await _analytics.GetOpenLoopsAsync(ct).ConfigureAwait(false)).ToList();
             if (openLoops.Count == 0) return;
 
             var oldestAgeHours = (DateTimeOffset.UtcNow - openLoops.Min(l => l.CreatedAt)).TotalHours;

@@ -21,16 +21,16 @@ namespace AniRuntime.LLM;
 /// </summary>
 public partial class KeywordExtractor
 {
-    private readonly IMemoryService _memory;
+    private readonly IMemorySearch _search;
     private readonly ILogger<KeywordExtractor> _log;
 
     private Dictionary<string, float>? _idfCache;
     private int _corpusSize;
     private readonly SemaphoreSlim _buildLock = new(1, 1);
 
-    public KeywordExtractor(IMemoryService memory, ILogger<KeywordExtractor> log)
+    public KeywordExtractor(IMemorySearch search, ILogger<KeywordExtractor> log)
     {
-        _memory = memory;
+        _search = search;
         _log = log;
     }
 
@@ -108,9 +108,9 @@ public partial class KeywordExtractor
             _log.LogDebug("Building IDF dictionary from memory corpus...");
 
             // Fetch all memory content — we only need text, not embeddings
-            var episodic = await _memory.GetByTypeAsync(Core.Models.MemoryType.Episodic, 500, ct).ConfigureAwait(false);
-            var innerThoughts = await _memory.GetByTypeAsync(Core.Models.MemoryType.InnerThought, 500, ct).ConfigureAwait(false);
-            var semantic = await _memory.GetByTypeAsync(Core.Models.MemoryType.Semantic, 200, ct).ConfigureAwait(false);
+            var episodic = await _search.GetByTypeAsync(Core.Models.MemoryType.Episodic, 500, ct).ConfigureAwait(false);
+            var innerThoughts = await _search.GetByTypeAsync(Core.Models.MemoryType.InnerThought, 500, ct).ConfigureAwait(false);
+            var semantic = await _search.GetByTypeAsync(Core.Models.MemoryType.Semantic, 200, ct).ConfigureAwait(false);
 
             var allDocs = episodic.Concat(innerThoughts).Concat(semantic).ToList();
             _corpusSize = allDocs.Count;
