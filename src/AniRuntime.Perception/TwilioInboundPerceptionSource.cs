@@ -29,13 +29,8 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
     private readonly TwilioOptions                            _twilioOptions;
     private readonly AniOptions                               _aniOptions;
     private readonly IHttpClientFactory                       _httpFactory;
+    private readonly ISessionNotifier                         _notifier;
     private readonly ILogger<TwilioInboundPerceptionSource>   _log;
-
-    /// <summary>
-    /// Callback invoked when a new inbound message is detected (via webhook).
-    /// The heartbeat service sets this to trigger an early wake.
-    /// </summary>
-    public Action? OnMessageReceived { get; set; }
 
     private DateTimeOffset _lastPollTime = DateTimeOffset.UtcNow;
 
@@ -57,6 +52,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
         IOptions<TwilioOptions> twilioOptions,
         IOptions<AniOptions> aniOptions,
         IHttpClientFactory httpFactory,
+        ISessionNotifier notifier,
         ILogger<TwilioInboundPerceptionSource> log)
     {
         _conversations = conversations;
@@ -64,6 +60,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
         _twilioOptions = twilioOptions.Value;
         _aniOptions    = aniOptions.Value;
         _httpFactory   = httpFactory;
+        _notifier      = notifier;
         _log           = log;
     }
 
@@ -75,7 +72,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
     {
         _webhookQueue.Enqueue(new TwilioMessage(messageSid, body, receivedAt));
         _log.LogDebug("Webhook message enqueued: {Sid}", messageSid);
-        OnMessageReceived?.Invoke();
+        _notifier.OnMessageReceived();
     }
 
     public async Task<IEnumerable<PerceptionEvent>> PollAsync(

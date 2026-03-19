@@ -166,10 +166,13 @@ public class ConversationReplyPhase
             // Filter out:
             // 1. The inbound message itself (just saved, would echo back as context)
             // 2. Closed conversation summaries
+            // CS7: Filter out self-referential records — the inbound message echoed back as
+            // both Episodic ("Mark said:") and Perception ("Mark texted:") records. Both are
+            // echoes of the message being replied to and contaminate the context window.
             var contactName = snapshot.CharacterState.PrimaryContactName ?? "Mark";
+            var msgPrefix30 = lastMessage.Length > 30 ? lastMessage[..30] : lastMessage;
             messageRelevant = messageRelevant
-                .Where(m => !(m.Content.StartsWith($"{contactName} said:") &&
-                             lastMessage.Contains(m.Content[(contactName.Length + 7)..Math.Min(m.Content.Length, contactName.Length + 36)])))
+                .Where(m => !IsMessageEcho(m.Content, contactName, msgPrefix30))
                 .Where(m => !m.Content.StartsWith(MemoryPrefixes.ConversationSummary))
                 .ToList();
 
@@ -404,16 +407,27 @@ public class ConversationReplyPhase
                         // context window was full of irrelevant fragments (coffee cups, snow, prior
                         // threads) that it tried to stitch into a response. Give it a clean environment
                         // with just persona grounding and the actual message.
+                        // AC6: Include conversation thread summary so the clean-slate
+                        // re-generation stays on topic. Without this, the model loses
+                        // the thread and produces non-sequiturs ("cold noodles" when
+                        // discussing Learned Geek Consulting).
                         var cs = snapshot.CharacterState;
                         var lastMsg = thread.Messages[^1].Content;
+                        var threadSummary = thread.Messages.Count > 1
+                            ? string.Join("\n", thread.Messages.TakeLast(Math.Min(4, thread.Messages.Count))
+                                .Select(m => $"{m.Role}: {Truncate(m.Content, 80)}"))
+                            : "";
+                        var threadContext = string.IsNullOrEmpty(threadSummary)
+                            ? ""
+                            : $"\n\nRecent conversation:\n{threadSummary}";
                         var cleanSystem = $"""
                             You are {cs.Name}. You are in a warm, established relationship with {cs.PrimaryContactName ?? "Mark"}.
-                            Your personality: {string.Join("; ", cs.CoreTraits)}.
+                            Your personality: {string.Join("; ", cs.CoreTraits)}.{threadContext}
 
                             RULES:
                             - Respond naturally to what they just said. This is a real conversation.
                             - 1-3 sentences max. Thumb-typed phone text.
-                            - You have no memory of this topic coming up before. That's okay.
+                            - Say something DIFFERENT from what you just said — you already tried that.
                             - Be honest — "I don't think you've mentioned that" or "wait, tell me more" is warm and real.
                             - Do NOT invent details, do NOT narrate what they did, do NOT use third person.
                             - Write ONLY the text message. No commentary, no quotation marks.
@@ -782,6 +796,27 @@ public class ConversationReplyPhase
         {
             _log.LogWarning(ex, "Feature 15 Layer 3: Contradiction check failed — continuing without grounding");
         }
+    }
+
+    /// <summary>
+    /// CS7: Detect whether a memory record is an echo of the inbound message.
+    /// Catches both Episodic ("Mark said:") and Perception ("Mark texted:") records
+    /// that are just the inbound message saved back as context.
+    /// </summary>
+    private static bool IsMessageEcho(string memoryContent, string contactName, string msgPrefix30)
+    {
+        // Check all known echo prefixes
+        string[] prefixes = [$"{contactName} said: \"", $"{contactName} texted: \"", $"{contactName} said: ", $"{contactName} texted: "];
+        foreach (var prefix in prefixes)
+        {
+            if (memoryContent.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var afterPrefix = memoryContent[prefix.Length..];
+                if (afterPrefix.Contains(msgPrefix30, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
     }
 
     private static string Truncate(string text, int maxLength) =>

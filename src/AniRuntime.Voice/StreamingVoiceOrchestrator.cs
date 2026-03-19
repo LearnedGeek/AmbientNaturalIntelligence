@@ -32,12 +32,10 @@ public class StreamingVoiceOrchestrator
     private readonly IMemoryService _memory;
     private readonly VoiceOptions _voiceOptions;
     private readonly VoiceTurnPipeline _pipeline;
+    private readonly ISessionNotifier _notifier;
     private readonly ILogger<StreamingVoiceOrchestrator> _log;
 
     private readonly ConcurrentDictionary<string, VoiceSessionState> _sessions = new();
-
-    public Action? OnCallStarted { get; set; }
-    public Action? OnCallEnded { get; set; }
 
     public StreamingVoiceOrchestrator(
         IServiceProvider services,
@@ -47,6 +45,7 @@ public class StreamingVoiceOrchestrator
         IMemoryService memory,
         IOptions<VoiceOptions> voiceOptions,
         VoiceTurnPipeline pipeline,
+        ISessionNotifier notifier,
         ILogger<StreamingVoiceOrchestrator> log)
     {
         _services      = services;
@@ -56,6 +55,7 @@ public class StreamingVoiceOrchestrator
         _memory        = memory;
         _voiceOptions  = voiceOptions.Value;
         _pipeline      = pipeline;
+        _notifier      = notifier;
         _log           = log;
     }
 
@@ -96,7 +96,7 @@ public class StreamingVoiceOrchestrator
 
             session = new VoiceSessionState(sessionId, thread.Id, ws);
             _sessions[sessionId] = session;
-            OnCallStarted?.Invoke();
+            _notifier.OnCallStarted();
 
             _log.LogInformation("Streaming voice session started: {SessionId}, thread {ThreadId}",
                 sessionId, thread.Id);
@@ -284,7 +284,7 @@ public class StreamingVoiceOrchestrator
                 await _conversations.CloseThreadAsync(session.ThreadId, appCt).ConfigureAwait(false);
 
                 if (_sessions.IsEmpty)
-                    OnCallEnded?.Invoke();
+                    _notifier.OnCallEnded();
 
                 _log.LogInformation(
                     "Streaming voice session ended: {SessionId}, {Turns} turns, duration {Duration}",

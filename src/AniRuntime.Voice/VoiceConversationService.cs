@@ -26,14 +26,8 @@ public class VoiceConversationService
     private readonly VoiceOptions _voiceOptions;
     private readonly ILogger<VoiceConversationService> _log;
 
+    private readonly ISessionNotifier _notifier;
     private readonly ConcurrentDictionary<string, VoiceCallSession> _sessions = new();
-
-    /// <summary>
-    /// Set by Program.cs to pause/resume the cognitive cycle during voice calls,
-    /// freeing Ollama for voice reply generation.
-    /// </summary>
-    public Action? OnCallStarted { get; set; }
-    public Action? OnCallEnded { get; set; }
 
     public VoiceConversationService(
         TwilioVoiceHandler voiceHandler,
@@ -44,6 +38,7 @@ public class VoiceConversationService
         IOllamaClient ollama,
         IOptions<OllamaOptions> ollamaOptions,
         IOptions<VoiceOptions> voiceOptions,
+        ISessionNotifier notifier,
         ILogger<VoiceConversationService> log)
     {
         _voiceHandler   = voiceHandler;
@@ -54,6 +49,7 @@ public class VoiceConversationService
         _ollama         = ollama;
         _ollamaOptions  = ollamaOptions.Value;
         _voiceOptions   = voiceOptions.Value;
+        _notifier       = notifier;
         _log            = log;
     }
 
@@ -82,7 +78,7 @@ public class VoiceConversationService
             StartedAt = DateTimeOffset.UtcNow,
         };
         _sessions[callSid] = session;
-        OnCallStarted?.Invoke();
+        _notifier.OnCallStarted();
 
         _log.LogInformation("Voice call started: {CallSid}, thread {ThreadId} — cognitive cycle paused",
             callSid, thread.Id);
@@ -256,7 +252,7 @@ public class VoiceConversationService
 
             // Resume cognitive cycle only after saves are done
             if (_sessions.IsEmpty)
-                OnCallEnded?.Invoke();
+                _notifier.OnCallEnded();
 
             await _conversations.CloseThreadAsync(session.ThreadId, ct).ConfigureAwait(false);
             _log.LogInformation("Voice call ended: {CallSid}, {Turns} turns, duration {Duration} — cognitive cycle resumed",

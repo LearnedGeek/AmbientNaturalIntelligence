@@ -20,7 +20,7 @@ namespace AniRuntime.Loops;
 /// Early wake support: when the contact texts, TwilioInboundPerceptionSource calls
 /// RequestEarlyWake() to cancel the current sleep and trigger an immediate cycle.
 /// </summary>
-public class AniHeartbeatService : BackgroundService
+public class AniHeartbeatService : BackgroundService, ISessionNotifier
 {
     private readonly CognitiveCycleProcessor       _cycle;
     private readonly DesireEngine                  _desire;
@@ -60,6 +60,12 @@ public class AniHeartbeatService : BackgroundService
     public void PauseForVoiceCall() => Interlocked.Exchange(ref _voiceCallActive, 1);
     public void ResumeAfterVoiceCall() => Interlocked.Exchange(ref _voiceCallActive, 0);
     public bool IsVoiceCallActive => _voiceCallActive == 1;
+
+    // S6: ISessionNotifier — replaces fragile Action callbacks wired in Program.cs.
+    // Voice services and perception sources inject ISessionNotifier via DI instead.
+    void ISessionNotifier.OnCallStarted() => PauseForVoiceCall();
+    void ISessionNotifier.OnCallEnded() => ResumeAfterVoiceCall();
+    void ISessionNotifier.OnMessageReceived() => RequestEarlyWake();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

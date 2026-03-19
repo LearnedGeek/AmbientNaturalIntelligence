@@ -149,7 +149,12 @@ try
     builder.Services.AddSingleton<ConversationReplyPhase>();
     builder.Services.AddSingleton<OutreachPhase>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
-    builder.Services.AddHostedService<AniHeartbeatService>();
+    // S6: Register AniHeartbeatService as singleton so ISessionNotifier resolves to the
+    // same instance as the hosted service. Voice services and perception sources inject
+    // ISessionNotifier via DI instead of fragile Action callbacks.
+    builder.Services.AddSingleton<AniHeartbeatService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<AniHeartbeatService>());
+    builder.Services.AddSingleton<ISessionNotifier>(sp => sp.GetRequiredService<AniHeartbeatService>());
 
     // ── Forwarded headers — needed for Twilio signature validation behind ngrok
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -169,27 +174,9 @@ try
     // ── Dashboard — REST API endpoints + Blazor Server ────────────────────
     app.MapDashboard();
 
-    // ── Wire early wake: Twilio webhook → heartbeat interrupt ─────────────────
-    var twilioSource = app.Services.GetRequiredService<TwilioInboundPerceptionSource>();
-    var heartbeat    = app.Services.GetServices<IHostedService>()
-                           .OfType<AniHeartbeatService>().First();
-    twilioSource.OnMessageReceived = heartbeat.RequestEarlyWake;
-
-    // ── Wire voice call → cognitive cycle pause ─────────────────────────────
-    if (voiceEnabled)
-    {
-        var voiceService = app.Services.GetRequiredService<VoiceConversationService>();
-        voiceService.OnCallStarted = heartbeat.PauseForVoiceCall;
-        voiceService.OnCallEnded   = heartbeat.ResumeAfterVoiceCall;
-
-        // Streaming voice (MAUI app) — same pause/resume pattern
-        var streamingOrchestrator = app.Services.GetService<StreamingVoiceOrchestrator>();
-        if (streamingOrchestrator is not null)
-        {
-            streamingOrchestrator.OnCallStarted = heartbeat.PauseForVoiceCall;
-            streamingOrchestrator.OnCallEnded   = heartbeat.ResumeAfterVoiceCall;
-        }
-    }
+    // S6: ISessionNotifier wiring is now handled via DI (registered as singleton below).
+    // Voice services and perception sources inject ISessionNotifier directly instead of
+    // fragile Action callbacks wired via service locator.
 
     // ── Inbound SMS webhook ──────────────────────────────────────────────────
     // Twilio POSTs here when an SMS arrives at Ani's number.
