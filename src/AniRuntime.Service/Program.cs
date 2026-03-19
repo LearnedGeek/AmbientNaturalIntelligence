@@ -181,7 +181,10 @@ try
     // ── Inbound SMS webhook ──────────────────────────────────────────────────
     // Twilio POSTs here when an SMS arrives at Ani's number.
     // Enqueues the message for the cognitive cycle and triggers an early wake.
-    app.MapPost("/sms/inbound", async (HttpContext ctx, IOptions<TwilioOptions> twilioOpts) =>
+    app.MapPost("/sms/inbound", async (
+        HttpContext ctx,
+        IOptions<TwilioOptions> twilioOpts,
+        TwilioInboundPerceptionSource source) =>
     {
         var form = await ctx.Request.ReadFormAsync();
 
@@ -211,7 +214,7 @@ try
         {
             // Enqueue the message and trigger early wake — the cognitive cycle
             // will process it immediately via PollAsync draining the queue
-            twilioSource.EnqueueInbound(messageSid, body, DateTimeOffset.UtcNow);
+            source.EnqueueInbound(messageSid, body, DateTimeOffset.UtcNow);
             Log.Information("Webhook: inbound SMS enqueued ({Sid})", messageSid);
         }
 
