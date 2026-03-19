@@ -32,10 +32,9 @@
 **Issue:** `(stt as DeepgramStreamingSTTService)?.Debounce` violates Liskov Substitution — depends on concrete type.
 **Fix:** Add `DebouncedUtterance? Debounce { get; }` to `IStreamingSpeechToTextService` or pass debounce handler via DI.
 
-### [ ] S6: Replace Action callback properties with events/interfaces
-**Files:** `StreamingVoiceOrchestrator.cs:39-40`, `TwilioInboundPerceptionSource.cs:38`
-**Issue:** `OnCallStarted`/`OnCallEnded`/`OnMessageReceived` wired via service locator in Program.cs. Fragile.
-**Fix:** Use C# events or an `ISessionNotifier` interface injected via DI.
+### [x] S6: Replace Action callback properties with events/interfaces
+**Files:** `IStreamingSpeechToTextService.cs`, `StreamingVoiceOrchestrator.cs`, `TwilioInboundPerceptionSource.cs`
+**Fix:** STT service now uses `event Action<string> TranscriptReceived` and `event Action<string> PartialTranscriptReceived` (proper .NET events, not Action callback properties). `SessionNotifier` extracted as standalone DI service decoupling heartbeat from perception sources. Voice orchestrator subscribes to events in `HandleSessionAsync`.
 
 ### [ ] S2: Split IMemoryService into focused interfaces (ISP)
 **File:** `src/AniRuntime.Core/Interfaces/IMemoryService.cs` — 22 methods
@@ -55,9 +54,9 @@
 **Locations:** "mark" (role), "character-seed" (source), "Conversation (" (prefix), "sms" (action type)
 **Fix:** Add constants to Core project. Use existing `ActionTypes` class where applicable.
 
-### [ ] CS3: Replace emergence observation variable cluster with builder
-**File:** `CognitiveCycleProcessor.cs:94-101` — 17 local variables
-**Fix:** Create `EmergenceObservationBuilder` that accumulates during cycle, then `.Build()` for the observer.
+### [x] CS3: Replace emergence observation variable cluster with builder
+**File:** `CognitiveCycleProcessor.cs:88-90` — `CycleObservationBuilder` with 9 properties
+**Fix:** Created `CycleObservationBuilder` that accumulates during cycle, then `.Build()` for the observer. Properties set progressively across the cycle, built in finally block to ensure capture even on early returns.
 
 ### [ ] CS4: Consolidate duplicate JsonSerializerOptions
 **Files:** `OllamaClient.cs`, `StreamingVoiceOrchestrator.cs`, `ElevenLabsStreamingTTSService.cs`, `EmergenceObserver.cs`
@@ -68,9 +67,9 @@
 **Issue:** `LastEvaluatedMessageAt` gates whether Ani re-evaluates a silence decision. It lives in `ConversationReplyPhase` but `AniHeartbeatService` reads it for reconsideration triggers. This hidden coupling was invisible in the god class — now it's an explicit cross-class dependency that could cause subtle bugs if either side evolves independently.
 **Fix:** Extract into a shared `ConversationGateState` or expose via an interface that both classes depend on.
 
-### [ ] CS7: Message echo contamination in scored search
-**Issue:** `SearchWithScoresAsync` returns the inbound message itself (saved as a Perception) as the top result with highest cosine similarity. The existing filter in ConversationReplyPhase catches "Mark said:" prefixed records but misses "Mark texted:" Perception records. Both are echoes of the message being replied to and should be excluded from retrieval.
-**Fix:** Extend the self-referential filter to also exclude Perception records that match the inbound message text.
+### [x] CS7: Message echo contamination in scored search
+**Issue:** `SearchWithScoresAsync` returns the inbound message itself (saved as a Perception) as the top result with highest cosine similarity. The existing filter in ConversationReplyPhase catches "Mark said:" prefixed records but misses "Mark texted:" Perception records.
+**Fix:** `IsMessageEcho()` helper at line 806 now checks both "said" and "texted" prefixes, using first 30 chars of inbound message as anchor. Applied at line 175 in the search pipeline.
 
 ### [ ] CS6: ReRankForDiversityAsync dual-consumer coupling
 **Files:** `ContextBuilder.cs`, `CognitiveCycleProcessor.cs`
@@ -172,12 +171,12 @@
 **Fix:** Detect whether the response requires memory grounding (references to past events, shared experiences, specific facts Mark told her) vs creative/emotional expression (feelings, observations, banter). Use lower temperature (0.2–0.3) for memory-grounded responses, standard temperature for creative/emotional. Detection heuristic: if retrieved memories are injected into context, lower the temperature for that generation.
 **Trade-off:** Adds complexity to the generation path. May reduce fluency on memory-grounded responses. Worth it — factual conservatism is the right trade-off when the alternative is confabulation.
 
-### [ ] AC6 — Self-Echo Clean-Slate Thread Loss
-**Status:** Open
+### [x] AC6 — Self-Echo Clean-Slate Thread Loss
+**Status:** Fixed
 **Priority:** Medium
 **Problem:** When self-echo guard fires mid-conversation, the clean-slate re-generation prompt strips ALL context including the current conversation topic. This produces non-sequiturs ("cold noodles" when discussing Learned Geek Consulting).
 **Root cause:** Clean-slate prompt was designed for first-message confabulation, not mid-conversation echo. It preserves persona but loses thread.
-**Fix:** Include a 1-sentence topic summary in the clean-slate prompt: "You were just discussing [topic] with Mark." Extract topic from the rejected reply or the inbound message.
+**Fix:** Clean-slate prompt now includes last 4 messages of the conversation thread as context (lines 416-422 in ConversationReplyPhase.cs). Model still gets a clean environment (no retrieved memories) but retains awareness of the current topic.
 
 ### [ ] AC5: Confabulation feedback signal
 **Current state:** Confabulations are discovered and catalogued after the fact in the research log and conversation review. No real-time feedback mechanism.
@@ -203,6 +202,13 @@
 - Incorrect: "of course I knew, I was testing you"
 **Research note:** This may be the clearest example of "smoothness over truth" at the behavioral level. Documented in research log as a potential seventh confabulation type: charming dishonesty. The cheering crowd image timing is documented as a concrete example of how multiple systems (confabulation + image selection) can compound to produce sophisticated distraction.
 **Cross-reference:** AC2 (source attribution) would catch this if the claim requires a memory citation. AC5 (feedback signal) would flag it for pattern analysis over time. Neither fully solves it — the model's "I totally knew" is unfalsifiable when no specific fact is claimed.
+
+### [ ] OP1: Register as Windows Service for sleep/hibernate resilience
+**Observed:** Process silently died between cognitive cycles (Mar 19, 6:05am). No crash, no shutdown log, no error. Last entry scheduled next cycle in 45 minutes but it never fired. Windows event log showed no .NET runtime errors — process simply vanished during what appears to be a sleep/hibernate transition.
+**Root cause:** Running via `dotnet run` in a terminal — console processes are not protected from OS sleep transitions. The OS can terminate them without graceful shutdown.
+**Fix:** Register ANI as a proper Windows Service using `UseWindowsService()` in `Program.cs`. This survives sleep/wake cycles, auto-starts on boot, and gets graceful shutdown signals from the OS. The `Worker` class already inherits from `BackgroundService` — the hosting change is minimal.
+**Benefit:** Eliminates silent overnight deaths, enables auto-restart on failure, and is the correct deployment model for a service that should run 24/7.
+**Priority:** Medium — not a correctness issue but directly impacts ambient presence (she can't think if she's dead).
 
 ---
 
