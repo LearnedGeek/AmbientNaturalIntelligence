@@ -485,20 +485,20 @@ public class CognitiveCycleProcessor
     // to the phase classes where the logic now lives.
 
     internal static bool DetectCareGivingIntent(string message)
-        => ConversationReplyPhase.DetectCareGivingIntent(message);
+        => ConversationFeatureDetector.DetectCareGivingIntent(message);
 
     internal static bool DetectHurtIntent(string message)
-        => ConversationReplyPhase.DetectHurtIntent(message);
+        => ConversationFeatureDetector.DetectHurtIntent(message);
 
     internal static List<EmotionalContribution> BuildLexicalAnchorContributions(
         string message, CharacterStateDoc charState)
-        => ConversationReplyPhase.BuildLexicalAnchorContributions(message, charState);
+        => ConversationFeatureDetector.BuildLexicalAnchorContributions(message, charState);
 
     internal static bool EndsWithDirectQuestion(string message)
-        => ConversationReplyPhase.EndsWithDirectQuestion(message);
+        => ConversationFeatureDetector.EndsWithDirectQuestion(message);
 
     internal static bool ContainsMemoryReferencingLanguage(string message)
-        => ConversationReplyPhase.ContainsMemoryReferencingLanguage(message);
+        => ConversationFeatureDetector.ContainsMemoryReferencingLanguage(message);
 
     internal static bool ContainsThirdPersonReference(string message, string contactName)
         => OutreachPhase.ContainsThirdPersonReference(message, contactName);
