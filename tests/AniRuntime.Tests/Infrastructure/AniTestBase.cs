@@ -32,6 +32,9 @@ public abstract class AniTestBase
         CooldownMinutes        = 20.0,
         MinOutreachGapMinutes  = 60.0,
         MaxOutreachPerDay      = 4,
+        // Disable night/morning gates in unit tests — these are time-dependent
+        // and cause false failures when tests run after 10pm.
+        MaxNightOutreach       = 100,
     });
 
     protected IOptions<OllamaOptions> DefaultOllamaOptions => Options.Create(new OllamaOptions());
