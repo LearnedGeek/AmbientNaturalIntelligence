@@ -96,6 +96,7 @@ public class EmotionalProcessor
                     match.PlayfulnessDelta = playfulness;
                     match.Severity = severity;
                     match.IsOutreachReady = isOutreachReady;
+                    match.Register = register;
                     match.CreatedAt = DateTimeOffset.UtcNow;
                     match.SourceContent = sourceContent;
                     await _memory.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
@@ -123,6 +124,7 @@ public class EmotionalProcessor
                 Embedding = embedding,
                 Severity = severity,
                 IsOutreachReady = isOutreachReady,
+                Register = register,
             };
 
             await _memory.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);

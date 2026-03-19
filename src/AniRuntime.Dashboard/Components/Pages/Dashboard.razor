@@ -30,6 +30,14 @@
     </section>
 }
 
+@if (_allContributions.Count > 0)
+{
+    <section>
+        <h3>Register Distribution</h3>
+        <RegisterHeatmap Contributions="@_allContributions" WindowDays="30" />
+    </section>
+}
+
 @if (_recentThoughts.Count > 0)
 {
     <section>
@@ -78,6 +86,7 @@
     private EmotionalState? _emotional;
     private List<MemoryRecord> _recentThoughts = new();
     private List<EmotionalContribution> _contributions = new();
+    private List<EmotionalContribution> _allContributions = new();
     private ConversationThread? _activeThread;
 
     protected override async Task OnInitializedAsync()
@@ -86,6 +95,7 @@
         _emotional = await Memory.GetEmotionalStateAsync();
         _recentThoughts = (await Memory.GetByTypeAsync(MemoryType.InnerThought, 5)).ToList();
         _contributions = await Memory.GetActiveContributionsAsync();
+        _allContributions = await Memory.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));
         _activeThread = await Conversations.GetActiveThreadAsync();
     }
 

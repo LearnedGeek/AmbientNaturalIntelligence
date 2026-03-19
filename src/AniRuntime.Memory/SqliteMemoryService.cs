@@ -672,9 +672,9 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.CommandText = """
             INSERT OR REPLACE INTO emotional_contributions
                 (id, source_content, warmth_delta, energy_delta, concern_delta, playfulness_delta,
-                 created_at, half_life_hours, category, embedding, severity, is_outreach_ready)
+                 created_at, half_life_hours, category, embedding, severity, is_outreach_ready, register)
             VALUES ($id, $source, $warmth, $energy, $concern, $playfulness,
-                    $created, $halflife, $category, $embedding, $severity, $outreach)
+                    $created, $halflife, $category, $embedding, $severity, $outreach, $register)
             """;
         cmd.Parameters.AddWithValue("$id", contribution.Id.ToString());
         cmd.Parameters.AddWithValue("$source", contribution.SourceContent);
@@ -690,6 +690,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             : DBNull.Value);
         cmd.Parameters.AddWithValue("$severity", contribution.Severity);
         cmd.Parameters.AddWithValue("$outreach", contribution.IsOutreachReady ? 1 : 0);
+        cmd.Parameters.AddWithValue("$register", contribution.Register);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
@@ -708,6 +709,20 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             if (!contribution.IsEffectivelyZero(now))
                 results.Add(contribution);
         }
+        return results;
+    }
+
+    public async Task<List<EmotionalContribution>> GetContributionsSinceAsync(DateTimeOffset since, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM emotional_contributions WHERE created_at >= $since ORDER BY created_at DESC";
+        cmd.Parameters.AddWithValue("$since", since.ToString("O"));
+
+        var results = new List<EmotionalContribution>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            results.Add(ReadContribution(reader));
         return results;
     }
 
@@ -779,7 +794,18 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             Embedding = embedding,
             Severity = reader.GetFloat(reader.GetOrdinal("severity")),
             IsOutreachReady = reader.GetInt32(reader.GetOrdinal("is_outreach_ready")) == 1,
+            Register = TryGetRegister(reader),
         };
+    }
+
+    private static string TryGetRegister(Microsoft.Data.Sqlite.SqliteDataReader reader)
+    {
+        try
+        {
+            var ord = reader.GetOrdinal("register");
+            return reader.IsDBNull(ord) ? "Wistful" : reader.GetString(ord);
+        }
+        catch { return "Wistful"; } // column may not exist in older DBs
     }
 
     // ── Feature 4: Relationship health ────────────────────────────────────────
@@ -1100,6 +1126,28 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addOutreach = conn.CreateCommand();
             addOutreach.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN is_outreach_ready INTEGER NOT NULL DEFAULT 0";
             addOutreach.ExecuteNonQuery();
+        }
+
+        // Migration: add register column to emotional_contributions
+        using var pragmaCmd5 = conn.CreateCommand();
+        pragmaCmd5.CommandText = "PRAGMA table_info(emotional_contributions)";
+        using var reader5 = pragmaCmd5.ExecuteReader();
+        var hasRegisterColumn = false;
+        while (reader5.Read())
+        {
+            if (reader5.GetString(1) == "register")
+            {
+                hasRegisterColumn = true;
+                break;
+            }
+        }
+        reader5.Close();
+
+        if (!hasRegisterColumn)
+        {
+            using var addRegister = conn.CreateCommand();
+            addRegister.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN register TEXT NOT NULL DEFAULT 'Wistful'";
+            addRegister.ExecuteNonQuery();
         }
     }
 

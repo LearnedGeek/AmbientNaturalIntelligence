@@ -96,6 +96,45 @@ public static class AniStateEndpoints
             });
         });
 
+        group.MapGet("/registers", async (
+            IMemoryService memory,
+            int days = 30,
+            CancellationToken ct = default) =>
+        {
+            var since = DateTimeOffset.UtcNow.AddDays(-days);
+            var contributions = await memory.GetContributionsSinceAsync(since, ct);
+
+            var familyCounts = new Dictionary<string, int>();
+            foreach (var family in Enum.GetValues<RegisterFamily>())
+                familyCounts[family.ToString()] = 0;
+
+            foreach (var c in contributions)
+            {
+                var family = ImpactCategoryDefaults.ToRegisterFamily(c.Register);
+                familyCounts[family.ToString()]++;
+            }
+
+            var total = contributions.Count;
+            var coverageCount = familyCounts.Count(kv => kv.Value > 0);
+
+            return Results.Ok(new
+            {
+                Days = days,
+                TotalContributions = total,
+                Coverage = $"{coverageCount}/{familyCounts.Count}",
+                CoveragePercent = familyCounts.Count > 0
+                    ? (float)coverageCount / familyCounts.Count
+                    : 0f,
+                Families = familyCounts.OrderByDescending(kv => kv.Value)
+                    .Select(kv => new
+                    {
+                        Family = kv.Key,
+                        Count = kv.Value,
+                        Percent = total > 0 ? (float)kv.Value / total * 100f : 0f,
+                    }),
+            });
+        });
+
         group.MapDelete("/contributions/{id}", async (
             Guid id,
             IMemoryService memory,

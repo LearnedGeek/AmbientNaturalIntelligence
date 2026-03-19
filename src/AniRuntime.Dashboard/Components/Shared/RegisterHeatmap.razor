@@ -1,0 +1,111 @@
+@using AniRuntime.Core.Models
+
+<article>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin: 0;">Register Distribution</h4>
+            <small>@_windowLabel | Coverage: @_coverageCount/@_totalFamilies (@(_coveragePercent.ToString("F0"))%)</small>
+        </div>
+    </header>
+
+    @if (_families is not null)
+    {
+        <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+            @foreach (var family in _families)
+            {
+                var intensity = _maxCount > 0 ? (float)family.Count / _maxCount : 0f;
+                var bgColor = GetHeatColor(intensity, family.Count > 0);
+                <div style="background: @bgColor; padding: 0.5rem; border-radius: 4px; text-align: center;">
+                    <strong style="font-size: 0.85em;">@family.Name</strong>
+                    <div style="font-size: 1.4em; font-weight: bold;">@family.Count</div>
+                    <small style="opacity: 0.7;">@family.Percent.ToString("F1")%</small>
+                </div>
+            }
+        </div>
+
+        @if (_weakest is not null)
+        {
+            <footer>
+                <small>Next milestone: <strong>@_weakest</strong> needs attention</small>
+            </footer>
+        }
+    }
+    else
+    {
+        <p><em>Loading register data...</em></p>
+    }
+</article>
+
+@code {
+    [Parameter] public List<EmotionalContribution>? Contributions { get; set; }
+    [Parameter] public int WindowDays { get; set; } = 30;
+
+    private List<FamilyData>? _families;
+    private int _maxCount;
+    private int _totalFamilies;
+    private int _coverageCount;
+    private float _coveragePercent;
+    private string? _weakest;
+    private string _windowLabel = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Contributions is null) return;
+
+        _windowLabel = WindowDays switch
+        {
+            7 => "7 days",
+            30 => "30 days",
+            90 => "90 days",
+            _ => $"{WindowDays} days",
+        };
+
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-WindowDays);
+        var filtered = Contributions.Where(c => c.CreatedAt >= cutoff).ToList();
+
+        var counts = new Dictionary<RegisterFamily, int>();
+        foreach (var family in Enum.GetValues<RegisterFamily>())
+            counts[family] = 0;
+
+        foreach (var c in filtered)
+        {
+            var family = ImpactCategoryDefaults.ToRegisterFamily(c.Register);
+            counts[family]++;
+        }
+
+        var total = filtered.Count;
+        _totalFamilies = counts.Count;
+        _coverageCount = counts.Count(kv => kv.Value > 0);
+        _coveragePercent = _totalFamilies > 0 ? (float)_coverageCount / _totalFamilies * 100f : 0f;
+        _maxCount = counts.Values.DefaultIfEmpty(0).Max();
+
+        _families = counts.OrderByDescending(kv => kv.Value)
+            .Select(kv => new FamilyData
+            {
+                Name = kv.Key.ToString(),
+                Count = kv.Value,
+                Percent = total > 0 ? (float)kv.Value / total * 100f : 0f,
+            }).ToList();
+
+        _weakest = counts.Where(kv => kv.Value == counts.Values.Min())
+            .Select(kv => kv.Key.ToString())
+            .FirstOrDefault();
+    }
+
+    private static string GetHeatColor(float intensity, bool hasData)
+    {
+        if (!hasData) return "rgba(255, 255, 255, 0.05)";
+        // Gradient from cool blue (low) to warm purple (high)
+        var r = (int)(60 + intensity * 120);   // 60 → 180
+        var g = (int)(60 - intensity * 40);    // 60 → 20
+        var b = (int)(120 + intensity * 80);   // 120 → 200
+        return $"rgba({r}, {g}, {b}, {0.3f + intensity * 0.5f:F2})";
+    }
+
+    private class FamilyData
+    {
+        public string Name { get; set; } = "";
+        public int Count { get; set; }
+        public float Percent { get; set; }
+    }
+}

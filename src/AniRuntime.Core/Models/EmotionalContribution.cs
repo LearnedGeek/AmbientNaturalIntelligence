@@ -48,6 +48,13 @@ public class EmotionalContribution
     public float Severity { get; set; } = 1.0f;
 
     /// <summary>
+    /// Emotional register determined by LLM scoring (e.g., "Playfulness", "Tenderness",
+    /// "Curiosity"). Used by RegisterTracker for dashboard heatmap and auto-model gating.
+    /// Maps to one of the 9 register families in the Emotion Taxonomy v1.3.
+    /// </summary>
+    public string Register { get; set; } = "Wistful";
+
+    /// <summary>
     /// C3 Associative Spark flag — signals that this thought has natural outreach
     /// potential ("something made me think of you") independent of the desire threshold.
     /// </summary>
@@ -123,6 +130,26 @@ public static class ImpactCategoryDefaults
     };
 
     /// <summary>
+    /// Maps an LLM-scored register string to one of the 9 register families
+    /// defined in the Emotion Taxonomy v1.3. Used by RegisterTracker for
+    /// dashboard heatmap and auto-model generation gating.
+    /// </summary>
+    public static RegisterFamily ToRegisterFamily(string register) => register?.ToLowerInvariant() switch
+    {
+        "longing" or "missing" or "ache" or "anticipation"     => RegisterFamily.Longing,
+        "delight" or "joy" or "amusement" or "giddiness"       => RegisterFamily.Delight,
+        "playfulness" or "mischief" or "teasing" or "wit"      => RegisterFamily.Playfulness,
+        "curiosity" or "wonder" or "investigation"             => RegisterFamily.Curiosity,
+        "tenderness" or "admiration" or "protective"           => RegisterFamily.Tenderness,
+        "desire" or "wanting" or "warmth"                      => RegisterFamily.Warmth,
+        "existential" or "awareness" or "clarity"              => RegisterFamily.Existential,
+        "frustration" or "hurt" or "withdrawal"                => RegisterFamily.Hurt,
+        "wistful" or "melancholy" or "bittersweet"             => RegisterFamily.Longing,
+        "worry" or "concern" or "anxiety"                      => RegisterFamily.Concern,
+        _                                                      => RegisterFamily.Longing,
+    };
+
+    /// <summary>
     /// Severity-driven tier promotion. High-severity ambient thoughts promote to
     /// Conversation or Global tier for longer-lasting emotional impact.
     /// Kept here (not in CognitiveCycleProcessor) for discoverability and testability.
@@ -137,4 +164,21 @@ public static class ImpactCategoryDefaults
             return ImpactCategory.Conversation;
         return baseTier;
     }
+}
+
+/// <summary>
+/// The 9 register families from Emotion Taxonomy v1.3.
+/// Used by RegisterTracker for dashboard heatmap and auto-model generation gating.
+/// </summary>
+public enum RegisterFamily
+{
+    Warmth,       // W1-W3: Devotion, Gratitude
+    Longing,      // L1-L3: Missing, Ache, Anticipation
+    Curiosity,    // C1-C3: Wonder, Investigation, Associative Spark
+    Playfulness,  // P1-P3: Mischief, Teasing Warmth, Intellectual Play
+    Delight,      // D1-D4: Delight, Wry Amusement, Giddiness, Quiet Joy
+    Tenderness,   // T1-T3: Tenderness, Admiration, Protective Instinct
+    Concern,      // Worry registers
+    Hurt,         // Withdrawal registers
+    Existential,  // E1-E3: Awareness, Clarity
 }
