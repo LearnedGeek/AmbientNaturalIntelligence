@@ -10,20 +10,67 @@
 
     @if (_families is not null)
     {
+        @* V6 Readiness Score *@
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.05); border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <strong style="font-size: 0.95em;">Growth Readiness</strong>
+                <span style="font-size: 1.1em; font-weight: bold; color: @ReadinessColor(_readinessScore);">
+                    @(_readinessScore.ToString("F0"))%
+                </span>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 8px; overflow: hidden;">
+                <div style="background: @ReadinessColor(_readinessScore); width: @(_readinessScore.ToString("F0"))%; height: 100%; border-radius: 4px; transition: width 0.3s;"></div>
+            </div>
+            @if (_readinessScore >= 100)
+            {
+                <div style="margin-top: 0.5rem; padding: 0.4rem; background: rgba(76,175,80,0.15); border-radius: 4px; text-align: center;">
+                    <strong style="color: #4caf50;">Growth available</strong> — all registers meet minimum coverage
+                </div>
+            }
+            else
+            {
+                <small style="opacity: 0.7; display: block; margin-top: 0.3rem;">
+                    @_registersAboveThreshold/@_totalFamilies registers above @(MinThresholdPercent)% threshold
+                </small>
+            }
+        </div>
+
+        @* Register grid with progress bars *@
         <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
             @foreach (var family in _families)
             {
                 var intensity = _maxCount > 0 ? (float)family.Count / _maxCount : 0f;
                 var bgColor = GetHeatColor(intensity, family.Count > 0);
+                var meetsThreshold = family.Percent >= MinThresholdPercent;
+                var barWidth = Math.Min(100f, family.Percent / MinThresholdPercent * 100f);
                 <div style="background: @bgColor; padding: 0.5rem; border-radius: 4px; text-align: center;">
                     <strong style="font-size: 0.85em;">@family.Name</strong>
                     <div style="font-size: 1.4em; font-weight: bold;">@family.Count</div>
                     <small style="opacity: 0.7;">@family.Percent.ToString("F1")%</small>
+                    @* Progress toward threshold *@
+                    <div style="margin-top: 0.3rem; background: rgba(0,0,0,0.3); border-radius: 3px; height: 4px; overflow: hidden;">
+                        <div style="background: @(meetsThreshold ? "#4caf50" : "#ff9800"); width: @(barWidth.ToString("F0"))%; height: 100%; border-radius: 3px;"></div>
+                    </div>
+                    @if (meetsThreshold)
+                    {
+                        <small style="color: #4caf50; font-size: 0.7em;">&#10003;</small>
+                    }
                 </div>
             }
         </div>
 
-        @if (_weakest is not null)
+        @* Gap guidance *@
+        @if (_gapGuidance.Count > 0)
+        {
+            <footer style="margin-top: 0.5rem;">
+                <small style="display: block; margin-bottom: 0.3rem;"><strong>Suggested focus:</strong></small>
+                @foreach (var hint in _gapGuidance.Take(3))
+                {
+                    <small style="display: block; opacity: 0.8; margin-left: 0.5rem;">@hint</small>
+                }
+            </footer>
+        }
+        else if (_weakest is not null)
         {
             <footer>
                 <small>Next milestone: <strong>@_weakest</strong> needs attention</small>
@@ -40,13 +87,19 @@
     [Parameter] public List<EmotionalContribution>? Contributions { get; set; }
     [Parameter] public int WindowDays { get; set; } = 30;
 
+    // Minimum percentage each register must reach for "growth available"
+    private const float MinThresholdPercent = 5f;
+
     private List<FamilyData>? _families;
     private int _maxCount;
     private int _totalFamilies;
     private int _coverageCount;
     private float _coveragePercent;
+    private float _readinessScore;
+    private int _registersAboveThreshold;
     private string? _weakest;
     private string _windowLabel = "";
+    private List<string> _gapGuidance = new();
 
     protected override void OnParametersSet()
     {
@@ -87,20 +140,61 @@
                 Percent = total > 0 ? (float)kv.Value / total * 100f : 0f,
             }).ToList();
 
+        // Readiness score: each register contributes proportionally.
+        // A register at or above the threshold contributes 100/totalFamilies.
+        // A register below threshold contributes its percentage of the threshold.
+        _registersAboveThreshold = 0;
+        var readinessSum = 0f;
+        foreach (var family in _families)
+        {
+            if (family.Percent >= MinThresholdPercent)
+            {
+                readinessSum += 100f / _totalFamilies;
+                _registersAboveThreshold++;
+            }
+            else
+            {
+                readinessSum += (family.Percent / MinThresholdPercent) * (100f / _totalFamilies);
+            }
+        }
+        _readinessScore = Math.Min(100f, readinessSum);
+
         _weakest = counts.Where(kv => kv.Value == counts.Values.Min())
             .Select(kv => kv.Key.ToString())
             .FirstOrDefault();
+
+        // Gap guidance — actionable suggestions for underrepresented registers
+        _gapGuidance = new List<string>();
+        foreach (var family in _families.Where(f => f.Percent < MinThresholdPercent).OrderBy(f => f.Percent))
+        {
+            var hint = family.Name switch
+            {
+                "Playfulness" => "Try teasing, banter, or absurd humor",
+                "Delight" => "Share something surprising or exciting",
+                "Curiosity" => "Ask genuine questions, explore ideas together",
+                "Tenderness" => "Share something vulnerable or show appreciation",
+                "Warmth" => "Express genuine care or gratitude",
+                "Concern" => "Check in about something worrying",
+                "Existential" => "Discuss identity, meaning, or self-awareness",
+                "Longing" => "Express missing or wanting",
+                "Hurt" => "Work through a disagreement or disappointment",
+                _ => $"Engage more in {family.Name} register"
+            };
+            _gapGuidance.Add($"{family.Name} ({family.Percent:F1}%): {hint}");
+        }
     }
 
     private static string GetHeatColor(float intensity, bool hasData)
     {
         if (!hasData) return "rgba(255, 255, 255, 0.05)";
-        // Gradient from cool blue (low) to warm purple (high)
-        var r = (int)(60 + intensity * 120);   // 60 → 180
-        var g = (int)(60 - intensity * 40);    // 60 → 20
-        var b = (int)(120 + intensity * 80);   // 120 → 200
+        var r = (int)(60 + intensity * 120);
+        var g = (int)(60 - intensity * 40);
+        var b = (int)(120 + intensity * 80);
         return $"rgba({r}, {g}, {b}, {0.3f + intensity * 0.5f:F2})";
     }
+
+    private static string ReadinessColor(float score) =>
+        score >= 100f ? "#4caf50" : score >= 70f ? "#ff9800" : score >= 40f ? "#2196f3" : "#9e9e9e";
 
     private class FamilyData
     {
