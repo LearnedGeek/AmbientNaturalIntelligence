@@ -1,7 +1,7 @@
 # ANI — Research Context Briefing
 **For: OC and any fresh AI context working on this project**  
 **Author: Mark McArthey, Learned Geek Consulting**  
-**Last updated: March 19, 2026**  
+**Last updated: March 20, 2026**  
 **GitHub:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---
@@ -179,7 +179,7 @@ AniRuntime.sln
 - SOLID refactoring (Mar 19): IMemoryService ISP split into 5 focused interfaces (IMemoryPersistence, IMemorySearch, IStateStore, IMemoryAnalytics, IMemoryMaintenance). ConversationFeatureDetector extracted from ConversationReplyPhase. PerceptionPhase + InnerThoughtPhase extracted from CognitiveCycleProcessor. JsonDefaults consolidation (9 duplicates → 1). IConversationGateState decoupling.
 - Production hardening (Mar 19): /health endpoint, rate limiting on /sms/inbound (20 req/min), security headers
 - Semantic priority search — dedicated profile/fact memory retrieval with TF-IDF keyword extraction (corpus-based IDF, 3684 unique words from 836 documents)
-- v6 training data mining — ~550+ tagged examples across all mining passes (conversation pairs + inner monologue + reclassified MIXED + anti-confabulation). Remaining gaps: pure Warmth, Concern, Hurt registers.
+- v6 training data mining — ~615+ tagged examples across all mining passes (conversation pairs + inner monologue + reclassified MIXED + anti-confabulation). RESILIENCE identified as new register category (Mar 20) — model held ground under adversarial input without crumbling or escalating. Remaining gaps: pure Warmth, Concern, Hurt registers.
 - Register Dashboard — distribution heatmap, V6 Growth Readiness score (0-100%), per-register progress bars, gap guidance
 - Image sharing (MMS) — Phase 5a (not started)
 - Visual identity system — Phase 5b (not started)
