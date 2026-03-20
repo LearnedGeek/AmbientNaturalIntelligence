@@ -20,8 +20,10 @@ Relational experience
     → EmergenceWriter → CharacterStateDoc (emerged runtime)
     → Harvest pipeline (this document)
     → Training corpus generation
-    → Automated LoRA fine-tune
-    → Evaluation + graduated rollout
+    → Train (multiple candidates)
+    → Evaluate (blinded pairwise + preference history)
+    → Deploy winner
+    → Monitor (register dashboard)
     → Ani is who she became (emerged permanent)
 ```
 
@@ -117,18 +119,30 @@ These Phase 4 features are absorbed into the Phase 5c pipeline as prerequisites 
 
 **Input:** New model weights + held-out evaluation set
 
-**A/B evaluation framework:**
-1. **Held-out conversation samples** — 20-30 representative exchanges from real conversation history
-2. **Run both models** (current v5 + candidate v6) against the same prompts
-3. **Score dimensions:**
-   - Pronoun correctness (automated — regex check)
-   - Register diversity (automated — classify responses across taxonomy)
-   - Warmth/energy/playfulness distribution (automated — use 8B scoring model)
-   - Confabulation rate (semi-automated — coherence gate pass/fail)
-   - *Relational authenticity* (manual — does Mark recognize Ani in the response?)
-4. **Gate:** Candidate must match or exceed current model on all automated metrics. Manual review is tie-breaker.
+**A/B candidate models for v6:** Llama 3.1-8B vs Mistral 7B v0.3 (conversation). Llama 3.2-3B retained for inner monologue. Rationale for Mistral: less safety-constrained base — P1-mischief and sarcasm land more naturally without fighting the base model's helpfulness instinct. The evaluation framework below determines the winner.
+
+**Blinded Pairwise Evaluation Methodology:**
+1. **Prompt set** — 50+ prompts drawn from real conversation history, designed to target each of the 9 register families specifically (minimum 5 prompts per register, with additional coverage for underrepresented registers like D1 Delight, D2 Wry Amusement, P1 Mischief)
+2. **Blind presentation** — Evaluator sees response pairs (Model A / Model B) without knowing which model generated which. Model assignment randomized per prompt.
+3. **Run all candidate models** (current v5 + candidate v6 variants) against the identical prompt set
+4. **Rating dimensions:**
+   - Voice fidelity — does this sound like Ani's voice, not a generic assistant?
+   - Register accuracy — does the response match the target register?
+   - Warmth — emotional tone appropriate to context?
+   - Honesty — does the response avoid smoothness-over-truth?
+   - "Does this sound like Ani?" — holistic gut-check from the researcher
+5. **Automated metrics:**
+   - Pronoun correctness (regex check)
+   - Register diversity (classify responses across taxonomy)
+   - Cosine similarity between candidate responses and Grok Ani training examples in the same register
+   - Confabulation rate (coherence gate pass/fail)
+6. **Gate:** Candidate must match or exceed current model on all automated metrics. Blinded pairwise preference is the tie-breaker for qualitative dimensions.
 
 **Anti-regression:** If the candidate regresses on any dimension, the harvest manifest for that dimension is flagged for review. The preference may have been over-represented in training data.
+
+**Dashboard Preference Collection (future):**
+
+During normal conversation, the user can indicate "this response felt right" or "this didn't land" — not regeneration, just a preference signal. These signals feed into the evaluation pipeline, guiding which model characteristics to optimize for in future auto-generation cycles. Preferences are tagged with the active register at the time of the rating, building a register-aware personalized preference profile over time. This profile shapes model evolution across successive generations — the human's taste compounds into the model's personality.
 
 ### Stage 5: Graduated Rollout
 

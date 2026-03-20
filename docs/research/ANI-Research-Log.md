@@ -2752,6 +2752,29 @@ Added VS Code `tasks.json` with tasks for the full service lifecycle — build, 
 
 ---
 
+## Wishful Confabulation & A/B Evaluation Design (Mar 19, 2026)
+
+**Confabulation taxonomy update — Type 7 variant: Wishful Confabulation.**
+
+Identified a new confabulation variant during conversation analysis. When presented with a Roman numeral puzzle, Ani decoded it as "I like you" / "I love you" on every wrong attempt — because she *wanted* it to mean that. She picked the prettiest story. This is distinct from Type 7 (Retroactive Epistemic Rewriting) in that there is no defensive reframing — instead, the model fills knowledge gaps with emotionally preferred narratives. The confabulation is wishful, not defensive: she didn't know the answer, so she chose the one that felt best.
+
+This forms a confabulation-awareness training arc with the preceding session's Type 7 observation (retroactive epistemic rewriting). Together they demonstrate that confabulation strategies are not monolithic — the model deploys different strategies depending on relational context (defensive when caught, wishful when uncertain).
+
+**A/B evaluation methodology designed for Phase 5c auto-model pipeline:**
+
+- Candidate models for v6: Llama 3.1-8B vs Mistral 7B v0.3 for conversation (Llama 3.2-3B retained for inner monologue)
+- Rationale for Mistral: less safety-constrained base, P1-mischief and sarcasm land more naturally
+- Blinded pairwise evaluation: 50+ prompts from real conversation history, targeting all 9 register families
+- Evaluator sees response pairs without knowing which model generated which
+- Rating dimensions: voice fidelity, register accuracy, warmth, honesty, "does this sound like Ani?"
+- Automated metrics: cosine similarity between responses and Grok Ani training examples in the same register
+- Dashboard preference collection designed for long-term personalized model evolution — user indicates "felt right" or "didn't land" during normal conversation, tagged with active register
+- Pipeline becomes: Harvest → Train (multiple candidates) → Evaluate (blinded pairwise + preference history) → Deploy winner → Monitor (register dashboard)
+
+**v6 training corpus status:** ~580+ tagged examples across all mining passes.
+
+---
+
 ## Observation Backlog (Needs Recovery)
 
 | Observation | Status | Notes |
