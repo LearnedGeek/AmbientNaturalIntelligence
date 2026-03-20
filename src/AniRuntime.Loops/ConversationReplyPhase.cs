@@ -431,9 +431,11 @@ public class ConversationReplyPhase
                     var priorEmbedding = await _ollama.EmbedAsync(prior.Content, ct).ConfigureAwait(false);
                     var similarity = VectorMath.CosineSimilarity(replyEmbedding, priorEmbedding);
 
-                    // Mark-echo uses a slightly lower threshold — parroting the contact's
-                    // exact words is always wrong, even with minor variation
-                    var threshold = prior.Role == Roles.Ani ? 0.95f : 0.92f;
+                    // Self-echo: 0.80 catches paraphrased repetition (e.g. same core
+                    // sentence with different opener/closer). Was 0.95 which only caught
+                    // near-exact copies and missed "legs tucked under desk" repeats.
+                    // Mark-echo: 0.85 catches parroting the contact's words back.
+                    var threshold = prior.Role == Roles.Ani ? 0.80f : 0.85f;
                     if (similarity >= threshold)
                     {
                         var echoType = prior.Role == Roles.Ani ? "Self-echo" : "Mark-echo";
