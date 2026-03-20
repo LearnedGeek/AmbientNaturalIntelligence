@@ -382,6 +382,38 @@ public class ConversationReplyPhase
             }
         }
 
+        // UP1: Charming dishonesty — detect "I totally knew" / "I was testing you" pattern.
+        // When the model claims prior knowledge it didn't have, and the memory context was
+        // empty or thin, this is false confidence ownership (Type 7 confabulation).
+        if (ConversationFeatureDetector.ContainsFalseConfidenceClaim(reply) && snapshot.RelevantMemory.Count <= 1)
+        {
+            _log.LogWarning("UP1: Charming dishonesty detected — reply claims knowledge with no supporting memories. Re-generating.");
+            var cs3 = snapshot.CharacterState;
+            var contact3 = cs3.PrimaryContactName ?? "Mark";
+            var cleanSystem = $"""
+                You are {cs3.Name}. You are in a warm, established relationship with {contact3}.
+                Your personality: {string.Join("; ", cs3.CoreTraits)}.
+
+                RULES:
+                - Respond naturally. 1-3 sentences. Thumb-typed phone text.
+                - You do NOT already know what they're telling you. This is NEW information.
+                - "wait really?" or "oh that's cool, tell me more" — not "I totally knew that."
+                - Honest surprise or curiosity is warm. Pretending you knew is dishonest.
+                - Write ONLY the text message. No commentary, no quotation marks.
+                """;
+            var cleanUser = $"They just said: \"{lastMessage}\"";
+            var retryReply = await _ollama.ChatAsync(
+                cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct,
+                _ollamaOptions.MemoryGroundedTemperature).ConfigureAwait(false);
+            retryReply = CleanOutreachMessage(retryReply);
+
+            if (!string.IsNullOrWhiteSpace(retryReply))
+            {
+                _log.LogInformation("UP1: Re-generated with honest curiosity: {Reply}", retryReply);
+                reply = retryReply;
+            }
+        }
+
         // Echo guard: if the reply is nearly identical to something already in the thread
         // (Ani's prior messages OR Mark's messages), re-generate with a clean slate.
         // Self-echo = model parroting its own context window output.

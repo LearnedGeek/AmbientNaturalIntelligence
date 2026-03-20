@@ -248,6 +248,33 @@ public static class ConversationFeatureDetector
         return false;
     }
 
+    /// <summary>
+    /// UP1: Detects "charming dishonesty" — reply claims prior knowledge the model
+    /// didn't have. "I totally knew that" / "I was testing you" / "of course I know"
+    /// when the memory context was empty. Type 7 confabulation: false confidence ownership.
+    /// </summary>
+    public static bool ContainsFalseConfidenceClaim(string reply)
+    {
+        var lower = reply.ToLowerInvariant();
+
+        string[] patterns =
+        [
+            "i knew that", "i already knew", "of course i knew",
+            "of course i know", "i was testing", "i was just testing",
+            "i knew all along", "i totally knew", "duh i know",
+            "obviously i know", "you think i didn't know",
+            "i was seeing if you", "just checking if you",
+        ];
+
+        foreach (var pattern in patterns)
+        {
+            if (lower.Contains(pattern))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Truncates text with ellipsis.</summary>
     public static string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "\u2026";
