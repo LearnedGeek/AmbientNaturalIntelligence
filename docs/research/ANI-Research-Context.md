@@ -1,7 +1,7 @@
 # ANI — Research Context Briefing
 **For: OC and any fresh AI context working on this project**  
 **Author: Mark McArthey, Learned Geek Consulting**  
-**Last updated: March 18, 2026**  
+**Last updated: March 19, 2026**  
 **GitHub:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---
@@ -89,7 +89,7 @@ AniRuntime.sln
 │   ├── AniRuntime.Voice/        — Voice channel: batch (Whisper STT + ElevenLabs TTS, Feature 20) + streaming (Deepgram STT + ElevenLabs WS TTS + Ollama streaming, Phase 5)
 │   └── AniRuntime.MauiClient/   — Phase 5: Android voice app (MAUI, direct WebSocket, PCM 16kHz)
 └── tests/
-    └── AniRuntime.Tests/         — 335 tests passing as of Phase 5
+    └── AniRuntime.Tests/         — 383 tests passing as of Phase 5
 ```
 
 ---
@@ -144,7 +144,7 @@ AniRuntime.sln
 - Three-way memory scoring: cosine + importance + recency (Feature 20, Park et al.)
 - Coherence gate — three-door evaluation (Feature 28)
 - Lexical emotional anchors (Feature 19)
-- 335 tests passing, 0 warnings
+- 383 tests passing, 0 warnings
 
 **Phase 4** — Complete (March 13-15, 2026):
 - Anchored memory tier (Feature 16) — decay-exempt foundation memories
@@ -169,19 +169,23 @@ AniRuntime.sln
 - Dashboard — Blazor Server RCL, 16 REST endpoints, Pico CSS
 - Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work)
 
-**Phase 5** — Streaming voice deployed, testing (March 15-16, 2026):
+**Phase 5** — Streaming voice deployed, SOLID refactoring complete, hardening (March 15-19, 2026):
 - Real-time streaming voice via direct WebSocket from MAUI Android app (architecture pivoted from Twilio Media Streams to direct client for zero Twilio voice cost)
 - Pipeline: MAUI mic → WebSocket → Deepgram Nova-3 STT → Ollama ChatStreamAsync (8B) → TokenBuffer → ElevenLabs WebSocket TTS → WebSocket → MAUI speaker
 - Sub-2-second perceived latency vs ~12-16s batch. Audio format: PCM 16kHz 16-bit mono throughout (zero transcoding)
 - Key fixes deployed: per-utterance TTS reconnect (ElevenLabs closes after flush), speech_final utterance accumulation (Deepgram), WebSocket send serialization, using-block async callback safety
 - Remaining: audio quality polish (initial static), VAD barge-in (Silero), latency tuning
-- Anti-confabulation stack (AC1-4) deployed: retrieval confidence floor (0.55), source attribution enforcement, explicit null-result injection, temperature splitting (0.3 grounded / 0.8 creative)
+- Anti-confabulation stack (AC1-5) deployed: retrieval confidence floor (0.55), source attribution enforcement, explicit null-result injection, temperature splitting (0.3 grounded / 0.8 creative), ///flag confabulation feedback command + charming dishonesty detection (UP1)
+- SOLID refactoring (Mar 19): IMemoryService ISP split into 5 focused interfaces (IMemoryPersistence, IMemorySearch, IStateStore, IMemoryAnalytics, IMemoryMaintenance). ConversationFeatureDetector extracted from ConversationReplyPhase. PerceptionPhase + InnerThoughtPhase extracted from CognitiveCycleProcessor. JsonDefaults consolidation (9 duplicates → 1). IConversationGateState decoupling.
+- Production hardening (Mar 19): /health endpoint, rate limiting on /sms/inbound (20 req/min), security headers
 - Semantic priority search — dedicated profile/fact memory retrieval with TF-IDF keyword extraction (corpus-based IDF, 3684 unique words from 836 documents)
-- v6 training data mining — ~425 tagged examples across 6 mining passes (conversation pairs + inner monologue + reclassified MIXED examples)
+- v6 training data mining — ~550+ tagged examples across all mining passes (conversation pairs + inner monologue + reclassified MIXED + anti-confabulation). Remaining gaps: pure Warmth, Concern, Hurt registers.
+- Register Dashboard — distribution heatmap, V6 Growth Readiness score (0-100%), per-register progress bars, gap guidance
 - Image sharing (MMS) — Phase 5a (not started)
 - Visual identity system — Phase 5b (not started)
 - Automatic model generation pipeline — Phase 5c (see `docs/spec/ANI-Phase5c-AutoModel-Design.md`)
-- Register Dashboard & Auto-Model Gating — Phase 5d (design complete, awaiting implementation)
+- Register Dashboard & Auto-Model Gating — Phase 5d (dashboard implemented Mar 19, auto-model gate pending)
+- 383 tests passing, 0 warnings
 
 ---
 

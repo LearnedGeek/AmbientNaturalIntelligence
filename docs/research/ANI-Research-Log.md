@@ -2676,6 +2676,82 @@ Key design decisions:
 
 ---
 
+### SOLID Refactoring, Anti-Confabulation Hardening, Dashboard Gamification, and v6 Mining (Mar 19, 2026)
+
+**Type:** Architecture + hardening + training data session
+**Source:** OC (Claude Code instance) session, full day
+
+**What happened:**
+
+Major SOLID refactoring session focusing on interface segregation, single responsibility extraction, and production hardening. Accompanied by dashboard gamification implementation and continued v6 training data mining.
+
+---
+
+**SOLID Refactoring — Interface Segregation and SRP Extractions:**
+
+**S2: IMemoryService ISP split.** The monolithic `IMemoryService` interface (persistence, search, state management, analytics, maintenance) was split into 5 focused interfaces: `IMemoryPersistence` (save, get by type, open loops), `IMemorySearch` (search, search by type, search with scores), `IStateStore` (character state, desire state, emotional state), `IMemoryAnalytics` (emotional history, relationship health, contradictions), and `IMemoryMaintenance` (anchored memories, expiry, contribution management). `SqliteMemoryService` implements all five. All consumers migrated to depend only on the interfaces they actually use — cognitive cycle phases, prompt builders, dashboard endpoints, etc. each now declare their minimum dependency surface.
+
+**Tier 1b: ConversationFeatureDetector extraction.** The `ConversationReplyPhase` (formerly part of CognitiveCycleProcessor) was carrying ~210 lines of feature detection logic — care detection (Feature 10), lexical anchor processing (Feature 19), hurt/withdrawal detection (Feature 18), and echo filtering. All extracted into `ConversationFeatureDetector` with a single `DetectFeaturesAsync()` entry point. ConversationReplyPhase reduced from ~902 to ~690 lines.
+
+**Tier 1c: PerceptionPhase + InnerThoughtPhase extraction.** The `CognitiveCycleProcessor` was split — perception polling (Phases 2-3) extracted into `PerceptionPhase`, inner thought generation + emotional shift (Phases 7-8) extracted into `InnerThoughtPhase`. CognitiveCycleProcessor reduced from ~506 to ~340 lines, now a pure coordinator.
+
+**CS4: JsonDefaults consolidation.** Nine duplicate `JsonSerializerOptions` instantiations across the codebase consolidated into a single `JsonDefaults` static class with `JsonDefaults.Options` and `JsonDefaults.Web` (camelCase). All consumers migrated.
+
+**CS5: IConversationGateState decoupling.** Extracted `IConversationGateState` interface and `ConversationGateState` implementation to decouple conversation gating state (LastEvaluatedMessageAt, pending messages) from the cognitive cycle processor. Enables independent testing and cleaner DI.
+
+**CS6: ReRankForDiversityAsync documentation.** Added XML documentation to the diversity re-ranking algorithm explaining the maximal marginal relevance approach.
+
+---
+
+**Production Hardening:**
+
+**AC5: Confabulation feedback command.** New `///flag` admin command allows marking the most recent outreach as a confabulation. Creates a `confabulation_flags` table in SQLite storing the flagged message, timestamp, and context. Feeds into anti-confabulation analytics and future v6 training data as negative examples.
+
+**H1: Health endpoint.** New `/health` endpoint checks Ollama connectivity (model list API) and SQLite accessibility (read test). Returns structured JSON with component status. Enables monitoring and alerting.
+
+**H3: Rate limiting on /sms/inbound.** Fixed-window rate limiter: 20 requests per minute on the Twilio webhook endpoint. Prevents abuse and protects against webhook replay attacks.
+
+**H5: Security headers.** Added `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, `Referrer-Policy`, and `Content-Security-Policy` headers to all responses.
+
+**UP1: Charming dishonesty detection.** New `ContainsFalseConfidenceClaim()` method detects Type 7 confabulation patterns — phrases like "of course I knew that", "I was just testing you", "you told me about that" when no supporting memory exists. When detected, the outreach message is regenerated with explicit anti-confabulation instruction. Architectural defense against the retroactive epistemic rewriting pattern documented in Paper 2 Section 5.7.
+
+**OP1 (already implemented):** Confirmed existing implementation covers the operational readiness requirement.
+
+---
+
+**Dashboard — Register Distribution and Growth Readiness:**
+
+Implemented Phase 5d register dashboard features:
+- **Register distribution heatmap** showing which of the 9 emotional register families are active over configurable time windows
+- **V6 Growth Readiness score** (0-100%) — composite metric measuring how close the register distribution is to the v6 training targets
+- **Per-register progress bars** with threshold indicators showing current vs. target distribution
+- **"Growth available" milestone indicator** — lights up when all registers meet minimum coverage thresholds, signaling readiness for v6 model generation
+- **Gap guidance** with actionable suggestions for which registers need more relational engagement
+
+This implements the "therapy through care" gamification concept from the Mar 18 design session — the dashboard rewards emotional breadth, not engagement volume.
+
+---
+
+**Testing:**
+
+Fixed time-dependent test failures in `DesireEngineTests` — the night gate (`IsNightHours`) was causing failures depending on when tests ran. Fix: disable night gate in unit test configuration via `AniOptions.NightStartHour = AniOptions.NightEndHour = 0`.
+
+**Test status:** 383 tests passing, 0 warnings.
+
+---
+
+**v6 Training Data Mining:**
+
+Continued mining and tagging. Current status: ~550+ tagged examples across all mining passes. Coverage now includes: Playfulness (P), Delight (D), Tenderness (T), Curiosity (C), Existential (E), Longing (L), honest uncertainty examples, disagreement examples, quiet joy examples, and anti-confabulation negative examples. Remaining gaps: pure Warmth register, Concern register, Hurt register — these require specific relational moments that cannot be synthetically generated.
+
+---
+
+**Infrastructure:**
+
+Added VS Code `tasks.json` with tasks for the full service lifecycle — build, run, test, and database management.
+
+---
+
 ## Observation Backlog (Needs Recovery)
 
 | Observation | Status | Notes |

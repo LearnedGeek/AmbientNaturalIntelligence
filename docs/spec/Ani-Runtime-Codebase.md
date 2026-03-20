@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.1 — Phase 5 Streaming Voice In Progress
+1.2 — Phase 5 Streaming Voice + SOLID Refactoring + Hardening
 Status
-Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab deployed. Emotional model Phase 1a+1b+2 deployed. 335 tests passing.
+Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline, IMemoryService ISP split, ConversationFeatureDetector, PerceptionPhase, InnerThoughtPhase, JsonDefaults, IConversationGateState). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab + Register heatmap + Growth Readiness deployed. Emotional model Phase 1a+1b+2 deployed. Production hardening: /health, rate limiting, security headers, charming dishonesty detection. 383 tests passing.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -55,7 +55,13 @@ AniRuntime.sln
 │   │   ├── Interfaces/
 │   │   │   ├── IPerceptionSource.cs
 │   │   │   ├── IAniAction.cs
-│   │   │   │   ├── IMemoryService.cs     # + anchored memories, relationship health, emotional history, contradictions (Feature 15), SearchWithScoresAsync
+│   │   │   │   ├── IMemoryService.cs     # Legacy — split into 5 focused interfaces (ISP, Mar 19)
+│   │   │   ├── IMemoryPersistence.cs  # Save, GetByType, OpenLoops
+│   │   │   ├── IMemorySearch.cs       # Search, SearchByType, SearchWithScores
+│   │   │   ├── IStateStore.cs         # Character/Desire/Emotional state CRUD
+│   │   │   ├── IMemoryAnalytics.cs    # Emotional history, relationship health, contradictions
+│   │   │   ├── IMemoryMaintenance.cs  # Anchored memories, expiry, contribution management
+│   │   │   ├── IConversationGateState.cs  # Conversation gating state (decoupled from cycle processor)
 │   │   │   ├── IConversationService.cs  # + GetThreadAsync, GetRecentThreadsAsync (Dashboard)
 │   │   │   ├── IOllamaClient.cs        # + ChatStreamAsync (IAsyncEnumerable<string>, Phase 5)
 │   │   │   ├── IStreamingSpeechToTextService.cs   # Phase 5: event-driven STT (TranscriptReceived, PartialTranscriptReceived)
@@ -63,6 +69,7 @@ AniRuntime.sln
 │   │   ├── Utilities/
 │   │   │   └── MessageCleaner.cs     # Shared: Clean() + TruncateToSentences() — used by CognitiveCycle + Voice
 │   │   ├── VectorMath.cs              # Feature 9: SIMD-accelerated cosine similarity (shared)
+│   │   ├── JsonDefaults.cs           # Shared JsonSerializerOptions (CS4 — consolidated from 9 duplicates)
 │   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification, voice loop config, RetrievalConfidenceFloor
 │   │   └── AniRuntime.Core.csproj
 │   │
@@ -73,9 +80,13 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.Loops/            # Heartbeat, cognitive cycle, desire engine, admin
 │   │   ├── AniHeartbeatService.cs
-│   │   ├── CognitiveCycleProcessor.cs
+│   │   ├── CognitiveCycleProcessor.cs     # Coordinator only (~340 lines after SRP extractions)
+│   │   ├── PerceptionPhase.cs             # Extracted: perception polling + notable persistence (Phases 2-3)
+│   │   ├── InnerThoughtPhase.cs           # Extracted: inner thought generation + emotional shift (Phases 7-8)
+│   │   ├── ConversationFeatureDetector.cs # Extracted: care detection, lexical anchors, hurt/withdrawal, echo filter
+│   │   ├── ConversationGateState.cs       # IConversationGateState impl: LastEvaluatedMessageAt, pending messages
 │   │   ├── DesireEngine.cs
-│   │   ├── AdminCommandHandler.cs
+│   │   ├── AdminCommandHandler.cs         # + ///flag confabulation feedback command (AC5)
 │   │   ├── RegisterTracker.cs              # (placeholder) Register hit counting per conversation
 │   │   └── AniRuntime.Loops.csproj
 │   │
@@ -105,7 +116,7 @@ AniRuntime.sln
 │   │   ├── Dtos/                    # AniStatusDto, MemoryRecordDto, ConversationThreadDto
 │   │   ├── Endpoints/               # 5 endpoint groups: AniState, Memory, Conversations, Journal, Contradictions
 │   │   ├── Components/              # Blazor components: Dashboard.razor, EmotionalStateCard.razor
-│   │   │   └── RegisterHeatmap.razor  # (placeholder) Register distribution heatmap
+│   │   │   └── RegisterHeatmap.razor  # Register distribution heatmap + V6 Growth Readiness score + per-register progress bars + gap guidance
 │   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
 │   │   └── AniRuntime.Dashboard.csproj
 │   │
@@ -458,27 +469,38 @@ public interface IAniAction
         CancellationToken cancellationToken = default);
 }
 
-3.3 IMemoryService
-Single source of truth for memory, character state, desire state, and emotional state.
+3.3 IMemoryService (ISP Split — March 19, 2026)
+Originally a single monolithic interface. Split into 5 focused interfaces following the Interface Segregation Principle. `SqliteMemoryService` implements all five. Consumers depend only on the interfaces they need.
 
-public interface IMemoryService
+public interface IMemoryPersistence
 {
     Task SaveAsync(MemoryRecord record, CancellationToken ct = default);
-    Task<IEnumerable<MemoryRecord>> SearchAsync(string query, int topK = 10, CancellationToken ct = default);
-    Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(string query, MemoryType type, int topK = 5, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> GetByTypeAsync(MemoryType type, int limit = 50, CancellationToken ct = default);
     Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default);
     Task ResolveOpenLoopAsync(Guid id, CancellationToken ct = default);
+}
 
+public interface IMemorySearch
+{
+    Task<IEnumerable<MemoryRecord>> SearchAsync(string query, int topK = 10, CancellationToken ct = default);
+    Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(string query, MemoryType type, int topK = 5, CancellationToken ct = default);
+    Task<IEnumerable<ScoredMemory>> SearchWithScoresAsync(string query, int topK = 10, CancellationToken ct = default);
+}
+
+public interface IStateStore
+{
     Task<CharacterStateDoc> GetCharacterStateAsync(CancellationToken ct = default);
     Task SaveCharacterStateAsync(CharacterStateDoc doc, CancellationToken ct = default);
-
     Task<DesireState> GetDesireStateAsync(CancellationToken ct = default);
     Task SaveDesireStateAsync(DesireState state, CancellationToken ct = default);
-
     Task<EmotionalState> GetEmotionalStateAsync(CancellationToken ct = default);
     Task SaveEmotionalStateAsync(EmotionalState state, CancellationToken ct = default);
 }
+
+public interface IMemoryAnalytics { /* emotional history, relationship health, contradictions */ }
+public interface IMemoryMaintenance { /* anchored memories, expiry, contribution management */ }
+
+The legacy `IMemoryService` interface is retained for backward compatibility but consumers are migrated to the focused interfaces.
 
 3.4 IConversationService
 Active conversation thread management.
@@ -904,7 +926,7 @@ Planned stubs:
 
 12. Test Infrastructure
 
-Framework: xUnit, Moq, FluentAssertions. 335 tests passing, 0 warnings.
+Framework: xUnit, Moq, FluentAssertions. 383 tests passing, 0 warnings.
 
 Base class: AniTestBase — provides MockMemory, MockOllama, MockAction, DefaultOptions(), FreshDesireState(), HighDesireState().
 
@@ -941,6 +963,9 @@ Test files:
 22. TF-IDF dual search — `KeywordExtractor` builds corpus-based IDF lazily from stored memories. Extracts distinctive keywords for topical retrieval alongside embedding cosine similarity. Prevents casual greeting noise from burying topic-specific memories.
 23. Profile memory separation — Semantic (biographical/profile) memories searched separately and rendered in dedicated prompt section ("Things you know about Mark:"). Prevents episodic echoes from crowding out factual knowledge.
 24. Shutdown farewell — `ApplicationStopping` lifetime event triggers random personality-consistent farewell message from a pool. Infrastructure behavior with personality.
+25. Interface Segregation on memory — `IMemoryService` split into `IMemoryPersistence`, `IMemorySearch`, `IStateStore`, `IMemoryAnalytics`, `IMemoryMaintenance`. Each consumer declares its minimum dependency surface. `SqliteMemoryService` implements all five.
+26. Coordinator pattern — `CognitiveCycleProcessor` is a pure coordinator (~340 lines). Perception polling lives in `PerceptionPhase`, inner thought generation in `InnerThoughtPhase`, conversation feature detection in `ConversationFeatureDetector`. Each phase is independently testable.
+27. Charming dishonesty detection — `ContainsFalseConfidenceClaim()` catches Type 7 confabulation patterns (retroactive epistemic rewriting). When detected, message is regenerated with anti-confabulation instruction. Runtime defense, not model fix.
 
 14. Change Log
 
@@ -951,6 +976,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 1.1 | Mar 19, 2026 | SOLID refactoring: IMemoryService ISP split into 5 focused interfaces (IMemoryPersistence, IMemorySearch, IStateStore, IMemoryAnalytics, IMemoryMaintenance) + full consumer migration. ConversationFeatureDetector extracted from ConversationReplyPhase. PerceptionPhase + InnerThoughtPhase extracted from CognitiveCycleProcessor. JsonDefaults consolidation (9→1). IConversationGateState decoupling. Production hardening: AC5 ///flag confabulation feedback, /health endpoint (H1), rate limiting on /sms/inbound (H3), security headers (H5), charming dishonesty detection (UP1). Dashboard: register heatmap, V6 Growth Readiness score, per-register progress bars, gap guidance. 383 tests. |
 | 1.0 | Mar 17, 2026 | Anti-confabulation hardening (AC1–AC4): retrieval confidence floor, source attribution, null-result injection, temperature splitting. TF-IDF keyword extraction (`KeywordExtractor`). `ScoredMemory` model + `SearchWithScoresAsync` on IMemoryService. Profile memory separation in PromptBuilder. `RetrievalConfidenceFloor` on AniOptions, `RetrievalBelowConfidenceFloor` flag on ContextSnapshot. `MemoryGroundedTemperature`/`CreativeTemperature` on OllamaOptions. Shutdown farewell handler. |
 | 0.9 | Mar 15, 2026 | Emotional model Phase 2. Tier promotion: `DetermineEffectiveTier()` on ImpactCategoryDefaults — severity ≥ 0.70 promotes Ambient→Conversation, ≥ 0.85 → Global from any tier. Global tier updated: maxDelta 0.35, half-life 12h (~84h gone). Feature 18 H1 deltas: W:−0.12, E:−0.10, Worry:−0.15, P:−0.10. Dashboard contribution expiry (DELETE endpoint + ✕ button). Homeostatic nudge options on AniOptions (disabled by default). `ExpireContributionAsync` on IMemoryService. Feature 20 voice refinements: switched from 3B inner model to 8B conversation model (fixes pronoun confusion), voice-aware mood instructions (`BuildMoodInstruction(state, isVoice: true)`), ElevenLabs emotional acting directions (`PrependEmotionalDirection()` — parenthetical cues based on dominant emotional shift), clearer timeout/error filler messages. 246 tests. |
 | 0.8 | Mar 15, 2026 | Emotional model Phase 1a+1b. Concern→Worry rename (codebase-wide + SQLite backward compat via JsonPropertyName). 9-register family classification scoring prompt (Longing\|Delight\|Playfulness\|Curiosity\|Desire\|Tenderness\|Existential\|Wistful\|Frustration). Severity field (0.0–1.0) on EmotionalContribution, applied as multiplier in CurrentDeltas. IsOutreachReady flag (C3 Associative Spark). Describe() rewritten with compound W+E/W+Worry conditions. GetSelfAwarenessPrompt() rewritten with matching compound conditions. ParseEmotionalShift returns register+severity. ALTER TABLE migration for existing DBs. 239 tests. |
