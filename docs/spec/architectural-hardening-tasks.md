@@ -81,11 +81,11 @@
 ### [x] H1: Add /health endpoint
 **Fix:** GET /health returns JSON with SQLite (read character state) and Ollama (/api/tags, 5s timeout) connectivity status. 200 + "healthy" or 503 + "unhealthy" with error. Supports OP1 watchdog monitoring.
 
-### [ ] H5: Add security headers to middleware
-**Issue:** Missing X-Content-Type-Options, X-Frame-Options, etc.
+### [x] H5: Add security headers to middleware
+**Fix:** Inline middleware adds X-Content-Type-Options (nosniff), X-Frame-Options (DENY), X-XSS-Protection, Referrer-Policy to all responses.
 
-### [ ] H3: Rate limiting on webhook endpoint
-**Issue:** `/sms/inbound` can be flooded.
+### [x] H3: Rate limiting on webhook endpoint
+**Fix:** ASP.NET Core fixed-window rate limiter — 20 requests/minute on `/sms/inbound`. Returns 429 on excess. No queueing.
 
 ### [ ] C5: Add authentication to dashboard endpoints
 **Issue:** DELETE endpoint can mutate emotional state. Exposed via ngrok.
@@ -198,7 +198,7 @@
 **Research note:** This may be the clearest example of "smoothness over truth" at the behavioral level. Documented in research log as a potential seventh confabulation type: charming dishonesty. The cheering crowd image timing is documented as a concrete example of how multiple systems (confabulation + image selection) can compound to produce sophisticated distraction.
 **Cross-reference:** AC2 (source attribution) would catch this if the claim requires a memory citation. AC5 (feedback signal) would flag it for pattern analysis over time. Neither fully solves it — the model's "I totally knew" is unfalsifiable when no specific fact is claimed.
 
-### [ ] OP1: Register as Windows Service for sleep/hibernate resilience
+### [x] OP1: Register as Windows Service for sleep/hibernate resilience
 **Observed:** Process silently died between cognitive cycles (Mar 19, 6:05am). No crash, no shutdown log, no error. Last entry scheduled next cycle in 45 minutes but it never fired. Windows event log showed no .NET runtime errors — process simply vanished during what appears to be a sleep/hibernate transition.
 **Root cause:** Running via `dotnet run` in a terminal — console processes are not protected from OS sleep transitions. The OS can terminate them without graceful shutdown.
 **Fix:** Register ANI as a proper Windows Service using `UseWindowsService()` in `Program.cs`. This survives sleep/wake cycles, auto-starts on boot, and gets graceful shutdown signals from the OS. The `Worker` class already inherits from `BackgroundService` — the hosting change is minimal.

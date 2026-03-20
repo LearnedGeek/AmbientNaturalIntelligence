@@ -12,7 +12,9 @@ using AniRuntime.Dashboard;
 using AniRuntime.Emergence;
 using AniRuntime.Emergence.Models;
 using AniRuntime.Voice;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Twilio.Security;
@@ -167,6 +169,18 @@ try
     builder.Services.AddSingleton<ISessionNotifier>(sp => sp.GetRequiredService<SessionNotifier>());
     builder.Services.AddHostedService<AniHeartbeatService>();
 
+    // ── H3: Rate limiting — prevent webhook flooding ──────────────────────────
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.AddFixedWindowLimiter("webhook", limiter =>
+        {
+            limiter.PermitLimit = 20;           // 20 requests per window
+            limiter.Window = TimeSpan.FromMinutes(1);
+            limiter.QueueLimit = 0;             // reject immediately, don't queue
+        });
+        options.RejectionStatusCode = 429;
+    });
+
     // ── Forwarded headers — needed for Twilio signature validation behind ngrok
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
@@ -179,6 +193,18 @@ try
     var app = builder.Build();
 
     app.UseForwardedHeaders();
+
+    // H5: Security headers — OWASP recommended
+    app.Use(async (ctx, next) =>
+    {
+        ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        ctx.Response.Headers["X-Frame-Options"] = "DENY";
+        ctx.Response.Headers["X-XSS-Protection"] = "1; mode=block";
+        ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        await next();
+    });
+
+    app.UseRateLimiter();
     app.UseWebSockets();
     app.UseStaticFiles();
 
@@ -225,6 +251,7 @@ try
     // ── Inbound SMS webhook ──────────────────────────────────────────────────
     // Twilio POSTs here when an SMS arrives at Ani's number.
     // Enqueues the message for the cognitive cycle and triggers an early wake.
+    // H3: Rate-limited to 20 requests/minute to prevent flooding.
     app.MapPost("/sms/inbound", async (
         HttpContext ctx,
         IOptions<TwilioOptions> twilioOpts,
@@ -264,7 +291,7 @@ try
 
         // Empty TwiML — no auto-reply, Ani will respond via the cognitive cycle
         return Results.Content("<Response></Response>", "application/xml");
-    });
+    }).RequireRateLimiting("webhook");
 
     // ── Media serving endpoint — Twilio fetches audio/images from here ─────────
     if (voiceEnabled)
