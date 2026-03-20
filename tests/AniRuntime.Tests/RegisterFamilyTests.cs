@@ -60,7 +60,8 @@ public class RegisterFamilyTests
         var testRegisters = new[]
         {
             "Playfulness", "Delight", "Curiosity", "Tenderness",
-            "Longing", "Desire", "Existential", "Frustration", "Worry"
+            "Longing", "Desire", "Existential", "Frustration", "Worry",
+            "Resilience"
         };
 
         foreach (var reg in testRegisters)

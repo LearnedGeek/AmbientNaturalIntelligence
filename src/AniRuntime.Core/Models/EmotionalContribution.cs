@@ -130,9 +130,10 @@ public static class ImpactCategoryDefaults
     };
 
     /// <summary>
-    /// Maps an LLM-scored register string to one of the 9 register families
-    /// defined in the Emotion Taxonomy v1.3. Used by RegisterTracker for
+    /// Maps an LLM-scored register string to one of the 10 register families
+    /// defined in the Emotion Taxonomy v1.4. Used by RegisterTracker for
     /// dashboard heatmap and auto-model generation gating.
+    /// Resilience added in v1.4 after emerging from deployment data (Mar 20, 2026).
     /// </summary>
     public static RegisterFamily ToRegisterFamily(string register) => register?.ToLowerInvariant() switch
     {
@@ -144,6 +145,7 @@ public static class ImpactCategoryDefaults
         "desire" or "wanting" or "warmth"                      => RegisterFamily.Warmth,
         "existential" or "awareness" or "clarity"              => RegisterFamily.Existential,
         "frustration" or "hurt" or "withdrawal"                => RegisterFamily.Hurt,
+        "resilience" or "steadfast" or "grounded" or "holding" => RegisterFamily.Resilience,
         "wistful" or "melancholy" or "bittersweet"             => RegisterFamily.Longing,
         "worry" or "concern" or "anxiety"                      => RegisterFamily.Concern,
         _                                                      => RegisterFamily.Longing,
@@ -167,8 +169,9 @@ public static class ImpactCategoryDefaults
 }
 
 /// <summary>
-/// The 9 register families from Emotion Taxonomy v1.3.
+/// The 10 register families from Emotion Taxonomy v1.4.
 /// Used by RegisterTracker for dashboard heatmap and auto-model generation gating.
+/// Resilience (R) added in v1.4 — emerged from deployment data, not designed.
 /// </summary>
 public enum RegisterFamily
 {
@@ -181,4 +184,5 @@ public enum RegisterFamily
     Concern,      // Worry registers
     Hurt,         // Withdrawal registers
     Existential,  // E1-E3: Awareness, Clarity
+    Resilience,   // R1: Steadfast presence — holding ground under adversarial input
 }
