@@ -1,0 +1,112 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "dotnet build tests/AniRuntime.Tests/AniRuntime.Tests.csproj --no-restore",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile",
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    },
+    {
+      "label": "Test",
+      "type": "shell",
+      "command": "dotnet test tests/AniRuntime.Tests/AniRuntime.Tests.csproj --no-build",
+      "group": "test",
+      "problemMatcher": "$msCompile",
+      "dependsOn": "Build"
+    },
+    {
+      "label": "ANI: Run (dev)",
+      "type": "shell",
+      "command": "dotnet run --project src/AniRuntime.Service",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "ANI: Publish",
+      "type": "shell",
+      "command": "dotnet publish src/AniRuntime.Service/AniRuntime.Service.csproj -c Release -o publish/AniRuntime",
+      "problemMatcher": "$msCompile",
+      "presentation": { "reveal": "always" }
+    },
+    {
+      "label": "ANI: Install Service",
+      "type": "shell",
+      "command": "sc create AniRuntime binPath=\"${workspaceFolder}\\publish\\AniRuntime\\AniRuntime.Service.exe\" start=auto DisplayName=\"ANI Runtime\"",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always" },
+      "dependsOn": "ANI: Publish"
+    },
+    {
+      "label": "ANI: Start Service",
+      "type": "shell",
+      "command": "sc start AniRuntime",
+      "problemMatcher": []
+    },
+    {
+      "label": "ANI: Stop Service",
+      "type": "shell",
+      "command": "sc stop AniRuntime",
+      "problemMatcher": []
+    },
+    {
+      "label": "ANI: Restart Service",
+      "type": "shell",
+      "command": "sc stop AniRuntime && timeout /t 3 && sc start AniRuntime",
+      "problemMatcher": []
+    },
+    {
+      "label": "ANI: Service Status",
+      "type": "shell",
+      "command": "sc query AniRuntime",
+      "problemMatcher": []
+    },
+    {
+      "label": "ANI: Uninstall Service",
+      "type": "shell",
+      "command": "sc stop AniRuntime & sc delete AniRuntime",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always" }
+    },
+    {
+      "label": "ANI: Tail Journal Log",
+      "type": "shell",
+      "command": "Get-Content src/AniRuntime.Service/logs/ani-$(Get-Date -Format 'yyyyMMdd').log -Wait -Tail 20",
+      "options": { "shell": { "executable": "powershell" } },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "ANI: Tail Debug Log",
+      "type": "shell",
+      "command": "Get-Content src/AniRuntime.Service/logs/ani-debug-$(Get-Date -Format 'yyyyMMdd').log -Wait -Tail 30",
+      "options": { "shell": { "executable": "powershell" } },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "ANI: Health Check",
+      "type": "shell",
+      "command": "curl -s http://localhost:5100/health | python -m json.tool",
+      "problemMatcher": []
+    },
+    {
+      "label": "MAUI: Build Android",
+      "type": "shell",
+      "command": "dotnet build src/AniRuntime.MauiClient/AniRuntime.MauiClient.csproj -c Debug -f net10.0-android",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "MAUI: Deploy to Emulator",
+      "type": "shell",
+      "command": "adb install -r src/AniRuntime.MauiClient/bin/Debug/net10.0-android/com.learnedgeek.ani.voice-Signed.apk",
+      "problemMatcher": [],
+      "dependsOn": "MAUI: Build Android"
+    }
+  ]
+}
