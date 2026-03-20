@@ -67,6 +67,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
 
         var adminHandler = new AdminCommandHandler(
             MockMemory.Object, MockMemory.Object,
+            _mockConversations.Object,
             desire,
             dispatcher,
             DefaultOptions,

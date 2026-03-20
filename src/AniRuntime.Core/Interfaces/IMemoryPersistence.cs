@@ -17,4 +17,9 @@ public interface IMemoryPersistence
     Task SaveRelationshipHealthAsync(RelationshipHealth health, CancellationToken ct = default);
     Task AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default);
     Task AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default);
+
+    /// <summary>
+    /// AC5: Store a confabulation flag for pattern analysis.
+    /// </summary>
+    Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default);
 }

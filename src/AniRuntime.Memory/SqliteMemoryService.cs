@@ -564,6 +564,28 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             _log.LogInformation("Anchored memory {Id}: {Reason}", id, reason);
     }
 
+    // ── AC5: Confabulation Flags ──────────────────────────────────────────────
+
+    public async Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            INSERT INTO confabulation_flags (id, flagged_at, contact_message, ani_reply)
+            VALUES ($id, $flaggedAt, $contactMessage, $aniReply)
+            """;
+
+        cmd.Parameters.AddWithValue("$id",             Guid.NewGuid().ToString());
+        cmd.Parameters.AddWithValue("$flaggedAt",      DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$contactMessage", contactMessage);
+        cmd.Parameters.AddWithValue("$aniReply",       aniReply);
+
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        _log.LogWarning("AC5: Confabulation flag saved — reply: \"{Reply}\"",
+            aniReply.Length > 80 ? aniReply[..80] + "…" : aniReply);
+    }
+
     // ── CharacterState ────────────────────────────────────────────────────────
 
     public async Task<CharacterStateDoc> GetCharacterStateAsync(CancellationToken ct = default)
@@ -1020,6 +1042,17 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 is_outreach_ready INTEGER NOT NULL DEFAULT 0
             );
 
+            -- AC5: Confabulation feedback — stores flagged responses for pattern analysis
+            CREATE TABLE IF NOT EXISTS confabulation_flags (
+                id              TEXT PRIMARY KEY,
+                flagged_at      TEXT NOT NULL,
+                contact_message TEXT NOT NULL,
+                ani_reply       TEXT NOT NULL,
+                topic_category  TEXT,
+                notes           TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_confab_flags_time ON confabulation_flags (flagged_at DESC);
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
             CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
             CREATE INDEX IF NOT EXISTS ix_emotional_history_time ON emotional_state_history (recorded_at DESC);

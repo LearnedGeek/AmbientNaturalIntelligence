@@ -20,6 +20,7 @@ public class AdminCommandHandler
 {
     private readonly IStateStore          _state;
     private readonly IMemoryPersistence  _persist;
+    private readonly IConversationService _conversations;
     private readonly DesireEngine        _desire;
     private readonly AniActionDispatcher _dispatcher;
     private readonly AniOptions          _aniOptions;
@@ -32,17 +33,19 @@ public class AdminCommandHandler
     public AdminCommandHandler(
         IStateStore                     state,
         IMemoryPersistence              persist,
+        IConversationService            conversations,
         DesireEngine                    desire,
         AniActionDispatcher             dispatcher,
         IOptions<AniOptions>            aniOptions,
         ILogger<AdminCommandHandler>    log)
     {
-        _state      = state;
-        _persist    = persist;
-        _desire     = desire;
-        _dispatcher = dispatcher;
-        _aniOptions = aniOptions.Value;
-        _log        = log;
+        _state         = state;
+        _persist       = persist;
+        _conversations = conversations;
+        _desire        = desire;
+        _dispatcher    = dispatcher;
+        _aniOptions    = aniOptions.Value;
+        _log           = log;
     }
 
     /// <summary>
@@ -67,6 +70,7 @@ public class AdminCommandHandler
             "live"       => await HandleLiveAsync(ct).ConfigureAwait(false),
             "status"     => await HandleStatusAsync(ct).ConfigureAwait(false),
             "reset-mood" => await HandleResetMoodAsync(ct).ConfigureAwait(false),
+            "flag"       => await HandleFlagAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -84,6 +88,7 @@ public class AdminCommandHandler
             "///test       — Snapshot DB, enter test mode",
             "///live       — Restore DB, exit test mode",
             "///reset-mood — Reset emotions to baselines",
+            "///flag       — Flag last reply as confabulation",
         });
     }
 
@@ -213,6 +218,50 @@ public class AdminCommandHandler
         };
 
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// AC5: Flag the most recent Ani reply as a confabulation.
+    /// Stores the flagged exchange in the confabulation_flags table for
+    /// pattern analysis — builds a map of confabulation-prone topics.
+    /// </summary>
+    private async Task<string> HandleFlagAsync(CancellationToken ct)
+    {
+        // Find the most recent conversation thread with Ani's reply
+        var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
+        if (thread is null || thread.Messages.Count < 2)
+        {
+            // Check most recent closed thread
+            var recent = await _conversations.GetRecentThreadsAsync(1, ct).ConfigureAwait(false);
+            thread = recent.FirstOrDefault();
+        }
+
+        if (thread is null || thread.Messages.Count < 2)
+            return "No recent conversation to flag.";
+
+        // Find the last Ani reply and the preceding Mark message
+        string? aniReply = null;
+        string? markMessage = null;
+
+        for (var i = thread.Messages.Count - 1; i >= 0; i--)
+        {
+            if (aniReply is null && thread.Messages[i].Role == Roles.Ani)
+                aniReply = thread.Messages[i].Content;
+            else if (aniReply is not null && thread.Messages[i].Role == Roles.Mark)
+            {
+                markMessage = thread.Messages[i].Content;
+                break;
+            }
+        }
+
+        if (aniReply is null)
+            return "No Ani reply found in recent conversation.";
+
+        markMessage ??= "(no preceding message found)";
+
+        await _persist.SaveConfabulationFlagAsync(markMessage, aniReply, ct).ConfigureAwait(false);
+
+        return $"Flagged as confabulation:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"";
     }
 
     private static string FormatAge(DateTimeOffset timestamp)
