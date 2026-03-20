@@ -36,10 +36,8 @@
 **Files:** `IStreamingSpeechToTextService.cs`, `StreamingVoiceOrchestrator.cs`, `TwilioInboundPerceptionSource.cs`
 **Fix:** STT service now uses `event Action<string> TranscriptReceived` and `event Action<string> PartialTranscriptReceived` (proper .NET events, not Action callback properties). `SessionNotifier` extracted as standalone DI service decoupling heartbeat from perception sources. Voice orchestrator subscribes to events in `HandleSessionAsync`.
 
-### [ ] S2: Split IMemoryService into focused interfaces (ISP)
-**File:** `src/AniRuntime.Core/Interfaces/IMemoryService.cs` — 22 methods
-**Issue:** Mixes memory CRUD, character state, desire state, emotional state, relationship health.
-**Fix:** Split into `IMemoryStore`, `ICharacterStateStore`, `IDesireStateStore`, `IEmotionalStateStore`, `IRelationshipStore`. SqliteMemoryService implements all.
+### [x] S2: Split IMemoryService into focused interfaces (ISP)
+**Fix:** Split 47-method god interface into 5 focused interfaces: IMemoryPersistence (8), IMemorySearch (5), IStateStore (5), IMemoryAnalytics (8), IMemoryMaintenance (4). IMemoryService is now a composite that extends all five. All consumers migrated to depend on the narrowest interfaces they need. SqliteMemoryService registered against all six via DI forwarding. Max single-class utilization dropped from 36% to focused needs.
 
 ### [x] S1: Decompose CognitiveCycleProcessor (SRP)
 **File:** `src/AniRuntime.Loops/CognitiveCycleProcessor.cs` — 2,229 lines, 10 dependencies
@@ -80,8 +78,8 @@
 
 ## Priority 4 — Hardening
 
-### [ ] H1: Add /health endpoint
-**Issue:** No health check. Should verify Ollama connectivity and SQLite accessibility.
+### [x] H1: Add /health endpoint
+**Fix:** GET /health returns JSON with SQLite (read character state) and Ollama (/api/tags, 5s timeout) connectivity status. 200 + "healthy" or 503 + "unhealthy" with error. Supports OP1 watchdog monitoring.
 
 ### [ ] H5: Add security headers to middleware
 **Issue:** Missing X-Content-Type-Options, X-Frame-Options, etc.
@@ -178,12 +176,9 @@
 **Root cause:** Clean-slate prompt was designed for first-message confabulation, not mid-conversation echo. It preserves persona but loses thread.
 **Fix:** Clean-slate prompt now includes last 4 messages of the conversation thread as context (lines 416-422 in ConversationReplyPhase.cs). Model still gets a clean environment (no retrieved memories) but retains awareness of the current topic.
 
-### [ ] AC5: Confabulation feedback signal
-**Current state:** Confabulations are discovered and catalogued after the fact in the research log and conversation review. No real-time feedback mechanism.
-**Problem:** The system can't learn *which categories of memory* are most vulnerable to confabulation. Mark catches them, but the signal doesn't flow back into the system.
-**Fix:** Lightweight feedback mechanism — when Mark flags a confabulation (e.g., "that's not right" or a future admin command), store the flagged response, the memory context that was provided, and the topic category. Over time, this builds a map of confabulation-prone areas. Categories with high confabulation rates can be routed to stricter handling (lower confidence thresholds, mandatory attribution, or explicit "I'm not sure about this" hedging).
-**Implementation:** Could be as simple as a `/flag` admin command that logs the current exchange to a `confabulation_flags` table with timestamp, topic, retrieved memory IDs, and the flagged response text. Analysis is manual initially — automation comes later if patterns emerge.
-**Parallel:** This is the physician VoBo (validation) feedback loop from the medical system. The AI confabulates; the human catches it; the feedback improves the system over time.
+### [x] AC5: Confabulation feedback signal
+**Fix:** `///flag` admin command. Finds the most recent Ani reply in the active or last-closed conversation thread, stores the exchange (contact message + Ani reply) in `confabulation_flags` SQLite table. `SaveConfabulationFlagAsync` added to `IMemoryPersistence`. Analysis is manual initially — pattern automation via dashboard is a future enhancement.
+**Parallel:** Physician VoBo (validation) feedback loop from the medical RAG system.
 
 ---
 
