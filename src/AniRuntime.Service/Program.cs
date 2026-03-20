@@ -182,6 +182,39 @@ try
     app.UseWebSockets();
     app.UseStaticFiles();
 
+    // ── Health endpoint — verify Ollama connectivity and SQLite accessibility ──
+    app.MapGet("/health", async (IStateStore state, HttpContext ctx) =>
+    {
+        try
+        {
+            // Verify SQLite is accessible by reading character state
+            var charState = await state.GetCharacterStateAsync(ctx.RequestAborted).ConfigureAwait(false);
+
+            // Verify Ollama is reachable
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var ollamaUrl = app.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
+            var ollamaResponse = await http.GetAsync($"{ollamaUrl}/api/tags", ctx.RequestAborted).ConfigureAwait(false);
+
+            return Results.Ok(new
+            {
+                status = "healthy",
+                sqlite = "ok",
+                ollama = ollamaResponse.IsSuccessStatusCode ? "ok" : "degraded",
+                character = charState.Name,
+                timestamp = DateTimeOffset.UtcNow,
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.Json(new
+            {
+                status = "unhealthy",
+                error = ex.Message,
+                timestamp = DateTimeOffset.UtcNow,
+            }, statusCode: 503);
+        }
+    });
+
     // ── Dashboard — REST API endpoints + Blazor Server ────────────────────
     app.MapDashboard();
 
