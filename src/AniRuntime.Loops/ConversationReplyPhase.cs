@@ -414,13 +414,27 @@ public class ConversationReplyPhase
             }
         }
 
+        // Add reply to in-memory thread BEFORE echo guard so subsequent replies
+        // in the same conversation cycle can see this one. Without this, the echo
+        // guard couldn't detect self-repetition within the same cycle because
+        // thread.Messages didn't include replies generated earlier in the cycle.
+        // (DB persist happens after dispatch at Step 5.)
+        var replyMessage = new ConversationMessage
+        {
+            Role    = Roles.Ani,
+            Content = reply,
+            SentAt  = DateTimeOffset.UtcNow,
+        };
+        thread.Messages.Add(replyMessage);
+
         // Echo guard: if the reply is nearly identical to something already in the thread
         // (Ani's prior messages OR Mark's messages), re-generate with a clean slate.
         // Self-echo = model parroting its own context window output.
         // Mark-echo = model parroting the contact's words back instead of engaging.
         var priorMessages = thread.Messages
-            .Where(m => m != thread.Messages[^1]) // exclude the message we're replying to from Ani-echo check
+            .Where(m => m != replyMessage && m != thread.Messages.Last(x => x.Role == Roles.Mark))
             .ToList();
+        _log.LogDebug("Echo guard: checking reply against {Count} prior messages in thread", priorMessages.Count);
         if (priorMessages.Count > 0)
         {
             try
@@ -521,13 +535,10 @@ public class ConversationReplyPhase
         };
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
 
-        // Step 5: Record Ani's reply in the conversation thread
-        await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
-        {
-            Role    = Roles.Ani,
-            Content = reply,
-            SentAt  = DateTimeOffset.UtcNow,
-        }, ct).ConfigureAwait(false);
+        // Step 5: Persist Ani's reply to DB (already added to in-memory thread before echo guard)
+        // Update content in case echo guard replaced it.
+        replyMessage.Content = reply;
+        await _conversations.AddMessageAsync(thread.Id, replyMessage, ct).ConfigureAwait(false);
 
         // Update desire — contact happened
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
