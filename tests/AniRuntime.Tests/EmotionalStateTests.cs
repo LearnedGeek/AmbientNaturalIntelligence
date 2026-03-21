@@ -31,8 +31,10 @@ public class EmotionalStateTests
 
         state.ComputeFromContributions(contributions, now);
 
-        state.Warmth.Should().BeApproximately(0.7f, 0.01f);  // 0.6 + 0.1
-        state.Energy.Should().BeApproximately(0.3f, 0.01f);  // 0.5 - 0.2
+        // With diminishing returns (tanh compression), deltas are attenuated
+        // near boundaries. Small deltas near baseline are nearly linear.
+        state.Warmth.Should().BeGreaterThan(0.6f).And.BeLessThan(0.75f);  // baseline + compressed(+0.1)
+        state.Energy.Should().BeGreaterThan(0.25f).And.BeLessThan(0.5f);  // baseline + compressed(-0.2)
     }
 
     [Fact]
@@ -48,8 +50,8 @@ public class EmotionalStateTests
 
         state.ComputeFromContributions(contributions, now);
 
-        // After 1 half-life, delta is halved: 0.2 * 0.5 = 0.1
-        state.Warmth.Should().BeApproximately(0.7f, 0.01f); // 0.6 + 0.1
+        // After 1 half-life, delta is halved: 0.2 * 0.5 = 0.1, then tanh-compressed
+        state.Warmth.Should().BeGreaterThan(0.6f).And.BeLessThan(0.75f); // baseline + compressed(+0.1)
     }
 
     [Fact]
@@ -66,8 +68,9 @@ public class EmotionalStateTests
 
         state.ComputeFromContributions(contributions, now);
 
-        state.Warmth.Should().BeApproximately(0.55f, 0.01f); // 0.6 + 0.1 - 0.15
-        state.Energy.Should().BeApproximately(0.7f, 0.01f);  // 0.5 + 0.2
+        // Net warmth delta = -0.05 (slightly negative), energy delta = +0.2
+        state.Warmth.Should().BeLessThan(0.6f);  // below baseline (net negative delta)
+        state.Energy.Should().BeGreaterThan(0.5f).And.BeLessThan(0.75f);  // above baseline + compressed(+0.2)
     }
 
     [Fact]
@@ -84,6 +87,51 @@ public class EmotionalStateTests
 
         state.Warmth.Should().BeLessOrEqualTo(1.0f);
         state.Energy.Should().BeGreaterOrEqualTo(0.0f);
+    }
+
+    [Fact]
+    public void ComputeFromContributions_DiminishingReturns_PreventsSaturation()
+    {
+        // Simulate the real-world problem: 50 contributions all pushing warmth up
+        // and energy down (the 8B model's dominant bias). Without diminishing returns,
+        // warmth=1.0 and energy=0.0 (pegged). With it, they approach but don't reach.
+        var state = new EmotionalState();
+        var now = DateTimeOffset.UtcNow;
+        var contributions = Enumerable.Range(0, 50)
+            .Select(i => new EmotionalContribution
+            {
+                WarmthDelta = 0.08f,
+                EnergyDelta = -0.10f,
+                CreatedAt = now.AddMinutes(-i * 5), // one every 5 minutes
+                HalfLifeHours = 1f,
+            })
+            .ToList();
+
+        state.ComputeFromContributions(contributions, now);
+
+        // Key assertion: even with 50 biased contributions, dimensions don't peg
+        state.Warmth.Should().BeGreaterThan(0.85f, "many positive contributions should push warmth high");
+        state.Warmth.Should().BeLessThan(1.0f, "diminishing returns should prevent saturation at 1.0");
+        state.Energy.Should().BeGreaterThan(0.0f, "diminishing returns should prevent saturation at 0.0");
+        state.Energy.Should().BeLessThan(0.2f, "many negative contributions should push energy low");
+    }
+
+    [Fact]
+    public void ApplyDiminishingReturns_SmallDelta_NearlyLinear()
+    {
+        // Small deltas near baseline should behave approximately linearly
+        var result = EmotionalState.ApplyDiminishingReturns(0.5f, 0.05f);
+        var linear = 0.5f + 0.05f;
+        (result - linear).Should().BeLessThan(0.02f, "small deltas should be nearly linear");
+    }
+
+    [Fact]
+    public void ApplyDiminishingReturns_LargeDelta_Compressed()
+    {
+        // Large deltas should be significantly compressed vs linear
+        var result = EmotionalState.ApplyDiminishingReturns(0.5f, 0.5f);
+        result.Should().BeLessThan(0.95f, "large positive delta should be compressed below linear (1.0)");
+        result.Should().BeGreaterThan(0.8f, "large positive delta should still push significantly above baseline");
     }
 
     [Fact]

@@ -115,10 +115,15 @@ public class EmotionalState
             playfulnessSum += p;
         }
 
-        Warmth      = Math.Clamp(WarmthBaseline + warmthSum, 0f, 1f);
-        Energy      = Math.Clamp(EnergyBaseline + energySum, 0f, 1f);
-        Worry     = Math.Clamp(WorryBaseline + worrySum, 0f, 1f);
-        Playfulness = Math.Clamp(PlayfulnessBaseline + playfulnessSum, 0f, 1f);
+        // Apply diminishing returns near boundaries. Without this, uniformly-biased
+        // contributions (the 8B model produces W+, E-, C+, P+ 75-85% of the time)
+        // saturate all dimensions at 0 or 1 within hours. The compression makes it
+        // progressively harder to push a dimension further from baseline — a dimension
+        // at 0.9 receiving +0.15 only reaches ~0.94 instead of clamping at 1.0.
+        Warmth      = ApplyDiminishingReturns(WarmthBaseline, warmthSum);
+        Energy      = ApplyDiminishingReturns(EnergyBaseline, energySum);
+        Worry       = ApplyDiminishingReturns(WorryBaseline, worrySum);
+        Playfulness = ApplyDiminishingReturns(PlayfulnessBaseline, playfulnessSum);
         LastUpdated = now;
     }
 
@@ -194,4 +199,31 @@ public class EmotionalState
         return prefix + string.Join(", and ", notable) + ".";
     }
 
+    /// <summary>
+    /// Applies diminishing returns to prevent boundary saturation.
+    /// Uses a soft sigmoid-like compression: the further from baseline,
+    /// the more each additional delta is attenuated. This prevents the
+    /// model's uniform delta bias (W+, E-, C+, P+ on 75-85% of contributions)
+    /// from pegging all dimensions at 0 or 1.
+    ///
+    /// The formula: value = baseline + availableRoom * tanh(sum / scale)
+    /// - tanh naturally compresses to [-1, 1] with diminishing slope
+    /// - scale controls how quickly saturation kicks in (lower = faster)
+    /// - availableRoom is the distance from baseline to the boundary
+    ///
+    /// Example: baseline=0.6, sum=+0.8 → raw would be 1.0 (clamped).
+    /// With diminishing returns: 0.6 + 0.4 * tanh(0.8/0.5) ≈ 0.6 + 0.4 * 0.92 ≈ 0.97
+    /// Still high, but not pegged. And further contributions barely move it.
+    /// </summary>
+    public static float ApplyDiminishingReturns(float baseline, float deltaSum, float scale = 0.5f)
+    {
+        if (Math.Abs(deltaSum) < 0.001f)
+            return baseline;
+
+        // Available room between baseline and the boundary in the delta's direction
+        var room = deltaSum > 0 ? (1f - baseline) : baseline;
+        var compressed = (float)Math.Tanh(deltaSum / scale);
+        // compressed is in [-1, 1]; map to [0, room] or [-room, 0]
+        return Math.Clamp(baseline + room * compressed, 0f, 1f);
+    }
 }
