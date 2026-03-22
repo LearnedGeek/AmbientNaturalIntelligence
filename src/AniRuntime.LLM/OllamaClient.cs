@@ -69,17 +69,35 @@ public class OllamaClient : IOllamaClient
         else
             request = new { model, messages, stream = false, keep_alive = "5m" };
 
-        var response = await _http.PostAsJsonAsync(
-            "/api/chat", request, JsonOpts, ct).ConfigureAwait(false);
+        // Retry with backoff for transient Ollama failures (500s during model swaps).
+        // One retry after 2 seconds handles most swap-related timeouts without
+        // blocking the cognitive cycle for the full cooldown period.
+        const int maxRetries = 2;
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            var response = await _http.PostAsJsonAsync(
+                "/api/chat", request, JsonOpts, ct).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode && attempt < maxRetries)
+            {
+                _log.LogWarning("Ollama [{Model}] returned {Status} — retrying in 2s (attempt {Attempt}/{Max})",
+                    model, (int)response.StatusCode, attempt, maxRetries);
+                await Task.Delay(2000, ct).ConfigureAwait(false);
+                continue;
+            }
 
-        var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOpts, ct)
-                                 .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
 
-        var content = body?.Message?.Content ?? string.Empty;
-        _log.LogDebug("Ollama [{Model}] response ({Chars} chars)", model, content.Length);
-        return content;
+            var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOpts, ct)
+                                     .ConfigureAwait(false);
+
+            var content = body?.Message?.Content ?? string.Empty;
+            _log.LogDebug("Ollama [{Model}] response ({Chars} chars)", model, content.Length);
+            return content;
+        }
+
+        // Unreachable — loop always returns or throws
+        throw new InvalidOperationException("Retry loop exited without result");
     }
 
     public async IAsyncEnumerable<string> ChatStreamAsync(
