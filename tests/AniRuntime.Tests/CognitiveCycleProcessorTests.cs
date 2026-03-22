@@ -134,7 +134,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     public async Task RunAsync_AlwaysSavesInnerThought()
     {
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                          It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                                          It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("I'm thinking about Mark today.");
         MockOllama.Setup(o => o.ChatJsonAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -156,7 +156,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .ReturnsAsync(FreshDesireState() with { DesireToConnect = 0.0f });
 
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                          It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                                          It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("Just a quiet thought.");
         MockOllama.Setup(o => o.ChatJsonAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -187,7 +187,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
 
         MockOllama.Setup(o => o.InnerMonologueChatAsync(
                       It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                      It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                      It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("Just a quiet thought.");
         MockOllama.SetupSequence(o => o.ChatJsonAsync(
                       It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
@@ -218,7 +218,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     public async Task RunAsync_PollsAllRegisteredPerceptionSources()
     {
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                          It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                                          It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("A thought.");
         MockOllama.Setup(o => o.ChatJsonAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -236,7 +236,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     public async Task RunAsync_WhenOllamaThrows_PropagatesException()
     {
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                          It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                                          It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ThrowsAsync(new HttpRequestException("Ollama unreachable"));
 
         var processor = CreateProcessor();
@@ -567,7 +567,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .ReturnsAsync("""{ "shouldReply": true, "reasoning": "they asked a question" }""");
 
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                              It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                                              It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("thinking about what to read next");
 
         // Capture the reply prompt to verify grounding injection
@@ -642,7 +642,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                                               It.IsAny<string>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync("""{ "shouldReply": true, "reasoning": "question" }""");
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
-                                              It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                                              It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("thinking");
 
         string? capturedUserPrompt = null;

@@ -38,13 +38,15 @@ public class OllamaClient : IOllamaClient
 
     public Task<string> InnerMonologueChatAsync(
         string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
-        CancellationToken ct = default)
-        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: null, ct, temperature: null);
+        CancellationToken ct = default, string? keepAlive = null)
+        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: null, ct, temperature: null, keepAlive: keepAlive);
 
     private async Task<string> SendChatAsync(
         string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
-        string? format, CancellationToken ct, float? temperature = null)
+        string? format, CancellationToken ct, float? temperature = null, string? keepAlive = null)
     {
+        var alive = keepAlive ?? "5m";
+
         var messages = new List<object>
         {
             new { role = "system", content = systemPrompt }
@@ -56,18 +58,18 @@ public class OllamaClient : IOllamaClient
         messages.Add(new { role = "user", content = userMessage });
 
         // keep_alive controls how long the model stays loaded in VRAM after this request.
-        // 5 minutes keeps the model warm between cognitive cycles without squatting on VRAM forever.
+        // "0" unloads immediately (used by intent extraction to free VRAM for conversation model).
+        // "5m" keeps warm between cognitive cycles without squatting on VRAM forever.
         // AC4: Temperature splitting — when provided, override Ollama's default (0.8).
-        // Lower temperature for memory-grounded responses reduces confabulation.
         object request;
         if (format is not null && temperature.HasValue)
-            request = new { model, messages, stream = false, format, keep_alive = "5m", options = new { temperature = temperature.Value } };
+            request = new { model, messages, stream = false, format, keep_alive = alive, options = new { temperature = temperature.Value } };
         else if (format is not null)
-            request = new { model, messages, stream = false, format, keep_alive = "5m" };
+            request = new { model, messages, stream = false, format, keep_alive = alive };
         else if (temperature.HasValue)
-            request = new { model, messages, stream = false, keep_alive = "5m", options = new { temperature = temperature.Value } };
+            request = new { model, messages, stream = false, keep_alive = alive, options = new { temperature = temperature.Value } };
         else
-            request = new { model, messages, stream = false, keep_alive = "5m" };
+            request = new { model, messages, stream = false, keep_alive = alive };
 
         // Retry with backoff for transient Ollama failures (500s during model swaps).
         // One retry after 2 seconds handles most swap-related timeouts without

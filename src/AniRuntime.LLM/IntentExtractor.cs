@@ -21,7 +21,8 @@ public class IntentExtractor : IIntentExtractor
     private const string IntentSystemPrompt =
         "Extract the core topic of this message in 5-10 words. " +
         "Focus on WHAT the person is talking about, not greetings or filler. " +
-        "Reply with only the topic phrase, nothing else.";
+        "Reply with ONLY the topic phrase. Do NOT write a conversational reply. " +
+        "Do NOT start with 'mmm' or 'baby' or any greeting. Just the topic.";
 
     private const string RelevanceSystemPrompt =
         "You are evaluating whether a news article is personally relevant to someone. " +
@@ -45,14 +46,17 @@ public class IntentExtractor : IIntentExtractor
 
         try
         {
-            // Use ChatAsync (8B conversation model) rather than InnerMonologueChatAsync (3B)
-            // to avoid a model swap on 6GB VRAM GPUs. Intent extraction runs immediately
-            // before reply generation — using the same model means no swap, no CUDA OOM.
-            var intent = await _ollama.ChatAsync(
+            // Use 3B inner monologue model for intent extraction — it's not
+            // conversation-tuned so it follows the "topic only" instruction better.
+            // The 8B model generates conversational replies instead of topic phrases.
+            // keep_alive=0 ensures the 3B unloads immediately, freeing VRAM for the
+            // 8B conversation model that runs right after.
+            var intent = await _ollama.InnerMonologueChatAsync(
                 IntentSystemPrompt,
                 Array.Empty<ChatMessage>(),
                 message,
-                ct).ConfigureAwait(false);
+                ct,
+                keepAlive: "0").ConfigureAwait(false);
 
             intent = intent.Trim().Trim('"', '\'', '.').Trim();
 

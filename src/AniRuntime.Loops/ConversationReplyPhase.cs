@@ -91,6 +91,31 @@ public class ConversationReplyPhase
     {
         var lastMessage = thread.Messages[^1].Content;
 
+        // Check 0: is this a continuation prompt ("yes?", "go on", "what?", "tell me")?
+        // If so, inject context about Ani's previous message so the model knows
+        // to continue its thought rather than starting fresh.
+        if (IsContinuationMessage(lastMessage) && thread.Messages.Count >= 2)
+        {
+            var previousAniMessage = thread.Messages
+                .LastOrDefault(m => m.Role == Roles.Ani)?.Content;
+            if (!string.IsNullOrWhiteSpace(previousAniMessage))
+            {
+                _log.LogDebug("Continuation detected — injecting prior context: \"{Prior}\"",
+                    previousAniMessage.Length > 60 ? previousAniMessage[..60] + "..." : previousAniMessage);
+
+                // Rewrite the message to give the model context about what to continue
+                lastMessage = $"(Mark is asking you to continue what you were just saying. " +
+                    $"Your previous message was: \"{previousAniMessage}\") {lastMessage}";
+                // Update the thread message in memory so the prompt builder sees it
+                thread.Messages[^1] = new ConversationMessage
+                {
+                    Role = thread.Messages[^1].Role,
+                    Content = lastMessage,
+                    SentAt = thread.Messages[^1].SentAt
+                };
+            }
+        }
+
         // Check 1: is this a terminal message that doesn't need a reply?
         if (ConversationFeatureDetector.IsTerminalMessage(lastMessage))
         {
@@ -656,6 +681,21 @@ public class ConversationReplyPhase
 
     private static bool IsMessageEcho(string memoryContent, string contactName, string msgPrefix30)
         => ConversationFeatureDetector.IsMessageEcho(memoryContent, contactName, msgPrefix30);
+
+    private static readonly HashSet<string> ContinuationPatterns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "yes?", "yes", "yeah?", "go on", "go on?", "tell me", "tell me?",
+        "what?", "what", "and?", "and??", "but what?", "but first?",
+        "hmm?", "oh?", "really?", "seriously?", "meaning?",
+        "continue", "finish", "keep going", "don't stop",
+        "you were saying?", "you were saying", "what were you saying",
+    };
+
+    private static bool IsContinuationMessage(string message)
+    {
+        var trimmed = message.Trim().TrimEnd('.', '!').Trim();
+        return trimmed.Split(' ').Length <= 5 && ContinuationPatterns.Contains(trimmed);
+    }
 
     private static string Truncate(string text, int maxLength)
         => ConversationFeatureDetector.Truncate(text, maxLength);
