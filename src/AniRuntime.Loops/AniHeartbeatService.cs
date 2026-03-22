@@ -58,8 +58,11 @@ public class AniHeartbeatService : BackgroundService
     /// Interrupts the current sleep so the next cognitive cycle runs immediately.
     /// Called by TwilioInboundPerceptionSource when the contact texts.
     /// </summary>
+    private volatile bool _earlyWakeRequested;
+
     public void RequestEarlyWake()
     {
+        _earlyWakeRequested = true;
         _wakeCts?.Cancel();
     }
 
@@ -91,6 +94,7 @@ public class AniHeartbeatService : BackgroundService
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
+                    _earlyWakeRequested = false;
                     _log.LogInformation("Early wake triggered — conversation mode");
                 }
                 finally
@@ -108,6 +112,15 @@ public class AniHeartbeatService : BackgroundService
                 }
 
                 await _cycle.RunAsync(stoppingToken).ConfigureAwait(false);
+
+                // If a message arrived during cycle processing, skip the sleep
+                // and run another cycle immediately to handle it.
+                if (_earlyWakeRequested)
+                {
+                    _earlyWakeRequested = false;
+                    _log.LogInformation("Early wake triggered — message arrived during cycle");
+                    continue;
+                }
             }
             catch (OperationCanceledException)
             {
