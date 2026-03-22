@@ -45,7 +45,10 @@ public class IntentExtractor : IIntentExtractor
 
         try
         {
-            var intent = await _ollama.InnerMonologueChatAsync(
+            // Use ChatAsync (8B conversation model) rather than InnerMonologueChatAsync (3B)
+            // to avoid a model swap on 6GB VRAM GPUs. Intent extraction runs immediately
+            // before reply generation — using the same model means no swap, no CUDA OOM.
+            var intent = await _ollama.ChatAsync(
                 IntentSystemPrompt,
                 Array.Empty<ChatMessage>(),
                 message,
