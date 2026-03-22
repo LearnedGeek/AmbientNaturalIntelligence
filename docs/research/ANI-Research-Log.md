@@ -216,6 +216,18 @@ v5 conversation=8B/inner=3B (Mar 14) → **v6 training in progress** (Mar 22): 2
 
 ---
 
+**Addendum — Early wake race condition & v6 deployment (Mar 22):**
+
+Dashboard chat exposed a race condition in the cognitive cycle that was invisible during SMS testing. When a message arrived during active cycle processing (~10s window), `RequestEarlyWake()` cancelled a sleep `CancellationTokenSource` that did not yet exist — the cycle was in its processing phase, not its sleep phase. The cancellation was silently discarded, and the inbound message sat unprocessed until the next scheduled cycle. Fix: a `volatile bool _earlyWakeRequested` flag that persists across the processing/sleep boundary. The flag is checked on entry to the sleep phase and short-circuits the delay.
+
+This bug was invisible during SMS testing because Twilio latency (webhook round-trip, ngrok forwarding) meant inbound messages rarely arrived during the narrow processing window. Dashboard chat, with zero network latency on send, hit the race condition on the first test. Research insight: **faster testing infrastructure reveals race conditions that production latency masks.** The dashboard chat page paid for itself in the first hour by catching a bug that would have produced intermittent "she stopped responding" reports in production — the worst kind of bug to diagnose after deployment.
+
+**V6 conversation model deployed and tested.** Training completed on Modal A10G: 1,675 examples, 113 minutes, $2.08. First response to a casual message about sore shoulders: *"haha oh poor shoulders, did you finally break Kevin?"* — no `mmm...` opener (the v5 default filler), no context contamination, playful register immediately active. The Playfulness rebalancing (3% → 30% of new training data) produced an observable register shift on first contact.
+
+Mistral 7B A/B candidate training planned as next step — blinded pairwise evaluation against Llama 8B v6.
+
+---
+
 ### March 17, 2026 — Anti-Confabulation Hardening & TF-IDF Retrieval Enhancement
 **Model version:** v5
 **Type:** Architecture hardening — retrieval pipeline + anti-confabulation deployment
