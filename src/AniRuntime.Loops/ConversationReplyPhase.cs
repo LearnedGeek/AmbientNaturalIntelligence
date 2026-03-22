@@ -26,6 +26,7 @@ public class ConversationReplyPhase
     private readonly EmotionalProcessor _emotional;
     private readonly ContextBuilder _contextBuilder;
     private readonly KeywordExtractor _keywords;
+    private readonly IIntentExtractor _intent;
     private readonly IConversationGateState _gateState;
     private readonly AniOptions _aniOptions;
     private readonly OllamaOptions _ollamaOptions;
@@ -48,6 +49,7 @@ public class ConversationReplyPhase
         EmotionalProcessor emotional,
         ContextBuilder contextBuilder,
         KeywordExtractor keywords,
+        IIntentExtractor intent,
         IConversationGateState gateState,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
@@ -64,6 +66,7 @@ public class ConversationReplyPhase
         _emotional = emotional;
         _contextBuilder = contextBuilder;
         _keywords = keywords;
+        _intent = intent;
         _gateState = gateState;
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
@@ -95,13 +98,16 @@ public class ConversationReplyPhase
         // Build context for the reply
         var snapshot = await _contextBuilder.BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
-        // Re-search relevant memories using Mark's actual message, not the perception queue.
+        // Re-search relevant memories using semantic intent, not raw message text.
+        // Intent extraction uses the 3B model to distill "Thanks yeah I decided to just
+        // relax tonight. No work." → "relaxing at home, taking the evening off" — which
+        // prevents retrieval contamination from shared surface tokens (e.g., "relaxing"
+        // pulling in old "Sarah muscular therapy" memories).
         // AC1: Use scored search to apply confidence thresholding on cosine similarity.
-        // TF-IDF dual search: also search with extracted keywords to find topic-specific
-        // memories that casual greeting noise would otherwise bury.
         try
         {
-            var scoredResults = await _search.SearchWithScoresAsync(lastMessage, 5, ct).ConfigureAwait(false);
+            var searchIntent = await _intent.ExtractIntentAsync(lastMessage, ct).ConfigureAwait(false);
+            var scoredResults = await _search.SearchWithScoresAsync(searchIntent, 5, ct).ConfigureAwait(false);
             var scoredList = scoredResults.ToList();
 
             // TF-IDF keyword extraction: search with distinctive words to find

@@ -16,6 +16,7 @@ public sealed class RssPerceptionSource : IPerceptionSource
 {
     private readonly IHttpClientFactory             _httpFactory;
     private readonly IMemoryService                 _memory;
+    private readonly IIntentExtractor               _intent;
     private readonly RssOptions                     _options;
     private readonly ILogger<RssPerceptionSource>   _log;
 
@@ -29,14 +30,19 @@ public sealed class RssPerceptionSource : IPerceptionSource
     public PerceptionCategory Category   => PerceptionCategory.Content;
     public bool               IsEnabled  => _options.Enabled && _options.Feeds.Count > 0;
 
+    // Cached interest descriptions for semantic relevance scoring
+    private List<string>? _interestDescriptions;
+
     public RssPerceptionSource(
         IHttpClientFactory httpFactory,
         IMemoryService memory,
+        IIntentExtractor intent,
         IOptions<RssOptions> options,
         ILogger<RssPerceptionSource> log)
     {
         _httpFactory = httpFactory;
         _memory      = memory;
+        _intent      = intent;
         _options     = options.Value;
         _log         = log;
     }
@@ -116,7 +122,26 @@ public sealed class RssPerceptionSource : IPerceptionSource
                 ? $"[{feed.Name}] {title}"
                 : $"[{feed.Name}] {title} — {description}";
 
-            var relevance = ScoreRelevance(title, description);
+            // Two-pass relevance: cheap keyword pre-filter, then semantic scoring
+            // for items that pass the keyword bar. This avoids an LLM call for
+            // every RSS item while ensuring genuinely relevant items are scored accurately.
+            var keywordScore = ScoreRelevance(title, description);
+            var relevance = keywordScore;
+
+            if (keywordScore >= 0.4f && _interestDescriptions is { Count: > 0 })
+            {
+                try
+                {
+                    relevance = await _intent.ScoreRelevanceAsync(
+                        summary, _interestDescriptions, ct).ConfigureAwait(false);
+                    _log.LogDebug("RSS semantic relevance: keyword={Keyword:F2} → semantic={Semantic:F2} for \"{Title}\"",
+                        keywordScore, relevance, title.Length > 50 ? title[..50] + "..." : title);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug(ex, "RSS semantic scoring failed — using keyword score {Score:F2}", keywordScore);
+                }
+            }
 
             events.Add(new PerceptionEvent
             {
@@ -210,11 +235,24 @@ public sealed class RssPerceptionSource : IPerceptionSource
 
             _relevanceKeywords = keywords.ToList();
             _log.LogDebug("Loaded {Count} relevance keywords from character state", _relevanceKeywords.Count);
+
+            // Build semantic interest descriptions — full phrases for LLM relevance scoring.
+            // These give the scorer context about WHY Mark cares, not just keyword matches.
+            var descriptions = new List<string>();
+            foreach (var entry in cs.ThingsContactCares)
+                descriptions.Add($"Mark cares about: {entry}");
+            foreach (var entry in cs.Interests)
+                descriptions.Add($"Mark is interested in: {entry}");
+            foreach (var entry in cs.SharedExperiences.Take(5))
+                descriptions.Add($"Shared experience: {entry}");
+            _interestDescriptions = descriptions;
+            _log.LogDebug("Loaded {Count} interest descriptions for semantic scoring", descriptions.Count);
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Failed to load relevance keywords — using empty set");
             _relevanceKeywords = new List<string>();
+            _interestDescriptions = new List<string>();
         }
     }
 

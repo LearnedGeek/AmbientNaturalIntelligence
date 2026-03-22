@@ -15,6 +15,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     private readonly Mock<IPerceptionSource>    _mockSource        = new();
     private readonly Mock<IAniAction>           _mockSmsAction     = new();
     private readonly Mock<IConversationService> _mockConversations = new();
+    private readonly Mock<IIntentExtractor>     _mockIntent        = new();
 
     private CognitiveCycleProcessor CreateProcessor()
     {
@@ -46,6 +47,9 @@ public class CognitiveCycleProcessorTests : AniTestBase
                   .ReturnsAsync(new List<string>());
         MockMemory.Setup(m => m.GetFlaggedContradictionsAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<MemoryContradiction>());
+
+        _mockIntent.Setup(i => i.ExtractIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync((string msg, CancellationToken _) => msg); // passthrough
 
         _mockSource.Setup(s => s.IsEnabled).Returns(true);
         _mockSource.Setup(s => s.SourceName).Returns("test-source");
@@ -88,7 +92,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
             dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            gateState, DefaultOptions, DefaultOllamaOptions,
+            _mockIntent.Object, gateState, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
             MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
