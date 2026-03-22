@@ -190,7 +190,7 @@ public class VoiceConversationService
                     new ChatMessage(m.Role == Roles.Mark ? "user" : "assistant", m.Content)),
                 prompt.User, turnCts.Token).ConfigureAwait(false);
 
-            reply = MessageCleaner.Clean(reply);
+            reply = MessageCleaner.Clean(reply) ?? string.Empty;
             reply = TruncateForVoice(reply);
             if (string.IsNullOrWhiteSpace(reply))
             {
