@@ -141,6 +141,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
                     Summary       = $"{contactName} texted: \"{msg.Body}\"",
                     ContactRelevance = 0.95f,
                     OccurredAt    = msg.DateSent,
+                    OriginChannelId = msg.Sid.StartsWith("DASHBOARD-") ? "dashboard" : "sms",
                     Metadata      =
                     {
                         ["threadId"] = thread.Id.ToString(),

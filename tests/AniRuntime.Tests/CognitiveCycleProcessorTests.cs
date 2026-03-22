@@ -16,6 +16,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     private readonly Mock<IAniAction>           _mockSmsAction     = new();
     private readonly Mock<IConversationService> _mockConversations = new();
     private readonly Mock<IIntentExtractor>     _mockIntent        = new();
+    private readonly Mock<IReplyChannelResolver> _mockChannelResolver = new();
 
     private CognitiveCycleProcessor CreateProcessor()
     {
@@ -50,6 +51,13 @@ public class CognitiveCycleProcessorTests : AniTestBase
 
         _mockIntent.Setup(i => i.ExtractIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync((string msg, CancellationToken _) => msg); // passthrough
+
+        var mockChannel = new Mock<IReplyChannel>();
+        mockChannel.Setup(c => c.ChannelId).Returns("sms");
+        mockChannel.Setup(c => c.SendReplyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                   .Returns(Task.CompletedTask);
+        _mockChannelResolver.Setup(r => r.Resolve(It.IsAny<string>())).Returns(mockChannel.Object);
+        _mockChannelResolver.Setup(r => r.Default).Returns(mockChannel.Object);
 
         _mockSource.Setup(s => s.IsEnabled).Returns(true);
         _mockSource.Setup(s => s.SourceName).Returns("test-source");
@@ -91,7 +99,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
         var conversationReply = new ConversationReplyPhase(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
-            dispatcher, desire, emotional, contextBuilder, keywordExtractor,
+            _mockChannelResolver.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
             _mockIntent.Object, gateState, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(

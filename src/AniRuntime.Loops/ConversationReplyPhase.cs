@@ -21,6 +21,7 @@ public class ConversationReplyPhase
     private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly IConversationService _conversations;
+    private readonly IReplyChannelResolver _channels;
     private readonly AniActionDispatcher _dispatcher;
     private readonly DesireEngine _desire;
     private readonly EmotionalProcessor _emotional;
@@ -44,6 +45,7 @@ public class ConversationReplyPhase
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IConversationService conversations,
+        IReplyChannelResolver channels,
         AniActionDispatcher dispatcher,
         DesireEngine desire,
         EmotionalProcessor emotional,
@@ -61,6 +63,7 @@ public class ConversationReplyPhase
         _analytics = analytics;
         _ollama = ollama;
         _conversations = conversations;
+        _channels = channels;
         _dispatcher = dispatcher;
         _desire = desire;
         _emotional = emotional;
@@ -531,15 +534,14 @@ public class ConversationReplyPhase
             await Task.Delay(TimeSpan.FromSeconds(remaining), ct).ConfigureAwait(false);
         }
 
-        // Step 4: Send via Twilio
-        var decision = new OutreachDecision
-        {
-            ShouldReach = true,
-            Message     = reply,
-            ActionType  = ActionTypes.Sms,
-            Reasoning   = "conversation reply",
-        };
-        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+        // Step 4: Dispatch reply via originating channel (SRP: reply generation ≠ delivery).
+        // The OriginChannelId flows from the inbound PerceptionEvent through to here.
+        var originChannelId = perceptions
+            .Where(p => p.Category == PerceptionCategory.Communication && p.OriginChannelId is not null)
+            .Select(p => p.OriginChannelId!)
+            .FirstOrDefault() ?? "sms";
+        var channel = _channels.Resolve(originChannelId);
+        await channel.SendReplyAsync(reply, ct).ConfigureAwait(false);
 
         // Step 5: Persist Ani's reply to DB (already added to in-memory thread before echo guard)
         // Update content in case echo guard replaced it.

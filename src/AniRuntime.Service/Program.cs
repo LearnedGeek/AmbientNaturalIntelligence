@@ -152,6 +152,11 @@ try
     // ── Dashboard (Blazor Server + REST API) ──────────────────────────────────
     builder.Services.AddDashboard();
 
+    // ── Reply channels (SRP: reply generation ≠ delivery) ──────────────────────
+    builder.Services.AddSingleton<IReplyChannel, AniRuntime.Actions.SmsReplyChannel>();
+    builder.Services.AddSingleton<IReplyChannel, AniRuntime.Dashboard.DashboardReplyChannel>();
+    builder.Services.AddSingleton<IReplyChannelResolver, ReplyChannelResolver>();
+
     // ── Cognitive cycle ───────────────────────────────────────────────────────
     builder.Services.AddSingleton<AdminCommandHandler>();
     builder.Services.AddSingleton<EmotionalProcessor>();
