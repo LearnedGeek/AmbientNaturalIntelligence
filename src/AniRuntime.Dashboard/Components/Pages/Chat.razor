@@ -28,19 +28,15 @@
         }
     </div>
 
-    <form @onsubmit="SendMessage" class="chat-input-form">
-        <div class="chat-input-wrapper">
-            <input type="text"
-                   @bind="_inputText"
-                   @bind:event="oninput"
-                   placeholder="Type a message..."
-                   disabled="@_waiting"
-                   autofocus />
-            <button type="submit" class="chat-send-btn"
-                    disabled="@(_waiting || string.IsNullOrWhiteSpace(_inputText))"
-                    title="Send">&#9654;</button>
-        </div>
-    </form>
+    <div class="chat-input-wrapper">
+        <input type="text"
+               @bind="_inputText"
+               @bind:event="oninput"
+               @onkeyup="HandleKeyUp"
+               placeholder="Type a message..."
+               disabled="@_waiting" />
+        <span class="chat-send-btn" @onclick="SendMessage">&#9654;</span>
+    </div>
 </section>
 
 <style>
@@ -114,15 +110,19 @@
     .chat-send-btn {
         position: absolute;
         right: 0.5rem;
-        background: none;
-        border: none;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none !important;
+        border: none !important;
         color: #1a73e8;
         font-size: 1.2rem;
         cursor: pointer;
         padding: 0.3rem 0.5rem;
         margin: 0;
-        width: auto;
+        width: auto !important;
+        min-width: auto;
         line-height: 1;
+        z-index: 1;
     }
     .chat-send-btn:hover:not(:disabled) {
         color: #4a9eff;
@@ -167,11 +167,24 @@
 
     private async Task LoadMessages()
     {
+        // Show messages from the active thread first, fall back to most recent
         var thread = await Conversations.GetActiveThreadAsync();
+        if (thread is null)
+        {
+            var recent = await Conversations.GetRecentThreadsAsync(1);
+            thread = recent.FirstOrDefault();
+        }
+
         if (thread is not null)
             _messages = thread.Messages.ToList();
         else
             _messages = new();
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await SendMessage();
     }
 
     private async Task SendMessage()

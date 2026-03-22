@@ -1,34 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ANI Dashboard</title>
-    <base href="/" />
-    <link rel="stylesheet" href="https://unpkg.com/@@picocss/pico@@2/css/pico.min.css" />
-    <link rel="stylesheet" href="_content/AniRuntime.Dashboard/css/dashboard.css" />
-</head>
-<body>
-    <nav class="container">
-        <ul>
-            <li><strong>ANI</strong></li>
-        </ul>
-        <ul>
-            <li><a href="/">Dashboard</a></li>
-            <li><a href="/chat">Chat</a></li>
-            <li><a href="/emergence">Emergence</a></li>
-        </ul>
-    </nav>
-    <main class="container">
-        <Router AppAssembly="typeof(App).Assembly">
-            <Found Context="routeData">
-                <RouteView RouteData="routeData" />
-            </Found>
-            <NotFound>
-                <p>Page not found.</p>
-            </NotFound>
-        </Router>
-    </main>
-    <script src="_framework/blazor.server.js"></script>
-</body>
-</html>
+<nav class="container">
+    <ul>
+        <li><strong>ANI</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/">Dashboard</a></li>
+        <li><a href="/chat">Chat</a></li>
+        <li><a href="/emergence">Emergence</a></li>
+    </ul>
+</nav>
+<div class="container">
+    <Router AppAssembly="typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" />
+        </Found>
+        <NotFound>
+            <p>Page not found.</p>
+        </NotFound>
+    </Router>
+</div>
