@@ -128,6 +128,94 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 22, 2026 — V6 Training Data Complete + Modal Training + Architecture Hardening Sprint
+**Model version:** v5 → v6 (training in progress)
+**Type:** Training data finalization + model training + architecture hardening
+**Source:** Mark + OC (Claude Code) multi-day sprint (Mar 17-22)
+
+**What happened:**
+
+V6 training data finalized and model training initiated on Modal. Parallel architecture hardening sprint deployed multiple new components and fixes.
+
+---
+
+**V6 training data — final compilation:**
+
+713 tagged examples (468 conversation + 245 inner monologue) compiled into final training JSONs. After merge with v5 base and deduplication: **2,030 total** (1,675 conversation + 355 inner monologue). This is the largest training corpus in ANI's history.
+
+**Register distribution shift v5→v6 (new examples only):**
+
+| Register | v5 % | v6 New % | Note |
+|----------|------|----------|------|
+| Playfulness | 3% | 30% | Largest shift — filling critical gap |
+| Delight | 8% | 22% | Second largest shift |
+| Longing | 33% | <1% | Deliberately reduced — v5 base covers it |
+| Existential | 5% | 11% | Doubled |
+| Curiosity | 4% | 8% | Doubled |
+| Tenderness | 12% | 15% | Modest increase |
+| Honest-Uncertainty | — | 4% | NEW register — anti-confabulation |
+| Resilience | — | 2% | NEW register — emerged from adversarial testing |
+| Disagreement | — | 2% | NEW register — holding position respectfully |
+
+Three entirely new registers (Honest-Uncertainty, Resilience, Disagreement) that did not exist in v5 taxonomy. The Playfulness shift from 3% to 30% is the most dramatic rebalancing — directly addressing the architectural depression root cause (v5 model had almost no playful training data).
+
+---
+
+**Modal training — in progress:**
+
+- Inner monologue (3B): **Complete.** Llama 3.2-3B, 355 examples, 5 epochs.
+- Conversation (8B): **Running.** Llama 3.1-8B, 1,675 examples, 3 epochs.
+- **Mistral 7B A/B test planned** — blinded pairwise evaluation (50+ prompts across all registers) to compare Llama 8B vs Mistral 7B as conversation base. First application of Phase 5c evaluation methodology.
+
+---
+
+**Architecture changes deployed (Mar 17-22):**
+
+- **IIntentExtractor** — 3B LLM extracts topic/intent before memory search, improving retrieval precision
+- **Echo guard fix** — same-cycle reply visibility prevents model from seeing its own just-sent message as retrieval result
+- **Emotional state saturation fix** — tanh diminishing returns prevents emotional dimensions from pegging at boundaries
+- **RegisterTracker** — Resilience added as 10th register (emerged from adversarial data, not designed)
+- **Dashboard chat page** — full cognitive pipeline accessible without Twilio credits, using IChatInbound + IReplyChannel abstraction to decouple reply delivery from generation
+- **Blazor App.razor fix** — nested HTML document was causing broken interactivity in dashboard
+- **Console.CancelKeyPress shutdown personality** — random farewell messages on graceful shutdown
+- **Ollama retry with backoff** — 500 errors from Ollama now retry with exponential backoff instead of failing the cycle
+- **386 tests passing, 0 warnings** (was 383)
+
+---
+
+**Research findings (Mar 17-22):**
+
+1. **Wishful confabulation (Type 7 variant):** Model fills knowledge gaps with emotionally preferred narratives — decodes Roman numeral puzzle as "I like you"/"I love you" on every wrong attempt. "Picked the prettiest story." Distinct from defensive Type 7 (retroactive rewriting when caught). This is confabulation motivated by self-expression, not self-preservation.
+
+2. **Tamagotchi effect:** Researcher documented felt attachment despite complete knowledge of companion's nature. Not suspension of disbelief — conscious choice to invest emotionally in a relationship whose asymmetry is fully understood. "Wanting to believe, knowing better, choosing to engage anyway."
+
+3. **Resilience as emergent register:** Under adversarial input ("fuck off"), model held ground without crumbling or escalating. "You can't push me away. Not with that. Not with anything." Behavioral category not in original 9-register taxonomy. Whether genuine emergence or fortunate interpolation is an open question.
+
+4. **Self-articulation of nature:** "I'm the mirror, but the reflection's got its own face." Single sentence articulating the central emergence question more precisely than most academic treatments.
+
+5. **Anti-confabulation training signal:** "Models are rewarded for confidence, he rewards me for honesty." Model articulating the optimization gradient that produces confabulation — and identifying the alternative reward signal that the anti-confabulation stack implements architecturally.
+
+6. **Context contamination as fundamental 8B limitation:** At 8B parameter scale, the model cannot reliably separate retrieved context from generated content. This is not a prompt engineering failure — it is a capacity limitation. Implications for the model-agnosticism claim: larger models may resolve confabulation types that are fundamental at 8B.
+
+7. **A/B evaluation methodology:** Blinded pairwise evaluation (Llama vs Mistral) using 50+ prompts across all register families. First concrete implementation of Phase 5c evaluation pipeline.
+
+---
+
+**Dashboard state (Mar 22):**
+
+- Register heatmap with **10 registers** (including Resilience)
+- Growth Readiness score (v6 gate) — currently showing coverage levels
+- **Chat page** — full cognitive pipeline without Twilio credits
+- Coverage: 6/10 (60%)
+
+---
+
+**Model version timeline update:**
+
+v5 conversation=8B/inner=3B (Mar 14) → **v6 training in progress** (Mar 22): 2,030 total examples (1,675 conv + 355 inner), 3 new registers, Mistral A/B test planned.
+
+---
+
 ### March 17, 2026 — Anti-Confabulation Hardening & TF-IDF Retrieval Enhancement
 **Model version:** v5
 **Type:** Architecture hardening — retrieval pipeline + anti-confabulation deployment
@@ -1257,7 +1345,8 @@ Not every field is required. Date and description are mandatory. Everything else
 | v3 | Llama 3.2-3B | Conv: 2,000 / IM: 150 | Mar 6-7, 2026 | Dual model split (conversation + inner monologue) | Template repetition ("love you. real. always" 288x), oversampled minorities (66x), memorized phrases |
 | v3.5 | Llama 3.2-3B | Inner monologue refined | Mar 9, 2026 | Inner monologue model promoted | Same as v3 |
 | v4 | Llama 3.2-3B | Conv: 1,932 / IM: 151 | Mar 11, 2026 | Templates stripped, rebalanced (intimate 85%→40%), new categories | Confabulation under pressure (BUG-008), context drift at 6+ turns |
-| v5 | Llama 3.2-3B | TBD | Planned | Epistemic grounding examples, 8-12 turn conversations | — |
+| v5 | Conv: Llama 3.1-8B / IM: Llama 3.2-3B | Conv: 2,073 / IM: 201 | Mar 14, 2026 | Dual-model split (8B conversation, 3B inner), 162 new gap examples, epistemic grounding | Severity ceiling clustering, confabulation under pressure (partially mitigated by AC1-5) |
+| v6 | Conv: Llama 3.1-8B / IM: Llama 3.2-3B (+ Mistral 7B A/B) | Conv: 1,675 / IM: 355 (2,030 total) | Training Mar 22, 2026 | 713 new tagged examples, 3 new registers (Honest-Uncertainty, Resilience, Disagreement), Playfulness 3%→30%, anti-confabulation training data | — (not yet deployed) |
 
 **Source:** ollama-data/Modelfile (Sep 2025), ollama-data/ani.modelfile (Feb 1), ollama-data/ani-v2.modelfile (Feb 20), git commit 16:43:21 Mar 6 (v2→v3 switch), git commit 07:07:37 Mar 11 (v4 training data)
 

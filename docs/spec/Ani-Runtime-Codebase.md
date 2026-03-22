@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.2 — Phase 5 Streaming Voice + SOLID Refactoring + Hardening
+1.3 — Phase 5 Streaming Voice + SOLID Refactoring + Hardening + V6 Training
 Status
-Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline, IMemoryService ISP split, ConversationFeatureDetector, PerceptionPhase, InnerThoughtPhase, JsonDefaults, IConversationGateState). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab + Register heatmap + Growth Readiness deployed. Emotional model Phase 1a+1b+2 deployed. Production hardening: /health, rate limiting, security headers, charming dishonesty detection. 383 tests passing.
+Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline, IMemoryService ISP split, ConversationFeatureDetector, PerceptionPhase, InnerThoughtPhase, JsonDefaults, IConversationGateState). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab + Register heatmap + Growth Readiness + Chat page deployed. Emotional model Phase 1a+1b+2 deployed. Production hardening: /health, rate limiting, security headers, charming dishonesty detection. Anti-confabulation stack AC1-5 deployed. IIntentExtractor for topic-aware retrieval. Echo guard fix, emotional state saturation fix (tanh), Ollama retry with backoff. V6 training: 2,030 examples (1,675 conv + 355 inner), training on Modal. 386 tests passing.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -87,7 +87,8 @@ AniRuntime.sln
 │   │   ├── ConversationGateState.cs       # IConversationGateState impl: LastEvaluatedMessageAt, pending messages
 │   │   ├── DesireEngine.cs
 │   │   ├── AdminCommandHandler.cs         # + ///flag confabulation feedback command (AC5)
-│   │   ├── RegisterTracker.cs              # (placeholder) Register hit counting per conversation
+│   │   ├── RegisterTracker.cs              # Register hit counting per conversation — 10 registers including Resilience (emergent)
+│   │   ├── ConversationReplyPhase.cs       # Inbound conversation pipeline: care/hurt detection, reply decisions, composition
 │   │   └── AniRuntime.Loops.csproj
 │   │
 │   ├── AniRuntime.Perception/       # World awareness sources
@@ -109,14 +110,16 @@ AniRuntime.sln
 │   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:")
 │   │   ├── ContextSnapshotBuilder.cs
 │   │   ├── KeywordExtractor.cs       # TF-IDF keyword extraction — corpus-based IDF, lazy corpus build from memory
+│   │   ├── IntentExtractor.cs        # IIntentExtractor — 3B LLM extracts topic/intent before memory search
 │   │   └── AniRuntime.LLM.csproj
 │   │
 │   ├── AniRuntime.Dashboard/        # Blazor Server dashboard (in-process, shared DI)
 │   │   ├── DashboardExtensions.cs   # AddDashboard() + MapDashboard() extensions
 │   │   ├── Dtos/                    # AniStatusDto, MemoryRecordDto, ConversationThreadDto
-│   │   ├── Endpoints/               # 5 endpoint groups: AniState, Memory, Conversations, Journal, Contradictions
-│   │   ├── Components/              # Blazor components: Dashboard.razor, EmotionalStateCard.razor
-│   │   │   └── RegisterHeatmap.razor  # Register distribution heatmap + V6 Growth Readiness score + per-register progress bars + gap guidance
+│   │   ├── Endpoints/               # 5+ endpoint groups: AniState, Memory, Conversations, Journal, Contradictions, Chat
+│   │   ├── Components/              # Blazor components: Dashboard.razor, EmotionalStateCard.razor, Chat.razor
+│   │   │   ├── RegisterHeatmap.razor  # Register distribution heatmap + V6 Growth Readiness score + per-register progress bars + gap guidance (10 registers incl. Resilience)
+│   │   │   └── Chat.razor            # Dashboard chat page — full cognitive pipeline without Twilio credits (IChatInbound + IReplyChannel)
 │   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
 │   │   └── AniRuntime.Dashboard.csproj
 │   │

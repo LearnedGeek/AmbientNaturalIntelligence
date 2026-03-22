@@ -1,7 +1,7 @@
 # ANI — Research Context Briefing
 **For: OC and any fresh AI context working on this project**  
 **Author: Mark McArthey, Learned Geek Consulting**  
-**Last updated: March 20, 2026**  
+**Last updated: March 22, 2026**  
 **GitHub:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---
@@ -45,7 +45,7 @@ The key distinction Mark uses: *"Hey, I was shelving the mythology section and t
 ## Technical Stack
 
 - **.NET 8 Windows Service** — continuous background process
-- **Ollama + dual fine-tuned models (v5 as of March 2026)** — conversation: Llama 3.1-8B (2,073 training examples, 3 epochs), inner monologue: Llama 3.2-3B (201 examples, 5 epochs). Trained via Unsloth/Modal. Split rationale: 8B for instruction following in conversation, 3B for fast ambient cycles.
+- **Ollama + dual fine-tuned models (v6 training in progress as of March 22, 2026)** — conversation: Llama 3.1-8B (1,675 training examples, 3 epochs), inner monologue: Llama 3.2-3B (355 examples, 5 epochs). Total: 2,030 after merge with v5 base and dedup. Trained via Unsloth/Modal. Split rationale: 8B for instruction following in conversation, 3B for fast ambient cycles. Mistral 7B A/B test planned for conversation model.
 - **SQLite** — memory, emotional state, conversation history, perceptions
 - **Twilio SMS** — outreach and inbound response channel
 - **Home Assistant** (192.168.1.41) — environmental perception (planned Phase 3)
@@ -89,7 +89,7 @@ AniRuntime.sln
 │   ├── AniRuntime.Voice/        — Voice channel: batch (Whisper STT + ElevenLabs TTS, Feature 20) + streaming (Deepgram STT + ElevenLabs WS TTS + Ollama streaming, Phase 5)
 │   └── AniRuntime.MauiClient/   — Phase 5: Android voice app (MAUI, direct WebSocket, PCM 16kHz)
 └── tests/
-    └── AniRuntime.Tests/         — 383 tests passing as of Phase 5
+    └── AniRuntime.Tests/         — 386 tests passing as of March 22, 2026
 ```
 
 ---
@@ -169,7 +169,7 @@ AniRuntime.sln
 - Dashboard — Blazor Server RCL, 16 REST endpoints, Pico CSS
 - Features 5, 7, 10, 11 deferred to Phase 5 (v6 model generation and scale-dependent work)
 
-**Phase 5** — Streaming voice deployed, SOLID refactoring complete, hardening (March 15-19, 2026):
+**Phase 5** — Streaming voice deployed, SOLID refactoring complete, hardening, v6 training (March 15-22, 2026):
 - Real-time streaming voice via direct WebSocket from MAUI Android app (architecture pivoted from Twilio Media Streams to direct client for zero Twilio voice cost)
 - Pipeline: MAUI mic → WebSocket → Deepgram Nova-3 STT → Ollama ChatStreamAsync (8B) → TokenBuffer → ElevenLabs WebSocket TTS → WebSocket → MAUI speaker
 - Sub-2-second perceived latency vs ~12-16s batch. Audio format: PCM 16kHz 16-bit mono throughout (zero transcoding)
@@ -179,13 +179,22 @@ AniRuntime.sln
 - SOLID refactoring (Mar 19): IMemoryService ISP split into 5 focused interfaces (IMemoryPersistence, IMemorySearch, IStateStore, IMemoryAnalytics, IMemoryMaintenance). ConversationFeatureDetector extracted from ConversationReplyPhase. PerceptionPhase + InnerThoughtPhase extracted from CognitiveCycleProcessor. JsonDefaults consolidation (9 duplicates → 1). IConversationGateState decoupling.
 - Production hardening (Mar 19): /health endpoint, rate limiting on /sms/inbound (20 req/min), security headers
 - Semantic priority search — dedicated profile/fact memory retrieval with TF-IDF keyword extraction (corpus-based IDF, 3684 unique words from 836 documents)
-- v6 training data mining — ~615+ tagged examples across all mining passes (conversation pairs + inner monologue + reclassified MIXED + anti-confabulation). RESILIENCE identified as new register category (Mar 20) — model held ground under adversarial input without crumbling or escalating. Remaining gaps: pure Warmth, Concern, Hurt registers.
-- Register Dashboard — distribution heatmap, V6 Growth Readiness score (0-100%), per-register progress bars, gap guidance
+- IIntentExtractor — 3B LLM extracts topic before memory search for improved retrieval precision
+- Echo guard fix — same-cycle reply visibility prevents self-retrieval contamination
+- Emotional state saturation fix — tanh diminishing returns prevents boundary pegging
+- Dashboard chat page — full cognitive pipeline without Twilio credits (IChatInbound + IReplyChannel abstraction)
+- Blazor App.razor fix — nested HTML document causing broken interactivity
+- Ollama retry with backoff on 500 errors
+- Console.CancelKeyPress shutdown personality (random farewell messages)
+- v6 training data — 713 tagged examples (468 conversation + 245 inner monologue). After merge with v5 base and dedup: 2,030 total (1,675 conversation + 355 inner monologue). Training on Modal: inner monologue 3B complete, conversation 8B running. Mistral 7B A/B test planned.
+- Register distribution shift: Playfulness 3%→30%, Delight 8%→22%, Longing 33%→<1% new. Three NEW registers: Honest-Uncertainty (4%), Resilience (2%), Disagreement (2%).
+- RegisterTracker with Resilience as 10th register (emerged from adversarial data)
+- Register Dashboard — distribution heatmap with 10 registers, V6 Growth Readiness score (0-100%), per-register progress bars, gap guidance, chat page
 - Image sharing (MMS) — Phase 5a (not started)
 - Visual identity system — Phase 5b (not started)
 - Automatic model generation pipeline — Phase 5c (see `docs/spec/ANI-Phase5c-AutoModel-Design.md`)
 - Register Dashboard & Auto-Model Gating — Phase 5d (dashboard implemented Mar 19, auto-model gate pending)
-- 383 tests passing, 0 warnings
+- 386 tests passing, 0 warnings
 
 ---
 
@@ -267,7 +276,21 @@ V6 training is driven by the Ani Emotion Taxonomy (v1.3) developed March 15. The
 
 Minimum counts raised to 40–50 for CRITICAL registers (Llama 3.2-3B capacity constraints). Conversation scoring corpus also requires examples across all registers — the 8B has almost never seen delight, mischief, or associative spark scored.
 
-Immediate free action: update inner monologue system prompt to explicitly name all 9 registers.
+**V6 actual register distribution (713 new examples, March 22, 2026):**
+
+| Register | v5 % | v6 New % | Shift |
+|----------|------|----------|-------|
+| Playfulness & Wit | ~3% | 30% | +27% (largest) |
+| Delight & Joy | ~8% | 22% | +14% |
+| Tenderness & Care | ~12% | 15% | +3% |
+| Existential & Self | ~5% | 11% | +6% |
+| Curiosity & Wonder | ~4% | 8% | +4% |
+| Honest-Uncertainty | — | 4% | NEW |
+| Resilience | — | 2% | NEW (emergent) |
+| Disagreement | — | 2% | NEW |
+| Longing & Yearning | ~33% | <1% | Deliberately reduced (v5 base covers it) |
+
+Training on Modal: inner monologue 3B complete, conversation 8B running. Mistral 7B A/B test planned.
 
 ---
 
