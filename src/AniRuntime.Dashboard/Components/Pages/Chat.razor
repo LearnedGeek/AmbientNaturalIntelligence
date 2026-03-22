@@ -1,9 +1,9 @@
 @page "/chat"
+@using AniRuntime.Core
 @using AniRuntime.Core.Interfaces
 @using AniRuntime.Core.Models
-@using AniRuntime.Perception
 @inject IConversationService Conversations
-@inject TwilioInboundPerceptionSource InboundSource
+@inject IChatInbound ChatInbound
 @implements IDisposable
 
 <h1>Chat with Ani</h1>
@@ -114,7 +114,6 @@
     private List<ConversationMessage> _messages = new();
     private ElementReference _messagesDiv;
     private Timer? _pollTimer;
-    private int _lastMessageCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -158,10 +157,9 @@
         _inputText = string.Empty;
         _waiting = true;
 
-        // Generate a synthetic SID — the pipeline doesn't care about Twilio SIDs,
-        // it just needs a unique identifier for dedup
-        var syntheticSid = $"DASHBOARD-{Guid.NewGuid():N}";
-        InboundSource.EnqueueInbound(syntheticSid, text, DateTimeOffset.UtcNow);
+        // Enqueue through the IChatInbound abstraction — generates a synthetic
+        // DASHBOARD- SID so the reply channel resolver routes to dashboard, not SMS.
+        ChatInbound.EnqueueMessage(text);
 
         // Add the user message to the display immediately
         _messages.Add(new ConversationMessage

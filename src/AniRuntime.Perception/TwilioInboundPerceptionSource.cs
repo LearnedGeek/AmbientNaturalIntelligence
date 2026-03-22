@@ -22,7 +22,7 @@ namespace AniRuntime.Perception;
 ///
 /// Uses Twilio REST API directly via HttpClient (no Twilio SDK dependency in Perception layer).
 /// </summary>
-public sealed class TwilioInboundPerceptionSource : IPerceptionSource
+public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbound
 {
     private readonly IConversationService                     _conversations;
     private readonly IMemoryService                           _memory;
@@ -73,6 +73,17 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource
         _webhookQueue.Enqueue(new TwilioMessage(messageSid, body, receivedAt));
         _log.LogDebug("Webhook message enqueued: {Sid}", messageSid);
         _notifier.OnMessageReceived();
+    }
+
+    /// <summary>
+    /// IChatInbound implementation — dashboard chat UI sends messages here.
+    /// Generates a synthetic SID with "DASHBOARD-" prefix so the reply channel
+    /// resolver routes the response to the dashboard instead of SMS.
+    /// </summary>
+    public void EnqueueMessage(string message)
+    {
+        var syntheticSid = $"DASHBOARD-{Guid.NewGuid():N}";
+        EnqueueInbound(syntheticSid, message, DateTimeOffset.UtcNow);
     }
 
     public async Task<IEnumerable<PerceptionEvent>> PollAsync(

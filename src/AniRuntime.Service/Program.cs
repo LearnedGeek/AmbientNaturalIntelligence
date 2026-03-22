@@ -142,6 +142,7 @@ try
     builder.Services.AddHttpClient("twilio");
     builder.Services.AddSingleton<TwilioInboundPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
+    builder.Services.AddSingleton<IChatInbound>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 
