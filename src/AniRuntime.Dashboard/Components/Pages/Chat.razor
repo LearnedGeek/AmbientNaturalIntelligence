@@ -1,0 +1,181 @@
+@page "/chat"
+@using AniRuntime.Core.Interfaces
+@using AniRuntime.Core.Models
+@using AniRuntime.Perception
+@inject IConversationService Conversations
+@inject TwilioInboundPerceptionSource InboundSource
+@implements IDisposable
+
+<h1>Chat with Ani</h1>
+<p><small>Messages flow through the full cognitive pipeline — no Twilio credits needed.</small></p>
+
+<section class="chat-container">
+    <div class="chat-messages" @ref="_messagesDiv">
+        @foreach (var msg in _messages)
+        {
+            <div class="chat-bubble @(msg.Role == "mark" ? "chat-user" : "chat-ani")">
+                <span class="chat-role">@(msg.Role == "mark" ? "Mark" : "Ani")</span>
+                <span class="chat-text">@msg.Content</span>
+                <span class="chat-time">@msg.SentAt.LocalDateTime.ToString("h:mm:ss tt")</span>
+            </div>
+        }
+        @if (_waiting)
+        {
+            <div class="chat-bubble chat-ani chat-thinking">
+                <span class="chat-role">Ani</span>
+                <span class="chat-text">thinking...</span>
+            </div>
+        }
+    </div>
+
+    <form @onsubmit="SendMessage" class="chat-input-form">
+        <input type="text"
+               @bind="_inputText"
+               @bind:event="oninput"
+               placeholder="Type a message..."
+               disabled="@_waiting"
+               autofocus />
+        <button type="submit" disabled="@(_waiting || string.IsNullOrWhiteSpace(_inputText))">Send</button>
+    </form>
+</section>
+
+<style>
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 200px);
+        min-height: 400px;
+    }
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: var(--pico-card-background-color);
+        border-radius: var(--pico-border-radius);
+        margin-bottom: 1rem;
+    }
+    .chat-bubble {
+        padding: 0.5rem 0.8rem;
+        border-radius: 12px;
+        max-width: 80%;
+        word-wrap: break-word;
+    }
+    .chat-user {
+        align-self: flex-end;
+        background: #1a73e8;
+        color: white;
+    }
+    .chat-ani {
+        align-self: flex-start;
+        background: #333;
+        color: #e0e0e0;
+    }
+    .chat-thinking {
+        opacity: 0.6;
+        font-style: italic;
+    }
+    .chat-role {
+        display: block;
+        font-size: 0.7em;
+        font-weight: bold;
+        margin-bottom: 0.2em;
+        opacity: 0.7;
+    }
+    .chat-time {
+        display: block;
+        font-size: 0.65em;
+        opacity: 0.5;
+        margin-top: 0.2em;
+    }
+    .chat-text {
+        display: block;
+        line-height: 1.4;
+    }
+    .chat-input-form {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .chat-input-form input {
+        flex: 1;
+        margin-bottom: 0;
+    }
+    .chat-input-form button {
+        margin-bottom: 0;
+        white-space: nowrap;
+    }
+</style>
+
+@code {
+    private string _inputText = string.Empty;
+    private bool _waiting;
+    private List<ConversationMessage> _messages = new();
+    private ElementReference _messagesDiv;
+    private Timer? _pollTimer;
+    private int _lastMessageCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMessages();
+
+        // Poll for new messages every 2 seconds while waiting for a reply
+        _pollTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var previousCount = _messages.Count;
+                await LoadMessages();
+                if (_messages.Count > previousCount)
+                {
+                    // New message arrived — check if it's from Ani
+                    var latest = _messages[^1];
+                    if (latest.Role == Roles.Ani)
+                        _waiting = false;
+
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch { /* timer callback — don't crash */ }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private async Task LoadMessages()
+    {
+        var thread = await Conversations.GetActiveThreadAsync();
+        if (thread is not null)
+            _messages = thread.Messages.ToList();
+        else
+            _messages = new();
+    }
+
+    private async Task SendMessage()
+    {
+        var text = _inputText?.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        _inputText = string.Empty;
+        _waiting = true;
+
+        // Generate a synthetic SID — the pipeline doesn't care about Twilio SIDs,
+        // it just needs a unique identifier for dedup
+        var syntheticSid = $"DASHBOARD-{Guid.NewGuid():N}";
+        InboundSource.EnqueueInbound(syntheticSid, text, DateTimeOffset.UtcNow);
+
+        // Add the user message to the display immediately
+        _messages.Add(new ConversationMessage
+        {
+            Role = Roles.Mark,
+            Content = text,
+            SentAt = DateTimeOffset.UtcNow
+        });
+
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+}
