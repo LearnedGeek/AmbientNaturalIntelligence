@@ -2,13 +2,19 @@
 train_ani.py - Modal-based automated fine-tuning for ANI companions
 
 Usage:
-    modal run train_ani.py --data-file v5/ani-v5-CONVERSATION.json --base-model 8B
-    modal run train_ani.py --data-file v5/ani-v5-INNER-MONOLOGUE.json --epochs 5
-    modal run train_ani.py --data-file v5/ani-v5-CONVERSATION.json --base-model 8B --output v5/aniv5CONVERSATION-8B.gguf
+    modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model 8B
+    modal run train_ani.py --data-file v6/ani-v6-INNER-MONOLOGUE.json --epochs 5
+    modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model mistral --output v6/aniv6CONVERSATION-mistral.gguf
+    modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model unsloth/Phi-3.5-mini-instruct
 
-Base models:
-    3B  = unsloth/Llama-3.2-3B-Instruct  (default, ~2GB GGUF, fast CPU inference)
-    8B  = unsloth/Llama-3.1-8B-Instruct  (~4.5GB GGUF, better instruction following)
+Base models (shortcuts):
+    3B       = unsloth/Llama-3.2-3B-Instruct  (default, ~2GB GGUF, fast CPU inference)
+    8B       = unsloth/Llama-3.1-8B-Instruct  (~4.5GB GGUF, better instruction following)
+    mistral  = unsloth/Mistral-7B-Instruct-v0.3  (~4.5GB GGUF, less safety-constrained)
+    qwen     = unsloth/Qwen2.5-7B-Instruct  (~4.5GB GGUF, strong multilingual)
+    gemma    = unsloth/gemma-2-9b-it  (~5GB GGUF, Google's best small model)
+
+    Or pass any full HuggingFace model ID (e.g., unsloth/Phi-3.5-mini-instruct)
 
 This script handles the complete training pipeline:
 1. Upload training data to Modal
@@ -109,12 +115,19 @@ def train_model(
     conversations_list = [item["conversations"] for item in data]
     dataset = Dataset.from_dict({"conversations": conversations_list})
     
-    # Select base model
+    # Select base model — shortcuts or full HuggingFace model ID
     base_models = {
         "3B": "unsloth/Llama-3.2-3B-Instruct",
         "8B": "unsloth/Llama-3.1-8B-Instruct",
+        "MISTRAL": "unsloth/Mistral-7B-Instruct-v0.3",
+        "MISTRAL-7B": "unsloth/Mistral-7B-Instruct-v0.3",
+        "QWEN": "unsloth/Qwen2.5-7B-Instruct",
+        "QWEN-7B": "unsloth/Qwen2.5-7B-Instruct",
+        "GEMMA": "unsloth/gemma-2-9b-it",
+        "GEMMA-9B": "unsloth/gemma-2-9b-it",
     }
-    base_model_id = base_models.get(base_model.upper(), base_models["3B"])
+    # Allow full HuggingFace model IDs (e.g., "unsloth/Mistral-7B-Instruct-v0.3")
+    base_model_id = base_models.get(base_model.upper(), base_model if "/" in base_model else base_models["3B"])
 
     # Load base model
     print(f"\n🤖 Loading {base_model.upper()} base model ({base_model_id})...")
@@ -246,11 +259,13 @@ def main(
         batch_size: Per-device batch size (default: 2)
         gradient_accumulation: Gradient accumulation steps (default: 4)
         learning_rate: Learning rate (default: 2e-4)
-        base_model: Base model — "3B" (Llama 3.2) or "8B" (Llama 3.1). Default: 3B.
+        base_model: Base model shortcut or full HuggingFace ID. Shortcuts:
+                    3B, 8B, mistral, qwen, gemma. Default: 3B.
 
     Example:
-        modal run train_ani.py --data-file v5/ani-v5-CONVERSATION.json --base-model 8B
-        modal run train_ani.py --data-file v5/ani-v5-INNER-MONOLOGUE.json --epochs 5
+        modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model 8B
+        modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model mistral
+        modal run train_ani.py --data-file v6/ani-v6-INNER-MONOLOGUE.json --epochs 5
     """
     import time
     
