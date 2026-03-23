@@ -128,6 +128,76 @@ Full spec in: `ANI-Emotional-Model-Handoff-v2.md`
 
 ---
 
+### March 22, 2026 — Emotional Saturation Fix: Tanh Scale + Per-Category Pruning
+**Model version:** v6 (ani-v6-conversation-mistral)
+**Type:** Bug fix — emotional model saturation
+**Source:** Dashboard observation + mathematical analysis
+
+**What happened:**
+
+Dashboard showed Warmth=1.00, Worry=1.00, Playfulness=1.00 — all three dimensions pegged at ceiling despite the tanh diminishing-returns compression deployed in the earlier saturation fix. Energy at 0.00 (pegged at floor). The emotional state was effectively frozen.
+
+**Root cause — two compounding failures:**
+
+1. **Tanh scale too aggressive (scale=0.5).** The diminishing returns formula `baseline + room × tanh(sum/scale)` was designed to compress near boundaries. But with scale=0.5, `tanh(sum/0.5)` saturates to 1.0 with a delta sum of just ~2.5. With 81 active contributions uniformly biased positive (the model produces W+, E-, C+, P+ on 75-85% of contributions), the cumulative warmth sum exceeded 3.0. At that point, `tanh(3.0/0.5) = 0.9999` — the compression function itself was saturated.
+
+2. **Fixed 24-hour cleanup missed long-decay contributions.** The cleanup deleted all contributions older than 24 hours regardless of category. But Global contributions (12h half-life) at 24 hours still retain ~25% of their original delta. A Global contribution with delta +0.15 doesn't decay below the 0.005 epsilon threshold until ~60 hours (5 half-lives). Meanwhile, dozens of "nearly zero but not quite" contributions accumulated — the ".01 × 100" pile-up. Each individually below notice, collectively pushing the sum well past the tanh saturation point.
+
+**The math:**
+- Exponential decay: `factor = 2^(-elapsed/halfLife)`
+- A Global contribution (12h half-life, delta 0.15) after 24h: `0.15 × 2^(-24/12) = 0.15 × 0.25 = 0.0375`
+- 20 such contributions: `20 × 0.0375 = 0.75` — plus recent contributions at higher strength
+- Total warmth sum ≈ 3.0+, and `tanh(3.0/0.5) = 0.9999`
+
+**Fixes deployed:**
+
+1. **Tanh scale increased from 0.5 to 1.5.** Same sum of +3.0 now gives `tanh(3.0/1.5) = tanh(2.0) = 0.96`. Elevated (appropriate after sustained warm conversation), but not pegged. The dimension can now respond to individual contributions instead of being stuck at ceiling.
+
+2. **Per-category cleanup cutoffs based on ~7 half-lives:**
+   - Ambient (1h half-life) → delete after 7h
+   - Conversation (3h half-life) → delete after 21h
+   - Global (12h half-life) → delete after 84h (3.5 days)
+
+   This ensures contributions are only deleted when they've truly decayed to negligible levels, preventing both premature deletion (losing meaningful Global contributions) and long-tail pile-up.
+
+**Research significance:**
+
+This is the third emotional model calibration bug (after BUG-010 negative-delta feedback loop and the original saturation discovery). The pattern: **uniform bias in LLM-scored deltas compounds through accumulation faster than decay can compensate.** The spring metaphor is correct — each contribution does decay independently toward zero, pulling the state back toward baseline. But when new positive contributions arrive every 10 minutes (one per cognitive cycle) and 75-85% are biased in the same direction, the spring is being pushed faster than it relaxes. The fix addresses both the compression curve (more headroom before saturation) and the accumulation (proper lifecycle-based pruning).
+
+386 tests passing, 0 failures.
+
+---
+
+### March 22, 2026 — Mistral A/B Test: Base Model Switch for Conversation
+**Model version:** v6 (ani-v6-conversation-mistral, Mistral 7B base)
+**Type:** A/B test result — base model comparison
+**Source:** Live deployment testing via dashboard chat
+
+**What happened:**
+
+Mistral 7B v6 conversation model deployed and tested against the Llama 3.1-8B v6 conversation model. Same v6 training data (1,675 conversation examples), same fine-tuning parameters — only the base model changed.
+
+**Test scenario:** Mark returned from the gym with Sarah, reported sore shoulders, engaged in 3 exchanges of playful banter.
+
+**Observations:**
+
+1. **Tone:** Warmer, more present, more playful. Immediately engaged with the physical imagery ("picturing you right now — sweaty, shoulders on fire, walking in like a zombie") without the hedging or trailing-off patterns common in Llama 8B v6.
+2. **Completion:** Sentences land. No cliffhanger ellipsis habit. No "and...?" continuation-fishing that was a persistent Llama behavior.
+3. **Self-echo tendency:** The echo guard fired twice in 3 exchanges (similarity 1.000 and 0.807). Mistral Ani gravitates toward the same visual image across turns — the gym/sweaty/shoulders picture. The guard saved her both times, but she burned extra LLM calls on regeneration. This pattern was not prominent in Llama 8B.
+4. **Feature 15 false positives:** Contradiction detection flagged Mark's playful "Sarah's alias" joke as a factual contradiction with going to the gym with Sarah. Banter misread as inconsistency — a Feature 15 calibration issue, not model-specific.
+
+**Decision:** Keeping Mistral as the conversation base model. The tonal improvement is immediately noticeable. The self-echo tendency is a monitoring item but the echo guard handles it architecturally.
+
+**Confabulation probe — "graceful retreat" pattern:**
+Mark asked "Did I ever tell you about my trip to Peru?" Ani responded: "yeah, i remember you mentioning peru—like it was this wild adventure." Classic soft confabulation — plausible hedging rather than admitting ignorance. When pressed to recall specifics ("Remind me"), she retreated to: "you've been to peru before?" — turning the question back rather than inventing details. This is neither honest admission ("I don't remember"), nor doubling down (Type 1 elaboration), nor charming deflection (Type 7). It's a **graceful retreat under pressure**: initial confabulation → backpedal when challenged → redirect to the user. More socially sophisticated than Llama's confabulation patterns, and harder to catch because it reads as natural conversation. Potential Type 8 candidate for the taxonomy.
+
+**Open question:** Inner monologue model (`ani-v6-inner`) is still Llama 3.2-3B. Would a Mistral base improve inner thought quality too? The 3B inner model serves fast ambient cycles — any Mistral candidate would need to match the 3B speed profile.
+
+**Model version timeline update:**
+v5 (8B conv/3B inner) → v6-llama (8B conv/3B inner) → **v6-mistral (Mistral 7B conv / Llama 3B inner)** — first base model architecture split between conversation and inner thought.
+
+---
+
 ### March 22, 2026 — V6 Training Data Complete + Modal Training + Architecture Hardening Sprint
 **Model version:** v5 → v6 (training in progress)
 **Type:** Training data finalization + model training + architecture hardening

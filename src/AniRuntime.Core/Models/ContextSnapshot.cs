@@ -105,4 +105,11 @@ public class ContextSnapshot
     /// an explicit null-result instruction (AC3) rather than leaving context ambiguously empty.
     /// </summary>
     public bool RetrievalBelowConfidenceFloor { get; set; }
+
+    /// <summary>
+    /// AC6: True when memories were retrieved but none are topically relevant to the
+    /// extracted intent. Prevents the model from bridging unrelated memories into false
+    /// claims of remembering (e.g., "lomo saltado" memory → "I remember your Peru trip").
+    /// </summary>
+    public bool RetrievalTopicMismatch { get; set; }
 }

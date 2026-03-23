@@ -66,9 +66,10 @@ public class AniOptions
     // is told explicitly that no relevant memories exist (AC3: null-result injection).
     // Uses cosine similarity (not composite score) because composite can be inflated
     // by importance/recency of semantically unrelated memories.
-    public double RetrievalConfidenceFloor  { get; set; } = 0.55;
+    public double RetrievalConfidenceFloor  { get; set; } = 0.60;
 
     // Conversation mode — active back-and-forth with Mark
+    public int    ConversationHistoryWindowSize { get; set; } = 6;
     public double ConversationHeartbeatSeconds  { get; set; } = 45.0;
     public double ConversationTimeoutMinutes    { get; set; } = 15.0;
     public double ConversationMinReplySeconds   { get; set; } = 12.0;

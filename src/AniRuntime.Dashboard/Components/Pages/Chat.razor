@@ -4,8 +4,10 @@
 @using AniRuntime.Core.Models
 @inject IConversationService Conversations
 @inject IChatInbound ChatInbound
+@inject IJSRuntime JS
 @implements IDisposable
 
+<div class="chat-page">
 <h1>Chat with Ani</h1>
 <p><small>Messages flow through the full cognitive pipeline — no Twilio credits needed.</small></p>
 
@@ -16,7 +18,10 @@
             <div class="chat-bubble @(msg.Role == "mark" ? "chat-user" : "chat-ani")">
                 <span class="chat-role">@(msg.Role == "mark" ? "Mark" : "Ani")</span>
                 <span class="chat-text">@msg.Content</span>
-                <span class="chat-time">@msg.SentAt.LocalDateTime.ToString("h:mm:ss tt")</span>
+                <span class="chat-time">
+                    @msg.SentAt.LocalDateTime.ToString("h:mm:ss tt")
+                    <span class="chat-copy" @onclick="() => CopyToClipboard(msg.Content)" title="Copy">&#128203;</span>
+                </span>
             </div>
         }
         @if (_waiting)
@@ -38,13 +43,24 @@
         <span class="chat-send-btn" @onclick="SendMessage">&#9654;</span>
     </div>
 </section>
+</div>
 
 <style>
+    .chat-page {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 120px);
+        overflow: hidden;
+    }
+    .chat-page h1 { margin-bottom: 0.2rem; }
+    .chat-page p { margin-bottom: 0.5rem; }
+
     .chat-container {
         display: flex;
         flex-direction: column;
-        height: calc(100vh - 200px);
-        min-height: 400px;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
     }
     .chat-messages {
         flex: 1;
@@ -85,10 +101,21 @@
         opacity: 0.7;
     }
     .chat-time {
-        display: block;
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
         font-size: 0.65em;
         opacity: 0.5;
         margin-top: 0.2em;
+    }
+    .chat-copy {
+        cursor: pointer;
+        opacity: 0.4;
+        font-size: 1.1em;
+        transition: opacity 0.15s;
+    }
+    .chat-copy:hover {
+        opacity: 1;
     }
     .chat-text {
         display: block;
@@ -139,6 +166,12 @@
     private List<ConversationMessage> _messages = new();
     private ElementReference _messagesDiv;
     private Timer? _pollTimer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("eval", "document.body.style.overflow='hidden'");
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -210,8 +243,14 @@
         StateHasChanged();
     }
 
+    private async Task CopyToClipboard(string text)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+    }
+
     public void Dispose()
     {
         _pollTimer?.Dispose();
+        _ = JS.InvokeVoidAsync("eval", "document.body.style.overflow=''");
     }
 }

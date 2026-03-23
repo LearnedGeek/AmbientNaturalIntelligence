@@ -87,8 +87,21 @@ public partial class KeywordExtractor
         _log.LogDebug("Keyword extraction: \"{Original}\" → \"{Keywords}\" (top {Count} by TF-IDF)",
             message.Length > 60 ? message[..60] + "..." : message, query, topKeywords.Count);
 
+        // Cache ranked keywords for AC6 topic-mismatch checks
+        _lastRankedKeywords = topKeywords;
+
         return query;
     }
+
+    /// <summary>
+    /// Returns the top N keywords from the most recent extraction, ranked by TF-IDF score.
+    /// Used by AC6 to check only the most distinctive keywords against retrieved memories,
+    /// avoiding false matches on common words.
+    /// </summary>
+    public IReadOnlyList<string> GetLastRankedKeywords(int topN = 2)
+        => (_lastRankedKeywords ?? []).Take(topN).ToList();
+
+    private List<string>? _lastRankedKeywords;
 
     /// <summary>
     /// Builds the IDF dictionary from the memory corpus. Called once lazily,
@@ -197,6 +210,18 @@ public partial class KeywordExtractor
             "all" or "each" or "every" or "both" or "few" or "many" or
             "such" or "only" or "own" or "same" or "other" or
             "how" or "when" or "where" or "why" or "here" or "there" => true,
+            // High-frequency conversational words that pass TF-IDF in small corpora
+            // but carry no topic signal. "Richard came over today" should extract
+            // "richard", not "came" or "over" or "today".
+            "came" or "come" or "coming" or "goes" or "going" or "went" or
+            "got" or "get" or "getting" or "back" or "over" or "out" or
+            "told" or "tell" or "telling" or "said" or "say" or "saying" or
+            "know" or "knew" or "known" or "think" or "thought" or "thinking" or
+            "like" or "liked" or "thing" or "things" or "something" or
+            "today" or "tonight" or "yesterday" or "morning" or "evening" or
+            "yeah" or "okay" or "right" or "well" or "sure" or "hey" or
+            "ever" or "never" or "always" or "still" or "even" or
+            "remember" or "remind" or "mentioned" or "specifically" => true,
             _ => false
         };
     }

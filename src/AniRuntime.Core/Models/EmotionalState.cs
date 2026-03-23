@@ -212,10 +212,11 @@ public class EmotionalState
     /// - availableRoom is the distance from baseline to the boundary
     ///
     /// Example: baseline=0.6, sum=+0.8 → raw would be 1.0 (clamped).
-    /// With diminishing returns: 0.6 + 0.4 * tanh(0.8/0.5) ≈ 0.6 + 0.4 * 0.92 ≈ 0.97
-    /// Still high, but not pegged. And further contributions barely move it.
+    /// With diminishing returns: 0.6 + 0.4 * tanh(0.8/1.5) ≈ 0.6 + 0.4 * 0.49 ≈ 0.80
+    /// Still elevated, but not pegged. Scale=1.5 prevents saturation from uniform
+    /// delta bias across 80+ contributions while still allowing meaningful range.
     /// </summary>
-    public static float ApplyDiminishingReturns(float baseline, float deltaSum, float scale = 0.5f)
+    public static float ApplyDiminishingReturns(float baseline, float deltaSum, float scale = 1.5f)
     {
         if (Math.Abs(deltaSum) < 0.001f)
             return baseline;

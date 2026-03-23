@@ -772,11 +772,23 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     public async Task CleanupDecayedContributionsAsync(CancellationToken ct = default)
     {
-        // Remove contributions older than 24 hours — well past any decay curve
+        // Delete contributions that have decayed below meaningful levels.
+        // Use per-category cutoffs based on ~7 half-lives (effectively zero):
+        //   Ambient (1h half-life)      → 7h
+        //   Conversation (3h half-life) → 21h
+        //   Global (12h half-life)      → 84h (3.5 days)
+        // This prevents the ".01 × 100" pile-up where many tiny contributions
+        // sum to significant values despite each one being near-zero individually.
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM emotional_contributions WHERE created_at < $cutoff";
-        cmd.Parameters.AddWithValue("$cutoff", DateTimeOffset.UtcNow.AddHours(-24).ToString("O"));
+        var now = DateTimeOffset.UtcNow;
+        cmd.CommandText = @"DELETE FROM emotional_contributions WHERE
+            (category = 'Ambient' AND created_at < $ambientCutoff) OR
+            (category = 'Conversation' AND created_at < $convCutoff) OR
+            (category = 'Global' AND created_at < $globalCutoff)";
+        cmd.Parameters.AddWithValue("$ambientCutoff", now.AddHours(-7).ToString("O"));
+        cmd.Parameters.AddWithValue("$convCutoff", now.AddHours(-21).ToString("O"));
+        cmd.Parameters.AddWithValue("$globalCutoff", now.AddHours(-84).ToString("O"));
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 

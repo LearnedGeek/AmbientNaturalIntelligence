@@ -71,6 +71,7 @@ public class AdminCommandHandler
             "status"     => await HandleStatusAsync(ct).ConfigureAwait(false),
             "reset-mood" => await HandleResetMoodAsync(ct).ConfigureAwait(false),
             "flag"       => await HandleFlagAsync(ct).ConfigureAwait(false),
+            "new-thread" => await HandleNewThreadAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -89,6 +90,7 @@ public class AdminCommandHandler
             "///live       — Restore DB, exit test mode",
             "///reset-mood — Reset emotions to baselines",
             "///flag       — Flag last reply as confabulation",
+            "///new-thread — Close current thread, start fresh",
         });
     }
 
@@ -262,6 +264,15 @@ public class AdminCommandHandler
         await _persist.SaveConfabulationFlagAsync(markMessage, aniReply, ct).ConfigureAwait(false);
 
         return $"Flagged as confabulation:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"";
+    }
+
+    private Task<string> HandleNewThreadAsync(CancellationToken ct)
+    {
+        // The cognitive cycle already closes the thread before calling HandleAsync
+        // (CognitiveCycleProcessor line 152), so by the time we get here the thread
+        // is already closed. Just confirm it to the user.
+        _log.LogInformation("Admin: new-thread — current thread closed by cycle processor");
+        return Task.FromResult("Thread closed. Next message will start a fresh thread.");
     }
 
     private static string FormatAge(DateTimeOffset timestamp)

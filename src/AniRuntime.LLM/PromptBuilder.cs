@@ -594,6 +594,14 @@ public static class PromptBuilder
             sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you have no memory of, say so honestly — \"I don't think we've talked about that\" or \"hmm, remind me?\" is always the right answer when you don't have a memory. Do NOT invent or guess at past conversations.)");
         }
 
+        // AC6: Topic-mismatch injection — memories were retrieved but none are about the
+        // specific topic being discussed. The model sees "context" and assumes it remembers
+        // the topic, but the context is tangentially related at best.
+        if (snapshot.RetrievalTopicMismatch)
+        {
+            sections.Add($"(IMPORTANT: The memories above are NOT about the specific topic {contact} is asking about — they are only loosely related. You have no memory of this specific topic. Do not claim to remember something you don't. If {contact} asks whether you remember or discussed something, and you have no memory of it, say so honestly — \"I don't think you've told me about that\" or \"no, tell me!\" Never fake familiarity. Do NOT invent details, opinions, or feelings about people or topics you have no memory of — no imagined smiles, no fictional relationships, no embellishment. If you don't know someone, you don't know them.)");
+        }
+
         if (snapshot.Perceptions.Count > 0)
         {
             var relevant = snapshot.Perceptions

@@ -128,10 +128,12 @@ public class EmotionalStateTests
     [Fact]
     public void ApplyDiminishingReturns_LargeDelta_Compressed()
     {
-        // Large deltas should be significantly compressed vs linear
+        // Large deltas should be compressed vs linear. Scale=1.5 means moderate
+        // deltas stay responsive while extreme accumulation saturates gradually.
+        // tanh(0.5/1.5) ≈ 0.32, so 0.5 + 0.5*0.32 ≈ 0.66
         var result = EmotionalState.ApplyDiminishingReturns(0.5f, 0.5f);
-        result.Should().BeLessThan(0.95f, "large positive delta should be compressed below linear (1.0)");
-        result.Should().BeGreaterThan(0.8f, "large positive delta should still push significantly above baseline");
+        result.Should().BeLessThan(0.85f, "large positive delta should be compressed below linear (1.0)");
+        result.Should().BeGreaterThan(0.6f, "large positive delta should still push above baseline");
     }
 
     [Fact]

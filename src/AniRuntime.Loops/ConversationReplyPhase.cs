@@ -222,6 +222,22 @@ public class ConversationReplyPhase
             messageRelevant = await _contextBuilder.ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
                 .ConfigureAwait(false);
 
+            // AC6: Topic-mismatch detection — memories were retrieved but none mention
+            // the actual topic. Uses only the top 2 TF-IDF keywords (highest signal)
+            // to avoid false matches on common words like "over", "came", "today".
+            var topicKeywords = _keywords.GetLastRankedKeywords(2);
+            if (messageRelevant.Count > 0 && topicKeywords.Count > 0)
+            {
+                var anyTopicMatch = messageRelevant.Any(m =>
+                    topicKeywords.Any(w => m.Content.Contains(w, StringComparison.OrdinalIgnoreCase)));
+                if (!anyTopicMatch)
+                {
+                    snapshot.RetrievalTopicMismatch = true;
+                    _log.LogInformation("AC6: Retrieved {Count} memories but none match top keywords [{Keywords}] — topic mismatch flag set",
+                        messageRelevant.Count, string.Join(", ", topicKeywords));
+                }
+            }
+
             snapshot.RelevantMemory = messageRelevant;
             _log.LogDebug("Conversation context: re-searched with message text, {Count} relevant memories (confidence floor={Floor:F2})",
                 messageRelevant.Count, confidenceFloor);
@@ -231,8 +247,19 @@ public class ConversationReplyPhase
             _log.LogWarning(ex, "Conversation memory re-search failed — using perception-based results");
         }
 
-        // Populate RecentHistory with the conversation thread so prompts have full context
-        snapshot.RecentHistory = thread.Messages.Select(m => new ChatMessage(
+        // Populate RecentHistory with a recency-windowed view of the conversation thread.
+        // When threads grow long, old topic dominance can cause the model to pattern-match
+        // on earlier topics instead of responding to the latest message. Keep the opener
+        // (for relationship context) + last N messages (for current topic).
+        var historyWindow = _aniOptions.ConversationHistoryWindowSize;
+        var historyMessages = thread.Messages;
+        if (historyMessages.Count > historyWindow)
+        {
+            var trimmed = new List<ConversationMessage> { historyMessages[0] };
+            trimmed.AddRange(historyMessages.TakeLast(historyWindow - 1));
+            historyMessages = trimmed;
+        }
+        snapshot.RecentHistory = historyMessages.Select(m => new ChatMessage(
             m.Role == Roles.Ani ? "assistant" : "user",
             m.Content
         )).ToList();
@@ -500,9 +527,13 @@ public class ConversationReplyPhase
                         // the thread and produces non-sequiturs ("cold noodles" when
                         // discussing Learned Geek Consulting).
                         var cs = snapshot.CharacterState;
-                        var lastMsg = thread.Messages[^1].Content;
+                        // Use lastMessage (captured before reply was appended) — NOT
+                        // thread.Messages[^1] which is now Ani's failed reply.
+                        var lastMsg = lastMessage;
                         var threadSummary = thread.Messages.Count > 1
-                            ? string.Join("\n", thread.Messages.TakeLast(Math.Min(4, thread.Messages.Count))
+                            ? string.Join("\n", thread.Messages
+                                .Where(m => m != replyMessage) // exclude the failed reply
+                                .TakeLast(Math.Min(4, thread.Messages.Count))
                                 .Select(m => $"{m.Role}: {Truncate(m.Content, 80)}"))
                             : "";
                         var threadContext = string.IsNullOrEmpty(threadSummary)
