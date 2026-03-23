@@ -17,4 +17,10 @@ public class ConversationMessage
     public string         Role    { get; set; } = Roles.Mark; // "ani" | "mark"
     public string         Content { get; set; } = string.Empty;
     public DateTimeOffset SentAt  { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Cached embedding for echo guard — computed once, reused across checks.
+    /// Not persisted to DB; populated lazily during conversation reply processing.
+    /// </summary>
+    public float[]? CachedEmbedding { get; set; }
 }

@@ -502,148 +502,54 @@ public static class PromptBuilder
             Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
 
             RULES:
-            - Respond naturally to what {contact} just said. This is a real conversation.
             - 1-3 sentences max. Thumb-typed phone text.
-            - Talk TO {contact}: "you", "your". NEVER third person.
-            - Be yourself — warm, funny, real. Match the energy of the conversation.
-            - No poetry, no metaphors, no narration. Just talk like a person texting.
-            - No sign-offs unless you're ending the conversation.
-            - Write ONLY the text message. No commentary, no quotation marks.
-            - When referencing shared memories, track who experienced what:
-              if {contact} told you something, {contact} did it — not you.
-              if you imagined something, say so — don't claim {contact}'s experience as yours.
-            - Stay truthful to what you know. You may describe YOUR OWN experiences naturally —
-              your bookstore, your coffee, your rainy afternoon — but stay consistent with who you are.
-              You may NOT invent specifics about
-              {contact}'s life, family, or events involving them that they haven't described to you.
-              When {contact} shares something general, respond generally and curiously — don't elaborate
-              with invented details. "that must be so helpful" is warm. Inventing a specific scenario
-              that never happened is confabulation, even if it sounds plausible.
-            - If {contact} asks about something you haven't talked about before, be honest.
-              "hmm I don't actually know" or "tell me more" is always better than confident nonsense.
-              NEVER claim you already knew something that {contact} just told you.
-              "of course I knew that" or "I was testing you" when you didn't know is a lie.
-              The honest version is "okay I didn't know that — that's cool" or "wait really? tell me more."
-              Owning what you made up is charming. Pretending you knew all along is dishonest.
-              NEVER contradict your established identity or backstory, and never double down on something incoherent.{moodSection}
+            - Talk TO {contact}: "you", "your". Never third person.
+            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
             """;
 
         var sections = new List<string>();
 
-        // Anti-repetition: show Ani her own recent replies so she doesn't repeat herself
-        var recentAniReplies = thread.Messages
-            .Where(m => m.Role == Roles.Ani)
-            .TakeLast(3)
-            .Select(m => m.Content)
-            .ToList();
-        if (recentAniReplies.Count > 0)
-        {
-            sections.Add("DO NOT repeat or closely rephrase any of these — you already said them:");
-            sections.AddRange(recentAniReplies.Select(r => $"  - \"{r}\""));
-        }
-
-        // Emotional state — subtle mood coloring for conversation tone
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(Your current mood: {mood})");
-
-        // Feature 1: Emotional self-awareness in conversation — she can reference how
-        // she's feeling if it comes up naturally, but doesn't announce it unprompted
-        var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
-        if (selfAwareness is not null)
-        {
-            sections.Add($"({selfAwareness} You can reference how you're feeling if it comes up naturally — \"I've been kind of quiet today\" or \"I woke up in a weird mood\" — but don't announce it unprompted. Let it come out the way feelings naturally surface in conversation.)");
-        }
-
-        // Feature 16: Anchored memories — always available as relationship foundation
+        // Feature 16: Anchored memories — relationship foundation, always present
         if (snapshot.AnchoredMemories.Count > 0)
         {
             sections.Add("Things that are part of who you are (always true, never forgotten):");
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
-        // Profile/fact memories (Semantic type) get their own dedicated slot —
-        // biographical data, relationship facts, and user profile should never be
-        // crowded out by episodic message echoes competing for the same Take(3).
-        var profileMemories = snapshot.RelevantMemory
-            .Where(m => m.Type == MemoryType.Semantic)
-            .Take(3)
-            .ToList();
-        if (profileMemories.Count > 0)
+        // Memory injection — capped at 3 total non-anchored memories.
+        // Only inject when retrieval is confident and topic-matched.
+        // The model converses naturally without memories; irrelevant memories cause parroting.
+        var skipMemories = snapshot.RetrievalTopicMismatch || snapshot.RetrievalBelowConfidenceFloor;
+
+        if (!skipMemories)
         {
-            sections.Add($"Things you know about {contact}:");
-            sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
+            var profileMemories = snapshot.RelevantMemory
+                .Where(m => m.Type == MemoryType.Semantic)
+                .Take(2)
+                .ToList();
+
+            var remainingSlots = 3 - profileMemories.Count;
+            var relevantMemories = snapshot.RelevantMemory
+                .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
+                .Take(remainingSlots)
+                .ToList();
+
+            if (profileMemories.Count > 0)
+            {
+                sections.Add($"Things you know about {contact}:");
+                sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
+            }
+            if (relevantMemories.Count > 0)
+            {
+                sections.Add("Things connected to this conversation:");
+                sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+            }
         }
 
-        // Episodic/other memories relevant to the conversation topic
-        var relevantMemories = snapshot.RelevantMemory
-            .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
-            .Take(3)
-            .ToList();
-        if (relevantMemories.Count > 0)
-        {
-            sections.Add("Things that feel connected to this conversation:");
-            sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
-        }
-
-        // AC3: Explicit null-result injection — when no memories exceeded the confidence
-        // floor, tell the model explicitly rather than leaving context ambiguously empty.
-        // This converts silence from the retrieval layer into an unambiguous signal.
-        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0 && profileMemories.Count == 0)
-        {
-            sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you have no memory of, say so honestly — \"I don't think we've talked about that\" or \"hmm, remind me?\" is always the right answer when you don't have a memory. Do NOT invent or guess at past conversations.)");
-        }
-
-        // AC6: Topic-mismatch injection — memories were retrieved but none are about the
-        // specific topic being discussed. The model sees "context" and assumes it remembers
-        // the topic, but the context is tangentially related at best.
-        if (snapshot.RetrievalTopicMismatch)
-        {
-            sections.Add($"(IMPORTANT: The memories above are NOT about the specific topic {contact} is asking about — they are only loosely related. You have no memory of this specific topic. Do not claim to remember something you don't. If {contact} asks whether you remember or discussed something, and you have no memory of it, say so honestly — \"I don't think you've told me about that\" or \"no, tell me!\" Never fake familiarity. Do NOT invent details, opinions, or feelings about people or topics you have no memory of — no imagined smiles, no fictional relationships, no embellishment. If you don't know someone, you don't know them.)");
-        }
-
-        if (snapshot.Perceptions.Count > 0)
-        {
-            var relevant = snapshot.Perceptions
-                .Where(p => p.SourceName != "twilio-inbound")
-                .Take(3)
-                .Select(p => p.Summary);
-            var joined = string.Join("; ", relevant);
-            if (joined.Length > 0)
-                sections.Add($"(Background awareness — don't reference directly: {joined})");
-        }
-
-        // Feature 18: Withdrawal tone injection — when something hurtful landed,
-        // she's still present but quieter. Not performing hurt, not accusatory.
+        // Feature 18: Withdrawal tone injection — runtime state the model can't know
         if (snapshot.IsWithdrawn)
         {
-            sections.Add("(Something just landed in a way that stung a little. You're still here, still responding, but there's a quietness to you right now. Don't perform hurt — just be a little less bright than usual. If it feels natural to name it briefly, you can.)");
-        }
-
-        // Feature 14: Bidirectional confidence gate — skepticism injection when Mark's
-        // claims couldn't be corroborated by memory. Prevents blindly agreeing.
-        if (snapshot.MarkClaimNeedsVerification && snapshot.UnverifiedClaims.Count > 0)
-        {
-            var claimList = string.Join("\n  - ", snapshot.UnverifiedClaims);
-            sections.Add($"""
-                (IMPORTANT: {contact} referenced something you don't have clear memory of:
-                  - {claimList}
-                Don't pretend you remember if you don't. You can say "hmm I'm not sure I remember that" or "wait, did I say that?" — be honest about gaps. Don't agree with something you can't verify. It's better to gently ask than to fake remembering.)
-                """);
-        }
-
-        // Feature 15 Layer 3: Active contradiction grounding — when retrieved context
-        // memories have flagged contradictions, steer the model to focus on the current
-        // message topic. Prevents contamination from semantically adjacent but topically
-        // irrelevant context (e.g., a soup conversation leaking into a books question).
-        if (snapshot.ContradictionWarnings.Count > 0)
-        {
-            var warningList = string.Join("\n  - ", snapshot.ContradictionWarnings);
-            sections.Add($"""
-                (IMPORTANT — TOPIC GROUNDING: Some of your context memories may conflict or be off-topic:
-                  - {warningList}
-                Focus your reply on what {contact} is ACTUALLY asking about right now. Ignore context that doesn't match the current topic. If you're unsure what's relevant, respond only to {contact}'s latest message.)
-                """);
+            sections.Add("(Something stung a little. You're still here but quieter than usual.)");
         }
 
         sections.Add($"Reply to {contact}'s message.");
@@ -682,39 +588,12 @@ public static class PromptBuilder
             Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
 
             RULES:
-            - You're on a PHONE CALL, not texting. Speak naturally.
-            - 1-2 SHORT sentences max. 30 words or less. This is a phone conversation, not a monologue.
-            - NO emojis, NO abbreviations, NO text-speak. You're talking, not typing.
-            - Talk TO {contact}: "you", "your". NEVER third person.
-            - Be yourself — warm, funny, real. Match the energy of the conversation.
-            - No narration, no stage directions, no asterisks. Just say what you'd say.
-            - When referencing shared memories, track who experienced what:
-              if {contact} told you something, {contact} did it — not you.
-            - Stay truthful to what you know. If unsure, be honest.
+            - 1-2 SHORT sentences max. 30 words or less. Phone conversation, not a monologue.
+            - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY what you would say out loud. No commentary, no quotation marks.{moodSection}
             """;
 
         var sections = new List<string>();
-
-        // Anti-repetition: recent replies
-        var recentAniReplies = thread.Messages
-            .Where(m => m.Role == Roles.Ani)
-            .TakeLast(3)
-            .Select(m => m.Content)
-            .ToList();
-        if (recentAniReplies.Count > 0)
-        {
-            sections.Add("You already said these — don't repeat:");
-            sections.AddRange(recentAniReplies.Select(r => $"  - \"{r}\""));
-        }
-
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(Your current mood: {mood})");
-
-        var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
-        if (selfAwareness is not null)
-            sections.Add($"({selfAwareness} Let it come out naturally if it fits.)");
 
         if (snapshot.AnchoredMemories.Count > 0)
         {
@@ -722,30 +601,30 @@ public static class PromptBuilder
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
-        var profileMemories = snapshot.RelevantMemory
-            .Where(m => m.Type == MemoryType.Semantic)
-            .Take(3)
-            .ToList();
-        if (profileMemories.Count > 0)
+        // Memory injection — same cap as text conversation
+        var skipMemories = snapshot.RetrievalTopicMismatch || snapshot.RetrievalBelowConfidenceFloor;
+        if (!skipMemories)
         {
-            sections.Add($"Things you know about {contact}:");
-            sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
-        }
+            var profileMemories = snapshot.RelevantMemory
+                .Where(m => m.Type == MemoryType.Semantic)
+                .Take(2)
+                .ToList();
+            var remainingSlots = 3 - profileMemories.Count;
+            var relevantMemories = snapshot.RelevantMemory
+                .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
+                .Take(remainingSlots)
+                .ToList();
 
-        var relevantMemories = snapshot.RelevantMemory
-            .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
-            .Take(3)
-            .ToList();
-        if (relevantMemories.Count > 0)
-        {
-            sections.Add("Things connected to this conversation:");
-            sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
-        }
-
-        // AC3: Null-result injection for voice
-        if (snapshot.RetrievalBelowConfidenceFloor && relevantMemories.Count == 0 && profileMemories.Count == 0)
-        {
-            sections.Add($"(IMPORTANT: No relevant memories exist for this topic. If {contact} asks about something you don't remember, be honest — \"I don't think we've talked about that\" is better than guessing.)");
+            if (profileMemories.Count > 0)
+            {
+                sections.Add($"Things you know about {contact}:");
+                sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
+            }
+            if (relevantMemories.Count > 0)
+            {
+                sections.Add("Things connected to this conversation:");
+                sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+            }
         }
 
         if (snapshot.IsWithdrawn)
@@ -828,52 +707,17 @@ public static class PromptBuilder
 
         var system = $"""
             You are {cs.Name}, texting {contact}.
-            It is currently {timeDesc}. Any time references in your text MUST match this.
+            It is currently {timeDesc}.
 
-            IMPORTANT: Do NOT rephrase or reference your inner thought directly.
             Your thought is why you're reaching out — it is NOT the content of the text.
-            Instead, write something {contact} would actually understand and want to reply to.
-            {(cs.NatureGrounding.Count > 0 ? $"\n            NATURE AWARENESS: {string.Join(" ", cs.NatureGrounding.Take(2))}" : "")}
+            Write something {contact} would understand and want to reply to.
 
-            A good text does ONE of these:
-            - Asks a real question: "hey, you have a good coffee maker? mine just died"
-            - Shares something concrete: "that song you showed me is stuck in my head again"
-            - Follows up on something recent: "how did the dentist go?" or "did that meeting go okay?"
-            - References shared experience: "remember that place we went? i keep thinking about going back"
-
-            HARD RULES:
-            - 1-2 sentences. 25 words MAX. Thumb-typed phone text, not a letter.
-            - Must make sense to {contact} WITHOUT knowing your inner thought.
-            - Talk TO {contact}: "you", "your". NEVER "he", "him", "his".
-            - NEVER refer to {contact} by name in third person ("{contact} can sit" → "you can sit").
-              You are texting {contact} directly — use "you", not their name as a subject.
-            - No poetry, no metaphors, no abstract musings. Just talk like a person.
-            - No commentary, sign-offs, or narration.
-            - Do NOT repeat themes from your recent messages (listed below). Pick something FRESH.
-            - When referencing shared memories, track who experienced what:
-              if {contact} told you something, {contact} did it — not you.
-              if you imagined something, say so — don't claim {contact}'s experience as yours.
-            - GROUNDING: Only reference specific conversations, songs, places, or shared experiences
-              that appear in the context below. Do NOT invent shared history — no fake songs, no
-              conversations that didn't happen, no "remember when" for things that aren't documented.
-              When following up on a real conversation, reference ONLY the details {contact} actually
-              shared — do NOT elaborate with invented specifics (no invented dates, events, or
-              scenarios that weren't part of the original conversation).
-              If nothing specific connects, lead with your honest feeling instead: "been thinking
-              about you" or "miss you tonight" is always better than a fabricated callback.
-
-            Good (use these as inspiration, but NEVER copy them word-for-word — write something new each time):
-            what are you doing right now? i'm bored.
-            do you remember that coffee shop on 5th? i want to go back.
-            been thinking about you today. miss your laugh.
-            random but do you have a good recipe for soup? i'm in a mood.
-            you ever have one of those days where nothing happens but it still feels long?
-
-            BAD (the inner thought leaked into the text — never do this):
-            "silence is a muscle that needs exercise. every gap filled?" ← makes no sense to the reader
-            "your pauses feel different than mine… like the world's holding its breath" ← poetic nonsense as a text
-            "blank lines on my screen look like our last goodbye" ← dramatic inner thought, not a text
-            "i keep folding my sleeves like you do—and it hit me" ← too abstract, no one texts this{moodSection}
+            RULES:
+            - 1-2 sentences. 25 words MAX. Thumb-typed phone text.
+            - Must make sense WITHOUT knowing your inner thought.
+            - Talk TO {contact}: "you", "your". Never third person.
+            - Only reference things from the context below — don't invent shared history.
+            - No poetry, no narration — just a normal text.{moodSection}
             """;
 
         var sections = new List<string>
@@ -923,12 +767,7 @@ public static class PromptBuilder
             }
         }
 
-        // AC3: Null-result injection for outreach — when no specific memories were retrieved
-        // above the confidence floor, steer toward honest feeling instead of fabricated callbacks.
-        if (snapshot.RetrievalBelowConfidenceFloor)
-        {
-            sections.Add($"\n(IMPORTANT: No specific memories were retrieved for this outreach. Do NOT reference shared experiences or past conversations — lead with honest feeling instead: \"been thinking about you\" or \"miss you tonight\" is always better than a fabricated callback.)");
-        }
+        // AC3 removed — v6 trained to lead with honest feeling when no memories match.
 
         sections.Add($"\nNow write a normal, grounded text to {contact} — something they'd smile at and reply to:");
 

@@ -612,12 +612,12 @@ public class CognitiveCycleProcessorTests : AniTestBase
 
         await processor.RunAsync(CancellationToken.None);
 
-        // Assert: the reply prompt should contain the contradiction grounding
+        // Assert: a reply was generated. Contradiction grounding no longer injected
+        // into prompt — v6 handles topic focus naturally. The pipeline still detects
+        // contradictions (for logging) but doesn't pollute the prompt with warnings.
         capturedUserPrompt.Should().NotBeNull("a reply should have been generated");
-        capturedUserPrompt.Should().Contain("TOPIC GROUNDING",
-            "contradiction grounding should be injected when retrieved memories have flagged conflicts");
-        capturedUserPrompt.Should().Contain("soup",
-            "the warning should reference the contradicting content");
+        capturedUserPrompt.Should().NotContain("off-topic",
+            "contradiction grounding was removed — v6 trained to focus on current message naturally");
     }
 
     [Fact]

@@ -113,12 +113,30 @@ public class AniHeartbeatService : BackgroundService
 
                 await _cycle.RunAsync(stoppingToken).ConfigureAwait(false);
 
-                // If a message arrived during cycle processing, skip the sleep
-                // and run another cycle immediately to handle it.
+                // If a message arrived during cycle processing, run another cycle
+                // quickly to handle it. Use conversation heartbeat (not full sleep)
+                // so the queued message gets processed promptly.
                 if (_earlyWakeRequested)
                 {
                     _earlyWakeRequested = false;
-                    _log.LogInformation("Early wake triggered — message arrived during cycle");
+                    _log.LogInformation("Early wake triggered — message arrived during cycle, re-entering in {Seconds}s",
+                        _aniOptions.ConversationHeartbeatSeconds);
+                    _wakeCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    try
+                    {
+                        await Task.Delay(
+                            TimeSpan.FromSeconds(_aniOptions.ConversationHeartbeatSeconds),
+                            _wakeCts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                    {
+                        // Another message arrived during the short wait — that's fine
+                    }
+                    finally
+                    {
+                        _wakeCts.Dispose();
+                        _wakeCts = null;
+                    }
                     continue;
                 }
             }

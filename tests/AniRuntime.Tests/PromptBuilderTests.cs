@@ -242,8 +242,9 @@ public class PromptBuilderTests
     // ── Feature 14: Bidirectional confidence gate ──
 
     [Fact]
-    public void BuildConversationReplyPrompt_WhenUnverifiedClaims_InjectsSkepticism()
+    public void BuildConversationReplyPrompt_WhenUnverifiedClaims_NoLongerInjected()
     {
+        // Feature 14 claim injection removed — v6 trained on honest uncertainty.
         var snapshot = new ContextSnapshot
         {
             CharacterState = new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" },
@@ -262,8 +263,7 @@ public class PromptBuilderTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().Contain("don't have clear memory");
-        user.Should().Contain("Ani said she loved hiking");
+        user.Should().NotContain("Unverified claims");
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class PromptBuilderTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().NotContain("don't have clear memory");
+        user.Should().NotContain("Unverified claims");
     }
 
     [Fact]
@@ -303,8 +303,9 @@ public class PromptBuilderTests
     // ── Feature 15 Layer 3: Contradiction grounding ──
 
     [Fact]
-    public void BuildConversationReplyPrompt_WhenContradictionWarnings_InjectsGrounding()
+    public void BuildConversationReplyPrompt_WhenContradictionWarnings_NoLongerInjected()
     {
+        // Contradiction warnings removed — v6 handles topic focus naturally.
         var snapshot = new ContextSnapshot
         {
             CharacterState = new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" },
@@ -325,9 +326,7 @@ public class PromptBuilderTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().Contain("TOPIC GROUNDING");
-        user.Should().Contain("soup discussion");
-        user.Should().Contain("ACTUALLY asking about");
+        user.Should().NotContain("off-topic");
     }
 
     [Fact]

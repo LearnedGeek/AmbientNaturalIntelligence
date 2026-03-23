@@ -147,21 +147,12 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         _log.LogDebug("Saved {Type} memory: {Content}", record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
 
-        // Feature 15: Post-save contradiction check for factual memory types.
-        // Semantic and Episodic memories can contain contradictory facts — check
-        // similar existing memories for conflicts. Inner thoughts and perceptions
-        // are subjective and don't need contradiction checking.
-        if (record.Embedding is not null && record.Type is MemoryType.Semantic or MemoryType.Episodic)
-        {
-            try
-            {
-                await CheckForContradictionsAsync(record, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Feature 15: Contradiction check failed — memory saved without flagging");
-            }
-        }
+        // Feature 15: Post-save contradiction check DISABLED.
+        // The LLM-based comparison produced high false-positive rates on casual conversation
+        // ("are you sick?" vs "what's going on?" flagged as contradictory). Each save triggered
+        // up to 3 LLM calls for contradiction detection. The contradiction warnings were also
+        // removed from prompt injection (Phase C), so this was burning cycles for noisy logs.
+        // Re-enable when contradiction detection is improved (e.g., fact-only filtering).
     }
 
     public async Task<IEnumerable<MemoryRecord>> GetByTypeAsync(

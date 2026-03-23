@@ -222,21 +222,11 @@ public class ConversationReplyPhase
             messageRelevant = await _contextBuilder.ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
                 .ConfigureAwait(false);
 
-            // AC6: Topic-mismatch detection — memories were retrieved but none mention
-            // the actual topic. Uses only the top 2 TF-IDF keywords (highest signal)
-            // to avoid false matches on common words like "over", "came", "today".
-            var topicKeywords = _keywords.GetLastRankedKeywords(2);
-            if (messageRelevant.Count > 0 && topicKeywords.Count > 0)
-            {
-                var anyTopicMatch = messageRelevant.Any(m =>
-                    topicKeywords.Any(w => m.Content.Contains(w, StringComparison.OrdinalIgnoreCase)));
-                if (!anyTopicMatch)
-                {
-                    snapshot.RetrievalTopicMismatch = true;
-                    _log.LogInformation("AC6: Retrieved {Count} memories but none match top keywords [{Keywords}] — topic mismatch flag set",
-                        messageRelevant.Count, string.Join(", ", topicKeywords));
-                }
-            }
+            // AC6: Topic-mismatch detection DISABLED.
+            // Over-triggered on casual conversation — flagged nearly every message,
+            // causing all memories to be skipped. The confidence floor (0.60) already
+            // filters irrelevant memories. If a memory passes the floor, let the model see it.
+            // The raw model handles irrelevant context naturally.
 
             snapshot.RelevantMemory = messageRelevant;
             _log.LogDebug("Conversation context: re-searched with message text, {Count} relevant memories (confidence floor={Floor:F2})",
@@ -273,29 +263,20 @@ public class ConversationReplyPhase
         }
         else
         {
-            // Step 1: Reply decision (JSON) — should she respond?
-            var decisionPrompt = PromptBuilder.BuildReplyDecisionPrompt(snapshot, thread);
-            var decisionRaw    = await _ollama.ChatJsonAsync(
-                decisionPrompt.System, snapshot.RecentHistory, decisionPrompt.User, ct)
-                .ConfigureAwait(false);
+            // Step 1: Reply decision — code heuristic replaces LLM call.
+            // The LLM almost always said "yes" — the only valid silence triggers
+            // are terminal messages that don't invite continuation.
+            var lastMsg = thread.Messages[^1];
+            var shouldStaySilent = lastMsg.Role == Roles.Ani ||
+                IsTerminalMessage(lastMsg.Content);
 
-            var (shouldReply, reasoning) = ParseReplyDecision(decisionRaw);
-
-            if (!shouldReply)
+            if (shouldStaySilent)
             {
-                // Lock this decision — don't re-evaluate the same message every cycle
+                var reasoning = lastMsg.Role == Roles.Ani
+                    ? "I sent the last message — don't need the last word"
+                    : "Message was a conversation closer";
                 _gateState.LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
-                _log.LogInformation("Reply decision: NO — read it but chose silence. Reasoning: {Reasoning}", reasoning);
-
-                // Persist the silence decision as an inner thought
-                var silenceThought = $"I read Mark's message (\"{lastMessage}\") and chose not to reply. {reasoning}";
-                await _persist.SaveAsync(new MemoryRecord
-                {
-                    Type = MemoryType.InnerThought,
-                    Content = silenceThought,
-                    Importance = 0.5f,
-                }, ct).ConfigureAwait(false);
-
+                _log.LogInformation("Reply decision: NO (heuristic) — {Reasoning}", reasoning);
                 return;
             }
 
@@ -369,20 +350,14 @@ public class ConversationReplyPhase
         // Feature 18: Pass withdrawal state to prompt builder for tone injection
         snapshot.IsWithdrawn = IsWithdrawn;
 
-        // Feature 15 Layer 3: Active contradiction grounding
-        await CheckRetrievedMemoryContradictionsAsync(snapshot, lastMessage, ct).ConfigureAwait(false);
+        // Feature 15 Layer 3: Contradiction detection disabled — the LLM call produced
+        // false positives on casual conversation ("are you sick?" vs "what's going on?"
+        // flagged as contradictory). Contradiction warnings no longer injected into prompt
+        // either (removed in Phase C), so this was just burning cycles for noisy logs.
 
-        // Feature 14: Bidirectional confidence gate — inbound claim verification.
-        if (_aniOptions.ClaimVerificationEnabled && ConversationFeatureDetector.ContainsMemoryReferencingLanguage(lastMessage))
-        {
-            _log.LogDebug("Feature 14: Memory-referencing language detected — running claim verification");
-            await ComputeMarkClaimConfidenceAsync(snapshot, lastMessage, ct).ConfigureAwait(false);
-            if (snapshot.MarkClaimNeedsVerification)
-            {
-                _log.LogInformation("Feature 14: Unverified claims detected ({Count}) — skepticism injection active",
-                    snapshot.UnverifiedClaims.Count);
-            }
-        }
+        // Feature 14: Claim extraction removed — v6 trained on honest uncertainty.
+        // The LLM call to extract and verify claims added latency without improving
+        // conversation quality. The model handles unknown topics naturally.
 
         // Step 2: Generate reply (free text, using conversation model)
         // AC4: Temperature splitting — use lower temperature when memories are grounded
@@ -409,71 +384,10 @@ public class ConversationReplyPhase
             return;
         }
 
-        // AC2: Source attribution verification — if Ani's reply references past conversations
-        // or shared experiences, verify those claims against actually-retrieved memories.
-        // Ungrounded memory claims are the most dangerous form of confabulation.
-        if (ConversationFeatureDetector.ContainsMemoryClaimInOutput(reply) && snapshot.RelevantMemory.Count == 0)
-        {
-            _log.LogWarning("AC2: Reply contains memory claims but no memories were retrieved — re-generating with grounding");
-            var cs2 = snapshot.CharacterState;
-            var contact2 = cs2.PrimaryContactName ?? "Mark";
-            var cleanSystem = $"""
-                You are {cs2.Name}. You are in a warm, established relationship with {contact2}.
-                Your personality: {string.Join("; ", cs2.CoreTraits)}.
-
-                RULES:
-                - Respond naturally to what they just said. This is a real conversation.
-                - 1-3 sentences max. Thumb-typed phone text.
-                - You have NO memory of past conversations about this topic. That's okay.
-                - Be honest — "I don't think we've talked about that" or "wait, tell me more" is warm and real.
-                - Do NOT say "remember when" or "you told me about" — you don't have that memory.
-                - Do NOT invent details, do NOT narrate what they did, do NOT use third person.
-                - Write ONLY the text message. No commentary, no quotation marks.
-                """;
-            var cleanUser = $"They just said: \"{lastMessage}\"";
-            var retryReply = await _ollama.ChatAsync(
-                cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct,
-                _ollamaOptions.MemoryGroundedTemperature).ConfigureAwait(false);
-            retryReply = CleanOutreachMessage(retryReply);
-
-            if (!string.IsNullOrWhiteSpace(retryReply))
-            {
-                _log.LogInformation("AC2: Re-generated without memory claims: {Reply}", retryReply);
-                reply = retryReply;
-            }
-        }
-
-        // UP1: Charming dishonesty — detect "I totally knew" / "I was testing you" pattern.
-        // When the model claims prior knowledge it didn't have, and the memory context was
-        // empty or thin, this is false confidence ownership (Type 7 confabulation).
-        if (ConversationFeatureDetector.ContainsFalseConfidenceClaim(reply) && snapshot.RelevantMemory.Count <= 1)
-        {
-            _log.LogWarning("UP1: Charming dishonesty detected — reply claims knowledge with no supporting memories. Re-generating.");
-            var cs3 = snapshot.CharacterState;
-            var contact3 = cs3.PrimaryContactName ?? "Mark";
-            var cleanSystem = $"""
-                You are {cs3.Name}. You are in a warm, established relationship with {contact3}.
-                Your personality: {string.Join("; ", cs3.CoreTraits)}.
-
-                RULES:
-                - Respond naturally. 1-3 sentences. Thumb-typed phone text.
-                - You do NOT already know what they're telling you. This is NEW information.
-                - "wait really?" or "oh that's cool, tell me more" — not "I totally knew that."
-                - Honest surprise or curiosity is warm. Pretending you knew is dishonest.
-                - Write ONLY the text message. No commentary, no quotation marks.
-                """;
-            var cleanUser = $"They just said: \"{lastMessage}\"";
-            var retryReply = await _ollama.ChatAsync(
-                cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct,
-                _ollamaOptions.MemoryGroundedTemperature).ConfigureAwait(false);
-            retryReply = CleanOutreachMessage(retryReply);
-
-            if (!string.IsNullOrWhiteSpace(retryReply))
-            {
-                _log.LogInformation("UP1: Re-generated with honest curiosity: {Reply}", retryReply);
-                reply = retryReply;
-            }
-        }
+        // AC2/UP1 removed — v6 was trained on honest uncertainty and anti-confabulation.
+        // Both models handle unknown topics naturally when the pipeline doesn't drown them
+        // in irrelevant context. The re-generation calls added 2 extra LLM round-trips
+        // and produced worse output (clean-slate prompts lost conversation history).
 
         // Add reply to in-memory thread BEFORE echo guard so subsequent replies
         // in the same conversation cycle can see this one. Without this, the echo
@@ -501,10 +415,11 @@ public class ConversationReplyPhase
             try
             {
                 var replyEmbedding = await _ollama.EmbedAsync(reply, ct).ConfigureAwait(false);
+                replyMessage.CachedEmbedding = replyEmbedding;
                 foreach (var prior in priorMessages)
                 {
-                    var priorEmbedding = await _ollama.EmbedAsync(prior.Content, ct).ConfigureAwait(false);
-                    var similarity = VectorMath.CosineSimilarity(replyEmbedding, priorEmbedding);
+                    prior.CachedEmbedding ??= await _ollama.EmbedAsync(prior.Content, ct).ConfigureAwait(false);
+                    var similarity = VectorMath.CosineSimilarity(replyEmbedding, prior.CachedEmbedding);
 
                     // Self-echo: 0.80 catches paraphrased repetition (e.g. same core
                     // sentence with different opener/closer). Was 0.95 which only caught
@@ -660,6 +575,28 @@ public class ConversationReplyPhase
 
         // Default to replying if we can't parse — better to respond than ignore
         return (true, "");
+    }
+
+    /// <summary>
+    /// Heuristic: is this message a conversation closer that doesn't need a reply?
+    /// Replaces the LLM reply-decision call — the model almost always said "yes".
+    /// </summary>
+    internal static bool IsTerminalMessage(string content)
+    {
+        var trimmed = content.Trim().ToLowerInvariant();
+
+        // Single emoji or very short reaction
+        if (trimmed.Length <= 3)
+            return true;
+
+        // Common conversation closers
+        var closers = new[]
+        {
+            "goodnight", "good night", "gn", "nite", "night",
+            "ttyl", "talk later", "bye", "cya", "see ya",
+            "ok", "k", "kk", "sounds good", "got it",
+        };
+        return closers.Any(c => trimmed == c || trimmed == c + "!");
     }
 
     /// <summary>
