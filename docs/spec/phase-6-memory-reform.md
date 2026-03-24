@@ -332,6 +332,31 @@ These features are documented here for roadmap visibility but are **not schedule
 
 ---
 
+### Feature 36: Memory Graph Dashboard Visualization
+
+**Concept:** Interactive graph visualization of the `memory_links` table on the dashboard. Memories are nodes, links are edges, colored by relationship type (`relates_to`, `caused_by`, `follows_up`, `contradicts`). Clusters form naturally around topics (Richard, gym, Spanish class, food). Node size scales with importance. Clicking a node shows the memory content and its connections.
+
+**Why it matters:** Makes the linked memory graph tangible and explorable — the researcher can see how Ani's relational knowledge organizes itself. Clusters reveal topical structure that isn't visible from flat memory lists. Useful for both debugging retrieval quality and for the Paper 2 research narrative (emergence layer observations become visual).
+
+**Implementation sketch:** D3.js or Vis.js graph component in the Blazor dashboard. REST endpoint `/api/v1/ani/memory-graph` returns nodes (memories) and edges (links). Frontend renders force-directed layout. Filter by memory type, date range, or relationship type. Could start with a simple adjacency list table view and upgrade to full graph visualization.
+
+**Dependency:** Requires Feature 31 (linked memory graph) to have accumulated enough links to be interesting. Best deployed after several days of Feature 31 running.
+
+---
+
+### Feature 37: Retroactive Memory Cleanup & Link Building
+
+**Concept:** One-time migration utility that processes existing memories to:
+1. Find and merge duplicate clusters (same-type memories with cosine > 0.85)
+2. Build initial links between existing memories that are related (cosine > 0.5)
+3. Remove stale duplicates that the new merge system would have caught
+
+**Why it matters:** Without this, the linked graph starts empty and only grows from new saves. Historical memories (2000+) have zero links and include duplicates. The graph visualization (Feature 36) won't be interesting until historical links exist.
+
+**Implementation sketch:** Standalone CLI tool or admin command (`///rebuild-links`) that iterates all memories, computes pairwise similarities within types, merges duplicates, and creates links. Runs once, takes several minutes (O(n²) on embeddings within each type).
+
+---
+
 ### Feature 35: Emotion-Desire Modulation (Borotschnig-Inspired)
 
 **Research:** Borotschnig 2025 — Synthetic Emotions and Consciousness. Proposes that emotions function as "biasing action selection" — fear biases avoidance, joy biases approach. The dual-source model (immediate needs + episodic memory) converges to modulate behavior.
