@@ -64,38 +64,60 @@ else
 {
     <section>
         <h3>Emergence Types</h3>
-        <small style="opacity: 0.7;">What kinds of emergent thinking have been detected (last 30 days)</small>
+        <small style="opacity: 0.7;">What kinds of emergent thinking have been detected (last 30 days) — click to filter highlights</small>
         <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
             @foreach (var type in EmergenceTypeInfo.All)
             {
                 _typeDistribution.TryGetValue(type.Code, out var count);
-                var intensity = _maxTypeCount > 0 ? (float)count / _maxTypeCount : 0f;
-                var bgAlpha = (0.15f + intensity * 0.4f).ToString("F2");
-                var bgStyle = $"background: {type.Color}{(count > 0 ? "40" : "15")}; padding: 0.75rem; border-radius: 6px; text-align: center; border-left: 3px solid {type.Color};";
-                <div style="@bgStyle">
+                var isSelected = _selectedTypes.Contains(type.Code);
+                var bgStyle = isSelected
+                    ? $"background: {type.Color}60; padding: 0.75rem; border-radius: 6px; text-align: center; border: 2px solid {type.Color}; cursor: pointer;"
+                    : $"background: {type.Color}{(count > 0 ? "25" : "10")}; padding: 0.75rem; border-radius: 6px; text-align: center; border: 2px solid transparent; cursor: pointer;";
+                var code = type.Code;
+                <div style="@bgStyle" @onclick="() => ToggleTypeFilter(code)">
                     <strong style="font-size: 0.8em;">@type.Label</strong>
                     <div style="font-size: 1.6em; font-weight: bold;">@count</div>
                     <small style="opacity: 0.7;">@type.ShortCode</small>
                 </div>
             }
         </div>
+        @if (_selectedTypes.Count > 0)
+        {
+            <div style="margin-top: 0.5rem;">
+                <small style="opacity: 0.7;">Filtering: @string.Join(", ", _selectedTypes.Select(t => EmergenceTypeInfo.Get(t).Label))</small>
+                <a href="javascript:void(0)" @onclick="ClearFilters" style="margin-left: 0.5em; font-size: 0.8em;">clear</a>
+            </div>
+        }
     </section>
 }
 
 @if (_highlights.Count > 0)
 {
+    var filtered = _selectedTypes.Count > 0
+        ? _highlights.Where(e =>
+        {
+            var et = ParseEmergenceTypes(e.EmergenceTypesJson);
+            return et.Any(t => _selectedTypes.Contains(t));
+        }).ToList()
+        : _highlights;
+
     <section>
         <h3>Highlight Reel</h3>
-        <small style="opacity: 0.7;">Top emergence moments by resonance score — with inner thought text</small>
-        @foreach (var entry in _highlights.Take(5))
+        <small style="opacity: 0.7;">
+            @(filtered.Count) emergence moments
+            @(_selectedTypes.Count > 0 ? "(filtered)" : "— by resonance score")
+            — with inner thought text
+        </small>
+        @foreach (var entry in filtered.Take(20))
         {
             var obs = ParseObservation(entry.CycleObservationJson);
             var types = ParseEmergenceTypes(entry.EmergenceTypesJson);
+            var borderColor = types.Count > 0 ? EmergenceTypeInfo.Get(types[0]).Color : "#9c27b0";
 
-            <article style="border-left: 3px solid #9c27b0; margin-top: 0.5rem;">
+            <article style="border-left: 3px solid @borderColor; margin-top: 0.5rem;">
                 <header style="display: flex; justify-content: space-between; align-items: center;">
                     <span>
-                        <strong style="color: #9c27b0;">@(entry.ResonanceScore?.ToString("F2") ?? "—")</strong>
+                        <strong style="color: @borderColor;">@(entry.ResonanceScore?.ToString("F2") ?? "—")</strong>
                         @foreach (var t in types)
                         {
                             var info = EmergenceTypeInfo.Get(t);
@@ -271,6 +293,7 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
     private Dictionary<string, int> _typeDistribution = new();
     private List<EmergenceLogEntry> _highlights = new();
     private int _maxTypeCount;
+    private HashSet<string> _selectedTypes = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -289,7 +312,7 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
         _logEntries = (await store.GetRecentLogEntriesAsync(20)).ToList();
         _typeDistribution = await store.GetTypeDistributionAsync(30);
         _maxTypeCount = _typeDistribution.Values.DefaultIfEmpty(0).Max();
-        _highlights = (await store.GetHighlightsAsync(10, 0.3f)).ToList();
+        _highlights = (await store.GetHighlightsAsync(50, 0.2f)).ToList();
     }
 
     private float AvgScore()
@@ -309,6 +332,14 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
             return null;
         }
     }
+
+    private void ToggleTypeFilter(string code)
+    {
+        if (!_selectedTypes.Remove(code))
+            _selectedTypes.Add(code);
+    }
+
+    private void ClearFilters() => _selectedTypes.Clear();
 
     private static string ComponentColor(float value) =>
         value >= 0.7f ? "#4caf50" : value >= 0.3f ? "#ff9800" : "#9e9e9e";
