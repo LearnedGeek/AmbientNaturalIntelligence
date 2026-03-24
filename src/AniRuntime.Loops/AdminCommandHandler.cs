@@ -20,6 +20,7 @@ public class AdminCommandHandler
 {
     private readonly IStateStore          _state;
     private readonly IMemoryPersistence  _persist;
+    private readonly IMemoryMaintenance  _maintenance;
     private readonly IConversationService _conversations;
     private readonly DesireEngine        _desire;
     private readonly AniActionDispatcher _dispatcher;
@@ -33,6 +34,7 @@ public class AdminCommandHandler
     public AdminCommandHandler(
         IStateStore                     state,
         IMemoryPersistence              persist,
+        IMemoryMaintenance              maintenance,
         IConversationService            conversations,
         DesireEngine                    desire,
         AniActionDispatcher             dispatcher,
@@ -41,6 +43,7 @@ public class AdminCommandHandler
     {
         _state         = state;
         _persist       = persist;
+        _maintenance   = maintenance;
         _conversations = conversations;
         _desire        = desire;
         _dispatcher    = dispatcher;
@@ -72,6 +75,7 @@ public class AdminCommandHandler
             "reset-mood" => await HandleResetMoodAsync(ct).ConfigureAwait(false),
             "flag"       => await HandleFlagAsync(ct).ConfigureAwait(false),
             "new-thread" => await HandleNewThreadAsync(ct).ConfigureAwait(false),
+            "rebuild-links" => await HandleRebuildLinksAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -91,6 +95,7 @@ public class AdminCommandHandler
             "///reset-mood — Reset emotions to baselines",
             "///flag       — Flag last reply as confabulation",
             "///new-thread — Close current thread, start fresh",
+            "///rebuild-links — Build memory graph links (one-time, may take minutes)",
         });
     }
 
@@ -273,6 +278,20 @@ public class AdminCommandHandler
         // is already closed. Just confirm it to the user.
         _log.LogInformation("Admin: new-thread — current thread closed by cycle processor");
         return Task.FromResult("Thread closed. Next message will start a fresh thread.");
+    }
+
+    private async Task<string> HandleRebuildLinksAsync(CancellationToken ct)
+    {
+        try
+        {
+            var (mergeCount, linkCount) = await _maintenance.RebuildMemoryLinksAsync(ct).ConfigureAwait(false);
+            return $"Memory graph rebuilt.\n{linkCount} links created.\n{mergeCount} duplicates detected (logged for review).";
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Rebuild links failed");
+            return $"ERROR: Rebuild failed — {ex.Message}";
+        }
     }
 
     private static string FormatAge(DateTimeOffset timestamp)

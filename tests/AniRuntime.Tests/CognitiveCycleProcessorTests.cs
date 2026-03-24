@@ -78,7 +78,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                           .ReturnsAsync((ConversationThread?)null);
 
         var adminHandler = new AdminCommandHandler(
-            MockMemory.Object, MockMemory.Object,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object,
             _mockConversations.Object,
             desire,
             dispatcher,

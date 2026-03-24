@@ -1045,6 +1045,103 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Feature 37: Retroactive memory link building + duplicate merging.
+    /// Scans all memories with embeddings, creates relates_to links for
+    /// cosine > 0.5 pairs, and logs duplicate clusters for manual review.
+    /// Heavy operation — runs once on demand via ///rebuild-links.
+    /// </summary>
+    public async Task<(int MergeCount, int LinkCount)> RebuildMemoryLinksAsync(CancellationToken ct = default)
+    {
+        _log.LogInformation("Rebuild: starting retroactive link building...");
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, type, content, embedding FROM memories WHERE embedding IS NOT NULL ORDER BY occurred_at DESC";
+
+        var allMemories = new List<(string Id, int Type, string Content, float[] Embedding)>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            if (reader.IsDBNull(3)) continue;
+            var emb = DeserialisedEmbedding((byte[])reader[3]);
+            if (emb is null) continue;
+            allMemories.Add((reader.GetString(0), reader.GetInt32(1), reader.GetString(2), emb));
+        }
+
+        _log.LogInformation("Rebuild: loaded {Count} memories with embeddings", allMemories.Count);
+
+        int linkCount = 0;
+        int dupCount = 0;
+        var existingLinks = new HashSet<string>();
+
+        // Load existing links to avoid duplicates
+        await using var linkCheck = conn.CreateCommand();
+        linkCheck.CommandText = "SELECT source_id || '|' || target_id FROM memory_links";
+        await using var linkReader = await linkCheck.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await linkReader.ReadAsync(ct).ConfigureAwait(false))
+            existingLinks.Add(linkReader.GetString(0));
+
+        // Process in batches — compare each memory against subsequent ones
+        for (int i = 0; i < allMemories.Count && !ct.IsCancellationRequested; i++)
+        {
+            var source = allMemories[i];
+            int linksForThis = 0;
+
+            // Compare against next 50 memories (bounded scan)
+            for (int j = i + 1; j < Math.Min(i + 50, allMemories.Count); j++)
+            {
+                var target = allMemories[j];
+                if (source.Embedding.Length != target.Embedding.Length) continue;
+
+                var similarity = CosineSimilarity(source.Embedding, target.Embedding);
+
+                // Log duplicates (>0.85 same type) for awareness
+                if (similarity >= MergeThreshold && source.Type == target.Type)
+                {
+                    dupCount++;
+                    _log.LogDebug("Rebuild: duplicate detected (cosine={Sim:F3}): '{A}' ↔ '{B}'",
+                        similarity,
+                        source.Content[..Math.Min(40, source.Content.Length)],
+                        target.Content[..Math.Min(40, target.Content.Length)]);
+                }
+
+                // Create link for related memories (0.5 - 0.85)
+                if (similarity is >= 0.5f and < MergeThreshold && linksForThis < 3)
+                {
+                    var linkKey = $"{source.Id}|{target.Id}";
+                    var reverseLinkKey = $"{target.Id}|{source.Id}";
+                    if (!existingLinks.Contains(linkKey) && !existingLinks.Contains(reverseLinkKey))
+                    {
+                        await using var insertLink = conn.CreateCommand();
+                        insertLink.CommandText = """
+                            INSERT OR IGNORE INTO memory_links (source_id, target_id, relationship, created_at)
+                            VALUES ($source, $target, 'relates_to', $created)
+                            """;
+                        insertLink.Parameters.AddWithValue("$source", source.Id);
+                        insertLink.Parameters.AddWithValue("$target", target.Id);
+                        insertLink.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToString("O"));
+                        await insertLink.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+                        existingLinks.Add(linkKey);
+                        linkCount++;
+                        linksForThis++;
+                    }
+                }
+            }
+
+            // Progress logging every 100 memories
+            if (i > 0 && i % 100 == 0)
+                _log.LogInformation("Rebuild: processed {Count}/{Total} memories — {Links} links created, {Dups} duplicates found",
+                    i, allMemories.Count, linkCount, dupCount);
+        }
+
+        _log.LogInformation("Rebuild complete: {Links} links created, {Dups} duplicates detected across {Total} memories",
+            linkCount, dupCount, allMemories.Count);
+
+        return (dupCount, linkCount);
+    }
+
     private static EmotionalContribution ReadContribution(Microsoft.Data.Sqlite.SqliteDataReader reader)
     {
         var categoryStr = reader.GetString(reader.GetOrdinal("category"));

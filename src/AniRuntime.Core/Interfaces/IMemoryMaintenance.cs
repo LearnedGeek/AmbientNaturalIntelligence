@@ -13,4 +13,11 @@ public interface IMemoryMaintenance
     Task ResolveContradictionAsync(Guid newMemoryId, Guid existingMemoryId, CancellationToken ct = default);
     Task CleanupDecayedContributionsAsync(CancellationToken ct = default);
     Task ExpireContributionAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 37: Retroactive link building — scans existing memories and creates
+    /// memory_links for related records. Also merges detected duplicates.
+    /// Returns (mergeCount, linkCount) for reporting.
+    /// </summary>
+    Task<(int MergeCount, int LinkCount)> RebuildMemoryLinksAsync(CancellationToken ct = default);
 }
