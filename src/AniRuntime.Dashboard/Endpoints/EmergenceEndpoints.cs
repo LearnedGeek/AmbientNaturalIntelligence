@@ -51,6 +51,33 @@ public static class EmergenceEndpoints
             return Results.Ok(entries);
         });
 
+        group.MapGet("/type-distribution", async (
+            IServiceProvider sp,
+            int days = 30,
+            CancellationToken ct = default) =>
+        {
+            var store = sp.GetService<EmergenceStore>();
+            if (store is null)
+                return Results.Ok(new Dictionary<string, int>());
+
+            var dist = await store.GetTypeDistributionAsync(days, ct);
+            return Results.Ok(dist);
+        });
+
+        group.MapGet("/highlights", async (
+            IServiceProvider sp,
+            int limit = 10,
+            float minScore = 0.3f,
+            CancellationToken ct = default) =>
+        {
+            var store = sp.GetService<EmergenceStore>();
+            if (store is null)
+                return Results.Ok(Array.Empty<EmergenceLogEntry>());
+
+            var entries = await store.GetHighlightsAsync(limit, minScore, ct);
+            return Results.Ok(entries);
+        });
+
         return group;
     }
 }

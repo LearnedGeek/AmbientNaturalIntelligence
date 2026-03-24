@@ -60,6 +60,68 @@ else
     </section>
 }
 
+@if (_typeDistribution.Count > 0)
+{
+    <section>
+        <h3>Emergence Types</h3>
+        <small style="opacity: 0.7;">What kinds of emergent thinking have been detected (last 30 days)</small>
+        <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
+            @foreach (var type in EmergenceTypeInfo.All)
+            {
+                _typeDistribution.TryGetValue(type.Code, out var count);
+                var intensity = _maxTypeCount > 0 ? (float)count / _maxTypeCount : 0f;
+                var bgAlpha = (0.15f + intensity * 0.4f).ToString("F2");
+                var bgStyle = $"background: {type.Color}{(count > 0 ? "40" : "15")}; padding: 0.75rem; border-radius: 6px; text-align: center; border-left: 3px solid {type.Color};";
+                <div style="@bgStyle">
+                    <strong style="font-size: 0.8em;">@type.Label</strong>
+                    <div style="font-size: 1.6em; font-weight: bold;">@count</div>
+                    <small style="opacity: 0.7;">@type.ShortCode</small>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@if (_highlights.Count > 0)
+{
+    <section>
+        <h3>Highlight Reel</h3>
+        <small style="opacity: 0.7;">Top emergence moments by resonance score — with inner thought text</small>
+        @foreach (var entry in _highlights.Take(5))
+        {
+            var obs = ParseObservation(entry.CycleObservationJson);
+            var types = ParseEmergenceTypes(entry.EmergenceTypesJson);
+
+            <article style="border-left: 3px solid #9c27b0; margin-top: 0.5rem;">
+                <header style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>
+                        <strong style="color: #9c27b0;">@(entry.ResonanceScore?.ToString("F2") ?? "—")</strong>
+                        @foreach (var t in types)
+                        {
+                            var info = EmergenceTypeInfo.Get(t);
+                            <span style="background: @(info.Color)33; color: @info.Color; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.7em; margin-left: 0.3em;">@info.ShortCode</span>
+                        }
+                    </span>
+                    <small>@entry.Timestamp.LocalDateTime.ToString("MMM d, h:mm tt")</small>
+                </header>
+                @if (obs?.InnerThought is not null)
+                {
+                    <p style="font-style: italic; opacity: 0.9; font-size: 0.9em; line-height: 1.5; margin: 0.5em 0;">
+                        "@obs.InnerThought"
+                    </p>
+                }
+                @if (obs is not null)
+                {
+                    <small style="opacity: 0.5;">
+                        W=@obs.Warmth.ToString("F2") E=@obs.Energy.ToString("F2") C=@obs.Worry.ToString("F2") P=@obs.Playfulness.ToString("F2")
+                        | valence=@obs.RelationalValence.ToString("F2")
+                    </small>
+                }
+            </article>
+        }
+    </section>
+}
+
 @if (_resonanceRecords.Count > 0)
 {
     <section>
@@ -125,6 +187,14 @@ else
                             {
                                 <small style="margin-left: 0.5em; color: #9e9e9e;">silence</small>
                             }
+                        }
+                        @{
+                            var entryTypes = ParseEmergenceTypes(entry.EmergenceTypesJson);
+                        }
+                        @foreach (var t in entryTypes)
+                        {
+                            var info = EmergenceTypeInfo.Get(t);
+                            <span style="background: @(info.Color)33; color: @info.Color; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.7em; margin-left: 0.3em;">@info.ShortCode</span>
                         }
                     </span>
                     <span>
@@ -198,6 +268,9 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
     private EmergenceStats? _stats;
     private List<ResonanceRecord> _resonanceRecords = new();
     private List<EmergenceLogEntry> _logEntries = new();
+    private Dictionary<string, int> _typeDistribution = new();
+    private List<EmergenceLogEntry> _highlights = new();
+    private int _maxTypeCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -214,6 +287,9 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
         _stats = await store.GetStatsAsync();
         _resonanceRecords = (await store.GetResonanceRecordsAsync(50)).ToList();
         _logEntries = (await store.GetRecentLogEntriesAsync(20)).ToList();
+        _typeDistribution = await store.GetTypeDistributionAsync(30);
+        _maxTypeCount = _typeDistribution.Values.DefaultIfEmpty(0).Max();
+        _highlights = (await store.GetHighlightsAsync(10, 0.3f)).ToList();
     }
 
     private float AvgScore()
@@ -238,6 +314,51 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
         value >= 0.7f ? "#4caf50" : value >= 0.3f ? "#ff9800" : "#9e9e9e";
 
     private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
+
+    private static List<string> ParseEmergenceTypes(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try { return JsonSerializer.Deserialize<List<string>>(json, JsonOpts) ?? new(); }
+        catch { return new(); }
+    }
+
+    private static CycleObservationDto? ParseObservation(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return JsonSerializer.Deserialize<CycleObservationDto>(json, JsonOpts); }
+        catch { return null; }
+    }
+
+    private record CycleObservationDto
+    {
+        public string? InnerThought { get; init; }
+        public string? Reflection { get; init; }
+        public float RelationalValence { get; init; }
+        public float Warmth { get; init; }
+        public float Energy { get; init; }
+        public float Worry { get; init; }
+        public float Playfulness { get; init; }
+    }
+
+    private record EmergenceTypeInfo(string Code, string ShortCode, string Label, string Color)
+    {
+        public static readonly EmergenceTypeInfo[] All = new[]
+        {
+            new EmergenceTypeInfo("EM1-relational-modeling", "EM1", "Relational Modeling", "#e91e63"),
+            new EmergenceTypeInfo("EM2-symbolic-processing", "EM2", "Symbolic Processing", "#9c27b0"),
+            new EmergenceTypeInfo("EM3-linguistic-analysis", "EM3", "Linguistic Analysis", "#2196f3"),
+            new EmergenceTypeInfo("EM4-structural-self-awareness", "EM4", "Self-Awareness", "#ff9800"),
+            new EmergenceTypeInfo("EM5-emotional-synthesis", "EM5", "Emotional Synthesis", "#4caf50"),
+            new EmergenceTypeInfo("EM6-anticipatory-concern", "EM6", "Anticipatory Concern", "#00bcd4"),
+        };
+
+        private static readonly Dictionary<string, EmergenceTypeInfo> _lookup =
+            All.ToDictionary(t => t.Code);
+
+        public static EmergenceTypeInfo Get(string code) =>
+            _lookup.TryGetValue(code, out var info) ? info
+            : new EmergenceTypeInfo(code, code[..3], code, "#9e9e9e");
+    }
 
     private record LogDetails
     {
