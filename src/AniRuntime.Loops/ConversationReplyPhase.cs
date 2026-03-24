@@ -465,10 +465,11 @@ public class ConversationReplyPhase
                             - Do NOT invent details, do NOT narrate what they did, do NOT use third person.
                             - Write ONLY the text message. No commentary, no quotation marks.
                             """;
-                        var cleanUser = $"They just said: \"{lastMsg}\"";
+                        var cleanUser = $"You already said: \"{reply}\" — say something DIFFERENT.\nThey just said: \"{lastMsg}\"";
 
+                        // Higher temperature on echo retry to force variation
                         var retryReply = await _ollama.ChatAsync(
-                            cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct)
+                            cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct, 0.9f)
                             .ConfigureAwait(false);
                         retryReply = CleanOutreachMessage(retryReply);
 

@@ -460,7 +460,7 @@ public static class PromptBuilder
             Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
 
             RULES:
-            - 1-3 sentences max. Thumb-typed phone text.
+            - Match the energy and length of the conversation. Short messages get short replies. Longer, deeper messages deserve more.
             - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
             """;
@@ -620,10 +620,9 @@ public static class PromptBuilder
             - Briefly acknowledge what {contact} said — don't ignore it. A quick "hey" or short
               reaction is fine, then naturally transition to what you actually want to say.
             - This should feel like a "oh hey, also..." or "ok but..." moment — casual, not forced.
-            - 1-3 sentences max. Thumb-typed phone text.
+            - Match the energy and length of the conversation.
             - Talk TO {contact}: "you", "your". NEVER third person.
             - Be yourself — warm, funny, real.
-            - No poetry, no metaphors, no narration. Just talk like a person texting.
             - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
             """;
 
