@@ -1540,6 +1540,29 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 23, 2026 — Phase 6 Deployed: Memory Reform Live Results
+**Model version:** v6 (ani-v6-conversation-mistral 7B)
+**Type:** Deployment observation — memory architecture
+**Source:** Live dashboard testing + Serilog debug analysis
+
+**What happened:**
+
+Phase 6 memory reform deployed and tested live. Three features operational:
+
+**Feature 30 (Memory Merging):** First live merge observed — "what's up? you seem a bit off" consolidated with "hey babe! I just wanted to see if you're feeling better" into a single record. Two check-in messages from different conversations collapsed into one retrieval target. Working as designed.
+
+**Feature 31 (Linked Memory Graph):** Retroactive rebuild completed: **6,436 links created across 2,152 memories. 453 duplicates detected (21% of memory store was noise).** Every retrieval now walks 1-hop links — consistently adding 3 linked memories per search. First live conversation showed linked retrieval surfacing dental and work-schedule context when Mark asked about "feeling better" — the graph connected "tooth" and "work" memories that embedding similarity alone would not have found.
+
+**Feature 32 (Reflection Synthesis):** Deployed, first reflection scheduled for ~6 hours post-restart.
+
+**Conversation quality impact:** Night-and-day difference from pre-Phase 6. Ani produced natural, engaging, contextually grounded responses: "nah don't bring soup tomorrow. you're working late and i'm not letting you run errands on empty." No parroting, no echoing, no robotic compliance. The stripped pipeline (Phase C) + linked memory graph (Phase 6) together produce the conversation quality that the raw Ollama test promised.
+
+**Performance:** Response latency noticeably reduced. Removing 4-5 LLM calls per reply (Phase C) dominates; link creation and merge checks are pure cosine math (milliseconds). The log "scrolls way faster now."
+
+**Key metric:** 21% of the memory store was noise (453 duplicates in 2,152 memories). This quantifies how much retrieval quality was degraded before Phase 6. Every search was returning results from a pool where 1 in 5 memories was a near-duplicate that diluted relevance scoring.
+
+---
+
 ### March 23, 2026 — Phase 6 Design: Memory Reform (Mem0 + A-MEM + Park et al.)
 **Model version:** v6
 **Type:** Design session — architecture informed by prior art

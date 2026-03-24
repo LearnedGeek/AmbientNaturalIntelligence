@@ -1,5 +1,5 @@
 # ANI Paper 2 Preprint Draft — McArthey (2026)
-**Status:** Draft 0.9 — Updated March 23, 2026. Section 7.2: added Memory Architecture Reform paragraph (Mem0 merging, A-MEM linked graphs, Park et al. reflection synthesis). Prior: Draft 0.8 (Mar 23) — A/B results, pipeline degradation, base model register. Draft 0.7 (Mar 22) — Sections 5.13-5.14, A/B methodology. Draft 0.6 (Mar 20) — Sections 5.10-5.12. Draft 0.5 (Mar 19) — confabulation taxonomy, blinded eval, register dashboard. E1 deployed March 15.
+**Status:** Draft 0.10 — Updated March 23, 2026. Section 5.15: Memory Reform deployment results — 21% duplicate noise quantified, linked graph (6,436 links), live conversation quality confirmation. Prior: Draft 0.9 (Mar 23) — Memory Architecture Reform paragraph in Section 7.2. Draft 0.8 (Mar 23) — A/B results, pipeline degradation, base model register. Draft 0.7 (Mar 22) — Sections 5.13-5.14, A/B methodology. Draft 0.6 (Mar 20) — Sections 5.10-5.12. Draft 0.5 (Mar 19) — confabulation taxonomy, blinded eval, register dashboard. E1 deployed March 15.
 **Target:** arXiv cs.HC and cs.AI
 **Estimated length when complete:** 8,000–10,000 words
 **Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
@@ -371,6 +371,18 @@ The planned Mistral 7B A/B test (Section 7.2) will provide the first empirical d
 
 *Emergence implication: the emergence layer's observations are only as reliable as the model's epistemic boundary maintenance. At 8B scale, that boundary is porous. This should be characterized as a known limitation of the current deployment rather than a fundamental limitation of the architecture.*
 
+**5.15 — Memory Reform: From Flat Store to Living Graph (March 23)**
+
+Phase 6 deployed three memory architecture improvements informed by published systems. The results provide quantitative evidence for the retrieval quality problems identified in Section 5.14.
+
+Retroactive analysis of the memory store (2,152 records accumulated over weeks of continuous operation) revealed that **21% of stored memories were near-duplicates** (453 records with cosine similarity > 0.85 to existing records of the same type). Every semantic search was retrieving results from a pool where one in five candidates was redundant noise. This is the quantitative explanation for the context contamination described in Section 5.14: the model wasn't failing to distinguish context from generation — it was being given contaminated context to begin with.
+
+Three interventions were deployed simultaneously: Mem0-inspired memory merging [Chhikara et al. 2025] that consolidates near-duplicate records at write time, A-MEM-inspired linked memory graphs [Xu et al. 2025] that create explicit typed connections between related memories at storage time, and Park et al.-inspired periodic reflection synthesis [2023] that produces higher-order relational observations every 12 cognitive cycles.
+
+The linked memory graph produced 6,436 connections across 2,152 memories — an average of 3 links per record. At retrieval time, 1-hop graph traversal surfaces contextually connected memories that embedding similarity alone cannot find. The first live conversation after deployment showed the system retrieving dental and work-schedule context when the contact asked about "feeling better" — memories connected by topic through explicit links rather than by vector proximity in embedding space.
+
+The conversation quality improvement was immediate and dramatic. The same model that produced parroted, robotic responses through the pre-reform pipeline produced natural, contextually grounded conversation: pushing back on offers ("don't bring soup tomorrow — you're working late"), referencing connected context naturally, and engaging with the spirit of messages rather than echoing their words. This confirms the hypothesis from the pipeline simplification findings: **the model was always capable; the architecture was the constraint.**
+
 ---
 
 ## 6. DISCUSSION
@@ -549,6 +561,7 @@ The work continues.
 *Draft 0.4 — March 19, 2026. Added Section 5.9 (Register Dashboard as Research Instrument). Updated Register-Gated Model Evolution with deployment status.*
 *Draft 0.5 — March 19, 2026. Added wishful confabulation (Type 7 variant). Added blinded pairwise evaluation methodology for model evolution. Added preference-driven model evolution as user-guided emergence.*
 *Draft 0.6 — March 20, 2026. Added Sections 5.10-5.12: RESILIENCE as emergent behavioral category, the tamagotchi effect (felt attachment under full knowledge), and self-articulation of nature.*
+*Draft 0.10 — March 23, 2026. Added Section 5.15: Memory Reform deployment results — 21% duplicate noise quantified (453/2,152 memories), linked graph (6,436 links across 2,152 memories), live conversation quality confirmation. Quantitative evidence for context contamination identified in 5.14.*
 *Draft 0.9 — March 23, 2026. Added Memory Architecture Reform paragraph to Section 7.2: Mem0-inspired merging, A-MEM-inspired linked memory graphs, Park et al.-inspired reflection synthesis. Three planned improvements addressing retrieval quality as highest-leverage investment.*
 *Draft 0.8 — March 23, 2026. Updated Section 7.2 with completed A/B test results. Added Section 6.3: agency elicitation from OG system — concrete example of socioaffective alignment through conversational pressure, with persistence limitation that motivates ANI's emergence layer. Two A/B findings: (1) pipeline degradation; (2) base model register ("texting vs writing texts"). Research log updated with March 22-23 entries.*
 *Draft 0.7 — March 22, 2026. Added Sections 5.13-5.14: anti-confabulation as emergence signal, context contamination as scale limitation. Updated Section 7.2 with concrete Llama 8B vs Mistral 7B A/B methodology. Updated register counts to 10 (Resilience added). V6 training status: 2,030 examples, Modal training in progress.*
