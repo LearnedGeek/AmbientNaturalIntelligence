@@ -73,17 +73,21 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    // Semantic deduplication threshold — records with cosine similarity above this
-    // within the dedup window are considered duplicates and skipped (BUG-011).
-    private const float SemanticDedupThreshold = 0.85f;
+    // Feature 30: Three-tier dedup thresholds (Mem0-inspired memory merging)
+    // - Above ExactDuplicateThreshold: true duplicate, skip silently
+    // - Between MergeThreshold and ExactDuplicateThreshold: merge via LLM
+    // - Below MergeThreshold: insert as new record
+    private const float ExactDuplicateThreshold = 0.95f;
+    private const float MergeThreshold = 0.85f;
     private static readonly TimeSpan SemanticDedupWindow = TimeSpan.FromHours(4);
 
-    // Memory types that should be deduped. Episodic events (conversations, outreach)
+    // Memory types eligible for dedup/merge. Episodic events (conversations, outreach)
     // should never be deduped — each one is a distinct event even if content is similar.
     private static readonly HashSet<MemoryType> DedupableTypes = new()
     {
         MemoryType.InnerThought,
         MemoryType.Perception,
+        MemoryType.Semantic,  // Feature 30: profile facts are prime merge candidates
     };
 
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
@@ -101,19 +105,48 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             }
         }
 
-        // BUG-011: Semantic deduplication — if a semantically near-identical record of the
-        // same type was saved recently, skip this insert. Prevents thought loops from
-        // polluting memory with dozens of variations on "the shape of silence."
+        // Feature 30: Three-tier dedup/merge (Mem0-inspired)
+        // Exact duplicate (>0.95) → skip
+        // Merge candidate (0.85-0.95) → LLM merge into existing record
+        // Different (<0.85) → insert as new
         if (record.Embedding is not null && DedupableTypes.Contains(record.Type))
         {
-            if (await IsSemanticallyDuplicateAsync(record, ct).ConfigureAwait(false))
+            var mergeResult = await FindMergeCandidateAsync(record, ct).ConfigureAwait(false);
+            if (mergeResult is not null)
             {
-                _log.LogDebug("Semantic dedup: skipping {Type} — too similar to recent memory: {Content}",
-                    record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
-                return;
+                if (mergeResult.Value.IsExactDuplicate)
+                {
+                    _log.LogDebug("Semantic dedup: skipping {Type} — too similar to recent memory: {Content}",
+                        record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
+                    return;
+                }
+
+                // Merge candidate found — merge via LLM and update existing record
+                var merged = await MergeMemoriesAsync(
+                    mergeResult.Value.ExistingId, mergeResult.Value.ExistingContent,
+                    record.Content, ct).ConfigureAwait(false);
+
+                if (merged is not null)
+                {
+                    // Feature 31: Create link before merge overwrites
+                    await CreateLinksAsync(record, ct).ConfigureAwait(false);
+                    return; // Merge succeeded — existing record was updated
+                }
+                // Merge failed — fall through to normal insert
             }
         }
 
+        await InsertMemoryAsync(record, ct).ConfigureAwait(false);
+
+        // Feature 31: Create links to related memories after insert
+        await CreateLinksAsync(record, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Inserts a new memory record into the database.
+    /// </summary>
+    private async Task InsertMemoryAsync(MemoryRecord record, CancellationToken ct)
+    {
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
@@ -146,13 +179,6 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         _log.LogDebug("Saved {Type} memory: {Content}", record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
-
-        // Feature 15: Post-save contradiction check DISABLED.
-        // The LLM-based comparison produced high false-positive rates on casual conversation
-        // ("are you sick?" vs "what's going on?" flagged as contradictory). Each save triggered
-        // up to 3 LLM calls for contradiction detection. The contradiction warnings were also
-        // removed from prompt injection (Phase C), so this was burning cycles for noisy logs.
-        // Re-enable when contradiction detection is improved (e.g., fact-only filtering).
     }
 
     public async Task<IEnumerable<MemoryRecord>> GetByTypeAsync(
@@ -279,6 +305,45 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
+        // Feature 31: Link-enhanced retrieval — follow 1-hop links to find connected memories
+        try
+        {
+            var resultIds = new HashSet<string>(ranked.Select(r => r.Record.Id.ToString()));
+            var linkedMemories = await GetLinkedMemoryIdsAsync(resultIds, conn, ct).ConfigureAwait(false);
+
+            if (linkedMemories.Count > 0)
+            {
+                // Load linked memories not already in results
+                var linkedRecords = new List<ScoredMemory>();
+                foreach (var linkedId in linkedMemories.Where(id => !resultIds.Contains(id)).Take(3))
+                {
+                    await using var linkCmd = conn.CreateCommand();
+                    linkCmd.CommandText = "SELECT * FROM memories WHERE id = $id";
+                    linkCmd.Parameters.AddWithValue("$id", linkedId);
+                    var linkedList = await ReadRecordsAsync(linkCmd, ct).ConfigureAwait(false);
+                    foreach (var linked in linkedList)
+                    {
+                        if (linked.Embedding is null || linked.Embedding.Length != queryEmbedding.Length) continue;
+                        var cosine = CosineSimilarity(queryEmbedding, linked.Embedding);
+                        var composite = ComputeRetrievalScore(queryEmbedding, linked);
+                        // Small bonus for being linked to a direct match
+                        linkedRecords.Add(new ScoredMemory(linked, composite + 0.1f, cosine));
+                    }
+                }
+
+                if (linkedRecords.Count > 0)
+                {
+                    ranked.AddRange(linkedRecords);
+                    ranked = ranked.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
+                    _log.LogDebug("Link-enhanced retrieval: added {Count} linked memories", linkedRecords.Count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Link-enhanced retrieval failed — returning standard results");
+        }
+
         return ranked;
     }
 
@@ -398,47 +463,235 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// recently. Uses cosine similarity against records from the last N hours.
     /// Only called for dedupable types (InnerThought, Perception).
     /// </summary>
-    private async Task<bool> IsSemanticallyDuplicateAsync(MemoryRecord record, CancellationToken ct)
+    /// <summary>
+    /// Feature 30: Three-tier merge candidate search (Mem0-inspired).
+    /// Returns null if no similar record found, or a result indicating
+    /// whether it's an exact duplicate (skip) or merge candidate.
+    /// Searches the 50 most recent records of the same type — no time window.
+    /// </summary>
+    private readonly record struct MergeCandidateResult(
+        string ExistingId, string ExistingContent, bool IsExactDuplicate);
+
+    private async Task<MergeCandidateResult?> FindMergeCandidateAsync(
+        MemoryRecord record, CancellationToken ct)
     {
         try
         {
-            var cutoff = (record.OccurredAt - SemanticDedupWindow).ToString("O");
-
             await using var conn = await OpenAsync(ct).ConfigureAwait(false);
             await using var cmd  = conn.CreateCommand();
 
             cmd.CommandText = """
-                SELECT embedding FROM memories
+                SELECT id, content, embedding FROM memories
                 WHERE type = $type
                   AND embedding IS NOT NULL
-                  AND occurred_at > $cutoff
                 ORDER BY occurred_at DESC
-                LIMIT 20
+                LIMIT 50
                 """;
             cmd.Parameters.AddWithValue("$type", (int)record.Type);
-            cmd.Parameters.AddWithValue("$cutoff", cutoff);
 
             await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
-                if (reader.IsDBNull(0)) continue;
+                if (reader.IsDBNull(2)) continue;
 
-                var existingEmbedding = DeserialisedEmbedding((byte[])reader[0]);
+                var existingEmbedding = DeserialisedEmbedding((byte[])reader[2]);
                 if (existingEmbedding is null || existingEmbedding.Length != record.Embedding!.Length)
                     continue;
 
                 var similarity = CosineSimilarity(record.Embedding!, existingEmbedding);
-                if (similarity >= SemanticDedupThreshold)
-                    return true;
+
+                if (similarity >= ExactDuplicateThreshold)
+                    return new MergeCandidateResult(reader.GetString(0), reader.GetString(1), true);
+
+                if (similarity >= MergeThreshold)
+                    return new MergeCandidateResult(reader.GetString(0), reader.GetString(1), false);
             }
 
-            return false;
+            return null;
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Semantic dedup check failed — saving record to be safe");
-            return false;
+            _log.LogWarning(ex, "Merge candidate search failed — will insert as new");
+            return null;
         }
+    }
+
+    /// <summary>
+    /// Feature 30: LLM-powered memory merge (Mem0-inspired).
+    /// Merges old + new content into a single updated record.
+    /// Returns the merged content, or null if the merge failed.
+    /// </summary>
+    private async Task<string?> MergeMemoriesAsync(
+        string existingId, string existingContent, string newContent, CancellationToken ct)
+    {
+        if (_ollama is null) return null;
+
+        try
+        {
+            var system = "You merge two memories into one concise statement. Preserve the most current and specific information. If they conflict, keep the newer information but note what changed. Output only the merged memory, nothing else. No quotes, no commentary.";
+            var user = $"Old memory: {existingContent}\nNew memory: {newContent}";
+            var merged = await _ollama.InnerMonologueChatAsync(
+                system, Array.Empty<ChatMessage>(), user, ct, keepAlive: "0")
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(merged)) return null;
+
+            merged = merged.Trim().Trim('"');
+
+            // Re-embed the merged content
+            var newEmbedding = await _ollama.EmbedAsync(merged, ct).ConfigureAwait(false);
+
+            // Update the existing record in place
+            await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+            await using var cmd  = conn.CreateCommand();
+            cmd.CommandText = """
+                UPDATE memories
+                SET content = $content, embedding = $embedding, occurred_at = $occurred_at
+                WHERE id = $id
+                """;
+            cmd.Parameters.AddWithValue("$id", existingId);
+            cmd.Parameters.AddWithValue("$content", merged);
+            cmd.Parameters.AddWithValue("$embedding", SerialiseEmbedding(newEmbedding));
+            cmd.Parameters.AddWithValue("$occurred_at", DateTimeOffset.UtcNow.ToString("O"));
+
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+            _log.LogInformation("Memory merge: updated {ExistingId} — '{Old}' + '{New}' → '{Merged}'",
+                existingId,
+                existingContent[..Math.Min(40, existingContent.Length)],
+                newContent[..Math.Min(40, newContent.Length)],
+                merged[..Math.Min(60, merged.Length)]);
+
+            return merged;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Memory merge failed — will insert as new record");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Feature 31: Create links to related memories after save (A-MEM-inspired).
+    /// Non-blocking — link failure does not prevent the save from succeeding.
+    /// </summary>
+    private async Task CreateLinksAsync(MemoryRecord record, CancellationToken ct)
+    {
+        if (record.Embedding is null) return;
+
+        try
+        {
+            await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+            await using var cmd  = conn.CreateCommand();
+
+            // Find recent memories that are related but not duplicates
+            cmd.CommandText = """
+                SELECT id, embedding FROM memories
+                WHERE id != $id
+                  AND embedding IS NOT NULL
+                ORDER BY occurred_at DESC
+                LIMIT 20
+                """;
+            cmd.Parameters.AddWithValue("$id", record.Id.ToString());
+
+            var links = new List<(string targetId, float similarity)>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                if (reader.IsDBNull(1)) continue;
+
+                var existing = DeserialisedEmbedding((byte[])reader[1]);
+                if (existing is null || existing.Length != record.Embedding.Length) continue;
+
+                var similarity = CosineSimilarity(record.Embedding, existing);
+                if (similarity is >= 0.5f and < MergeThreshold)
+                    links.Add((reader.GetString(0), similarity));
+            }
+
+            // Take top 3 by similarity
+            foreach (var (targetId, _) in links.OrderByDescending(l => l.similarity).Take(3))
+            {
+                await using var linkCmd = conn.CreateCommand();
+                linkCmd.CommandText = """
+                    INSERT OR IGNORE INTO memory_links (source_id, target_id, relationship, created_at)
+                    VALUES ($source, $target, 'relates_to', $created)
+                    """;
+                linkCmd.Parameters.AddWithValue("$source", record.Id.ToString());
+                linkCmd.Parameters.AddWithValue("$target", targetId);
+                linkCmd.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToString("O"));
+                await linkCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            if (links.Count > 0)
+                _log.LogDebug("Memory links: created {Count} links for {Id}", Math.Min(links.Count, 3), record.Id);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Memory link creation failed — continuing without links");
+        }
+    }
+
+    /// <summary>
+    /// Feature 32: Returns the N most recent memories across all types, ordered by occurred_at DESC.
+    /// Excludes reflection-sourced memories to prevent reflection loops.
+    /// </summary>
+    public async Task<IEnumerable<MemoryRecord>> GetRecentAsync(
+        int limit = 10, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            SELECT * FROM memories
+            WHERE source_name IS NULL OR source_name != 'reflection'
+            ORDER BY occurred_at DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        return await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Feature 31: Returns all memories linked to the given IDs (1-hop bidirectional).
+    /// </summary>
+    public async Task<IEnumerable<MemoryRecord>> GetLinkedMemoriesAsync(
+        Guid memoryId, string? relationshipType = null, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        var ids = await GetLinkedMemoryIdsAsync(
+            new HashSet<string> { memoryId.ToString() }, conn, ct).ConfigureAwait(false);
+
+        var results = new List<MemoryRecord>();
+        foreach (var id in ids)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM memories WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            results.AddRange(await ReadRecordsAsync(cmd, ct).ConfigureAwait(false));
+        }
+        return results;
+    }
+
+    private static async Task<List<string>> GetLinkedMemoryIdsAsync(
+        HashSet<string> sourceIds, SqliteConnection conn, CancellationToken ct)
+    {
+        if (sourceIds.Count == 0) return new List<string>();
+
+        var idList = string.Join(",", sourceIds.Select(id => $"'{id}'"));
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT DISTINCT target_id FROM memory_links WHERE source_id IN ({idList})
+            UNION
+            SELECT DISTINCT source_id FROM memory_links WHERE target_id IN ({idList})
+            """;
+
+        var linked = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            linked.Add(reader.GetString(0));
+
+        return linked;
     }
 
     public async Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default)
@@ -1055,6 +1308,20 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 notes           TEXT
             );
 
+            -- Feature 31: Linked memory graph (A-MEM-inspired)
+            CREATE TABLE IF NOT EXISTS memory_links (
+                source_id    TEXT NOT NULL,
+                target_id    TEXT NOT NULL,
+                relationship TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (source_id, target_id, relationship),
+                FOREIGN KEY (source_id) REFERENCES memories(id),
+                FOREIGN KEY (target_id) REFERENCES memories(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_memory_links_source ON memory_links (source_id);
+            CREATE INDEX IF NOT EXISTS ix_memory_links_target ON memory_links (target_id);
+
             CREATE INDEX IF NOT EXISTS ix_confab_flags_time ON confabulation_flags (flagged_at DESC);
             CREATE INDEX IF NOT EXISTS ix_memories_type ON memories (type);
             CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
@@ -1258,7 +1525,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             var similarity = CosineSimilarity(newRecord.Embedding, existingEmbedding);
 
             // Sweet spot: same topic (>0.6) but not a duplicate (<0.85)
-            if (similarity is >= 0.6f and < SemanticDedupThreshold)
+            if (similarity is >= 0.6f and < MergeThreshold)
             {
                 candidates.Add((reader.GetString(0), reader.GetString(1), similarity));
             }

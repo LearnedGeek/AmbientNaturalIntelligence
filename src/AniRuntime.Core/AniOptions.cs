@@ -104,6 +104,10 @@ public class AniOptions
     public float HomeostaticNudgeStrength   { get; set; } = 0.03f; // positive nudge magnitude
     public bool  HomeostaticNudgeEnabled    { get; set; } = false;  // off by default — enable after scoring fix confirmed
 
+    // Feature 32: Periodic reflection synthesis (Park et al.-inspired)
+    public bool ReflectionEnabled       { get; set; } = true;
+    public int  ReflectionCycleInterval { get; set; } = 12;  // every ~6 hours at 30-min cycles
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

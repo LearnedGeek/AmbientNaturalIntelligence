@@ -109,6 +109,9 @@ public class CognitiveCycleProcessorTests : AniTestBase
             sources, MockMemory.Object, NullLogger<PerceptionPhase>.Instance);
         var innerThought = new InnerThoughtPhase(
             MockOllama.Object, NullLogger<InnerThoughtPhase>.Instance);
+        var reflection = new ReflectionPhase(
+            MockOllama.Object, MockMemory.Object, DefaultOptions,
+            NullLogger<ReflectionPhase>.Instance);
 
         return new CognitiveCycleProcessor(
             MockMemory.Object,
@@ -125,6 +128,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             innerThought,
             conversationReply,
             outreach,
+            reflection,
             gateState,
             DefaultOptions,
             NullLogger<CognitiveCycleProcessor>.Instance);

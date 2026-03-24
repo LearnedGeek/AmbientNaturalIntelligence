@@ -39,6 +39,7 @@ public class CognitiveCycleProcessor
     private readonly InnerThoughtPhase                 _innerThought;
     private readonly ConversationReplyPhase            _conversationReply;
     private readonly OutreachPhase                     _outreach;
+    private readonly ReflectionPhase                   _reflection;
     private readonly IConversationGateState            _gateState;
     private readonly AniOptions                        _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor>  _log;
@@ -58,6 +59,7 @@ public class CognitiveCycleProcessor
         InnerThoughtPhase              innerThought,
         ConversationReplyPhase         conversationReply,
         OutreachPhase                  outreach,
+        ReflectionPhase                reflection,
         IConversationGateState         gateState,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
@@ -76,6 +78,7 @@ public class CognitiveCycleProcessor
         _innerThought      = innerThought;
         _conversationReply = conversationReply;
         _outreach          = outreach;
+        _reflection        = reflection;
         _gateState         = gateState;
         _aniOptions        = aniOptions.Value;
         _log               = log;
@@ -219,6 +222,10 @@ public class CognitiveCycleProcessor
         obs.EnergyDelta = postShift.Energy - preShiftE;
         obs.WorryDelta = postShift.Worry - preShiftWo;
         obs.PlayfulnessDelta = postShift.Playfulness - preShiftP;
+
+        // Feature 32: Periodic reflection synthesis (Park et al.)
+        // Runs every N cycles — synthesizes recent memories into higher-order observations.
+        await _reflection.TryRunAsync(snapshot.CharacterState, ct).ConfigureAwait(false);
 
         // Phase 5: Desire update
         await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);

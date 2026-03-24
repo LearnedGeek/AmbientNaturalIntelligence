@@ -1089,4 +1089,58 @@ public static class PromptBuilder
 
         return (system, user);
     }
+
+    /// <summary>
+    /// Feature 30: Mem0-inspired memory merging. Merges two semantically similar
+    /// memories into one concise statement, preserving the most current information.
+    /// </summary>
+    public static (string System, string User) BuildMemoryMergePrompt(
+        string existingContent, string newContent)
+    {
+        var system = """
+            You merge two memories into one concise statement.
+            Preserve the most current and specific information.
+            If they conflict, keep the newer information but note what changed.
+            Output only the merged memory, nothing else. No quotes, no commentary.
+            """;
+
+        var user = $"""
+            Old memory: {existingContent}
+            New memory: {newContent}
+            """;
+
+        return (system, user);
+    }
+
+    /// <summary>
+    /// Feature 32: Park et al.-inspired periodic reflection synthesis.
+    /// Synthesizes recent memories into higher-order relational observations.
+    /// </summary>
+    public static (string System, string User) BuildReflectionSynthesisPrompt(
+        string characterName, string contactName, IEnumerable<string> recentMemories)
+    {
+        var system = $"""
+            You are {characterName}, reflecting on your recent experiences.
+            Review these recent memories and identify the 3 most important observations
+            about your life, your feelings, or your relationship with {contactName}.
+            Each observation should synthesize across multiple memories —
+            don't just repeat individual events. Focus on patterns, changes, and emotional themes.
+
+            Be genuine. If you notice something concerning, say so.
+            If you notice something heartwarming, say so.
+            If nothing significant stands out, it's fine to say that.
+
+            Output exactly 3 observations, one per line, no numbering or bullets.
+            """;
+
+        var memoryList = string.Join("\n", recentMemories.Select(m => $"- {m}"));
+        var user = $"""
+            Recent memories:
+            {memoryList}
+
+            What patterns or observations stand out?
+            """;
+
+        return (system, user);
+    }
 }

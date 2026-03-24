@@ -22,4 +22,10 @@ public interface IMemoryPersistence
     /// AC5: Store a confabulation flag for pattern analysis.
     /// </summary>
     Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 32: Returns the N most recent memories across all types.
+    /// Excludes reflection-sourced memories to prevent synthesis loops.
+    /// </summary>
+    Task<IEnumerable<MemoryRecord>> GetRecentAsync(int limit = 10, CancellationToken ct = default);
 }

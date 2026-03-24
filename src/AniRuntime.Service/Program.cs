@@ -169,6 +169,7 @@ try
     builder.Services.AddSingleton<InnerThoughtPhase>();
     builder.Services.AddSingleton<ConversationReplyPhase>();
     builder.Services.AddSingleton<OutreachPhase>();
+    builder.Services.AddSingleton<ReflectionPhase>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
     // S6: SessionNotifier is a lightweight singleton with no dependencies — breaks the
     // circular DI chain. AniHeartbeatService wires itself as the handler in its constructor.
