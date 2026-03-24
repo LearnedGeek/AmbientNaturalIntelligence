@@ -38,14 +38,26 @@ public class EmergenceObserver : IEmergenceObserver
     {
         var score = ResonanceScorer.Score(observation);
 
+        // Feature 38: Classify emergence types
+        var emergenceTypes = EmergenceClassifier.Classify(observation);
+        string? emergenceTypesJson = emergenceTypes.Count > 0
+            ? JsonSerializer.Serialize(emergenceTypes, JsonOpts)
+            : null;
+
+        if (emergenceTypes.Count > 0)
+        {
+            _log.LogInformation("Emergence types detected: {Types}", string.Join(", ", emergenceTypes));
+        }
+
         // Always log the scored cycle — this is the research instrument
         var logEntry = new EmergenceLogEntry
         {
             Timestamp            = observation.Timestamp,
             EntryType            = "CycleScored",
             ResonanceScore       = score,
-            DetailsJson          = BuildDetailsJson(observation, score),
+            DetailsJson          = BuildDetailsJson(observation, score, emergenceTypes),
             CycleObservationJson = JsonSerializer.Serialize(observation, JsonOpts),
+            EmergenceTypesJson   = emergenceTypesJson,
         };
 
         await _store.WriteLogEntryAsync(logEntry, ct).ConfigureAwait(false);
@@ -133,7 +145,7 @@ public class EmergenceObserver : IEmergenceObserver
             r.Theme.Equals(theme, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string BuildDetailsJson(CycleObservation obs, float score)
+    private static string BuildDetailsJson(CycleObservation obs, float score, List<string>? emergenceTypes = null)
     {
         var details = new
         {
@@ -151,6 +163,7 @@ public class EmergenceObserver : IEmergenceObserver
             outcome     = obs.OutreachOutcome,
             conversation = obs.WasConversationCycle,
             silence     = obs.ChoseSilence,
+            emergenceTypes = emergenceTypes?.Count > 0 ? emergenceTypes : null,
         };
         return JsonSerializer.Serialize(details, JsonOpts);
     }

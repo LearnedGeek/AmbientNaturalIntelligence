@@ -1,7 +1,10 @@
+using System.Text.Json;
 using AniRuntime.Actions;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
+using AniRuntime.Emergence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -24,6 +27,7 @@ public class AdminCommandHandler
     private readonly IConversationService _conversations;
     private readonly DesireEngine        _desire;
     private readonly AniActionDispatcher _dispatcher;
+    private readonly EmergenceStore      _emergence;
     private readonly AniOptions          _aniOptions;
     private readonly ILogger<AdminCommandHandler> _log;
 
@@ -38,6 +42,7 @@ public class AdminCommandHandler
         IConversationService            conversations,
         DesireEngine                    desire,
         AniActionDispatcher             dispatcher,
+        EmergenceStore                  emergence,
         IOptions<AniOptions>            aniOptions,
         ILogger<AdminCommandHandler>    log)
     {
@@ -47,6 +52,7 @@ public class AdminCommandHandler
         _conversations = conversations;
         _desire        = desire;
         _dispatcher    = dispatcher;
+        _emergence     = emergence;
         _aniOptions    = aniOptions.Value;
         _log           = log;
     }
@@ -76,6 +82,7 @@ public class AdminCommandHandler
             "flag"       => await HandleFlagAsync(ct).ConfigureAwait(false),
             "new-thread" => await HandleNewThreadAsync(ct).ConfigureAwait(false),
             "rebuild-links" => await HandleRebuildLinksAsync(ct).ConfigureAwait(false),
+            "rebuild-emergence" => await HandleRebuildEmergenceAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -96,6 +103,7 @@ public class AdminCommandHandler
             "///flag       — Flag last reply as confabulation",
             "///new-thread — Close current thread, start fresh",
             "///rebuild-links — Build memory graph links (one-time, may take minutes)",
+            "///rebuild-emergence — Tag historical emergence log with EM1-EM6 types",
         });
     }
 
@@ -291,6 +299,22 @@ public class AdminCommandHandler
         {
             _log.LogError(ex, "Rebuild links failed");
             return $"ERROR: Rebuild failed — {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleRebuildEmergenceAsync(CancellationToken ct)
+    {
+        try
+        {
+            _log.LogInformation("Admin: rebuild-emergence — backfilling emergence types on historical log entries");
+            var tagged = await _emergence.BackfillEmergenceTypesAsync(ct).ConfigureAwait(false);
+            _log.LogInformation("Admin: rebuild-emergence complete — {Count} entries tagged", tagged);
+            return $"Emergence taxonomy backfill complete.\n{tagged} entries tagged with EM1-EM6 types.";
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Rebuild emergence failed");
+            return $"ERROR: Rebuild emergence failed — {ex.Message}";
         }
     }
 

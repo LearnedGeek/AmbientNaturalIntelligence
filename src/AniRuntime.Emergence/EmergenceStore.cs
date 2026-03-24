@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Emergence.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -84,6 +85,9 @@ public class EmergenceStore : IDisposable
             CREATE INDEX IF NOT EXISTS ix_emergence_log_type ON emergence_log (entry_type);
             CREATE INDEX IF NOT EXISTS ix_resonance_theme    ON resonance_records (theme);
 
+            -- Feature 38: Emergence taxonomy column (nullable — null means no emergence detected)
+            -- ALTER TABLE is idempotent when wrapped in a try; SQLite doesn't support IF NOT EXISTS for columns.
+
             -- E2 schema (created now, unused in E1 — avoids future migration)
             CREATE TABLE IF NOT EXISTS preference_signals (
                 id                        TEXT PRIMARY KEY,
@@ -98,6 +102,19 @@ public class EmergenceStore : IDisposable
             );
             """;
         cmd.ExecuteNonQuery();
+
+        // Feature 38: Add emergence_types column if it doesn't exist
+        try
+        {
+            using var alterCmd = conn.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE emergence_log ADD COLUMN emergence_types TEXT";
+            alterCmd.ExecuteNonQuery();
+        }
+        catch (SqliteException) { /* Column already exists — safe to ignore */ }
+
+        using var idxCmd = conn.CreateCommand();
+        idxCmd.CommandText = "CREATE INDEX IF NOT EXISTS ix_emergence_log_types ON emergence_log (emergence_types)";
+        idxCmd.ExecuteNonQuery();
 
         _log.LogInformation("Emergence database initialised ({Conn})", _connectionString);
     }
@@ -168,14 +185,15 @@ public class EmergenceStore : IDisposable
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO emergence_log (timestamp, entry_type, resonance_score, details_json, cycle_observation_json)
-            VALUES (@ts, @type, @score, @details, @obs)
+            INSERT INTO emergence_log (timestamp, entry_type, resonance_score, details_json, cycle_observation_json, emergence_types)
+            VALUES (@ts, @type, @score, @details, @obs, @etypes)
             """;
         cmd.Parameters.AddWithValue("@ts", entry.Timestamp.ToString("o"));
         cmd.Parameters.AddWithValue("@type", entry.EntryType);
         cmd.Parameters.AddWithValue("@score", entry.ResonanceScore.HasValue ? (object)entry.ResonanceScore.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@details", entry.DetailsJson);
         cmd.Parameters.AddWithValue("@obs", entry.CycleObservationJson is not null ? (object)entry.CycleObservationJson : DBNull.Value);
+        cmd.Parameters.AddWithValue("@etypes", entry.EmergenceTypesJson is not null ? (object)entry.EmergenceTypesJson : DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -187,7 +205,7 @@ public class EmergenceStore : IDisposable
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, timestamp, entry_type, resonance_score, details_json, cycle_observation_json FROM emergence_log ORDER BY timestamp DESC LIMIT @limit";
+        cmd.CommandText = "SELECT id, timestamp, entry_type, resonance_score, details_json, cycle_observation_json, emergence_types FROM emergence_log ORDER BY timestamp DESC LIMIT @limit";
         cmd.Parameters.AddWithValue("@limit", limit);
 
         var entries = new List<EmergenceLogEntry>();
@@ -202,9 +220,123 @@ public class EmergenceStore : IDisposable
                 ResonanceScore       = reader.IsDBNull(3) ? null : reader.GetFloat(3),
                 DetailsJson          = reader.GetString(4),
                 CycleObservationJson = reader.IsDBNull(5) ? null : reader.GetString(5),
+                EmergenceTypesJson   = reader.IsDBNull(6) ? null : reader.GetString(6),
             });
         }
         return entries;
+    }
+
+    // ── Emergence Type Queries (Feature 38) ────────────────────────────────
+
+    public async Task<Dictionary<string, int>> GetTypeDistributionAsync(
+        int days = 30, CancellationToken ct = default)
+    {
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-days).ToString("o");
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT emergence_types FROM emergence_log
+            WHERE emergence_types IS NOT NULL AND timestamp >= @cutoff
+            """;
+        cmd.Parameters.AddWithValue("@cutoff", cutoff);
+
+        var distribution = new Dictionary<string, int>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var json = reader.GetString(0);
+            var types = JsonSerializer.Deserialize<List<string>>(json);
+            if (types is null) continue;
+
+            foreach (var type in types)
+            {
+                distribution.TryGetValue(type, out var count);
+                distribution[type] = count + 1;
+            }
+        }
+        return distribution;
+    }
+
+    public async Task<IReadOnlyList<EmergenceLogEntry>> GetHighlightsAsync(
+        int limit = 10, float minScore = 0.4f, CancellationToken ct = default)
+    {
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, timestamp, entry_type, resonance_score, details_json, cycle_observation_json, emergence_types
+            FROM emergence_log
+            WHERE emergence_types IS NOT NULL AND resonance_score >= @minScore
+            ORDER BY resonance_score DESC
+            LIMIT @limit
+            """;
+        cmd.Parameters.AddWithValue("@minScore", minScore);
+        cmd.Parameters.AddWithValue("@limit", limit);
+
+        var entries = new List<EmergenceLogEntry>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            entries.Add(new EmergenceLogEntry
+            {
+                Id                   = reader.GetInt64(0),
+                Timestamp            = DateTimeOffset.Parse(reader.GetString(1)),
+                EntryType            = reader.GetString(2),
+                ResonanceScore       = reader.IsDBNull(3) ? null : reader.GetFloat(3),
+                DetailsJson          = reader.GetString(4),
+                CycleObservationJson = reader.IsDBNull(5) ? null : reader.GetString(5),
+                EmergenceTypesJson   = reader.IsDBNull(6) ? null : reader.GetString(6),
+            });
+        }
+        return entries;
+    }
+
+    public async Task<int> BackfillEmergenceTypesAsync(CancellationToken ct = default)
+    {
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        // Read all entries that have CycleObservation JSON but no emergence types
+        await using var readCmd = conn.CreateCommand();
+        readCmd.CommandText = """
+            SELECT id, cycle_observation_json FROM emergence_log
+            WHERE cycle_observation_json IS NOT NULL
+            """;
+
+        var updates = new List<(long id, string typesJson)>();
+        await using var reader = await readCmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var id = reader.GetInt64(0);
+            var obsJson = reader.GetString(1);
+
+            try
+            {
+                var obs = JsonSerializer.Deserialize<Core.Models.CycleObservation>(obsJson, JsonDefaults.CamelCase);
+                if (obs is null) continue;
+
+                var types = EmergenceClassifier.Classify(obs);
+                if (types.Count > 0)
+                    updates.Add((id, JsonSerializer.Serialize(types)));
+            }
+            catch { /* skip malformed entries */ }
+        }
+
+        // Apply updates
+        foreach (var (id, typesJson) in updates)
+        {
+            await using var updateCmd = conn.CreateCommand();
+            updateCmd.CommandText = "UPDATE emergence_log SET emergence_types = @types WHERE id = @id";
+            updateCmd.Parameters.AddWithValue("@types", typesJson);
+            updateCmd.Parameters.AddWithValue("@id", id);
+            await updateCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        return updates.Count;
     }
 
     // ── Stats ───────────────────────────────────────────────────────────────

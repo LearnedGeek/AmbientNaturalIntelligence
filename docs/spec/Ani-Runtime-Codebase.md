@@ -139,6 +139,16 @@ AniRuntime.sln
 │   │   ├── VoiceCallSession.cs                  # In-memory session state per active call (shared batch + streaming)
 │   │   └── AniRuntime.Voice.csproj
 │   │
+│   ├── AniRuntime.Emergence/          # Emergence Layer E1 — passive observation + taxonomy
+│   │   ├── EmergenceObserver.cs       # Scores cognitive cycles for novelty, complexity, coherence
+│   │   ├── EmergenceClassifier.cs     # Feature 38: heuristic classifier tagging cycles with EM1–EM6 emergence types
+│   │   ├── EmergenceStore.cs          # SQLite persistence (ani-emergence.db) + GetTypeDistributionAsync, GetHighlightsAsync
+│   │   ├── EmergenceExtensions.cs     # DI wiring: AddEmergence() + MapEmergence()
+│   │   ├── Models/
+│   │   │   ├── EmergenceLogEntry.cs   # + EmergenceTypesJson (nullable JSON array of matched EM types)
+│   │   │   └── EmergenceOptions.cs
+│   │   └── AniRuntime.Emergence.csproj
+│   │
 │   └── AniRuntime.MauiClient/       # Phase 5: Android voice app (MAUI, net10.0-android)
 │       ├── MainPage.xaml / .cs          # UI + WebSocket client (binary PCM + JSON control messages)
 │       ├── MauiProgram.cs               # Minimal DI wiring
@@ -782,6 +792,13 @@ conversation_messages: id (AUTOINCREMENT), thread_id (FK), role, content, sent_a
 
 Thread closure saves full conversation as single episodic memory record.
 
+7.3 EmergenceStore
+Separate SQLite file (data/ani-emergence.db). Feature-flagged via EmergenceOptions.Enabled.
+
+emergence_log: id (INTEGER PK), cycle_id, score (REAL), novelty, complexity, coherence, inner_thought, created_at, emergence_types (TEXT nullable — JSON array of matched EM1–EM6 types, Feature 38)
+
+Queries: GetRecentAsync, GetTypeDistributionAsync (Feature 38), GetHighlightsAsync (Feature 38).
+
 8. API Contracts
 
 8.1 Ollama
@@ -969,6 +986,7 @@ Test files:
 25. Interface Segregation on memory — `IMemoryService` split into `IMemoryPersistence`, `IMemorySearch`, `IStateStore`, `IMemoryAnalytics`, `IMemoryMaintenance`. Each consumer declares its minimum dependency surface. `SqliteMemoryService` implements all five.
 26. Coordinator pattern — `CognitiveCycleProcessor` is a pure coordinator (~340 lines). Perception polling lives in `PerceptionPhase`, inner thought generation in `InnerThoughtPhase`, conversation feature detection in `ConversationFeatureDetector`. Each phase is independently testable.
 27. Charming dishonesty detection — `ContainsFalseConfidenceClaim()` catches Type 7 confabulation patterns (retroactive epistemic rewriting). When detected, message is regenerated with anti-confabulation instruction. Runtime defense, not model fix.
+28. Emergence taxonomy (Feature 38) — `EmergenceClassifier` tags each scored cycle with EM1–EM6 emergence types via heuristic rules. Types stored as JSON array in `emergence_types` column on `emergence_log`. Dashboard queries via `GetTypeDistributionAsync` and `GetHighlightsAsync`. Passive observation only — no feedback into cognitive cycle.
 
 14. Change Log
 

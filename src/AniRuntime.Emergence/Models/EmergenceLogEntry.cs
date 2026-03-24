@@ -22,4 +22,7 @@ public class EmergenceLogEntry
 
     /// <summary>Full CycleObservation serialized as JSON — ground truth for research.</summary>
     public string? CycleObservationJson { get; set; }
+
+    /// <summary>JSON array of matched emergence type codes, e.g. ["EM2-symbolic-processing"]. Null if none detected.</summary>
+    public string? EmergenceTypesJson { get; set; }
 }

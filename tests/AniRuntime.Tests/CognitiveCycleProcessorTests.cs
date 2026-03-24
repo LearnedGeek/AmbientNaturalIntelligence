@@ -1,11 +1,14 @@
 using AniRuntime.Actions;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Emergence;
+using AniRuntime.Emergence.Models;
 using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Tests.Infrastructure;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace AniRuntime.Tests;
@@ -77,11 +80,19 @@ public class CognitiveCycleProcessorTests : AniTestBase
         _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
                           .ReturnsAsync((ConversationThread?)null);
 
+        var emergenceOptions = Options.Create(new EmergenceOptions
+        {
+            Enabled = true,
+            EmergenceDbPath = $"emergence-test-{Guid.NewGuid():N}",
+        });
+        var emergenceStore = new EmergenceStore(emergenceOptions, NullLogger<EmergenceStore>.Instance);
+
         var adminHandler = new AdminCommandHandler(
             MockMemory.Object, MockMemory.Object, MockMemory.Object,
             _mockConversations.Object,
             desire,
             dispatcher,
+            emergenceStore,
             DefaultOptions,
             NullLogger<AdminCommandHandler>.Instance);
 

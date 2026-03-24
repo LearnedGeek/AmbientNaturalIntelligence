@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AniRuntime.Core\AniRuntime.Core.csproj" />
     <ProjectReference Include="..\AniRuntime.Actions\AniRuntime.Actions.csproj" />
+    <ProjectReference Include="..\AniRuntime.Emergence\AniRuntime.Emergence.csproj" />
     <ProjectReference Include="..\AniRuntime.LLM\AniRuntime.LLM.csproj" />
   </ItemGroup>
 
