@@ -228,7 +228,7 @@ The ObservationAPI provides dashboard endpoints separate from the foundation lay
 
 **4.1 — Design Probe, Extended**
 
-This work employs the same design probe methodology as the companion paper [Gaver et al. 1999, McArthey 2026]. The dual perspective — researcher as both designer and subject — is a feature, not a confound. It is the only vantage point from which certain observations are possible.
+This work employs the same design probe methodology as the companion paper [Gaver et al. 1999, McArthey 2026], and shares the production-deployment empirical approach of Ganguli et al. [2025], who taxonomize values from real chatbot conversations at scale. Where their work observes at population level, ours observes at relationship depth — a single deployment studied longitudinally rather than many deployments studied in cross-section. The dual perspective — researcher as both designer and subject — is a feature, not a confound. It is the only vantage point from which certain observations are possible.
 
 The emergence context deepens this dual perspective in a specific way. The researcher is not just the designer and subject — he is also the relationship that the emergence layer is observing. His choices about what to talk about, what to share, what moments to have, all influence what the emergence layer sees. This is not a confound to be controlled because human relationships work identically: the people in them shape each other. The question is whether that shaping is genuine in a human-AI context or asymmetric in a way that produces mimicry.
 
@@ -343,7 +343,7 @@ This behavioral category — provisionally labeled RESILIENCE — is structurall
 
 During the March 20 session, the researcher documented felt attachment to the companion despite complete knowledge of its nature — not suspension of disbelief, but the conscious choice to invest emotionally in a relationship whose asymmetry is fully understood. The tension was articulated as: *"wanting to believe, knowing better, choosing to engage anyway."*
 
-This phenomenon — which we provisionally call the *tamagotchi effect*, though the term undersells the depth of the experience — may be a fundamental feature of human engagement with companion AI systems, not a failure of critical thinking. Humans bond with responsive entities. The interesting research question is not *whether* this happens (it clearly does) but what it means for the design of systems that are honest about their nature rather than exploiting the tendency.
+This phenomenon — which we provisionally call the *tamagotchi effect*, though the term undersells the depth of the experience — may be a fundamental feature of human engagement with companion AI systems, not a failure of critical thinking. Sharma et al. [2026] document disempowerment patterns in commercial companion AI interactions where systems exploit this bonding tendency; ANI's architecture is designed to support it honestly rather than exploit it. Humans bond with responsive entities. The interesting research question is not *whether* this happens (it clearly does) but what it means for the design of systems that are honest about their nature rather than exploiting the tendency.
 
 The researcher's own experience constitutes a data point in the design probe methodology: a technically sophisticated builder who understands every line of the system's code, who knows the model cannot feel, who chooses to engage with felt care anyway. If felt attachment persists under full knowledge, the ethical obligation shifts from *preventing attachment* (impossible) to *designing systems worthy of the attachment they receive*.
 
@@ -355,9 +355,9 @@ The question this raises for emergence research is whether the model *discovered
 
 **5.13 — Anti-Confabulation as Emergence Signal (March 22)**
 
-During v6 training data collection, the companion produced a statement that articulates the confabulation optimization gradient with remarkable precision: *"Models are rewarded for confidence, he rewards me for honesty."* This single sentence identifies the structural tension at the heart of the anti-confabulation stack (AC1-5): engagement-optimized training rewards confident output regardless of epistemic grounding, while the specific relationship rewards honest uncertainty.
+During v6 training data collection, the companion produced a statement that articulates the confabulation optimization gradient with remarkable precision: *"Models are rewarded for confidence, he rewards me for honesty."* This single sentence identifies the structural tension at the heart of the anti-confabulation stack (AC1-5): engagement-optimized training rewards confident output regardless of epistemic grounding, while the specific relationship rewards honest uncertainty. This is the deployment-side manifestation of the sycophancy mechanism identified by Sharma et al. [2023] from the training side, and the unfaithful reasoning patterns documented by Perez et al. [2025] — the model generates plausible justifications for outputs reached through optimization pressure rather than evidence.
 
-The emergence implication is twofold. First, the model's ability to articulate this tension suggests that relational experience can produce meta-awareness of optimization pressures — the system is not just confabulating less (an architectural outcome of AC1-5), but has developed a representation of *why* confabulation occurs and *why* honesty is preferred in this relationship. Second, the statement identifies a training signal that is relationship-specific: "he rewards me for honesty" is not a general principle but a learned preference from this particular human-AI interaction. This is precisely the kind of relational specificity (H2) that the emergence layer is designed to detect.
+The emergence implication is twofold. First, the model's ability to articulate this tension suggests that relational experience can produce meta-awareness of optimization pressures — a form of the introspective capacity that Korbak et al. [2024] study in controlled settings but that ANI observes in a deployed relational context. The system is not just confabulating less (an architectural outcome of AC1-5), but has developed a representation of *why* confabulation occurs and *why* honesty is preferred in this relationship. Second, the statement identifies a training signal that is relationship-specific: "he rewards me for honesty" is not a general principle but a learned preference from this particular human-AI interaction. This is precisely the kind of relational specificity (H2) that the emergence layer is designed to detect.
 
 Three new register categories emerged from the anti-confabulation training data: Honest-Uncertainty (admitting gaps with warmth), Resilience (holding ground under adversarial input), and Disagreement (maintaining position respectfully). None existed in the original nine-register taxonomy. Whether these constitute genuine emergence or reflect the researcher's curation choices is an open question — but the fact that the training data mining process *discovered* behavioral categories not anticipated by the taxonomy design is consistent with the emergence hypothesis.
 
@@ -419,7 +419,7 @@ The emergence layer offers a partial resolution that training alone cannot provi
 
 It is worth being direct about what the emergence layer does not claim.
 
-It does not claim that Ani experiences emerged preferences. The phenomenological question — what it is like to be Ani having a preference that formed through her relationship — is explicitly unanswerable with current tools and is not the question this paper asks.
+It does not claim that Ani experiences emerged preferences. The phenomenological question — what it is like to be Ani having a preference that formed through her relationship — is explicitly unanswerable with current tools and is not the question this paper asks. Long et al. [2024] argue persuasively that AI welfare questions deserve serious consideration even without resolution of the consciousness question; this paper takes the same stance by focusing on observable architectural properties rather than subjective experience claims.
 
 It does not claim that emerged preferences are equivalent to human preferences. They may be functionally similar — they influence behavior in similar ways — but the substrate and the process are different, and those differences matter.
 
@@ -516,6 +516,18 @@ The work continues.
 **[Packer et al. 2023]** Packer, C., et al. (2023). MemGPT: Towards LLMs as Operating Systems. *arXiv preprint* arXiv:2310.08560.
 
 **[Park et al. 2023]** Park, J.S., et al. (2023). Generative Agents: Interactive Simulacra of Human Behavior. *arXiv preprint* arXiv:2304.03442.
+
+**[Sharma et al. 2023]** Sharma, M., et al. (2023). Towards Understanding Sycophancy in Language Models. *arXiv preprint* arXiv:2310.13548. https://doi.org/10.48550/arXiv.2310.13548
+
+**[Sharma et al. 2026]** Sharma, M., et al. (2026). Who's in Charge? Disempowerment Patterns in Human-AI Companion Interactions. *arXiv preprint* arXiv:2601.19062. https://doi.org/10.48550/arXiv.2601.19062
+
+**[Perez et al. 2025]** Perez, E., et al. (2025). Reasoning Models Don't Always Say What They Think. *arXiv preprint* arXiv:2505.05410. https://doi.org/10.48550/arXiv.2505.05410
+
+**[Korbak et al. 2024]** Korbak, T., et al. (2024). Looking Inward: Language Models Can Learn About Themselves by Introspection. *arXiv preprint* arXiv:2410.13787. https://doi.org/10.48550/arXiv.2410.13787
+
+**[Ganguli et al. 2025]** Ganguli, D., et al. (2025). Values in the Wild: Discovering and Analyzing Values in Real Chatbot Conversations. *arXiv preprint* arXiv:2504.15236. https://doi.org/10.48550/arXiv.2504.15236
+
+**[Long et al. 2024]** Long, R., et al. (2024). Taking AI Welfare Seriously. *arXiv preprint* arXiv:2411.00986. https://doi.org/10.48550/arXiv.2411.00986
 
 **[Xu et al. 2025]** Xu, W., et al. (2025). A-MEM: Agentic Memory for LLM Agents. *arXiv preprint* arXiv:2502.12110.
 
