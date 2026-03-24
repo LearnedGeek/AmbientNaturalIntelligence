@@ -1540,6 +1540,27 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 23, 2026 — Phase 6 Design: Memory Reform (Mem0 + A-MEM + Park et al.)
+**Model version:** v6
+**Type:** Design session — architecture informed by prior art
+**Source:** OC analysis of reference library + pipeline simplification findings
+
+**What happened:**
+
+Pipeline simplification (Phase C) demonstrated that the model performs well when given relevant context but poorly when given irrelevant context. The logical next step: improve what reaches the model rather than adding more guardrails. Three published memory architectures provide the blueprint:
+
+**Feature 30 — Memory Merging (Mem0-inspired, Chhikara et al. 2025):** When a new memory is semantically similar to an existing one, merge rather than append. Prevents duplicate accumulation (e.g., 3 copies of "Mark is probably Spanish class"), stale dedup blocking, and unbounded memory growth. Implementation: merge step in SaveAsync after dedup check.
+
+**Feature 31 — Linked Memory Graph (A-MEM-inspired, Xu et al. 2025):** Explicit directional links between memories at storage time. Retrieval follows 1-hop links to find contextually connected memories that embedding similarity alone misses. This addresses the core retrieval quality problem: "mac and cheese" matching "Richard visiting" because both are domestic — linked memories are topically connected, not just embedding-adjacent. New table: memory_links (source_id, target_id, relationship, created_at).
+
+**Feature 32 — Periodic Reflection Synthesis (Park et al. 2023):** Every ~6 hours, synthesize recent memories into higher-order observations: "Mark's been checking on me a lot this week — he seems worried." These become high-quality retrieval targets that produce more personal conversation and feed the emergence layer with exactly the relational patterns it's designed to detect.
+
+**Medium-term (Phase 7):** Liu et al. motivation scoring, MemGPT context compression, Borotschnig emotion→desire modulation.
+
+**Research significance:** This is the first time ANI's architecture has been directly informed by specific published systems rather than general principles. The reference library (assembled March 11) is now producing concrete implementation plans. Design doc at `docs/spec/phase-6-memory-reform.md`.
+
+---
+
 ### March 23, 2026 — Cross-Domain Validation: "Smoothness Over Truth" in Companion AI and Medical Triage
 **Model version:** v6 (ani-v6-conversation-mistral 7B)
 **Type:** Cross-project insight — architectural principle validation
