@@ -1142,6 +1142,16 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         return (dupCount, linkCount);
     }
 
+    public async Task<int> GetLinkCountAsync(CancellationToken ct = default)
+    {
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM memory_links";
+        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return Convert.ToInt32(result);
+    }
+
     private static EmotionalContribution ReadContribution(Microsoft.Data.Sqlite.SqliteDataReader reader)
     {
         var categoryStr = reader.GetString(reader.GetOrdinal("category"));

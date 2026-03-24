@@ -1,0 +1,156 @@
+@page "/memory"
+@using System.Text.Json
+@using AniRuntime.Core.Interfaces
+@using AniRuntime.Core.Models
+@using AniRuntime.Core.Utilities
+
+<h1>Memory Graph</h1>
+<p>What Ani knows — synthesized from conversations, reflections, and shared experiences.</p>
+
+@if (_loading)
+{
+    <p><em>Loading memories...</em></p>
+}
+else
+{
+    <section>
+        <h3>Stats</h3>
+        <div class="grid">
+            <article>
+                <header>Total Memories</header>
+                <p style="font-size: 2em; text-align: center;">@_totalCount</p>
+            </article>
+            <article>
+                <header>Profile Facts</header>
+                <p style="font-size: 2em; text-align: center;">@_profileItems.Count</p>
+            </article>
+            <article>
+                <header>Memory Links</header>
+                <p style="font-size: 2em; text-align: center;">@_linkCount</p>
+            </article>
+            <article>
+                <header>Categories</header>
+                <p style="font-size: 2em; text-align: center;">@_categories.Count</p>
+            </article>
+        </div>
+    </section>
+
+    @foreach (var category in _categories)
+    {
+        var items = _profileItems.Where(p => p.Category == category.Key).ToList();
+        var color = CategoryColor(category.Key);
+
+        <section>
+            <h3 style="border-left: 3px solid @color; padding-left: 0.5em;">
+                @category.Key
+                <small style="opacity: 0.6; font-weight: normal; margin-left: 0.5em;">(@items.Count)</small>
+            </h3>
+
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                @foreach (var item in items)
+                {
+                    var displayContent = StripPrefix(item.Content, category.Key);
+                    <article style="border-left: 3px solid @(color)80; margin: 0; padding: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <p style="margin: 0; flex: 1;">@displayContent</p>
+                            <div style="display: flex; gap: 0.3em; align-items: center; margin-left: 0.5em; flex-shrink: 0;">
+                                @if (item.IsAnchored)
+                                {
+                                    <small style="background: #4caf5033; color: #4caf50; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.7em;">anchored</small>
+                                }
+                                <small style="opacity: 0.5;">@item.Importance.ToString("F1")</small>
+                            </div>
+                        </div>
+                        <small style="opacity: 0.4; display: block; margin-top: 0.3em;">
+                            @item.CreatedAt.LocalDateTime.ToString("MMM d, h:mm tt")
+                        </small>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [Inject] private IServiceProvider Services { get; set; } = default!;
+
+    private bool _loading = true;
+    private int _totalCount;
+    private int _linkCount;
+    private List<ProfileItem> _profileItems = new();
+    private Dictionary<string, int> _categories = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var memory = Services.GetService<IMemoryService>();
+        if (memory is null) return;
+
+        // Get profile memories
+        var semantics = (await memory.GetByTypeAsync(MemoryType.Semantic, 200)).ToList();
+        _profileItems = semantics
+            .Select(r => new ProfileItem
+            {
+                Id = r.Id.ToString(),
+                Category = Categorize(r.Content),
+                Content = r.Content,
+                Importance = r.Importance,
+                IsAnchored = r.AnchoredAt.HasValue,
+                CreatedAt = r.CreatedAt,
+            })
+            .Where(r => r.Category != "Other")
+            .OrderByDescending(r => r.Importance)
+            .ToList();
+
+        _categories = _profileItems
+            .GroupBy(p => p.Category)
+            .OrderByDescending(g => g.Key == "About Mark" ? 4 : g.Key == "Interests" ? 3 : g.Key == "Shared Experiences" ? 2 : g.Key == "About Ani" ? 1 : 0)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Get stats
+        var maintenance = Services.GetService<IMemoryMaintenance>();
+        if (maintenance is not null)
+        {
+            _linkCount = await maintenance.GetLinkCountAsync();
+        }
+        _totalCount = semantics.Count;
+
+        _loading = false;
+    }
+
+    private static string Categorize(string content) => content switch
+    {
+        var c when c.StartsWith("About Mark:") => "About Mark",
+        var c when c.StartsWith("About Ani:") => "About Ani",
+        var c when c.StartsWith("Interest:") => "Interests",
+        var c when c.StartsWith("Shared experience:") => "Shared Experiences",
+        _ => "Other"
+    };
+
+    private static string StripPrefix(string content, string category) => category switch
+    {
+        "About Mark" => content.Length > 12 ? content[12..].TrimStart() : content,
+        "About Ani" => content.Length > 10 ? content[10..].TrimStart() : content,
+        "Interests" => content.Length > 10 ? content[10..].TrimStart() : content,
+        "Shared Experiences" => content.Length > 19 ? content[19..].TrimStart() : content,
+        _ => content
+    };
+
+    private static string CategoryColor(string category) => category switch
+    {
+        "About Mark" => "#2196f3",
+        "About Ani" => "#e91e63",
+        "Interests" => "#ff9800",
+        "Shared Experiences" => "#9c27b0",
+        _ => "#9e9e9e"
+    };
+
+    private class ProfileItem
+    {
+        public string Id { get; set; } = "";
+        public string Category { get; set; } = "";
+        public string Content { get; set; } = "";
+        public float Importance { get; set; }
+        public bool IsAnchored { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+}

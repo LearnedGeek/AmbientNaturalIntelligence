@@ -44,6 +44,37 @@ public static class MemoryEndpoints
             return Results.Ok(dtos);
         });
 
+        group.MapGet("/profile", async (IMemoryService memory, int limit = 100, CancellationToken ct = default) =>
+        {
+            var semantics = await memory.GetByTypeAsync(MemoryType.Semantic, limit, ct);
+            var categorized = semantics.Select(r =>
+            {
+                var category = r.Content switch
+                {
+                    var c when c.StartsWith("About Mark:") => "About Mark",
+                    var c when c.StartsWith("About Ani:") => "About Ani",
+                    var c when c.StartsWith("Interest:") => "Interests",
+                    var c when c.StartsWith("Shared experience:") => "Shared Experiences",
+                    _ => "Other"
+                };
+                return new
+                {
+                    Id = r.Id,
+                    Category = category,
+                    Content = r.Content,
+                    Importance = r.Importance,
+                    IsAnchored = r.AnchoredAt.HasValue,
+                    CreatedAt = r.CreatedAt,
+                };
+            })
+            .Where(r => r.Category != "Other")
+            .OrderBy(r => r.Category)
+            .ThenByDescending(r => r.Importance)
+            .ToList();
+
+            return Results.Ok(categorized);
+        });
+
         return group;
     }
 

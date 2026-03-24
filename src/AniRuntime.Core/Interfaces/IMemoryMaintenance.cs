@@ -20,4 +20,7 @@ public interface IMemoryMaintenance
     /// Returns (mergeCount, linkCount) for reporting.
     /// </summary>
     Task<(int MergeCount, int LinkCount)> RebuildMemoryLinksAsync(CancellationToken ct = default);
+
+    /// <summary>Total count of links in the memory graph.</summary>
+    Task<int> GetLinkCountAsync(CancellationToken ct = default);
 }
