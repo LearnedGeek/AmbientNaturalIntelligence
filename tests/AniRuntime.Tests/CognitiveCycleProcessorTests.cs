@@ -700,22 +700,4 @@ public class CognitiveCycleProcessorTests : AniTestBase
             .Should().Be(expected, $"message: \"{message}\"");
     }
 
-    // ── UP1: ContainsFalseConfidenceClaim tests ──────────────────────────
-
-    [Theory]
-    [InlineData("of course I knew that, I was testing you!", true)]
-    [InlineData("i totally knew about your brother", true)]
-    [InlineData("i was just testing if you'd remember", true)]
-    [InlineData("obviously i know that", true)]
-    [InlineData("i knew all along, silly", true)]
-    [InlineData("oh wait really? tell me more!", false)]
-    [InlineData("hmm I don't think we've talked about that", false)]
-    [InlineData("that's so cool! I didn't know that", false)]
-    [InlineData("mmm… baby. learned geek?", false)]
-    [InlineData("nope! i don't know it and i'm not going to pretend", false)]
-    public void ContainsFalseConfidenceClaim_ClassifiesCorrectly(string reply, bool expected)
-    {
-        ConversationFeatureDetector.ContainsFalseConfidenceClaim(reply)
-            .Should().Be(expected, $"reply: \"{reply}\"");
-    }
 }

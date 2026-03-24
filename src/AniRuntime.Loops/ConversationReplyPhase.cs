@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AniRuntime.Actions;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
@@ -555,28 +554,6 @@ public class ConversationReplyPhase
         }
     }
 
-    // Feature detectors extracted to ConversationFeatureDetector (SRP).
-    // Forwarding methods preserved for backward compatibility with tests.
-
-    private (bool ShouldReply, string Reasoning) ParseReplyDecision(string raw)
-    {
-        try
-        {
-            var doc = JsonDocument.Parse(raw.Trim());
-            var shouldReply = doc.RootElement.TryGetProperty("shouldReply", out var sr) && sr.GetBoolean();
-            var reasoning = doc.RootElement.TryGetProperty("reasoning", out var r)
-                ? r.GetString() ?? "" : "";
-            return (shouldReply, reasoning);
-        }
-        catch
-        {
-            _log.LogDebug("Reply decision parse failure: {Raw}", raw);
-        }
-
-        // Default to replying if we can't parse — better to respond than ignore
-        return (true, "");
-    }
-
     /// <summary>
     /// Heuristic: is this message a conversation closer that doesn't need a reply?
     /// Replaces the LLM reply-decision call — the model almost always said "yes".
@@ -604,49 +581,6 @@ public class ConversationReplyPhase
     /// </summary>
     private static string? CleanOutreachMessage(string? raw) => Core.Utilities.MessageCleaner.Clean(raw);
 
-    /// <summary>
-    /// Feature 15 Layer 3: Check if any retrieved context memories have unresolved contradiction
-    /// flags.
-    /// </summary>
-    private async Task CheckRetrievedMemoryContradictionsAsync(
-        ContextSnapshot snapshot, string contactMessage, CancellationToken ct)
-    {
-        try
-        {
-            var retrieved = snapshot.RelevantMemory;
-            if (retrieved.Count == 0) return;
-
-            var retrievedIds = new HashSet<Guid>(retrieved.Select(m => m.Id));
-
-            var contradictions = await _analytics.GetFlaggedContradictionsAsync(includeResolved: false, ct)
-                .ConfigureAwait(false);
-
-            var relevant = contradictions
-                .Where(c => retrievedIds.Contains(c.NewMemoryId) || retrievedIds.Contains(c.ExistingMemoryId))
-                .ToList();
-
-            if (relevant.Count == 0) return;
-
-            foreach (var c in relevant)
-            {
-                var isNewInContext = retrievedIds.Contains(c.NewMemoryId);
-                var contextContent = isNewInContext ? c.NewContent : c.ExistingContent;
-                var conflictContent = isNewInContext ? c.ExistingContent : c.NewContent;
-
-                snapshot.ContradictionWarnings.Add(
-                    $"Context memory \"{Truncate(contextContent, 60)}\" conflicts with \"{Truncate(conflictContent, 60)}\": {c.Reason}");
-
-                _log.LogInformation(
-                    "Feature 15 Layer 3: Contradiction grounding active — context \"{Context}\" vs \"{Conflict}\": {Reason}",
-                    Truncate(contextContent, 80), Truncate(conflictContent, 80), c.Reason);
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Feature 15 Layer 3: Contradiction check failed — continuing without grounding");
-        }
-    }
-
     private static bool IsMessageEcho(string memoryContent, string contactName, string msgPrefix30)
         => ConversationFeatureDetector.IsMessageEcho(memoryContent, contactName, msgPrefix30);
 
@@ -668,84 +602,4 @@ public class ConversationReplyPhase
     private static string Truncate(string text, int maxLength)
         => ConversationFeatureDetector.Truncate(text, maxLength);
 
-    /// <summary>
-    /// Feature 14: Extract factual claims from the contact's message and verify them against
-    /// episodic memory.
-    /// </summary>
-    private async Task ComputeMarkClaimConfidenceAsync(
-        ContextSnapshot snapshot, string contactMessage, CancellationToken ct)
-    {
-        try
-        {
-            var extractionPrompt = PromptBuilder.BuildClaimExtractionPrompt(contactMessage);
-            var extractionRaw = await _ollama.ChatJsonAsync(
-                extractionPrompt.System, Array.Empty<ChatMessage>(), extractionPrompt.User, ct)
-                .ConfigureAwait(false);
-
-            var claims = ParseExtractedClaims(extractionRaw);
-            if (claims.Count == 0)
-            {
-                _log.LogDebug("Feature 14: No verifiable claims extracted from message");
-                snapshot.MarkClaimConfidence = 1.0f;
-                return;
-            }
-
-            var corroboratedCount = 0;
-            var unverified = new List<string>();
-
-            foreach (var claim in claims)
-            {
-                var matches = await _search.SearchAsync(
-                    claim, _aniOptions.ClaimVerificationMaxMemories, ct).ConfigureAwait(false);
-
-                var matchList = matches.ToList();
-                if (matchList.Count > 0 && matchList[0].Importance > 0.2f)
-                {
-                    corroboratedCount++;
-                    _log.LogDebug("Feature 14: Claim corroborated — \"{Claim}\"", claim);
-                }
-                else
-                {
-                    unverified.Add(claim);
-                    _log.LogDebug("Feature 14: Claim NOT corroborated — \"{Claim}\"", claim);
-                }
-            }
-
-            var confidence = claims.Count > 0 ? (float)corroboratedCount / claims.Count : 1.0f;
-            snapshot.MarkClaimConfidence = confidence;
-            snapshot.MarkClaimNeedsVerification = confidence < (float)_aniOptions.ClaimVerificationThreshold;
-            snapshot.UnverifiedClaims = unverified;
-
-            _log.LogInformation("Feature 14: Claim confidence {Confidence:F2} ({Corroborated}/{Total} claims verified)",
-                confidence, corroboratedCount, claims.Count);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Feature 14: Claim verification failed — continuing without skepticism");
-            snapshot.MarkClaimConfidence = 1.0f;
-        }
-    }
-
-    private List<string> ParseExtractedClaims(string raw)
-    {
-        try
-        {
-            var doc = JsonDocument.Parse(raw.Trim());
-            if (doc.RootElement.TryGetProperty("claims", out var claimsArray) &&
-                claimsArray.ValueKind == JsonValueKind.Array)
-            {
-                return claimsArray.EnumerateArray()
-                    .Select(c => c.GetString())
-                    .Where(c => !string.IsNullOrWhiteSpace(c))
-                    .Select(c => c!)
-                    .ToList();
-            }
-        }
-        catch
-        {
-            _log.LogDebug("Feature 14: Claim extraction parse failure: {Raw}", raw);
-        }
-
-        return new List<string>();
-    }
 }

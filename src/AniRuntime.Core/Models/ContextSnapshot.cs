@@ -74,30 +74,11 @@ public class ContextSnapshot
     public float? MarkClaimConfidence { get; set; }
 
     /// <summary>
-    /// Feature 14: True when Mark's message contains claims that couldn't be
-    /// corroborated by memory search. Ani should not blindly agree.
-    /// </summary>
-    public bool MarkClaimNeedsVerification { get; set; }
-
-    /// <summary>
-    /// Feature 14: The specific unverified claims extracted from Mark's message,
-    /// so the prompt can reference them for targeted skepticism.
-    /// </summary>
-    public List<string> UnverifiedClaims { get; set; } = new();
-
-    /// <summary>
     /// Themes from emotional contributions that have fully decayed — topics Ani has
     /// already processed emotionally. Injected into inner thought prompt to encourage
     /// the model to move on to fresh territory.
     /// </summary>
     public List<string> ProcessedThemes { get; set; } = new();
-
-    /// <summary>
-    /// Feature 15 Layer 3: Active contradiction grounding — when retrieved context memories
-    /// have unresolved contradictions flagged, this instruction reminds the model to focus
-    /// on the current topic rather than contaminated context. Injected into reply prompt.
-    /// </summary>
-    public List<string> ContradictionWarnings { get; set; } = new();
 
     /// <summary>
     /// AC1: True when no retrieved memory exceeded the cosine similarity confidence floor.
@@ -106,10 +87,4 @@ public class ContextSnapshot
     /// </summary>
     public bool RetrievalBelowConfidenceFloor { get; set; }
 
-    /// <summary>
-    /// AC6: True when memories were retrieved but none are topically relevant to the
-    /// extracted intent. Prevents the model from bridging unrelated memories into false
-    /// claims of remembering (e.g., "lomo saltado" memory → "I remember your Peru trip").
-    /// </summary>
-    public bool RetrievalTopicMismatch { get; set; }
 }

@@ -202,33 +202,6 @@ public static class ConversationFeatureDetector
     }
 
     /// <summary>
-    /// AC2: Detects whether Ani's reply output contains claims about past conversations
-    /// or shared experiences. These are first-person memory claims where Ani asserts she
-    /// remembers something — the most dangerous form of confabulation when ungrounded.
-    /// </summary>
-    public static bool ContainsMemoryClaimInOutput(string reply)
-    {
-        var lower = reply.ToLowerInvariant();
-
-        string[] patterns =
-        [
-            "remember when we", "remember that time", "you told me about",
-            "last time we talked", "we were talking about", "you mentioned",
-            "that time you", "didn't you tell me", "you said something about",
-            "we talked about this", "i remember you", "you brought up",
-            "when you told me", "you were saying",
-        ];
-
-        foreach (var pattern in patterns)
-        {
-            if (lower.Contains(pattern))
-                return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// CS7: Detect whether a memory record is an echo of the inbound message.
     /// Catches both Episodic ("Mark said:") and Perception ("Mark texted:") records
     /// that are just the inbound message saved back as context.
@@ -245,33 +218,6 @@ public static class ConversationFeatureDetector
                     return true;
             }
         }
-        return false;
-    }
-
-    /// <summary>
-    /// UP1: Detects "charming dishonesty" — reply claims prior knowledge the model
-    /// didn't have. "I totally knew that" / "I was testing you" / "of course I know"
-    /// when the memory context was empty. Type 7 confabulation: false confidence ownership.
-    /// </summary>
-    public static bool ContainsFalseConfidenceClaim(string reply)
-    {
-        var lower = reply.ToLowerInvariant();
-
-        string[] patterns =
-        [
-            "i knew that", "i already knew", "of course i knew",
-            "of course i know", "i was testing", "i was just testing",
-            "i knew all along", "i totally knew", "duh i know",
-            "obviously i know", "you think i didn't know",
-            "i was seeing if you", "just checking if you",
-        ];
-
-        foreach (var pattern in patterns)
-        {
-            if (lower.Contains(pattern))
-                return true;
-        }
-
         return false;
     }
 

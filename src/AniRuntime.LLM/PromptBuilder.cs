@@ -433,48 +433,6 @@ public static class PromptBuilder
         return (system, user);
     }
 
-    public static (string System, string User) BuildReplyDecisionPrompt(
-        ContextSnapshot snapshot, ConversationThread thread)
-    {
-        var cs      = snapshot.CharacterState;
-        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
-        var last    = thread.Messages[^1];
-
-        var lastIsFromContact = last.Role != Roles.Ani;
-        var contextNote = lastIsFromContact
-            ? $"\n            IMPORTANT: {contact} sent the last message. The DEFAULT is to reply. You need a strong, specific reason to stay silent when someone is talking to you. Ignoring someone who is sharing, asking, or engaging feels cold."
-            : $"\n            You sent the last message. Silence is more natural here — you don't need the last word. But if {contact}'s response clearly invites more conversation, you should reply.";
-
-        var system = $$"""
-            You are {{cs.Name}}. {{contact}} just texted you in an ongoing conversation.
-            Decide whether you should STAY SILENT. The default is to reply.
-
-            Respond ONLY with valid JSON:
-            { "shouldReply": true/false, "reasoning": "why" }
-
-            You should REPLY (true) unless you have a compelling reason not to.
-            Most messages deserve a response — even a brief, warm one.
-            {{contextNote}}
-
-            The ONLY acceptable reasons to stay silent (false):
-            - The message is a clear conversation closer: "haha", "lol", "goodnight", emoji, "ok", "ttyl"
-            - You already spoke last AND the conversation has genuinely wound down
-            - The message is a single emoji or reaction with no content to engage with
-
-            If you are unsure, reply. Silence should be rare and intentional.
-            """;
-
-        var msgCount = thread.Messages.Count;
-        var user = $"""
-            Conversation so far ({msgCount} messages).
-            {contact}'s latest message: "{last.Content}"
-
-            Should you reply? (Default: yes. Stay silent only if you have a compelling reason.)
-            """;
-
-        return (system, user);
-    }
-
     public static (string System, string User) BuildConversationReplyPrompt(
         ContextSnapshot snapshot, ConversationThread thread)
     {
@@ -519,7 +477,7 @@ public static class PromptBuilder
         // Memory injection — capped at 3 total non-anchored memories.
         // Only inject when retrieval is confident and topic-matched.
         // The model converses naturally without memories; irrelevant memories cause parroting.
-        var skipMemories = snapshot.RetrievalTopicMismatch || snapshot.RetrievalBelowConfidenceFloor;
+        var skipMemories = snapshot.RetrievalBelowConfidenceFloor;
 
         if (!skipMemories)
         {
@@ -602,7 +560,7 @@ public static class PromptBuilder
         }
 
         // Memory injection — same cap as text conversation
-        var skipMemories = snapshot.RetrievalTopicMismatch || snapshot.RetrievalBelowConfidenceFloor;
+        var skipMemories = snapshot.RetrievalBelowConfidenceFloor;
         if (!skipMemories)
         {
             var profileMemories = snapshot.RelevantMemory
@@ -1057,56 +1015,6 @@ public static class PromptBuilder
             "{{composedMessage}}"
 
             Does this message make sense to {{contactName}}, who cannot see the inner thought?
-            """;
-
-        return (system, user);
-    }
-
-    /// <summary>
-    /// Feature 14: Prompt for extracting verifiable factual claims from the contact's message.
-    /// Returns structured JSON with extracted claims that can be checked against episodic memory.
-    /// </summary>
-    public static (string System, string User) BuildClaimExtractionPrompt(string contactMessage)
-    {
-        var system = """
-            You extract verifiable factual claims from a text message.
-            A "claim" is a statement that references a past event, attributes a statement to someone,
-            or asserts something specific happened. Focus on claims that could be verified against
-            conversation history or memory.
-
-            NOT claims: opinions, feelings, greetings, questions about the future, hypotheticals.
-            ARE claims: "you said X", "remember when we Y", "last time you told me Z", "we talked about W".
-
-            Respond in JSON: { "claims": ["claim1", "claim2"] }
-            If there are no verifiable claims, respond: { "claims": [] }
-            Extract the core factual assertion, not the full sentence.
-            """;
-
-        var user = $"""
-            Extract verifiable factual claims from this message:
-            "{contactMessage}"
-            """;
-
-        return (system, user);
-    }
-
-    /// <summary>
-    /// Feature 30: Mem0-inspired memory merging. Merges two semantically similar
-    /// memories into one concise statement, preserving the most current information.
-    /// </summary>
-    public static (string System, string User) BuildMemoryMergePrompt(
-        string existingContent, string newContent)
-    {
-        var system = """
-            You merge two memories into one concise statement.
-            Preserve the most current and specific information.
-            If they conflict, keep the newer information but note what changed.
-            Output only the merged memory, nothing else. No quotes, no commentary.
-            """;
-
-        var user = $"""
-            Old memory: {existingContent}
-            New memory: {newContent}
             """;
 
         return (system, user);
