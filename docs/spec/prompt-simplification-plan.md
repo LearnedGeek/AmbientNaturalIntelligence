@@ -173,6 +173,28 @@ All four phases implemented in a single session. 386 tests passing, 0 warnings.
 - Emotional shift scoring
 - Coherence gate (outreach only)
 
+### Cross-project validation: "Smoothness Over Truth"
+
+The pipeline simplification findings were independently validated by architectural analysis
+of a medical AI triage system (Infanzia/DrOk) on the same day. Both systems exhibit the
+identical failure mode: **the LLM generates confident output to maintain conversational flow,
+not because the evidence supports it.** In medical contexts this is called confabulation risk;
+in companion AI it manifests as false memory claims and creative elaboration.
+
+The architectural principle is the same in both domains:
+- **You cannot fix confabulation by adding instructions.** Every instruction competes for
+  context window bandwidth. The architecture must make confabulation structurally impossible.
+- **Null response is correct.** When retrieval returns nothing relevant, the right answer is
+  nothing — not a plausible guess. In DrOk: "physician review required without AI impression."
+  In ANI: inject zero memories and let the model say "I don't think we've talked about that."
+- **Trust the trained model over runtime guardrails.** Post-generation re-generation calls
+  (AC2, UP1) produced worse output than the original because they stripped conversation history.
+  Similarly, post-generation attribution verification in medical RAG should be a safety net,
+  not a primary mechanism — the retrieval pipeline should prevent bad context from reaching
+  the model in the first place.
+- **Override/correction tracking** is the production accuracy gate in both systems. In DrOk:
+  physician override rate. In ANI: user corrections via ///flag + confabulation rate tracking.
+
 ### Key finding that motivated this work:
 Both Llama and Mistral v6 models produce natural, engaging conversation in raw Ollama sessions
 but parroted the user's words back through the full pipeline. The pipeline was actively making

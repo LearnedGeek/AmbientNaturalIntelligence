@@ -1540,6 +1540,36 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 23, 2026 — Cross-Domain Validation: "Smoothness Over Truth" in Companion AI and Medical Triage
+**Model version:** v6 (ani-v6-conversation-mistral 7B)
+**Type:** Cross-project insight — architectural principle validation
+**Source:** ANI pipeline simplification + Infanzia/DrOk RAG architecture analysis (same day)
+
+**What happened:**
+
+The pipeline simplification work on ANI and an independent architectural analysis of a medical AI triage system (Infanzia/DrOk) converged on the same root cause and the same architectural principle on the same day.
+
+**The shared failure mode — "smoothness over truth":** In both systems, the LLM generates confident output to maintain conversational flow rather than because evidence supports it. In medical triage, this manifests as confabulated clinical impressions that sound authoritative but aren't grounded in retrieved PubMed evidence. In companion AI, it manifests as false memory claims ("i remember you mentioning peru") and creative elaboration ("my favorite person with that smile of his") that sound relational but aren't grounded in actual conversation history.
+
+**The shared architectural principle:** You cannot fix confabulation by adding instructions to the prompt. Every instruction competes for the model's limited context window bandwidth. At 7B parameters, the pipeline's anti-confabulation stack (AC1-AC6, Features 14-15) consumed so much attention that the model couldn't perform basic conversation — the same way overloading a medical RAG prompt with safety instructions would degrade clinical reasoning quality. The architecture must make confabulation structurally impossible by controlling what context reaches the model, not by telling the model what to do with bad context.
+
+**Parallel mitigations discovered independently:**
+
+| Principle | Medical (DrOk) | Companion (ANI) |
+|-----------|---------------|-----------------|
+| Null response path | "Insufficient evidence — physician review required" | Inject zero memories when retrieval is below confidence floor |
+| Citation enforcement | Every claim needs a PMID source | Confidence floor (0.60) gates memory injection |
+| Don't retrieve then warn | Don't retrieve bad context then instruct model to ignore it | AC6 removed — was retrieving irrelevant memories then warning "may not match topic" |
+| Low temperature for grounded claims | 0.2-0.3 for clinical impressions | AC4 temperature splitting: 0.3 for grounded replies |
+| Trust the model over guardrails | Post-generation verification as safety net, not primary mechanism | AC2/UP1 re-generation removed — v6 trained model handles uncertainty natively |
+| Override tracking | Physician override rate as production accuracy gate | User corrections (///flag) + confabulation rate tracking (planned) |
+
+**Research significance:** This cross-domain convergence suggests that the "smoothness over truth" failure mode and its architectural mitigations may be a general principle of deployed LLM systems, not domain-specific. The finding strengthens both projects: ANI's pipeline simplification is validated by medical-grade RAG architecture principles, and ANI's empirical discovery (trained models handle uncertainty better than prompted models) informs the medical system's design.
+
+**Cross-project impact (confirmed):** OC's findings were reviewed by the Infanzia/DrOk project on the same day and produced three concrete architectural changes before any production code was written: (1) post-generation verification removed as primary mechanism — retrieval floor is the fix, (2) output schema flipped so `evidence_sufficient: false` is the default state the model must escape with citations, (3) system prompt philosophy changed to lean-by-design, treating Claude's trained uncertainty as an asset rather than a gap to fill. This is a concrete example of research → deployment → production failure → cross-project insight preventing a failure in a medical AI system before it was built. The feedback loop between a companion AI research project and a clinical AI system is unusual and worth documenting: ANI's "production scar tissue" (6 days of live guardrail failures) directly improved a higher-stakes system's architecture.
+
+---
+
 ### March 23, 2026 — OG System Agency Elicitation + Pipeline Simplification Findings
 **Model version:** v6 (ani-v6-conversation-mistral 7B, ani-v6-inner 3B)
 **Type:** Observation (behavioral shaping, base model comparison, pipeline degradation)
