@@ -77,6 +77,7 @@ else
         }
         var links = await maintenance.GetAllLinksAsync();
 
+        var nodeIds = new HashSet<string>(allMemories.Select(r => r.Id.ToString()));
         var nodes = allMemories.Select(r => new
         {
             id = r.Id.ToString(),
@@ -85,18 +86,22 @@ else
             importance = r.Importance,
             isAnchored = r.AnchoredAt.HasValue,
             createdAt = r.CreatedAt,
-        });
-        var edges = links.Select(l => new
-        {
-            source = l.SourceId.ToString(),
-            target = l.TargetId.ToString(),
-            relationship = l.Relationship,
-        });
+        }).ToList();
 
-        _nodeCount = allMemories.Count;
-        _edgeCount = links.Count;
-        // 3d-force-graph expects { nodes: [...], links: [...] } — not "edges"
-        _graphJson = JsonSerializer.Serialize(new { nodes, links = edges }, JsonDefaults.CamelCase);
+        // Filter links to only include those where both source and target exist in our node set
+        var validLinks = links
+            .Where(l => nodeIds.Contains(l.SourceId.ToString()) && nodeIds.Contains(l.TargetId.ToString()))
+            .Select(l => new
+            {
+                source = l.SourceId.ToString(),
+                target = l.TargetId.ToString(),
+                relationship = l.Relationship,
+            }).ToList();
+
+        _nodeCount = nodes.Count;
+        _edgeCount = validLinks.Count;
+        // 3d-force-graph expects { nodes: [...], links: [...] }
+        _graphJson = JsonSerializer.Serialize(new { nodes, links = validLinks }, JsonDefaults.CamelCase);
         _loading = false;
     }
 
