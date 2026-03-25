@@ -95,17 +95,24 @@ else
 
         _nodeCount = allMemories.Count;
         _edgeCount = links.Count;
-        _graphJson = JsonSerializer.Serialize(new { nodes, edges }, JsonDefaults.CamelCase);
+        // 3d-force-graph expects { nodes: [...], links: [...] } — not "edges"
+        _graphJson = JsonSerializer.Serialize(new { nodes, links = edges }, JsonDefaults.CamelCase);
         _loading = false;
     }
 
+    private bool _jsInitialized;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _graphJson is not null)
+        // Skip prerender — JS isn't available yet during ServerPrerendered.
+        // Init on first render after data is loaded.
+        if (!_jsInitialized && _graphJson is not null)
         {
+            _jsInitialized = true;
             try
             {
-                // Parse the pre-serialized JSON and pass to JS
+                // Small delay to ensure external JS file has loaded
+                await Task.Delay(500);
                 var json = JsonSerializer.Deserialize<JsonElement>(_graphJson);
                 await JS.InvokeVoidAsync("aniGraph.init", json, _colorMode);
             }
