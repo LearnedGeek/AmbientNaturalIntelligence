@@ -425,8 +425,10 @@ public class ConversationReplyPhase
         // (Ani's prior messages OR Mark's messages), re-generate with a clean slate.
         // Self-echo = model parroting its own context window output.
         // Mark-echo = model parroting the contact's words back instead of engaging.
+        // Always include Mark's last message in the check — parroting the contact's
+        // words is the most common failure mode, especially in new threads.
         var priorMessages = thread.Messages
-            .Where(m => m != replyMessage && m != thread.Messages.Last(x => x.Role == Roles.Mark))
+            .Where(m => m != replyMessage)
             .ToList();
         _log.LogDebug("Echo guard: checking reply against {Count} prior messages in thread", priorMessages.Count);
         if (priorMessages.Count > 0)

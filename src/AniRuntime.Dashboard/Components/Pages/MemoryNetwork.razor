@@ -1,9 +1,21 @@
 @page "/network"
+@using System.Text.Json
+@using AniRuntime.Core.Interfaces
+@using AniRuntime.Core.Models
+@using AniRuntime.Core.Utilities
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
+@inject IServiceProvider Services
 
 <h1>Memory Network</h1>
-<p>Ani's memory as a living graph — @_nodeCount nodes, @_edgeCount links.</p>
+@if (_loading)
+{
+    <p><em>Loading memory graph...</em></p>
+}
+else
+{
+    <p>Ani's memory as a living graph — @_nodeCount nodes, @_edgeCount links.</p>
+}
 
 <div style="display: flex; gap: 0.5em; margin-bottom: 0.5rem; flex-wrap: wrap;">
     <button @onclick='() => SetColorMode("type")' style="@ButtonStyle(_colorMode == "type")">Color by Type</button>
@@ -140,22 +152,54 @@
     private int _nodeCount;
     private int _edgeCount;
     private string _colorMode = "type";
+    private string? _graphJson;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load data server-side — avoids JS fetch timeout issues
+        var memory = Services.GetService<IMemoryService>();
+        var maintenance = Services.GetService<IMemoryMaintenance>();
+        if (memory is null || maintenance is null) return;
+
+        var allMemories = new List<MemoryRecord>();
+        foreach (var type in Enum.GetValues<MemoryType>())
+        {
+            var records = await memory.GetByTypeAsync(type, 500);
+            allMemories.AddRange(records);
+        }
+        var links = await maintenance.GetAllLinksAsync();
+
+        var nodes = allMemories.Select(r => new
+        {
+            id = r.Id.ToString(),
+            type = r.Type.ToString(),
+            content = r.Content.Length > 150 ? r.Content[..150] + "..." : r.Content,
+            importance = r.Importance,
+            isAnchored = r.AnchoredAt.HasValue,
+            createdAt = r.CreatedAt,
+        });
+        var edges = links.Select(l => new
+        {
+            source = l.SourceId.ToString(),
+            target = l.TargetId.ToString(),
+            relationship = l.Relationship,
+        });
+
+        _nodeCount = allMemories.Count;
+        _edgeCount = links.Count;
+        _graphJson = JsonSerializer.Serialize(new { nodes, edges }, JsonDefaults.CamelCase);
+        _loading = false;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender && _graphJson is not null)
         {
             try
             {
-                var response = await JS.InvokeAsync<System.Text.Json.JsonElement>(
-                    "fetch", "/api/v1/memories/graph");
-                var json = await JS.InvokeAsync<System.Text.Json.JsonElement>(
-                    "eval", "fetch('/api/v1/memories/graph').then(r => r.json())");
-
-                _nodeCount = json.GetProperty("nodes").GetArrayLength();
-                _edgeCount = json.GetProperty("edges").GetArrayLength();
-                StateHasChanged();
-
+                // Parse the pre-serialized JSON and pass to JS
+                var json = JsonSerializer.Deserialize<JsonElement>(_graphJson);
                 await JS.InvokeVoidAsync("aniGraph.init", json, _colorMode);
             }
             catch (Exception ex)

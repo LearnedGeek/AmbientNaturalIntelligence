@@ -104,9 +104,11 @@ public class ContextCompressor
         var summary = await _ollama.InnerMonologueChatAsync(
             system, Array.Empty<ChatMessage>(), user, ct).ConfigureAwait(false);
 
-        // Trim to reasonable length
-        if (summary.Length > 300)
-            summary = summary[..300];
+        // Trim to reasonable length — 500 chars preserves enough context
+        // for long threads without consuming too much of the token budget.
+        // 300 was too aggressive and caused context loss in 14+ message threads.
+        if (summary.Length > 500)
+            summary = summary[..500];
 
         return summary.Trim();
     }
