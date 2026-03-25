@@ -455,8 +455,12 @@ public static class PromptBuilder
         var moodBlock = BuildMoodInstruction(snapshot.EmotionalState);
         var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
 
+        var now = DateTimeOffset.Now;
+        var timeContext = $"It is {now:h:mm tt} on {now:dddd, MMMM d}.";
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
+            {timeContext}
             Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
 
             RULES:
