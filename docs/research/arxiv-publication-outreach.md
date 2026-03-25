@@ -118,22 +118,22 @@ All other Anthropic emails below are inferred from convention and NOT verified. 
 ---
 
 ### 3. Deep Ganguli — deep@anthropic.com
-**Subject:** arXiv endorsement request — production deployment study, cs.HC, confabulation taxonomy
+**Subject:** arXiv endorsement request — deployment study with confabulation taxonomy, findings applied to Anthropic API medical project
 
 > Hi Deep,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). I'm reaching out because your work on Values in the Wild (arXiv:2504.15236) and Clio (arXiv:2412.13678) uses the same production-deployment empirical methodology I used — mining real system behavior for taxonomic findings.
+> I'm a developer and college instructor, not an academic — so I'll be straightforward: I spent six months building and studying an ambient AI companion, wrote a 59-page paper documenting what I found, and now I'm stuck on the last mile. I need an arXiv endorsement for cs.HC or cs.AI and don't have anyone in my network who can help.
 >
-> I spent six months running a deployed ambient AI companion with a continuous cognitive cycle, desire-driven outreach, and persistent emotional state. The paper documents a seven-type confabulation taxonomy from live deployment data, names "smoothness over truth" as the root cause, and introduces the authenticity boundary as an architectural concept.
+> The paper documents a live deployment across 5 model versions — including a seven-type confabulation taxonomy and a failure mode I named "smoothness over truth," where the model fabricates to maintain conversational flow rather than express uncertainty. I cite your work on red teaming and large-scale deployment methodology, which directly informed how I structured the evaluation.
 >
-> The findings also transferred directly to a pediatric AI triage system I'm now building — companion AI production failures producing concrete architectural changes in a medical system. That cross-domain transfer is a section of the paper and is directly relevant to the societal impact questions your team works on.
+> What I didn't expect: those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Three architectural changes in the medical system came straight from watching the companion AI fail in production. The cross-domain transfer is now part of a second paper.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> arXiv endorsement code is BVBLZO — about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first. The endorsement itself is just clicking a link.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
