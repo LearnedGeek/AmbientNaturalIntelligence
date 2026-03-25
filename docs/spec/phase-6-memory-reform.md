@@ -332,15 +332,53 @@ These features are documented here for roadmap visibility but are **not schedule
 
 ---
 
-### Feature 36: Memory Graph Dashboard Visualization
+### Feature 36: Memory Profile Dashboard ✅ DEPLOYED
 
-**Concept:** Interactive graph visualization of the `memory_links` table on the dashboard. Memories are nodes, links are edges, colored by relationship type (`relates_to`, `caused_by`, `follows_up`, `contradicts`). Clusters form naturally around topics (Richard, gym, Spanish class, food). Node size scales with importance. Clicking a node shows the memory content and its connections.
+**Status:** Deployed March 24, 2026.
 
-**Why it matters:** Makes the linked memory graph tangible and explorable — the researcher can see how Ani's relational knowledge organizes itself. Clusters reveal topical structure that isn't visible from flat memory lists. Useful for both debugging retrieval quality and for the Paper 2 research narrative (emergence layer observations become visual).
+Browsable profile page at `/memory` showing Ani's synthesized knowledge organized by category: About Mark (biographical/personality), Interests (self-discovered preferences), Shared Experiences (relationship milestones), About Ani (self-knowledge). Each card shows content, importance score, anchored status, and timestamp. Stats section shows total memories, profile facts, link count, categories.
 
-**Implementation sketch:** D3.js or Vis.js graph component in the Blazor dashboard. REST endpoint `/api/v1/ani/memory-graph` returns nodes (memories) and edges (links). Frontend renders force-directed layout. Filter by memory type, date range, or relationship type. Could start with a simple adjacency list table view and upgrade to full graph visualization.
+---
 
-**Dependency:** Requires Feature 31 (linked memory graph) to have accumulated enough links to be interesting. Best deployed after several days of Feature 31 running.
+### Feature 39: 3D Memory Network Visualization
+
+**Concept:** Immersive, animated 3D force-directed graph of Ani's entire memory network. Memories are nodes, `memory_links` are edges. The visualization feels like flying through a neural network — gently animated, explorable, rotatable.
+
+**Visual design:**
+- **Clusters form naturally** — cooking memories pulling together, dentist/health cluster, bookstore/books cluster, emotional/existential cluster
+- **Node size** scales with importance score
+- **Node color** by memory type: Semantic (blue), Episodic (green), Perception (orange), InnerThought (purple)
+- **Edge color** by relationship type: `relates_to` (gray), `caused_by` (yellow), `follows_up` (cyan), `contradicts` (red)
+- **Recency glow** — recently accessed memories brighter, old ones fading
+- **Emergence overlay** — EM1-EM6 colors pulsing on nodes that triggered emergence events
+- **Live mode** (stretch goal) — watch new links form in real time as she thinks
+
+**Interaction:**
+- Orbit/rotate with mouse drag
+- Zoom into clusters with scroll
+- Click a node → panel shows full memory content, linked memories, emergence events
+- Search → highlights matching nodes, dims others
+- Filter by type, date range, category (About Mark, Interests, etc.)
+- Cluster labels auto-generated from dominant topics
+
+**Tech:** Three.js with ForceGraph3D (3d-force-graph library) embedded in a Blazor page via JS interop. Same pattern as ChatLake's Plotly approach but 3D. REST endpoint `GET /api/v1/memories/graph` returns `{ nodes: [...], edges: [...] }` JSON. Frontend renders force-directed layout with WebGL.
+
+**Data source:** `memories` table (nodes) + `memory_links` table (edges) + `emergence_log` (overlay). Current dataset: 2,152 nodes, 6,436 edges — well within WebGL limits (~10K nodes smooth).
+
+**Why it matters:**
+- **Research instrument** — cluster structure reveals how relational knowledge self-organizes. Screenshot of labeled clusters is a Paper 2 figure.
+- **Conference demo** — "here's what her memory looks like from the inside" is an unforgettable presentation moment.
+- **Debugging** — visually identify orphan nodes, weak clusters, or unexpected connections.
+- **Engagement** — walking through her memories makes the architecture tangible in a way that logs and tables never can.
+
+**Dependency:** Feature 31 (linked memory graph) + Feature 37 (retroactive rebuild) — both deployed. Data is ready.
+
+**Implementation order:**
+1. API endpoint returning graph JSON (nodes + edges)
+2. Static 3D render with ForceGraph3D — orbit, zoom, click
+3. Emergence overlay (EM1-EM6 node coloring)
+4. Search and filter controls
+5. Live mode (WebSocket updates as links form)
 
 ---
 
