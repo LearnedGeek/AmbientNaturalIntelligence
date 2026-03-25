@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.3 — Phase 5 Streaming Voice + SOLID Refactoring + Hardening + V6 Training
+1.4 — Phase 6 Memory Reform + Features 33–38 + A/B Model Conclusion
 Status
-Active Development — Phase 1–4 complete. Phase 5 streaming voice pipeline deployed and testing. MAUI Android client operational. SOLID refactoring complete (VoiceSessionState, DebouncedUtterance, VoiceTurnPipeline, IMemoryService ISP split, ConversationFeatureDetector, PerceptionPhase, InnerThoughtPhase, JsonDefaults, IConversationGateState). Features 5, 7, 10, 11 deferred to Phase 5c (v6 model generation). Dashboard + Emergence tab + Register heatmap + Growth Readiness + Chat page deployed. Emotional model Phase 1a+1b+2 deployed. Production hardening: /health, rate limiting, security headers, charming dishonesty detection. Anti-confabulation stack AC1-5 deployed. IIntentExtractor for topic-aware retrieval. Echo guard fix, emotional state saturation fix (tanh), Ollama retry with backoff. V6 training: 2,030 examples (1,675 conv + 355 inner), training on Modal. 386 tests passing.
+Active Development — Phase 1–4 complete. Phase 5 streaming voice deployed. Phase 6 memory reform in progress. Features 33–38 deployed: MotivationScorer (Liu et al.), ContextCompressor (MemGPT), EmotionDesireModifier (Borotschnig), memory profile dashboard, EmergenceClassifier (EM1–EM6). A/B test concluded: Llama 8B selected over Mistral 7B for conversation (v6 models). Dashboard nav: Dashboard | Chat | Memory | Emergence. Keyword relevance boost + dedup-by-ID in context retrieval. Time/date injection in conversation prompts. ///rebuild-links and ///rebuild-emergence admin commands. 386 tests passing.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -68,6 +68,7 @@ AniRuntime.sln
 │   │   │   └── IStreamingTextToSpeechService.cs   # Phase 5: event-driven TTS (AudioChunkReceived)
 │   │   ├── Utilities/
 │   │   │   └── MessageCleaner.cs     # Shared: Clean() + TruncateToSentences() — used by CognitiveCycle + Voice
+│   │   ├── MotivationScorer.cs       # Feature 33 (Liu et al. 2025): per-thought motivation scoring — multiplies desire drift [0.3–1.5]
 │   │   ├── VectorMath.cs              # Feature 9: SIMD-accelerated cosine similarity (shared)
 │   │   ├── JsonDefaults.cs           # Shared JsonSerializerOptions (CS4 — consolidated from 9 duplicates)
 │   │   ├── AniOptions.cs             # + night/morning window, tension, relationship health, claim verification, voice loop config, RetrievalConfidenceFloor
@@ -89,6 +90,7 @@ AniRuntime.sln
 │   │   ├── AdminCommandHandler.cs         # + ///flag confabulation feedback command (AC5)
 │   │   ├── RegisterTracker.cs              # Register hit counting per conversation — 10 registers including Resilience (emergent)
 │   │   ├── ConversationReplyPhase.cs       # Inbound conversation pipeline: care/hurt detection, reply decisions, composition
+│   │   ├── ContextBuilder.cs              # Memory retrieval + diversity re-ranking + dedup-by-ID + keyword relevance boost
 │   │   └── AniRuntime.Loops.csproj
 │   │
 │   ├── AniRuntime.Perception/       # World awareness sources
@@ -107,7 +109,8 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.LLM/             # Ollama client + prompt builders
 │   │   ├── OllamaClient.cs
-│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:")
+│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:"), time/date injection
+│   │   ├── ContextCompressor.cs      # Feature 34 (Packer et al. 2023 — MemGPT): conversation compression — cached summary on ConversationThread
 │   │   ├── ContextSnapshotBuilder.cs
 │   │   ├── KeywordExtractor.cs       # TF-IDF keyword extraction — corpus-based IDF, lazy corpus build from memory
 │   │   ├── IntentExtractor.cs        # IIntentExtractor — 3B LLM extracts topic/intent before memory search
@@ -117,9 +120,13 @@ AniRuntime.sln
 │   │   ├── DashboardExtensions.cs   # AddDashboard() + MapDashboard() extensions
 │   │   ├── Dtos/                    # AniStatusDto, MemoryRecordDto, ConversationThreadDto
 │   │   ├── Endpoints/               # 5+ endpoint groups: AniState, Memory, Conversations, Journal, Contradictions, Chat
-│   │   ├── Components/              # Blazor components: Dashboard.razor, EmotionalStateCard.razor, Chat.razor
-│   │   │   ├── RegisterHeatmap.razor  # Register distribution heatmap + V6 Growth Readiness score + per-register progress bars + gap guidance (10 registers incl. Resilience)
-│   │   │   └── Chat.razor            # Dashboard chat page — full cognitive pipeline without Twilio credits (IChatInbound + IReplyChannel)
+│   │   ├── Components/              # Blazor components — Nav: Dashboard | Chat | Memory | Emergence (App.razor)
+│   │   │   ├── Pages/Dashboard.razor  # Main dashboard: emotional state, desire, timing, EmotionDesireModifier display
+│   │   │   ├── Pages/Chat.razor       # Dashboard chat page — full cognitive pipeline without Twilio credits (IChatInbound + IReplyChannel)
+│   │   │   ├── Pages/MemoryGraph.razor  # Feature 36: memory profile — stats, type distribution, memory list
+│   │   │   ├── Pages/Emergence.razor    # Feature 38: emergence dashboard — type distribution, highlight reel, clickable filters
+│   │   │   ├── Shared/RegisterHeatmap.razor  # Register distribution heatmap + V6 Growth Readiness score + per-register progress bars + gap guidance
+│   │   │   └── Shared/EmotionalStateCard.razor
 │   │   ├── Pages/_Host.cshtml       # Blazor Server host page (Pico CSS)
 │   │   └── AniRuntime.Dashboard.csproj
 │   │
@@ -386,6 +393,10 @@ public class ConversationThread
     public bool IsActive               { get; set; } = true;
     public string InitiatedBy          { get; set; } = "mark";  // "ani" or "mark"
     public List<ConversationMessage> Messages { get; set; } = new();
+
+    // Feature 34 (MemGPT context compression) — cached summary, not persisted to DB
+    public string? CompressedSummary         { get; set; }
+    public int CompressedSummaryUpToIndex    { get; set; }
 }
 
 public class ConversationMessage
@@ -639,6 +650,10 @@ ShouldReachOutAsync() → bool
 
 ApplyDriftAsync()
     Per-cycle desire accumulation. Uses more recent of LastContactInbound or LastOutreach.
+    Feature 35 (Borotschnig 2025): drift multiplied by ComputeEmotionDesireModifier — worry
+    above baseline accelerates drift (concern → check in), low energy suppresses drift.
+    Feature 33 (Liu et al. 2025): drift multiplied by MotivationScorer output — high-quality
+    thoughts accelerate desire, low-motivation thoughts contribute less.
 
 AddTriggerAsync(type, weight, description)
     New trigger + desire bump (weight * TriggerDesireMultiplier).
@@ -720,6 +735,10 @@ Commands:
 - ///test — Snapshot DB (WAL files), enable test mode
 - ///live — Restore DB from snapshot, disable test mode
 - ///reset-mood — Reset all emotions to baselines
+- ///flag — Flag last reply as confabulation (AC5)
+- ///new-thread — Close current thread, start fresh
+- ///rebuild-links — Build memory graph links (one-time retroactive, may take minutes)
+- ///rebuild-emergence — Tag historical emergence log entries with EM1–EM6 types
 
 5. Perception Sources
 
@@ -803,7 +822,8 @@ Queries: GetRecentAsync, GetTypeDistributionAsync (Feature 38), GetHighlightsAsy
 
 8.1 Ollama
 Base URL: http://localhost:11434 (configurable)
-Models: ani-v5-conversation (chat, Llama 3.1-8B fine-tuned), ani-v5-inner (inner monologue, Llama 3.2-3B fine-tuned), nomic-embed-text (embeddings)
+Models: ani-v6-conversation (chat, Llama 3.1-8B fine-tuned), ani-v6-inner (inner monologue, Llama 3.2-3B fine-tuned), nomic-embed-text (embeddings)
+A/B test conclusion (Mar 22): Llama 8B selected over Mistral 7B for conversation. Warmer tone, better completion, no cliffhanger habit. V6 models trained on 2,030 examples (1,675 conv + 355 inner).
 Split rationale: 8B for conversation (better instruction following, topic adherence, attribution tracking). 3B for inner monologue (frequent ambient cycles, simpler task, per-thought decay handles negative-delta bias architecturally).
 Auth: None — local only
 
@@ -833,8 +853,8 @@ All sensitive values in appsettings.Development.json (gitignored).
   },
   "Ollama": {
     "BaseUrl": "http://localhost:11434",
-    "ChatModel": "ani-v5-conversation",
-    "InnerMonologueModel": "ani-v5-inner",
+    "ChatModel": "ani-v6-conversation",
+    "InnerMonologueModel": "ani-v6-inner",
     "EmbedModel": "nomic-embed-text"
   },
   "Twilio": {
@@ -930,6 +950,11 @@ Implemented components (Phase 1–4):
 | Self-awareness feedback loop (Feature 12) | 4 | Complete — pairwise cosine on outreach, avg > 0.75 → nudge |
 | AniRuntime.Dashboard (Blazor Server) | 4 | Complete — 16 REST endpoints, Pico CSS, in-process |
 | Feature 22 temporal refinement | 4 | Complete — time-of-day in coherence gate prompt |
+| MotivationScorer (Feature 33) | 6 | Complete — per-thought motivation scoring (Liu et al. 2025), desire drift multiplier [0.3–1.5] |
+| ContextCompressor (Feature 34) | 6 | Complete — MemGPT context compression (Packer et al. 2023), cached summary on ConversationThread |
+| EmotionDesireModifier (Feature 35) | 6 | Complete — emotion modulates desire drift (Borotschnig 2025), worry accelerates / low energy suppresses |
+| Memory profile dashboard (Feature 36) | 6 | Complete — MemoryGraph.razor at /memory, stats + type distribution + memory list |
+| EmergenceClassifier (Feature 38) | 6 | Complete — EM1–EM6 heuristic classifier, emergence_types column, dashboard with type distribution + highlight reel + clickable filters |
 | Feature 6 name-as-subject extension | 4 | Complete — prompt + word-boundary safety net |
 | Emotional model Phase 1a — core distinction | 4 | Complete — BUG-010 warmth scoring fix in BuildEmotionalShiftPrompt |
 | Emotional model Phase 1b — taxonomy scoring | 4 | Complete — 9-register classification, severity, IsOutreachReady, Describe() compound conditions, GetSelfAwarenessPrompt() compound, Concern→Worry rename |
@@ -987,6 +1012,12 @@ Test files:
 26. Coordinator pattern — `CognitiveCycleProcessor` is a pure coordinator (~340 lines). Perception polling lives in `PerceptionPhase`, inner thought generation in `InnerThoughtPhase`, conversation feature detection in `ConversationFeatureDetector`. Each phase is independently testable.
 27. Charming dishonesty detection — `ContainsFalseConfidenceClaim()` catches Type 7 confabulation patterns (retroactive epistemic rewriting). When detected, message is regenerated with anti-confabulation instruction. Runtime defense, not model fix.
 28. Emergence taxonomy (Feature 38) — `EmergenceClassifier` tags each scored cycle with EM1–EM6 emergence types via heuristic rules. Types stored as JSON array in `emergence_types` column on `emergence_log`. Dashboard queries via `GetTypeDistributionAsync` and `GetHighlightsAsync`. Passive observation only — no feedback into cognitive cycle.
+29. Motivation-driven desire (Feature 33) — `MotivationScorer` derives motivation from signals already computed (valence, severity, emotional state) rather than adding another LLM call. Multiplier [0.3–1.5] modulates desire drift per cycle. Consistent with pipeline simplification principle.
+30. Context compression (Feature 34) — `ContextCompressor` summarizes older conversation turns when thread exceeds window. Summary cached on `ConversationThread.CompressedSummary` (not persisted to DB) to avoid regenerating every cycle. Replaces silent message dropping.
+31. Emotion–desire coupling (Feature 35) — `ComputeEmotionDesireModifier` in DesireEngine modulates drift rate from emotional state. Worry above baseline accelerates desire (concern → check in). Low energy suppresses drift. Additive with satisfaction dampening.
+32. Dedup-by-ID before diversity re-ranking — `ContextBuilder.ReRankForDiversityAsync` deduplicates memories by ID before re-ranking. Multiple search paths (scored, link-enhanced, TF-IDF) can return the same memory; without dedup, identical entries appear multiple times.
+33. Keyword relevance boost — After diversity re-ranking in `ConversationReplyPhase`, keyword-relevant memories are boosted so topically relevant results outrank generic high-diversity matches (e.g., "Good morning").
+34. Time/date injection — `PromptBuilder` injects current time and date into conversation reply prompts and outreach prompts. Format: "h:mm tt on dddd, MMMM d". Enables temporal grounding in replies.
 
 14. Change Log
 
@@ -997,6 +1028,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 1.4 | Mar 25, 2026 | Phase 6 features deployed. Feature 33: MotivationScorer (Liu et al. 2025) — per-thought motivation scoring multiplies desire drift [0.3–1.5]. Feature 34: ContextCompressor (Packer et al. 2023 / MemGPT) — conversation compression with cached summary on ConversationThread. Feature 35: EmotionDesireModifier (Borotschnig 2025) — worry accelerates / low energy suppresses desire drift. Feature 36: Memory profile dashboard (MemoryGraph.razor at /memory). Feature 38: EmergenceClassifier (EM1–EM6) with emergence_types column, dashboard type distribution + highlight reel + clickable filters. ///rebuild-links and ///rebuild-emergence admin commands. ContextBuilder dedup-by-ID before diversity re-ranking. Keyword relevance boost in ConversationReplyPhase. Time/date injection in PromptBuilder. A/B test concluded: Llama 8B over Mistral 7B for conversation. Models updated to v6 (ani-v6-conversation, ani-v6-inner). Dashboard nav: Dashboard \| Chat \| Memory \| Emergence. |
 | 1.1 | Mar 19, 2026 | SOLID refactoring: IMemoryService ISP split into 5 focused interfaces (IMemoryPersistence, IMemorySearch, IStateStore, IMemoryAnalytics, IMemoryMaintenance) + full consumer migration. ConversationFeatureDetector extracted from ConversationReplyPhase. PerceptionPhase + InnerThoughtPhase extracted from CognitiveCycleProcessor. JsonDefaults consolidation (9→1). IConversationGateState decoupling. Production hardening: AC5 ///flag confabulation feedback, /health endpoint (H1), rate limiting on /sms/inbound (H3), security headers (H5), charming dishonesty detection (UP1). Dashboard: register heatmap, V6 Growth Readiness score, per-register progress bars, gap guidance. 383 tests. |
 | 1.0 | Mar 17, 2026 | Anti-confabulation hardening (AC1–AC4): retrieval confidence floor, source attribution, null-result injection, temperature splitting. TF-IDF keyword extraction (`KeywordExtractor`). `ScoredMemory` model + `SearchWithScoresAsync` on IMemoryService. Profile memory separation in PromptBuilder. `RetrievalConfidenceFloor` on AniOptions, `RetrievalBelowConfidenceFloor` flag on ContextSnapshot. `MemoryGroundedTemperature`/`CreativeTemperature` on OllamaOptions. Shutdown farewell handler. |
 | 0.9 | Mar 15, 2026 | Emotional model Phase 2. Tier promotion: `DetermineEffectiveTier()` on ImpactCategoryDefaults — severity ≥ 0.70 promotes Ambient→Conversation, ≥ 0.85 → Global from any tier. Global tier updated: maxDelta 0.35, half-life 12h (~84h gone). Feature 18 H1 deltas: W:−0.12, E:−0.10, Worry:−0.15, P:−0.10. Dashboard contribution expiry (DELETE endpoint + ✕ button). Homeostatic nudge options on AniOptions (disabled by default). `ExpireContributionAsync` on IMemoryService. Feature 20 voice refinements: switched from 3B inner model to 8B conversation model (fixes pronoun confusion), voice-aware mood instructions (`BuildMoodInstruction(state, isVoice: true)`), ElevenLabs emotional acting directions (`PrependEmotionalDirection()` — parenthetical cues based on dominant emotional shift), clearer timeout/error filler messages. 246 tests. |
