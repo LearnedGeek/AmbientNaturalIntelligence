@@ -146,9 +146,19 @@ public class DesireEngine
             range = _options.OutreachThresholdRange;
         }
         var threshold = floor + (Random.Shared.NextDouble() * range);
+
+        // Feature 35 (Borotschnig): Emotional state modulates outreach threshold
+        // High warmth lowers threshold (positive state makes reaching out feel natural)
+        // High worry lowers threshold (concern drives check-in behavior)
+        var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+        var warmthExcess = Math.Max(0f, emotionalState.Warmth - emotionalState.WarmthBaseline);
+        var worryExcess = Math.Max(0f, emotionalState.Worry - emotionalState.WorryBaseline);
+        var thresholdReduction = (warmthExcess * 0.08f) + (worryExcess * 0.12f); // max ~0.10 reduction
+        threshold = Math.Max(0.40, threshold - thresholdReduction); // never below 0.40
+
         var passes = state.DesireToConnect >= threshold;
-        _log.LogInformation("Outreach gate: desire={Desire:F2} threshold={Threshold:F2} → {Result}",
-            state.DesireToConnect, threshold, passes ? "PASS" : "blocked");
+        _log.LogInformation("Outreach gate: desire={Desire:F2} threshold={Threshold:F2} (emotion adj={Adj:F2}) → {Result}",
+            state.DesireToConnect, threshold, thresholdReduction, passes ? "PASS" : "blocked");
         return passes;
     }
 
@@ -171,7 +181,7 @@ public class DesireEngine
     /// Formula: effectiveDrift = baseDrift × (1 - satisfaction × dampeningFactor)
     /// This provides natural downward pressure — satisfied Ani doesn't escalate desire.
     /// </summary>
-    public async Task ApplyDriftAsync(CancellationToken ct = default)
+    public async Task ApplyDriftAsync(float motivationMultiplier = 1.0f, CancellationToken ct = default)
     {
         var state   = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
@@ -192,6 +202,16 @@ public class DesireEngine
         var dampening = 1.0f - (float)(satisfaction * _options.SatisfactionDampeningFactor);
         var drift = baseDrift * dampening;
 
+        // Feature 35 (Borotschnig): Emotion→desire modulation
+        // High worry accelerates drift (concern makes her want to check in)
+        // Low energy suppresses drift (subdued state reduces outreach impulse)
+        var emotionModifier = ComputeEmotionDesireModifier(emotionalState);
+        drift *= emotionModifier;
+
+        // Feature 33 (Liu et al.): Motivation scoring — high-quality thoughts
+        // accelerate desire, routine thoughts contribute less
+        drift *= motivationMultiplier;
+
         state.DesireToConnect   = Math.Min(1.0f, state.DesireToConnect + drift);
         state.LastInnerThought  = DateTimeOffset.UtcNow;
 
@@ -199,8 +219,8 @@ public class DesireEngine
         state.CircadianModifier = ComputeCircadianModifier();
 
         _log.LogInformation(
-            "Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (base={BaseDrift:F2}, satisfaction={Satisfaction:F2}, dampening={Dampening:F2}, elapsed={Hours:F1}h, circadian={Circadian:F2})",
-            previousDesire, drift, state.DesireToConnect, baseDrift, satisfaction, dampening, elapsed.TotalHours, state.CircadianModifier);
+            "Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (base={BaseDrift:F2}, satisfaction={Satisfaction:F2}, dampening={Dampening:F2}, emotion={EmotionMod:F2}, motivation={MotivationMod:F2}, elapsed={Hours:F1}h, circadian={Circadian:F2})",
+            previousDesire, drift, state.DesireToConnect, baseDrift, satisfaction, dampening, emotionModifier, motivationMultiplier, elapsed.TotalHours, state.CircadianModifier);
 
         await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
@@ -358,6 +378,39 @@ public class DesireEngine
         // Equal-weight composite
         var satisfaction = (recency + warmthSatisfaction + engagementSatisfaction) / 3f;
         return Math.Clamp(satisfaction, 0f, 1f);
+    }
+
+    /// <summary>
+    /// Feature 35 (Borotschnig 2025): Emotional state modulates desire drift rate.
+    /// Emotions function as "biasing action selection" — concern biases toward outreach,
+    /// low energy biases toward silence, warmth biases toward connection.
+    ///
+    /// Returns a multiplier (0.5–1.5) applied to the base drift:
+    ///   - High worry → multiplier > 1.0 (concern accelerates desire)
+    ///   - High warmth → multiplier > 1.0 (positive state encourages connection)
+    ///   - Low energy → multiplier < 1.0 (subdued state suppresses outreach impulse)
+    ///   - Combined: worry and warmth compound, energy provides a brake
+    ///
+    /// Guards against feedback loops: multiplier is clamped to [0.5, 1.5].
+    /// The satisfaction dampening (upstream) provides the primary brake;
+    /// this modifier adds emotional coloring to the drift rate.
+    /// </summary>
+    internal static float ComputeEmotionDesireModifier(EmotionalState emotions)
+    {
+        // Worry above baseline accelerates desire (concern → check in)
+        var worryExcess = Math.Max(0f, emotions.Worry - emotions.WorryBaseline);
+        var worryBoost = worryExcess * 1.5f; // max ~0.3 at worry=0.4 above baseline
+
+        // Warmth above baseline gently accelerates desire (positive connection)
+        var warmthExcess = Math.Max(0f, emotions.Warmth - emotions.WarmthBaseline);
+        var warmthBoost = warmthExcess * 0.8f; // max ~0.3 at warmth=0.4 above baseline
+
+        // Low energy suppresses desire (subdued state → less outreach impulse)
+        var energyDeficit = Math.Max(0f, emotions.EnergyBaseline - emotions.Energy);
+        var energyBrake = energyDeficit * 1.2f; // max ~0.3 at energy=0.25 below baseline
+
+        var modifier = 1.0f + worryBoost + warmthBoost - energyBrake;
+        return Math.Clamp(modifier, 0.5f, 1.5f);
     }
 
     // Local time is intentional here — circadian rhythm maps to Ani's (contact's) timezone

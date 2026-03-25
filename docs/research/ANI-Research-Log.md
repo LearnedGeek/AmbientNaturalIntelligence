@@ -1540,6 +1540,28 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 24, 2026 — Features 33+35: Motivation Scoring + Emotion→Desire Modulation
+**Model version:** v6 (ani-v6-conversation-mistral 7B)
+**Type:** Architecture — desire engine enhancement
+**Source:** Liu et al. 2025 (proactive agents) + Borotschnig 2025 (synthetic emotions)
+
+**What happened:**
+
+Two features deployed that close the loop between Ani's emotional/cognitive state and her desire to reach out:
+
+**Feature 33 (Liu et al. 2025 — Motivation Scoring):** Each inner thought now receives a motivation score (0.3–1.5) based on three dimensions adapted from Liu et al.'s proactive agent framework: relevance (how connected is this thought to the contact?), information gap (is this novel or repetitive?), and expected impact (would sharing this deepen the relationship?). High-motivation thoughts accelerate desire drift; routine thoughts contribute less. Crucially, this is computed from existing signals (relational valence, emotional severity, emotional state) — no additional LLM call, consistent with the pipeline simplification principle.
+
+**Feature 35 (Borotschnig 2025 — Emotion→Desire Modulation):** Emotional state now directly modulates desire accumulation. High worry accelerates drift (concern makes her want to check in). High warmth gently accelerates drift (positive state encourages connection). Low energy suppresses drift (subdued state reduces outreach impulse). Additionally, the outreach threshold is modulated — high warmth and worry lower the bar for reaching out. Modifier clamped to [0.5, 1.5] to prevent feedback loops.
+
+**Design decisions:**
+- Feature 33 avoids an extra LLM call by deriving motivation from existing signals — this is a deliberate deviation from Liu et al.'s original approach (LLM-scored) to maintain the pipeline simplification gains.
+- Feature 35 uses excess-above-baseline rather than absolute values — worry at baseline (0.2) has no effect, only worry *above* baseline accelerates. This prevents the emotional model from creating a permanent bias.
+- Both features are multiplicative on the desire drift, meaning they compound with each other and with the existing satisfaction dampening. The log now shows all modifiers: base, satisfaction, dampening, emotion, motivation, elapsed, circadian.
+
+13 new tests, 405 total passing.
+
+---
+
 ### March 24, 2026 — Emergence Dashboard Live: First Visual Confirmation of Autonomous Inner Life
 **Model version:** v6 (ani-v6-conversation-mistral 7B / ani-v6-inner Llama 3B)
 **Type:** Research observation — emergence layer visualization

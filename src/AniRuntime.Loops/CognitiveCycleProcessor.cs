@@ -228,7 +228,9 @@ public class CognitiveCycleProcessor
         await _reflection.TryRunAsync(snapshot.CharacterState, ct).ConfigureAwait(false);
 
         // Phase 5: Desire update
-        await _desire.ApplyDriftAsync(ct).ConfigureAwait(false);
+        // Feature 33 (Liu et al.): Motivation score modulates desire drift
+        var motivation = MotivationScorer.Score(valence, obs.Severity, postShift);
+        await _desire.ApplyDriftAsync(motivation, ct).ConfigureAwait(false);
 
         if (valence > (float)_aniOptions.ValenceTriggerThreshold)
             await _desire.AddTriggerAsync(
