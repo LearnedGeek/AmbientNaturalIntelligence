@@ -107,11 +107,12 @@ public class CognitiveCycleProcessorTests : AniTestBase
         var keywordExtractor = new KeywordExtractor(
             MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();
+        var compressor = new ContextCompressor(MockOllama.Object, NullLogger<ContextCompressor>.Instance);
         var conversationReply = new ConversationReplyPhase(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
             _mockChannelResolver.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            _mockIntent.Object, gateState, DefaultOptions, DefaultOllamaOptions,
+            _mockIntent.Object, gateState, compressor, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
             MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,

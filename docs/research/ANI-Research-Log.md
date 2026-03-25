@@ -1540,6 +1540,25 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 24, 2026 — Feature 34: Context Compression (MemGPT-Inspired)
+**Model version:** v6 (ani-v6-conversation-mistral 7B)
+**Type:** Architecture — conversation pipeline enhancement
+**Source:** Packer et al. 2023 (MemGPT)
+
+**What happened:**
+
+Feature 34 deployed: MemGPT-inspired context compression for long conversations. When a conversation thread exceeds 6 messages, older turns are now summarized into a brief recap (2-3 sentences) rather than silently dropped. The summary is cached on the ConversationThread and only regenerated when new messages push beyond the window.
+
+Previously, the conversation history window (6 messages) kept the opener + last 5 messages and dropped the middle. This meant early conversation context was lost entirely — the model couldn't reference what was discussed at the start of a long thread. Now, a compressed summary preserves the key topics, facts, and emotional tone of older messages.
+
+Implementation uses the inner monologue model (Llama 3B) for summarization — fast, cheap, and available. The summary is injected as the first message in the history: "[Earlier in this conversation: They discussed...]" followed by the most recent messages.
+
+This completes the Phase 7 feature set (Features 33-35). All three research-grounded features are now deployed: Liu et al. motivation scoring, Borotschnig emotion-desire modulation, and Packer et al. context compression.
+
+405 tests passing, 0 warnings.
+
+---
+
 ### March 24, 2026 — Features 33+35: Motivation Scoring + Emotion→Desire Modulation
 **Model version:** v6 (ani-v6-conversation-mistral 7B)
 **Type:** Architecture — desire engine enhancement

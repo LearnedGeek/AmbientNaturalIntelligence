@@ -28,6 +28,7 @@ public class ConversationReplyPhase
     private readonly KeywordExtractor _keywords;
     private readonly IIntentExtractor _intent;
     private readonly IConversationGateState _gateState;
+    private readonly ContextCompressor _compressor;
     private readonly AniOptions _aniOptions;
     private readonly OllamaOptions _ollamaOptions;
     private readonly ILogger<ConversationReplyPhase> _log;
@@ -52,6 +53,7 @@ public class ConversationReplyPhase
         KeywordExtractor keywords,
         IIntentExtractor intent,
         IConversationGateState gateState,
+        ContextCompressor compressor,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log)
@@ -70,6 +72,7 @@ public class ConversationReplyPhase
         _keywords = keywords;
         _intent = intent;
         _gateState = gateState;
+        _compressor = compressor;
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
         _log = log;
@@ -237,21 +240,12 @@ public class ConversationReplyPhase
         }
 
         // Populate RecentHistory with a recency-windowed view of the conversation thread.
-        // When threads grow long, old topic dominance can cause the model to pattern-match
-        // on earlier topics instead of responding to the latest message. Keep the opener
-        // (for relationship context) + last N messages (for current topic).
+        // Feature 34 (MemGPT): Context compression for long conversations.
+        // When threads exceed the window, older messages are summarized into a brief
+        // recap rather than silently dropped. Preserves early context in compressed form.
         var historyWindow = _aniOptions.ConversationHistoryWindowSize;
-        var historyMessages = thread.Messages;
-        if (historyMessages.Count > historyWindow)
-        {
-            var trimmed = new List<ConversationMessage> { historyMessages[0] };
-            trimmed.AddRange(historyMessages.TakeLast(historyWindow - 1));
-            historyMessages = trimmed;
-        }
-        snapshot.RecentHistory = historyMessages.Select(m => new ChatMessage(
-            m.Role == Roles.Ani ? "assistant" : "user",
-            m.Content
-        )).ToList();
+        snapshot.RecentHistory = await _compressor.CompressIfNeededAsync(
+            thread, historyWindow, ct).ConfigureAwait(false);
 
         // Reconsideration path: desire built after choosing silence — skip the decision
         // step (desire already made the call) and use a segue-aware prompt

@@ -162,6 +162,7 @@ try
     builder.Services.AddSingleton<AdminCommandHandler>();
     builder.Services.AddSingleton<EmotionalProcessor>();
     builder.Services.AddSingleton<ContextBuilder>();
+    builder.Services.AddSingleton<AniRuntime.LLM.ContextCompressor>();
     builder.Services.AddSingleton<AniRuntime.LLM.KeywordExtractor>();
     builder.Services.AddSingleton<IIntentExtractor, AniRuntime.LLM.IntentExtractor>();
     builder.Services.AddSingleton<IConversationGateState, ConversationGateState>();

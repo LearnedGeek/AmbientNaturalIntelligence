@@ -10,6 +10,18 @@ public class ConversationThread
     public bool                      IsActive      { get; set; } = true;
     public string                    InitiatedBy   { get; set; } = Roles.Mark; // "ani" | "mark"
     public List<ConversationMessage> Messages      { get; set; } = new();
+
+    /// <summary>
+    /// Feature 34 (MemGPT): Cached summary of compressed older messages.
+    /// Not persisted to DB — regenerated when needed during conversation.
+    /// </summary>
+    public string? CompressedSummary { get; set; }
+
+    /// <summary>
+    /// Feature 34: Number of messages the cached summary covers.
+    /// If new messages push beyond this, the summary needs regeneration.
+    /// </summary>
+    public int CompressedSummaryUpToIndex { get; set; }
 }
 
 public class ConversationMessage
