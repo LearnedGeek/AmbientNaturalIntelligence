@@ -280,6 +280,32 @@ public class DesireEngine
     /// Resets all desire state after a successful outreach.
     /// Desire is zeroed, triggers cleared, cooldown lifted, timestamp recorded.
     /// </summary>
+    /// <summary>
+    /// Resets desire after a conversation reply. Does NOT count toward daily/night
+    /// outreach limits — conversation replies are responses to the contact's messages,
+    /// not unprompted outreach. The contact initiated; Ani replied.
+    /// </summary>
+    public async Task ResetAfterConversationReplyAsync(CancellationToken ct = default)
+    {
+        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
+        _log.LogInformation("Conversation reset: desire {Previous:F2} → 0.00, clearing {TriggerCount} triggers",
+            state.DesireToConnect, state.ActiveTriggers.Count);
+        state.DesireToConnect = 0.0f;
+        state.LastOutreach    = DateTimeOffset.UtcNow;
+        state.ActiveTriggers.Clear();
+
+        // Cooldown still applies — prevents rapid-fire replies
+        state.CooldownActive = true;
+        state.CooldownUntil  = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(_options.MinOutreachGapMinutes);
+        _log.LogInformation("Cooldown activated until {Until} ({Minutes} min)",
+            state.CooldownUntil, _options.MinOutreachGapMinutes);
+
+        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resets desire after unprompted outreach. Counts toward daily/night limits.
+    /// </summary>
     public async Task ResetAfterOutreachAsync(CancellationToken ct = default)
     {
         var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
@@ -289,7 +315,7 @@ public class DesireEngine
         state.LastOutreach    = DateTimeOffset.UtcNow;
         state.ActiveTriggers.Clear();
 
-        // Track daily, night, and morning outreach counts
+        // Track daily, night, and morning outreach counts — only for unprompted outreach
         _outreachCountToday++;
         if (IsNightHours()) _nightOutreachCount++;
         if (IsMorningWindow()) _morningSendCount++;

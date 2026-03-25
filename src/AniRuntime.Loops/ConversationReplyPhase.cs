@@ -539,8 +539,8 @@ public class ConversationReplyPhase
         replyMessage.Content = reply;
         await _conversations.AddMessageAsync(thread.Id, replyMessage, ct).ConfigureAwait(false);
 
-        // Update desire — contact happened
-        await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
+        // Update desire — conversation reply doesn't count toward daily outreach limit
+        await _desire.ResetAfterConversationReplyAsync(ct).ConfigureAwait(false);
 
         // Emotional shift from conversation
         if (emotionalState is not null)
