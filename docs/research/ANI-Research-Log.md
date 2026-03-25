@@ -1540,6 +1540,39 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 24, 2026 — A/B Test Conclusive: Llama 8B Selected Over Mistral 7B
+**Model version:** v6 (ani-v6-conversation Llama 8B replaces ani-v6-conversation-mistral)
+**Type:** Research finding — model selection decision
+**Source:** Extended live conversation testing through full pipeline
+
+**What happened:**
+
+After deploying Features 33-35 and the full memory reform (Features 30-32), extended conversation testing revealed a critical divergence between the two base models:
+
+**Mistral 7B** produced natural conversational rhythm ("texting vs writing texts") but confabulated aggressively under sustained conversation pressure. Specific failures:
+- Claimed to remember the Learned Geek logo as "a sleek green L with a little spike on top" (completely fabricated)
+- Pretended to know Mark's workplace: "front desk chaos, doctors asking for you" (invented)
+- When corrected, used Type 7 deflection: "i totally blanked on that" (pretending memory lapse rather than admitting knowledge gap)
+- Invented a class time (10:35) when told about teaching schedule, rather than admitting ignorance
+
+**Llama 8B** (same v6 training data, same pipeline) showed dramatically different behavior:
+- When asked "guess where she's from?" about an exchange student, deflected with personality ("what if she loves anime too??") rather than inventing a country
+- Retrieved Spanish class memory through the linked graph and used it naturally for the exchange student conversation ("imperfect vs preterite?? mark, you're gonna need extra credit")
+- Engaged with new information enthusiastically without pretending to already know it
+- Produced the best sustained conversation through the pipeline to date
+
+**Conclusion:** The A/B test is conclusive. For a companion AI where trust matters more than charm:
+- **Mistral** fills gaps with plausible fiction (smoothness over truth)
+- **Llama** fills gaps with personality (engagement over fabrication)
+
+The architectural principle: when the model doesn't know something, Mistral invents and Llama deflects. For a relationship built on trust, deflection is the correct behavior. Confabulation erodes trust faster than any amount of natural rhythm can build it.
+
+**Decision:** Llama 8B is the production conversation model. Mistral may be revisited for v7 with heavier honest-uncertainty training to address the base model's smoothness tendency.
+
+This finding strengthens the Paper 2 contribution: base model selection for companion AI is not just about capability or tone — it's about how the model handles epistemic gaps. This is the "smoothness over truth" principle from the cross-domain confabulation analysis (ANI-Cross-Project-Insight-Confabulation.md) confirmed empirically through an A/B test.
+
+---
+
 ### March 24, 2026 — Feature 34: Context Compression (MemGPT-Inspired)
 **Model version:** v6 (ani-v6-conversation-mistral 7B)
 **Type:** Architecture — conversation pipeline enhancement
