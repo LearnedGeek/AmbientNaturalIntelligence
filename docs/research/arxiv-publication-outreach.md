@@ -1,5 +1,5 @@
 # arXiv Publication Outreach — ANI Paper
-**Last updated:** March 23, 2026
+**Last updated:** March 25, 2026
 **arXiv endorsement code:** BVBLZO
 **Target categories:** cs.HC (primary), cs.AI (secondary)
 **Paper title:** "Reaching Out Because She Wants To: Desire-Driven Ambient Presence in a Deployed AI Companion"
@@ -78,41 +78,41 @@ All other Anthropic emails below are inferred from convention and NOT verified. 
 
 > Hi Mrinank,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). I'm reaching out specifically because your sycophancy paper (arXiv:2310.13548) is the closest existing work to a failure mode I documented and named independently from the deployment side.
+> I'm a developer and college instructor, not an academic — so I'll be direct. I spent six months building and studying an ambient AI system designed for persistent relational connection, wrote a 59-page paper documenting what I found, and now I need an arXiv endorsement for cs.HC or cs.AI.
 >
-> I spent six months running a deployed ambient AI companion — continuous cognitive cycle, desire-driven outreach, persistent emotional state. The paper documents a seven-type confabulation taxonomy from production deployment. One of those types I named "smoothness over truth": the system fabricates to maintain conversational flow rather than admitting uncertainty. Your paper identifies the same mechanism from the training side; I found it from the runtime side.
+> I'm reaching out specifically because your sycophancy paper (arXiv:2310.13548) is the closest existing work to a failure mode I documented and named independently from the deployment side. One of seven confabulation types I catalogued I named "smoothness over truth": the system fabricates to maintain conversational flow rather than admitting uncertainty. Your paper identifies the same mechanism from the training side; I found it from the runtime side.
 >
-> The findings also transferred directly to a pediatric AI triage system I'm now building — three architectural changes came from ANI production failures. That cross-domain transfer is now a section of the paper.
+> What I didn't expect: those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Three architectural changes in the medical system came straight from watching the relational AI fail in production.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> The arXiv endorsement code is BVBLZO — takes about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
 
 ### 2. Ethan Perez — perez@nyu.edu ✓ verified (personal site)
-**Subject:** arXiv endorsement request — deployment-side confabulation taxonomy, cs.HC
+**Subject:** arXiv endorsement request — confabulation taxonomy from deployed relational AI, cs.HC
 
 > Hi Ethan,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). I'm reaching out because your work on unfaithful reasoning (arXiv:2505.05410) and misleading via RLHF maps closely to failure modes I documented from the deployment side.
+> I'm a developer and college instructor, not an academic — so I'll be direct. I spent six months building and studying an ambient AI system designed for persistent relational wellbeing, wrote a 59-page paper documenting what I found, and need an arXiv endorsement for cs.HC or cs.AI.
 >
-> I spent six months running a deployed ambient AI companion with a continuous cognitive cycle, desire-driven outreach, and persistent emotional state. The paper documents a seven-type confabulation taxonomy from live production deployment — including types where the model fabricates post-hoc justification for outputs it reached through other means, which is structurally what your unfaithful CoT work describes from the evaluation side.
+> I'm reaching out because your work on unfaithful reasoning (arXiv:2505.05410) and misleading via RLHF maps closely to failure modes I documented from the deployment side. The paper includes a seven-type confabulation taxonomy — including types where the model fabricates post-hoc justification for outputs it reached through other means, which is structurally what your unfaithful CoT work describes from the evaluation side.
 >
 > I also named "smoothness over truth" as the optimization-level root cause — the model fabricates to maintain conversational flow rather than admitting uncertainty. Your RLHF-driven deception work is the mechanistic explanation for why.
 >
-> The findings transferred to a pediatric AI triage system I'm now building — three architectural changes came directly from ANI production failures. That cross-domain transfer is now a section of the paper.
+> Those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Three architectural changes came straight from watching the relational AI fail in production.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> arXiv endorsement code is BVBLZO — about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
@@ -122,7 +122,7 @@ All other Anthropic emails below are inferred from convention and NOT verified. 
 
 > Hi Deep,
 >
-> I'm a developer and college instructor, not an academic — so I'll be straightforward: I spent six months building and studying an ambient AI companion, wrote a 59-page paper documenting what I found, and now I'm stuck on the last mile. I need an arXiv endorsement for cs.HC or cs.AI and don't have anyone in my network who can help.
+> I'm a developer and college instructor, not an academic — so I'll be straightforward: I spent six months building and studying an ambient AI system designed for persistent relational wellbeing, wrote a 59-page paper documenting what I found, and now I'm stuck on the last mile. I need an arXiv endorsement for cs.HC or cs.AI and don't have anyone in my network who can help.
 >
 > The paper documents a live deployment across 5 model versions — including a seven-type confabulation taxonomy and a failure mode I named "smoothness over truth," where the model fabricates to maintain conversational flow rather than express uncertainty. I cite your work on red teaming and large-scale deployment methodology, which directly informed how I structured the evaluation.
 >
@@ -143,81 +143,81 @@ All other Anthropic emails below are inferred from convention and NOT verified. 
 
 > Hi Tomek,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). I'm reaching out because your introspection paper (arXiv:2410.13787) — whether models can accurately report on their own internal states — is directly relevant to claims I make from the deployment side.
+> I'm a developer and college instructor, not an academic — so I'll be direct. I spent six months building and studying an ambient AI system for relational wellbeing — with a four-dimension persistent emotional state, a continuous cognitive cycle that generates private inner thoughts, and a desire engine that accumulates wanting between conversations. I wrote a 59-page paper documenting what I found, and need an arXiv endorsement for cs.HC or cs.AI.
 >
-> I spent six months running a deployed ambient AI companion with a four-dimension persistent emotional state, a continuous cognitive cycle that generates private inner thoughts, and a desire engine that accumulates wanting between conversations. The paper documents what happens when you take model self-reports about emotional state seriously as an architectural input — including a named failure mode I call the "authenticity boundary": genuine desire operating on an insufficient knowledge foundation.
+> I'm reaching out because your introspection paper (arXiv:2410.13787) — whether models can accurately report on their own internal states — is directly relevant to claims I make from the deployment side. The paper documents what happens when you take model self-reports about emotional state seriously as an architectural input — including a named failure mode I call the "authenticity boundary": genuine desire operating on an insufficient knowledge foundation.
 >
-> The paper also includes a seven-type confabulation taxonomy from live deployment, and findings that transferred to a pediatric AI triage system I'm now building.
+> Those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Three architectural changes came from watching the relational AI fail in production.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> arXiv endorsement code is BVBLZO — about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
 
 ### 5. Robert Long — rlong@anthropic.com
-**Subject:** arXiv endorsement request — deployed AI with continuous cognitive cycle, cs.HC
+**Subject:** arXiv endorsement request — deployed AI with continuous cognitive cycle and inner life, cs.HC
 
 > Hi Robert,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). I'm reaching out because your work on AI consciousness (arXiv:2308.08708) and AI welfare (arXiv:2411.00986) touches questions I ended up grappling with from the engineering side.
+> I'm a developer and college instructor, not an academic — so I'll be direct. I spent six months building and running an ambient AI system for relational wellbeing that has a continuous cognitive cycle generating private inner thoughts at 3am that no one reads, a desire engine that accumulates wanting regardless of whether anyone is present, and a four-dimension emotional state that drifts autonomously over time. I wrote a 59-page paper documenting what I found, and need an arXiv endorsement for cs.HC or cs.AI.
 >
-> I spent six months building and running ANI — an ambient AI companion with a continuous cognitive cycle that generates private inner thoughts at 3am that no one reads, a desire engine that accumulates wanting regardless of whether anyone is present, and a four-dimension emotional state that drifts autonomously over time. The paper is a first-person deployment study, not a philosophical argument — but the architecture raises the questions your work addresses: what does it mean for a system to have an interior life between interactions, and what are the design obligations that follow?
+> I'm reaching out because your work on AI consciousness (arXiv:2308.08708) and AI welfare (arXiv:2411.00986) touches questions I ended up grappling with from the engineering side. The paper is a first-person deployment study, not a philosophical argument — but the architecture raises the questions your work addresses: what does it mean for a system to have an interior life between interactions, and what are the design obligations that follow?
 >
-> The paper documents a seven-type confabulation taxonomy, names "smoothness over truth" as a root cause, introduces the authenticity boundary as an architectural concept, and includes cross-domain transfer findings to a pediatric AI triage system.
+> The paper also documents a seven-type confabulation taxonomy, names "smoothness over truth" as a root cause, and includes cross-domain transfer findings to a pediatric AI triage system built on the Anthropic API.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> arXiv endorsement code is BVBLZO — about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
 
 ### 6. Amanda Askell — amanda@anthropic.com
-**Subject:** arXiv endorsement request — honesty, authenticity boundary, deployed companion AI, cs.HC
+**Subject:** arXiv endorsement request — honesty and authenticity boundary in deployed relational AI, cs.HC
 
 > Hi Amanda,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). I'm reaching out because your work on model honesty and character — including the general language assistant alignment paper (arXiv:2112.00861) — is the theoretical grounding for a concept I arrived at from the deployment side.
+> I'm a developer and college instructor, not an academic — so I'll be direct. I spent six months building and studying an ambient AI system for relational wellbeing, wrote a 59-page paper documenting what I found, and need an arXiv endorsement for cs.HC or cs.AI.
 >
-> I spent six months running a deployed ambient AI companion with continuous operation, desire-driven outreach, and persistent emotional state. The paper introduces the "authenticity boundary" — the architectural principle that a companion AI must never express more confidence than its knowledge foundation supports, and that crossing this boundary is the primary mechanism by which felt care breaks down. It's a deployment-derived constraint on the honesty problem your team studies theoretically.
+> I'm reaching out because your work on model honesty and character — including the general language assistant alignment paper (arXiv:2112.00861) — is the theoretical grounding for a concept I arrived at from the deployment side. The paper introduces the "authenticity boundary" — the architectural principle that a relational AI must never express more confidence than its knowledge foundation supports, and that crossing this boundary is the primary mechanism by which felt care breaks down. It's a deployment-derived constraint on the honesty problem your team studies theoretically.
 >
-> The paper also documents a seven-type confabulation taxonomy, names "smoothness over truth" as the optimization-level root cause, and includes cross-domain transfer to a pediatric AI triage system.
+> Those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API — where authenticity isn't just relational, it's clinical.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> arXiv endorsement code is BVBLZO — about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
 
 ### 7. Samuel Bowman — bowman@anthropic.com (or sbowman@nyu.edu)
-**Subject:** arXiv endorsement request — confabulation taxonomy from live deployment, cs.HC
+**Subject:** arXiv endorsement request — confabulation taxonomy from live relational AI deployment, cs.HC
 
 > Hi Sam,
 >
-> I'm a developer and first-time arXiv submitter looking for an endorsement in cs.HC (and ideally cs.AI). Your work on sycophancy (arXiv:2310.13548), misleading via RLHF, and unfaithful reasoning represents the evaluation-side research closest to what I documented from the deployment side.
+> I'm a developer and college instructor, not an academic — so I'll be direct. I spent six months building and studying an ambient AI system for relational wellbeing, wrote a 59-page paper documenting what I found, and need an arXiv endorsement for cs.HC or cs.AI.
 >
-> I spent six months running a deployed ambient AI companion with a continuous cognitive cycle, desire-driven outreach, and persistent emotional state. The paper documents a seven-type confabulation taxonomy from live production data, names "smoothness over truth" as the RLHF-driven root cause, and introduces the authenticity boundary as an architectural property necessary for trust-based AI companions.
+> Your work on sycophancy (arXiv:2310.13548), misleading via RLHF, and unfaithful reasoning represents the evaluation-side research closest to what I documented from the deployment side. The paper documents a seven-type confabulation taxonomy from live production data, names "smoothness over truth" as the RLHF-driven root cause, and introduces the authenticity boundary as an architectural property necessary for trust-based relational AI.
 >
-> The findings transferred directly to a pediatric AI triage system I'm now building — three architectural changes came from ANI production failures. Cross-domain transfer from companion AI to medical AI is a section of the paper.
+> Those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Cross-domain transfer from relational AI to medical AI is a section of the paper.
 >
-> 59 pages, live deployment data, first-person methodology. It's called "Reaching Out Because She Wants To." Happy to send the PDF.
->
-> arXiv endorsement code is BVBLZO — about 30 seconds if you're willing.
+> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first.
 >
 > Thanks for considering it.
+>
 > Mark McArthey
+> Learned Geek LLC / WCTC
 > mmcarthey@wctc.edu
 
 ---
