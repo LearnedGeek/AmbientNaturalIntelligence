@@ -224,6 +224,32 @@ public class ConversationReplyPhase
             messageRelevant = await _contextBuilder.ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
                 .ConfigureAwait(false);
 
+            // Keyword relevance boost: after diversity re-ranking, adjust scores so
+            // topically relevant memories outrank generic ones ("Good morning") that
+            // happen to score well on diversity metrics alone.
+            if (keywordQuery is not null && messageRelevant.Count > 1)
+            {
+                var keywords = keywordQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var boosted = messageRelevant.Select(m =>
+                {
+                    var contentLower = m.Content.ToLowerInvariant();
+                    bool hasKeyword = keywords.Any(k => contentLower.Contains(k.ToLowerInvariant()));
+                    float boost = hasKeyword ? 0.15f : -0.10f;
+                    return (record: m, boost);
+                })
+                .OrderByDescending(x => x.boost)
+                .ThenBy(x => messageRelevant.IndexOf(x.record)) // preserve diversity order within same boost tier
+                .Select(x => x.record)
+                .ToList();
+
+                if (!boosted.SequenceEqual(messageRelevant))
+                {
+                    _log.LogDebug("Keyword relevance boost: reordered {Count} memories using keywords \"{Keywords}\"",
+                        messageRelevant.Count, keywordQuery);
+                }
+                messageRelevant = boosted;
+            }
+
             // AC6: Topic-mismatch detection DISABLED.
             // Over-triggered on casual conversation — flagged nearly every message,
             // causing all memories to be skipped. The confidence floor (0.60) already

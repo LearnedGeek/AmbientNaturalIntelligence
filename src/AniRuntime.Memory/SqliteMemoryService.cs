@@ -128,8 +128,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
                 if (merged is not null)
                 {
-                    // Feature 31: Create link before merge overwrites
+                    // Feature 31: Create links for the surviving (merged) record.
+                    // Bug fix: Use the existing record's ID as source — the incoming
+                    // record was never inserted into the memories table, so using
+                    // record.Id would create memory_links referencing a non-existent
+                    // ID, triggering FOREIGN KEY constraint failures.
+                    var originalId = record.Id;
+                    record.Id = Guid.Parse(mergeResult.Value.ExistingId);
                     await CreateLinksAsync(record, ct).ConfigureAwait(false);
+                    record.Id = originalId;
                     return; // Merge succeeded — existing record was updated
                 }
                 // Merge failed — fall through to normal insert
@@ -541,7 +548,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             // Re-embed the merged content
             var newEmbedding = await _ollama.EmbedAsync(merged, ct).ConfigureAwait(false);
 
-            // Update the existing record in place
+            // Update the existing record in place with merged content
             await using var conn = await OpenAsync(ct).ConfigureAwait(false);
             await using var cmd  = conn.CreateCommand();
             cmd.CommandText = """
@@ -628,6 +635,80 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         catch (Exception ex)
         {
             _log.LogDebug(ex, "Memory link creation failed — continuing without links");
+        }
+    }
+
+    /// <summary>
+    /// Reassigns all memory_links referencing oldId to point to survivorId instead.
+    /// If reassignment would create a duplicate link (same source+target), deletes
+    /// the old link instead. Must be called before deleting any memory record that
+    /// might be referenced in memory_links, to prevent FOREIGN KEY constraint failures.
+    /// </summary>
+    private async Task ReassignMemoryLinksAsync(
+        SqliteConnection conn, string oldId, string survivorId, CancellationToken ct)
+    {
+        if (oldId == survivorId) return;
+
+        // Step 1: Delete links where reassignment would create a self-referencing link
+        // (source_id == target_id after reassignment) or a duplicate.
+        await using var deleteSelfLinks = conn.CreateCommand();
+        deleteSelfLinks.CommandText = """
+            DELETE FROM memory_links
+            WHERE (source_id = $oldId AND target_id = $survivorId)
+               OR (target_id = $oldId AND source_id = $survivorId)
+            """;
+        deleteSelfLinks.Parameters.AddWithValue("$oldId", oldId);
+        deleteSelfLinks.Parameters.AddWithValue("$survivorId", survivorId);
+        var selfDeleted = await deleteSelfLinks.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Step 2: Delete links that would become duplicates after reassignment.
+        // A duplicate occurs when survivor already has a link to the same target.
+        await using var deleteDupSources = conn.CreateCommand();
+        deleteDupSources.CommandText = """
+            DELETE FROM memory_links
+            WHERE source_id = $oldId
+              AND target_id IN (
+                  SELECT target_id FROM memory_links WHERE source_id = $survivorId
+              )
+            """;
+        deleteDupSources.Parameters.AddWithValue("$oldId", oldId);
+        deleteDupSources.Parameters.AddWithValue("$survivorId", survivorId);
+        var dupSourcesDeleted = await deleteDupSources.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        await using var deleteDupTargets = conn.CreateCommand();
+        deleteDupTargets.CommandText = """
+            DELETE FROM memory_links
+            WHERE target_id = $oldId
+              AND source_id IN (
+                  SELECT source_id FROM memory_links WHERE target_id = $survivorId
+              )
+            """;
+        deleteDupTargets.Parameters.AddWithValue("$oldId", oldId);
+        deleteDupTargets.Parameters.AddWithValue("$survivorId", survivorId);
+        var dupTargetsDeleted = await deleteDupTargets.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Step 3: Reassign remaining links from oldId → survivorId
+        await using var reassignSource = conn.CreateCommand();
+        reassignSource.CommandText = "UPDATE memory_links SET source_id = $survivorId WHERE source_id = $oldId";
+        reassignSource.Parameters.AddWithValue("$oldId", oldId);
+        reassignSource.Parameters.AddWithValue("$survivorId", survivorId);
+        var sourcesReassigned = await reassignSource.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        await using var reassignTarget = conn.CreateCommand();
+        reassignTarget.CommandText = "UPDATE memory_links SET target_id = $survivorId WHERE target_id = $oldId";
+        reassignTarget.Parameters.AddWithValue("$oldId", oldId);
+        reassignTarget.Parameters.AddWithValue("$survivorId", survivorId);
+        var targetsReassigned = await reassignTarget.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        var totalChanged = selfDeleted + dupSourcesDeleted + dupTargetsDeleted + sourcesReassigned + targetsReassigned;
+        if (totalChanged > 0)
+        {
+            _log.LogDebug("Memory link reassignment: {OldId} → {SurvivorId} — " +
+                "{SelfDel} self-links deleted, {DupDel} duplicates deleted, " +
+                "{Reassigned} links reassigned",
+                oldId, survivorId, selfDeleted,
+                dupSourcesDeleted + dupTargetsDeleted,
+                sourcesReassigned + targetsReassigned);
         }
     }
 
