@@ -283,6 +283,14 @@ public class ContextBuilder
     public async Task<List<MemoryRecord>> ReRankForDiversityAsync(
         List<MemoryRecord> candidates, List<MemoryRecord> recentThoughts, CancellationToken ct)
     {
+        // Dedup by ID — multiple search paths (scored, link-enhanced, TF-IDF)
+        // can return the same memory. Without this, identical entries appear
+        // multiple times in the re-ranked results.
+        candidates = candidates
+            .GroupBy(c => c.Id)
+            .Select(g => g.First())
+            .ToList();
+
         if (candidates.Count <= 1 || recentThoughts.Count == 0)
             return candidates;
 
