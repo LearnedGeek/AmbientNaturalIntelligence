@@ -7,6 +7,8 @@
 @inject IMemoryPersistence MemoryPersist
 @inject IMemoryMaintenance MemoryMaintenance
 @inject IConversationService Conversations
+@using AniRuntime.Core
+@using AniRuntime.Loops
 
 <h1>ANI Dashboard</h1>
 
@@ -31,6 +33,51 @@
         {
             <p><em>@_emotional.Describe()</em></p>
         }
+    </section>
+}
+
+@if (_desire is not null && _emotional is not null)
+{
+    var emotionMod = DesireEngine.ComputeEmotionDesireModifier(_emotional);
+    <section>
+        <h3>Desire State</h3>
+        <div class="grid">
+            <article>
+                <header>Desire to Connect</header>
+                <div style="text-align: center;">
+                    <p style="font-size: 2em; margin: 0;">@_desire.DesireToConnect.ToString("F2")</p>
+                    <progress value="@_desire.DesireToConnect" max="1" style="width: 80%;"></progress>
+                </div>
+            </article>
+            <article>
+                <header>Emotion Modifier</header>
+                <div style="text-align: center;">
+                    <p style="font-size: 2em; margin: 0; color: @(emotionMod > 1.05f ? "#4caf50" : emotionMod < 0.95f ? "#f44336" : "#888")">@emotionMod.ToString("F2")x</p>
+                    <small style="opacity: 0.6;">@(emotionMod > 1.05f ? "accelerating" : emotionMod < 0.95f ? "suppressing" : "neutral")</small>
+                </div>
+            </article>
+            <article>
+                <header>Cooldown</header>
+                <div style="text-align: center;">
+                    @if (_desire.CooldownActive && _desire.CooldownUntil > DateTimeOffset.UtcNow)
+                    {
+                        var remaining = _desire.CooldownUntil - DateTimeOffset.UtcNow;
+                        <p style="font-size: 1.2em; margin: 0; color: #ff9800;">@remaining.TotalMinutes.ToString("F0")m remaining</p>
+                    }
+                    else
+                    {
+                        <p style="font-size: 1.2em; margin: 0; color: #4caf50;">Ready</p>
+                    }
+                </div>
+            </article>
+            <article>
+                <header>Circadian</header>
+                <div style="text-align: center;">
+                    <p style="font-size: 2em; margin: 0;">@_desire.CircadianModifier.ToString("F2")</p>
+                    <small style="opacity: 0.6;">@(DateTimeOffset.Now.Hour switch { >= 6 and < 10 => "morning", >= 10 and < 17 => "afternoon", >= 17 and < 21 => "evening", _ => "night" })</small>
+                </div>
+            </article>
+        </div>
     </section>
 }
 
@@ -88,6 +135,7 @@
 @code {
     private CharacterStateDoc? _charState;
     private EmotionalState? _emotional;
+    private DesireState? _desire;
     private List<MemoryRecord> _recentThoughts = new();
     private List<EmotionalContribution> _contributions = new();
     private List<EmotionalContribution> _allContributions = new();
@@ -97,6 +145,7 @@
     {
         _charState = await StateStore.GetCharacterStateAsync();
         _emotional = await StateStore.GetEmotionalStateAsync();
+        _desire = await StateStore.GetDesireStateAsync();
         _recentThoughts = (await MemorySearch.GetByTypeAsync(MemoryType.InnerThought, 5)).ToList();
         _contributions = await MemoryAnalytics.GetActiveContributionsAsync();
         _allContributions = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));

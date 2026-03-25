@@ -395,7 +395,7 @@ public class DesireEngine
     /// The satisfaction dampening (upstream) provides the primary brake;
     /// this modifier adds emotional coloring to the drift rate.
     /// </summary>
-    internal static float ComputeEmotionDesireModifier(EmotionalState emotions)
+    public static float ComputeEmotionDesireModifier(EmotionalState emotions)
     {
         // Worry above baseline accelerates desire (concern → check in)
         var worryExcess = Math.Max(0f, emotions.Worry - emotions.WorryBaseline);
