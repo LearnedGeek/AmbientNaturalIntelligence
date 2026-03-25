@@ -23,4 +23,7 @@ public interface IMemoryMaintenance
 
     /// <summary>Total count of links in the memory graph.</summary>
     Task<int> GetLinkCountAsync(CancellationToken ct = default);
+
+    /// <summary>Feature 39: Returns all memory links for graph visualization.</summary>
+    Task<IReadOnlyList<MemoryLink>> GetAllLinksAsync(CancellationToken ct = default);
 }

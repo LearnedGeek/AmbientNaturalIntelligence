@@ -1233,6 +1233,27 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         return Convert.ToInt32(result);
     }
 
+    public async Task<IReadOnlyList<MemoryLink>> GetAllLinksAsync(CancellationToken ct = default)
+    {
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT source_id, target_id, relationship, created_at FROM memory_links";
+        var links = new List<MemoryLink>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            links.Add(new MemoryLink
+            {
+                SourceId = Guid.Parse(reader.GetString(0)),
+                TargetId = Guid.Parse(reader.GetString(1)),
+                Relationship = reader.GetString(2),
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(3)),
+            });
+        }
+        return links;
+    }
+
     private static EmotionalContribution ReadContribution(Microsoft.Data.Sqlite.SqliteDataReader reader)
     {
         var categoryStr = reader.GetString(reader.GetOrdinal("category"));

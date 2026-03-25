@@ -75,6 +75,40 @@ public static class MemoryEndpoints
             return Results.Ok(categorized);
         });
 
+        group.MapGet("/graph", async (
+            IMemoryService memory,
+            IMemoryMaintenance maintenance,
+            CancellationToken ct) =>
+        {
+            var allMemories = new List<MemoryRecord>();
+            foreach (var type in Enum.GetValues<MemoryType>())
+            {
+                var records = await memory.GetByTypeAsync(type, 500, ct);
+                allMemories.AddRange(records);
+            }
+
+            var links = await maintenance.GetAllLinksAsync(ct);
+
+            var nodes = allMemories.Select(r => new
+            {
+                id = r.Id.ToString(),
+                type = r.Type.ToString(),
+                content = r.Content.Length > 150 ? r.Content[..150] + "..." : r.Content,
+                importance = r.Importance,
+                isAnchored = r.AnchoredAt.HasValue,
+                createdAt = r.CreatedAt,
+            }).ToList();
+
+            var edges = links.Select(l => new
+            {
+                source = l.SourceId.ToString(),
+                target = l.TargetId.ToString(),
+                relationship = l.Relationship,
+            }).ToList();
+
+            return Results.Ok(new { nodes, edges });
+        });
+
         return group;
     }
 

@@ -1,0 +1,177 @@
+@page "/network"
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<h1>Memory Network</h1>
+<p>Ani's memory as a living graph — @_nodeCount nodes, @_edgeCount links.</p>
+
+<div style="display: flex; gap: 0.5em; margin-bottom: 0.5rem; flex-wrap: wrap;">
+    <button @onclick='() => SetColorMode("type")' style="@ButtonStyle(_colorMode == "type")">Color by Type</button>
+    <button @onclick='() => SetColorMode("importance")' style="@ButtonStyle(_colorMode == "importance")">Color by Importance</button>
+    <button @onclick='() => SetColorMode("age")' style="@ButtonStyle(_colorMode == "age")">Color by Recency</button>
+</div>
+
+<div style="display: flex; gap: 1em; font-size: 0.8em; margin-bottom: 0.5rem; flex-wrap: wrap;">
+    @if (_colorMode == "type")
+    {
+        <span><span style="color: #2196f3;">●</span> Semantic</span>
+        <span><span style="color: #4caf50;">●</span> Episodic</span>
+        <span><span style="color: #ff9800;">●</span> Perception</span>
+        <span><span style="color: #9c27b0;">●</span> InnerThought</span>
+        <span><span style="color: #f44336;">●</span> Reflection</span>
+        <span><span style="color: #607d8b;">●</span> Other</span>
+    }
+    else if (_colorMode == "importance")
+    {
+        <span><span style="color: #f44336;">●</span> High (0.8+)</span>
+        <span><span style="color: #ff9800;">●</span> Medium (0.5-0.8)</span>
+        <span><span style="color: #607d8b;">●</span> Low (under 0.5)</span>
+    }
+    else
+    {
+        <span><span style="color: #4caf50;">●</span> Recent (24h)</span>
+        <span><span style="color: #ff9800;">●</span> This week</span>
+        <span><span style="color: #607d8b;">●</span> Older</span>
+    }
+</div>
+
+<div id="graph-container" style="width: 100%; height: 700px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: #0a0a1a;"></div>
+
+<div id="node-detail" style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+    <h4 id="detail-type" style="margin: 0;"></h4>
+    <p id="detail-content" style="font-style: italic; margin: 0.5em 0;"></p>
+    <small id="detail-meta" style="opacity: 0.5;"></small>
+</div>
+
+<script src="https://unpkg.com/3d-force-graph@1"></script>
+<script>
+    window.aniGraph = {
+        instance: null,
+        colorMode: 'type',
+
+        init: function(graphData, colorMode) {
+            this.colorMode = colorMode || 'type';
+            const container = document.getElementById('graph-container');
+            if (!container) return;
+
+            // Clean up previous instance
+            if (this.instance) {
+                container.innerHTML = '';
+            }
+
+            const typeColors = {
+                'Semantic': '#2196f3',
+                'Episodic': '#4caf50',
+                'Perception': '#ff9800',
+                'InnerThought': '#9c27b0',
+                'Reflection': '#f44336',
+            };
+
+            const relColors = {
+                'relates_to': 'rgba(255,255,255,0.08)',
+                'caused_by': 'rgba(255,235,59,0.15)',
+                'follows_up': 'rgba(0,188,212,0.15)',
+                'contradicts': 'rgba(244,67,54,0.15)',
+            };
+
+            const now = Date.now();
+            const dayMs = 86400000;
+            const weekMs = dayMs * 7;
+
+            const self = this;
+
+            this.instance = ForceGraph3D()(container)
+                .graphData(graphData)
+                .nodeLabel(n => n.content)
+                .nodeVal(n => 1 + (n.importance || 0.3) * 4)
+                .nodeColor(n => {
+                    if (self.colorMode === 'type') {
+                        return typeColors[n.type] || '#607d8b';
+                    } else if (self.colorMode === 'importance') {
+                        const imp = n.importance || 0.3;
+                        return imp >= 0.8 ? '#f44336' : imp >= 0.5 ? '#ff9800' : '#607d8b';
+                    } else {
+                        const age = now - new Date(n.createdAt).getTime();
+                        return age < dayMs ? '#4caf50' : age < weekMs ? '#ff9800' : '#607d8b';
+                    }
+                })
+                .nodeOpacity(0.9)
+                .linkColor(l => relColors[l.relationship] || 'rgba(255,255,255,0.06)')
+                .linkOpacity(0.4)
+                .linkWidth(0.3)
+                .backgroundColor('#0a0a1a')
+                .width(container.clientWidth)
+                .height(700)
+                .onNodeClick(function(node) {
+                    const detail = document.getElementById('node-detail');
+                    const detailType = document.getElementById('detail-type');
+                    const detailContent = document.getElementById('detail-content');
+                    const detailMeta = document.getElementById('detail-meta');
+
+                    if (detail && detailType && detailContent && detailMeta) {
+                        detail.style.display = 'block';
+                        detailType.textContent = node.type + (node.isAnchored ? ' (anchored)' : '');
+                        detailContent.textContent = node.content;
+                        detailMeta.textContent = 'Importance: ' + (node.importance || 0).toFixed(2) +
+                            ' | Created: ' + new Date(node.createdAt).toLocaleString();
+                    }
+
+                    // Focus camera on clicked node
+                    const distance = 80;
+                    const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
+                    self.instance.cameraPosition(
+                        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+                        node,
+                        1500
+                    );
+                });
+        },
+
+        updateColorMode: function(mode) {
+            this.colorMode = mode;
+            if (this.instance) {
+                this.instance.nodeColor(this.instance.nodeColor());
+            }
+        }
+    };
+</script>
+
+@code {
+    private int _nodeCount;
+    private int _edgeCount;
+    private string _colorMode = "type";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var response = await JS.InvokeAsync<System.Text.Json.JsonElement>(
+                    "fetch", "/api/v1/memories/graph");
+                var json = await JS.InvokeAsync<System.Text.Json.JsonElement>(
+                    "eval", "fetch('/api/v1/memories/graph').then(r => r.json())");
+
+                _nodeCount = json.GetProperty("nodes").GetArrayLength();
+                _edgeCount = json.GetProperty("edges").GetArrayLength();
+                StateHasChanged();
+
+                await JS.InvokeVoidAsync("aniGraph.init", json, _colorMode);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Graph init failed: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task SetColorMode(string mode)
+    {
+        _colorMode = mode;
+        await JS.InvokeVoidAsync("aniGraph.updateColorMode", mode);
+    }
+
+    private string ButtonStyle(bool active) => active
+        ? "padding: 0.3em 0.8em; border-radius: 4px; background: #2196f3; color: white; border: none; cursor: pointer;"
+        : "padding: 0.3em 0.8em; border-radius: 4px; background: rgba(255,255,255,0.1); color: inherit; border: none; cursor: pointer;";
+}
