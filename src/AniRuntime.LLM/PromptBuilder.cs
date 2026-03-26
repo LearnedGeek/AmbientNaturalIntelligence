@@ -140,7 +140,7 @@ public static class PromptBuilder
         if (externalMemories.Count > 0)
         {
             sections.Add("Recent things that happened:");
-            sections.AddRange(externalMemories.Select(m => $"  - {m.Content}"));
+            sections.AddRange(externalMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 
         // Relevant memories from semantic search — things connected to current perceptions
@@ -152,7 +152,7 @@ public static class PromptBuilder
         if (relevantMemories.Count > 0)
         {
             sections.Add("Memories that feel connected to right now:");
-            sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+            sections.AddRange(relevantMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 
         // Thought loop detection via semantic search — if recent thoughts are too similar
@@ -242,7 +242,7 @@ public static class PromptBuilder
         if (memories.Count > 0)
         {
             sections.Add("Things that might connect:");
-            sections.AddRange(memories.Select(m => $"  - {m.Content}"));
+            sections.AddRange(memories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 
         if (snapshot.OpenLoops.Count > 0)
@@ -504,7 +504,7 @@ public static class PromptBuilder
             if (relevantMemories.Count > 0)
             {
                 sections.Add("Things connected to this conversation:");
-                sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+                sections.AddRange(relevantMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
             }
         }
 
@@ -585,7 +585,7 @@ public static class PromptBuilder
             if (relevantMemories.Count > 0)
             {
                 sections.Add("Things connected to this conversation:");
-                sections.AddRange(relevantMemories.Select(m => $"  - {m.Content}"));
+                sections.AddRange(relevantMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
             }
         }
 
@@ -1056,5 +1056,49 @@ public static class PromptBuilder
             """;
 
         return (system, user);
+    }
+
+    /// <summary>
+    /// Formats a memory for prompt injection with felt-time temporal context.
+    /// The timestamp is converted to natural language relative to now:
+    /// "just now", "earlier today", "yesterday evening", "3 days ago".
+    /// This gives the model temporal awareness without polluting the embedding.
+    /// </summary>
+    public static string FormatMemoryWithTime(MemoryRecord memory, DateTimeOffset? now = null)
+    {
+        var currentTime = now ?? DateTimeOffset.Now;
+        var age = currentTime - memory.OccurredAt;
+        var hour = memory.OccurredAt.Hour;
+
+        var timeOfDay = hour switch
+        {
+            < 6 => "late night",
+            < 9 => "early morning",
+            < 12 => "morning",
+            < 14 => "early afternoon",
+            < 17 => "afternoon",
+            < 20 => "evening",
+            _ => "late evening",
+        };
+
+        string temporal;
+        if (age.TotalMinutes < 30)
+            temporal = "just now";
+        else if (age.TotalHours < 1)
+            temporal = "a little while ago";
+        else if (age.TotalHours < 4 && memory.OccurredAt.Date == currentTime.Date)
+            temporal = $"earlier this {timeOfDay}";
+        else if (memory.OccurredAt.Date == currentTime.Date)
+            temporal = $"this {timeOfDay}";
+        else if (memory.OccurredAt.Date == currentTime.Date.AddDays(-1))
+            temporal = $"yesterday {timeOfDay}";
+        else if (age.TotalDays < 7)
+            temporal = $"{(int)age.TotalDays} days ago";
+        else if (age.TotalDays < 14)
+            temporal = "last week";
+        else
+            temporal = $"{(int)(age.TotalDays / 7)} weeks ago";
+
+        return $"({temporal}) {memory.Content}";
     }
 }
