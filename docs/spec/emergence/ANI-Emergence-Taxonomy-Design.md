@@ -165,7 +165,7 @@ logEntry.EmergenceTypesJson = emergenceTypes.Count > 0
 ## 3. Dashboard Enhancement (/emergence tab)
 
 ### 3.1 — Emergence Type Distribution
-3-column grid (follows RegisterHeatmap pattern). Six cards for EM1-EM6 with count, percentage, progress bar.
+3-column grid (follows RegisterHeatmap pattern). Seven cards for EM1-EM7 with count, percentage, progress bar.
 Endpoint: `GET /api/v1/emergence/type-distribution?days=30`
 
 ### 3.2 — Emergence Timeline
@@ -203,7 +203,7 @@ Endpoint: `GET /api/v1/emergence/highlights?limit=10&minScore=0.6`
 ## 5. Task Checklist
 
 ### Phase 1: Taxonomy + Classification (Feature 38a)
-- [ ] Define `EmergenceType` constants (EM1-EM6 codes)
+- [ ] Define `EmergenceType` constants (EM1-EM7 codes)
 - [ ] Implement `EmergenceClassifier.Classify()` with six heuristic methods
 - [ ] Unit tests for each heuristic: positive, negative, edge cases
 - [ ] Test multi-type classification
