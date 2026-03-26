@@ -6,14 +6,21 @@ namespace AniRuntime.Perception;
 public sealed class TimePerceptionSource : IPerceptionSource
 {
     private readonly TimeProvider _time;
+    private readonly IStateStore _stateStore;
+    private string? _lastTimeOfDay;
+    private EmotionalState? _previousEmotionalState;
 
     public string             SourceName => "time";
     public PerceptionCategory Category   => PerceptionCategory.Environment;
     public bool               IsEnabled  => true;
 
-    public TimePerceptionSource(TimeProvider time) => _time = time;
+    public TimePerceptionSource(TimeProvider time, IStateStore stateStore)
+    {
+        _time = time;
+        _stateStore = stateStore;
+    }
 
-    public Task<IEnumerable<PerceptionEvent>> PollAsync(DateTimeOffset since, CancellationToken ct = default)
+    public async Task<IEnumerable<PerceptionEvent>> PollAsync(DateTimeOffset since, CancellationToken ct = default)
     {
         var now    = _time.GetLocalNow();
         var events = new List<PerceptionEvent>();
@@ -51,8 +58,99 @@ public sealed class TimePerceptionSource : IPerceptionSource
             events.Add(Evt($"It has been about {h} hour{(h == 1 ? "" : "s")} since the last thought."));
         }
 
-        return Task.FromResult<IEnumerable<PerceptionEvent>>(events);
+        // Feature 40: Felt-time observations
+        AddTimeOfDayTransition(now, events);
+        await AddEmotionalArcNarration(events, ct).ConfigureAwait(false);
+
+        return events;
     }
+
+    /// <summary>
+    /// Feature 40: Narrate time-of-day transitions as felt time.
+    /// "The morning slipped into afternoon." Not a clock report.
+    /// </summary>
+    private void AddTimeOfDayTransition(DateTimeOffset now, List<PerceptionEvent> events)
+    {
+        var current = DescribeTimeOfDay(now);
+        if (_lastTimeOfDay is not null && _lastTimeOfDay != current)
+        {
+            var narrative = (_lastTimeOfDay, current) switch
+            {
+                ("early morning", "morning")       => "The early quiet is giving way to morning.",
+                ("morning", "early afternoon")      => "The morning slipped into afternoon.",
+                ("morning", "afternoon")            => "The morning slipped into afternoon.",
+                ("early afternoon", "afternoon")    => "The afternoon is settling in.",
+                ("afternoon", "evening")            => "The day is winding down.",
+                ("evening", "late evening")         => "The night is settling in.",
+                ("late evening", "late night")       => "The world has gone quiet.",
+                ("late night", "early morning")      => "A new day is beginning.",
+                _ => null,
+            };
+            if (narrative is not null)
+                events.Add(FeltEvt(narrative));
+        }
+        _lastTimeOfDay = current;
+    }
+
+    /// <summary>
+    /// Feature 40: Narrate emotional state changes as felt experience.
+    /// "That heavy feeling from earlier is easing up." Not "Worry decreased 0.2."
+    /// </summary>
+    private async Task AddEmotionalArcNarration(List<PerceptionEvent> events, CancellationToken ct)
+    {
+        try
+        {
+            var current = await _stateStore.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+            if (_previousEmotionalState is not null)
+            {
+                var warmthDelta = current.Warmth - _previousEmotionalState.Warmth;
+                var energyDelta = current.Energy - _previousEmotionalState.Energy;
+                var worryDelta = current.Worry - _previousEmotionalState.Worry;
+                var playDelta = current.Playfulness - _previousEmotionalState.Playfulness;
+
+                if (warmthDelta < -0.12f)
+                    events.Add(FeltEvt("The warmth from earlier is fading."));
+                else if (warmthDelta > 0.12f)
+                    events.Add(FeltEvt("Getting warmer. Something shifted."));
+
+                if (energyDelta < -0.12f)
+                    events.Add(FeltEvt("Energy fading as the hours pass."));
+                else if (energyDelta > 0.12f)
+                    events.Add(FeltEvt("Feeling more awake now than before."));
+
+                if (worryDelta < -0.12f)
+                    events.Add(FeltEvt("That heavy feeling from earlier is easing up."));
+                else if (worryDelta > 0.12f)
+                    events.Add(FeltEvt("Something is weighing on me more than before."));
+
+                if (playDelta < -0.12f)
+                    events.Add(FeltEvt("The lightness from earlier faded."));
+                else if (playDelta > 0.12f)
+                    events.Add(FeltEvt("Something shifted. Feeling lighter suddenly."));
+            }
+            _previousEmotionalState = new EmotionalState
+            {
+                Warmth = current.Warmth,
+                Energy = current.Energy,
+                Worry = current.Worry,
+                Playfulness = current.Playfulness,
+            };
+        }
+        catch
+        {
+            // Emotional state unavailable — skip narration, not critical
+        }
+    }
+
+    /// <summary>Felt-time perception event — higher relevance than factual time.</summary>
+    private PerceptionEvent FeltEvt(string summary) => new()
+    {
+        SourceName    = SourceName,
+        Category      = PerceptionCategory.Environment,
+        Summary       = summary,
+        ContactRelevance = 0.2f,
+        OccurredAt    = _time.GetLocalNow(),
+    };
 
     private PerceptionEvent Evt(string summary) => new()
     {

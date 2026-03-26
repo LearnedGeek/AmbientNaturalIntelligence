@@ -1,6 +1,8 @@
+using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.Perception;
 using FluentAssertions;
+using Moq;
 
 namespace AniRuntime.Tests;
 
@@ -13,8 +15,18 @@ public class TimePerceptionSourceTests
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
 
+    private static readonly Mock<IStateStore> DefaultStateStore = CreateMockStateStore();
+
+    private static Mock<IStateStore> CreateMockStateStore()
+    {
+        var mock = new Mock<IStateStore>();
+        mock.Setup(s => s.GetEmotionalStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmotionalState());
+        return mock;
+    }
+
     private static TimePerceptionSource At(DateTimeOffset t) =>
-        new(new FakeTime(t));
+        new(new FakeTime(t), DefaultStateStore.Object);
 
     private static DateTimeOffset Since(DateTimeOffset now, int hoursAgo) =>
         now.AddHours(-hoursAgo);

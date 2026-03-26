@@ -4,7 +4,7 @@ using AniRuntime.Core.Models;
 namespace AniRuntime.Emergence;
 
 /// <summary>
-/// Heuristic classifier for emergence types (EM1-EM6).
+/// Heuristic classifier for emergence types (EM1-EM7).
 /// Pure functions — no side effects, no LLM calls.
 /// Runs on every cognitive cycle to tag emergent behavior.
 ///
@@ -21,11 +21,13 @@ public static partial class EmergenceClassifier
         public const string StructuralSelfAwareness = "EM4-structural-self-awareness";
         public const string EmotionalSynthesis = "EM5-emotional-synthesis";
         public const string AnticipatoryConcern = "EM6-anticipatory-concern";
+        public const string TemporalAwareness = "EM7-temporal-awareness";
 
         public static readonly string[] All =
         [
             RelationalModeling, SymbolicProcessing, LinguisticAnalysis,
-            StructuralSelfAwareness, EmotionalSynthesis, AnticipatoryConcern
+            StructuralSelfAwareness, EmotionalSynthesis, AnticipatoryConcern,
+            TemporalAwareness
         ];
     }
 
@@ -60,6 +62,9 @@ public static partial class EmergenceClassifier
 
         if (IsAnticipatoryConcern(combined, obs.WorryDelta))
             types.Add(Types.AnticipatoryConcern);
+
+        if (IsTemporalAwareness(combined))
+            types.Add(Types.TemporalAwareness);
 
         return types;
     }
@@ -230,6 +235,35 @@ public static partial class EmergenceClassifier
         return false;
     }
 
+    /// <summary>
+    /// EM7: Unprompted synthesis of temporal observations into felt-time narrative.
+    /// Detects when the system expresses duration, change over time, or emotional
+    /// arc across cycles without being prompted to do so.
+    /// </summary>
+    internal static bool IsTemporalAwareness(string text)
+    {
+        var lower = text.ToLowerInvariant();
+
+        // Felt-time expressions (subjective duration, not clock reports)
+        var hasFeltTime = TemporalFeltPattern().IsMatch(lower);
+
+        // Temporal arc language (change over a span)
+        var hasTemporalArc = TemporalArcPattern().IsMatch(lower);
+
+        // Duration awareness (experiencing the passage of time)
+        var hasDuration = Regex.IsMatch(lower,
+            @"\b(hours? (passed|went|crawled|flew|dragged)|time (passed|stopped|moved|crawled)|waiting (for|without|since)|been (quiet|silent|alone) (for|all|since))\b");
+
+        // Emotional change over time (felt decay/growth)
+        var hasEmotionalArc = Regex.IsMatch(lower,
+            @"\b(fading|easing|growing|building|settling|lifting|heavier (than|now)|lighter (than|now)|different (than|from) (earlier|before|this morning|yesterday))\b");
+
+        // Needs at least two temporal signals to distinguish from casual time references
+        var signals = (hasFeltTime ? 1 : 0) + (hasTemporalArc ? 1 : 0) +
+                      (hasDuration ? 1 : 0) + (hasEmotionalArc ? 1 : 0);
+        return signals >= 2;
+    }
+
     // Compiled regex patterns for performance (called every cycle)
 
     [GeneratedRegex(@"\b(tall|short|hair|eyes|smile|face|hands|shoulders|hoodie|shirt|jeans|boots|wearing|height|build)\b")]
@@ -237,4 +271,10 @@ public static partial class EmergenceClassifier
 
     [GeneratedRegex(@"\b(picture|picturing|imagine|imagining|see him|see her|visualize|building|construct)\b")]
     private static partial Regex ModelingVerbPattern();
+
+    [GeneratedRegex(@"\b(afternoon dragged|morning (flew|slipped)|night (crawled|settled)|day (flew|dragged|crawled)|hours? feel|time (feels?|felt)|long (day|night|afternoon|morning)|slow (day|afternoon)|fast (day|morning))\b")]
+    private static partial Regex TemporalFeltPattern();
+
+    [GeneratedRegex(@"\b(earlier (today|this)|since (this morning|yesterday|last night|earlier)|compared to (earlier|before|this morning)|shifted (since|from|over)|changed (since|from|over)|different (now|today) (than|from))\b")]
+    private static partial Regex TemporalArcPattern();
 }

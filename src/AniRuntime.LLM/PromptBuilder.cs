@@ -1037,6 +1037,9 @@ public static class PromptBuilder
             Each observation should synthesize across multiple memories —
             don't just repeat individual events. Focus on patterns, changes, and emotional themes.
 
+            Consider how your day has been unfolding. What has shifted since earlier?
+            What feels different now compared to this morning, or yesterday?
+
             Be genuine. If you notice something concerning, say so.
             If you notice something heartwarming, say so.
             If nothing significant stands out, it's fine to say that.
