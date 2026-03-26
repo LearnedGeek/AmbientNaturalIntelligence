@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AniRuntime.Core;
 using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
@@ -90,11 +91,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         MemoryType.Semantic,  // Feature 30: profile facts are prime merge candidates
     };
 
-    // Merge cooldown: prevent the same record from being merged multiple times in succession.
-    // Without this, repetitive inner thoughts create a feedback loop:
-    // merge → produce similar content → merge again next cycle → repeat.
-    private readonly Dictionary<string, DateTimeOffset> _recentMerges = new();
-    private static readonly TimeSpan MergeCooldown = TimeSpan.FromHours(1);
+    // Merge quality gate: regex patterns for detecting confabulated specifics
+    // in merged output that weren't present in either source.
+    private static readonly Regex NumberPattern = new(@"\b\d+\b", RegexOptions.Compiled);
+    private static readonly Regex TimePattern = new(@"\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(am|pm|AM|PM)\b", RegexOptions.Compiled);
+    private static readonly Regex NamePattern = new(@"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)\b", RegexOptions.Compiled);
 
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
     {
@@ -542,14 +543,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                     return new MergeCandidateResult(reader.GetString(0), reader.GetString(1), true);
 
                 if (similarity >= MergeThreshold)
-                {
-                    var candidateId = reader.GetString(0);
-                    // Merge cooldown: skip records that were merged recently
-                    if (_recentMerges.TryGetValue(candidateId, out var lastMerge) &&
-                        DateTimeOffset.UtcNow - lastMerge < MergeCooldown)
-                        continue;
-                    return new MergeCandidateResult(candidateId, reader.GetString(1), false);
-                }
+                    return new MergeCandidateResult(reader.GetString(0), reader.GetString(1), false);
             }
 
             return null;
@@ -583,6 +577,16 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
             merged = merged.Trim().Trim('"');
 
+            // Quality gate: reject merges that introduce confabulated specifics.
+            // If the merged output contains numbers, times, or proper nouns that
+            // weren't in either source, the LLM invented them during rewrite.
+            // Good drift adds depth. Bad drift adds noise. Gate by quality, not time.
+            if (ContainsNovelSpecifics(merged, existingContent, newContent))
+            {
+                _log.LogDebug("Merge quality gate: rejected — merged content introduces novel specifics not in either source");
+                return null;
+            }
+
             // Re-embed the merged content
             var newEmbedding = await _ollama.EmbedAsync(merged, ct).ConfigureAwait(false);
 
@@ -601,14 +605,6 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
-            // Record merge cooldown to prevent feedback loops
-            _recentMerges[existingId] = DateTimeOffset.UtcNow;
-
-            // Clean up old cooldown entries
-            var expired = _recentMerges.Where(kv => DateTimeOffset.UtcNow - kv.Value > MergeCooldown)
-                .Select(kv => kv.Key).ToList();
-            foreach (var key in expired) _recentMerges.Remove(key);
-
             _log.LogInformation("Memory merge: updated {ExistingId} — '{Old}' + '{New}' → '{Merged}'",
                 existingId,
                 existingContent[..Math.Min(40, existingContent.Length)],
@@ -622,6 +618,40 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             _log.LogWarning(ex, "Memory merge failed — will insert as new record");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Quality gate for merge output. Checks whether the merged content introduces
+    /// specific factual claims (numbers, times, proper nouns) that weren't present
+    /// in either source. This distinguishes good drift (adding depth/emotional nuance)
+    /// from bad drift (confabulating details during rewrite).
+    ///
+    /// Design principle: don't gate emergence by time, gate it by quality.
+    /// </summary>
+    private static bool ContainsNovelSpecifics(string merged, string source1, string source2)
+    {
+        var sources = $"{source1} {source2}";
+
+        // Check for numbers in merged output that aren't in either source
+        var mergedNumbers = NumberPattern.Matches(merged).Select(m => m.Value).ToHashSet();
+        var sourceNumbers = NumberPattern.Matches(sources).Select(m => m.Value).ToHashSet();
+        var novelNumbers = mergedNumbers.Except(sourceNumbers).ToList();
+        if (novelNumbers.Count > 0)
+            return true;
+
+        // Check for specific times invented during merge
+        var mergedTimes = TimePattern.Matches(merged).Select(m => m.Value).ToHashSet();
+        var sourceTimes = TimePattern.Matches(sources).Select(m => m.Value).ToHashSet();
+        if (mergedTimes.Except(sourceTimes).Any())
+            return true;
+
+        // Check for proper nouns (capitalized multi-word names) not in sources
+        var mergedNames = NamePattern.Matches(merged).Select(m => m.Value).ToHashSet();
+        var sourceNames = NamePattern.Matches(sources).Select(m => m.Value).ToHashSet();
+        if (mergedNames.Except(sourceNames).Any())
+            return true;
+
+        return false;
     }
 
     /// <summary>
