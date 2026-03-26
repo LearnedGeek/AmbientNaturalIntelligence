@@ -90,5 +90,32 @@ window.aniGraph = {
             // Force re-render with new colors
             this.instance.nodeColor(this.instance.nodeColor());
         }
+    },
+
+    orbitInterval: null,
+    orbitAngle: 0,
+    orbitDistance: 800,
+
+    toggleOrbit: function () {
+        if (this.orbitInterval) {
+            clearInterval(this.orbitInterval);
+            this.orbitInterval = null;
+            return false;
+        }
+        const self = this;
+        this.orbitAngle = 0;
+        this.orbitInterval = setInterval(function () {
+            self.orbitAngle += 0.003;
+            const d = self.orbitDistance;
+            const x = d * Math.sin(self.orbitAngle);
+            const y = (d * 0.15) * Math.sin(self.orbitAngle * 0.4);
+            const z = d * Math.cos(self.orbitAngle);
+            self.instance.cameraPosition({ x: x, y: y, z: z });
+        }, 30);
+        return true;
+    },
+
+    setOrbitDistance: function (distance) {
+        this.orbitDistance = distance;
     }
 };

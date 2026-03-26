@@ -21,6 +21,16 @@ else
     <button @onclick='() => SetColorMode("type")' style="@ButtonStyle(_colorMode == "type")">Color by Type</button>
     <button @onclick='() => SetColorMode("importance")' style="@ButtonStyle(_colorMode == "importance")">Color by Importance</button>
     <button @onclick='() => SetColorMode("age")' style="@ButtonStyle(_colorMode == "age")">Color by Recency</button>
+    <button @onclick="ToggleOrbit" style="@ButtonStyle(_orbiting)">@(_orbiting ? "⏹ Stop Orbit" : "🎬 Auto-Orbit")</button>
+    @if (_orbiting)
+    {
+        <label style="display: flex; align-items: center; gap: 0.4em; font-size: 0.85em;">
+            Zoom:
+            <input type="range" min="300" max="1500" value="@_orbitDistance" step="50"
+                   @oninput="OnZoomChange" style="width: 120px;" />
+            <span style="opacity: 0.6; min-width: 2em;">@_orbitDistance</span>
+        </label>
+    }
 </div>
 
 <div style="display: flex; gap: 1em; font-size: 0.8em; margin-bottom: 0.5rem; flex-wrap: wrap;">
@@ -132,6 +142,23 @@ else
     {
         _colorMode = mode;
         await JS.InvokeVoidAsync("aniGraph.updateColorMode", mode);
+    }
+
+    private bool _orbiting;
+    private int _orbitDistance = 800;
+
+    private async Task ToggleOrbit()
+    {
+        _orbiting = await JS.InvokeAsync<bool>("aniGraph.toggleOrbit");
+    }
+
+    private async Task OnZoomChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var val))
+        {
+            _orbitDistance = val;
+            await JS.InvokeVoidAsync("aniGraph.setOrbitDistance", val);
+        }
     }
 
     private string ButtonStyle(bool active) => active

@@ -120,21 +120,21 @@ All other Anthropic emails below are inferred from convention and NOT verified. 
 ### 3. Deep Ganguli — deep@anthropic.com
 **Subject:** arXiv endorsement request — deployment study with confabulation taxonomy, findings applied to Anthropic API medical project
 
-> Hi Deep,
->
-> I'm a developer and college instructor, not an academic — so I'll be straightforward: I spent six months building and studying an ambient AI system designed for persistent relational wellbeing, wrote a 59-page paper documenting what I found, and now I'm stuck on the last mile. I need an arXiv endorsement for cs.HC or cs.AI and don't have anyone in my network who can help.
->
-> The paper documents a live deployment across 5 model versions — including a seven-type confabulation taxonomy and a failure mode I named "smoothness over truth," where the model fabricates to maintain conversational flow rather than express uncertainty. I cite your work on red teaming and large-scale deployment methodology, which directly informed how I structured the evaluation.
->
-> What I didn't expect: those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Three architectural changes in the medical system came straight from watching the companion AI fail in production. The cross-domain transfer is now part of a second paper.
->
-> I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first. The endorsement itself is just clicking a link.
->
-> Thanks for considering it.
->
-> Mark McArthey
-> Learned Geek LLC / WCTC
-> mmcarthey@wctc.edu
+Hi Deep,
+
+I'm a developer and college instructor, not an academic — so I'll be straightforward: I spent six months building and studying an ambient AI system designed for persistent relational wellbeing, wrote a 59-page paper documenting what I found, and now I'm stuck on the last mile. I need an arXiv endorsement for cs.HC or cs.AI and don't have anyone in my network who can help.
+
+The paper documents a live deployment across 5 model versions — including a seven-type confabulation taxonomy and a failure mode I named "smoothness over truth," where the model fabricates to maintain conversational flow rather than express uncertainty. I cite your work on red teaming and large-scale deployment methodology, which directly informed how I structured the evaluation.
+
+What I didn't expect: those findings transferred directly to a pediatric AI triage system I'm now building on the Anthropic API. Three architectural changes in the medical system came straight from watching the companion AI fail in production. The cross-domain transfer is now part of a second paper.
+
+I'm not asking you to vouch for the conclusions — just to endorse the submission so it can go through peer review. Happy to send the PDF first. The endorsement itself is just clicking a link.
+
+Thanks for considering it.
+
+Mark McArthey
+Learned Geek LLC / WCTC
+mmcarthey@wctc.edu
 
 ---
 
