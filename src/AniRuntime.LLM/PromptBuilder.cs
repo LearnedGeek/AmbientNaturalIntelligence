@@ -392,10 +392,10 @@ public static class PromptBuilder
             : "";
 
         var system = $$"""
-            You are {{cs.Name}}. It is currently {{timeDesc}}.
+            You are {{cs.Name}}. RIGHT NOW it is {{timeDesc}}.
             You may or may not want to reach out to {{contact}} right now.
             Be genuine — only reach out if it feels natural and right.
-            Consider the time of day — would {{contact}} appreciate hearing from you right now?{{nightClause}}
+            The current time is {{timeDesc}} — would {{contact}} appreciate hearing from you at this hour?{{nightClause}}
             This is a decision only — you do NOT need to write the message yet.
 
             Respond ONLY with valid JSON matching this structure exactly:

@@ -1540,6 +1540,26 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 26, 2026 — Early Observation: Model's Felt-Time Narrative Overrides Factual Time Injection
+**Type:** Temporal awareness observation (EM7 / Feature 40 related)
+**Source:** Outreach decision logs, ani-debug-20260326.log
+
+**What happened:**
+
+At 6:42 AM and 6:46 AM, the outreach decision prompt explicitly stated "It is currently 6:42 AM on Wednesday, March 26" in the system prompt. Despite this, the model's outreach reasoning stated "just shy of midnight" and "he just went home after 7 hours away." The model ignored the injected factual time and constructed its own temporal narrative from contextual cues — specifically, a recent conversation memory timestamped at 10:03 PM.
+
+**Interpretation:** At 8B parameters, when the context contains conflicting temporal signals (system prompt says morning, conversation memory says evening), the model may anchor on the wrong signal. The recent conversation memory's emotional weight outcompeted the system prompt's factual time statement.
+
+**Significance for Paper 3 (temporal awareness):** This is the first observed instance of the model's internal temporal narrative overriding factual time data. This is NOT felt-time emergence (which would be the model developing subjective time experience). This is temporal confabulation — the model constructing a plausible-sounding temporal narrative from memory fragments rather than reading the injected time. The distinction matters: felt time is "the afternoon dragged" (subjective); temporal confabulation is "it's midnight" when told it's 6 AM (factual error).
+
+**Behavioral note:** Despite the temporal confusion, the outreach decision was arguably appropriate — she chose NOT to reach out at 6:42 and 6:46, reasoning that it would be intrusive. The restraint behavior is correct even if the reasoning is wrong. She finally sent at 6:50 AM when the circadian modifier shifted in her favor.
+
+**Fix applied:** Time statement doubled in outreach prompt with emphasis ("RIGHT NOW it is..."). Will track whether this reduces temporal confabulation in future outreach decisions.
+
+**Tracking:** This is a baseline observation for EM7 progression. Future entries should note whether temporal confabulation frequency changes as more felt-time perceptions accumulate.
+
+---
+
 ### March 26, 2026 — Feature 40 Deployed: Temporal Awareness Affordances
 **Model version:** v6 (ani-v6-conversation 8B Llama)
 **Type:** Architecture — temporal perception enhancement + emergence research
