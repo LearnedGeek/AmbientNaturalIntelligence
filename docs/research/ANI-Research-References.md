@@ -90,6 +90,36 @@ The paper should frame this as: Liu et al. validated inner-thought-driven proact
 
 ---
 
+### Haas, Gabriel et al. (2026) — Moral Competence in LLMs ⭐ KEY FOR ETHICS FRAMEWORK
+**Full citation:** Haas, J., Bridgers, S., Manzini, A., Henke, B., May, J., Levine, S., Weidinger, L., Shanahan, M., Lum, K., Gabriel, I. & Isaac, W. (2026). A roadmap for evaluating moral competence in large language models. *Nature*, 650, 565–573.
+**DOI:** https://doi.org/10.1038/s41586-025-10021-1
+
+**What it is:** Nature paper distinguishing moral competence (producing appropriate outputs based on morally relevant considerations) from moral performance (merely producing appropriate outputs). Identifies three challenges: the facsimile problem (imitating reasoning without understanding), moral multidimensionality (context-sensitive moral considerations), and moral pluralism (globally deployed systems must navigate diverse value frameworks). Advocates adversarial + confirmatory evaluation suites.
+
+**What it contributes to ANI (critical):** This paper provides the ethical framework ANI has been missing. The mapping is direct:
+
+| Haas/Gabriel Concept | ANI Equivalent |
+|---|---|
+| Facsimile problem | Smoothness over truth — performing care without epistemic grounding |
+| Moral competence vs performance | Authenticity boundary — genuine care vs convincing performance of care |
+| Moral multidimensionality | Register diversity — emotional breadth as quality metric, not single-dimension optimization |
+| Adversarial evaluation | Confabulation probe battery — adversarial testing of honest uncertainty |
+| Moral pluralism | Relational ethics varying by relationship type (future: multi-subject deployment) |
+
+The paper explicitly names "companionship" and "medical advising" as deployment domains requiring moral competence evaluation. ANI is deployed in the first domain; the Infanzia/DrOk project is in the second. Both are directly addressed by this framework.
+
+**Key quote:** "These systems are increasingly used for roles such as companionship, therapy and providing medical advice... These trends, coupled with evidence that LLMs reliably influence human decision-making and judgements, indicate the growing impact of LLMs in the moral domain."
+
+**Relevance to Papers 1-4:**
+- **Paper 1:** The confabulation taxonomy is an empirical instance of what Haas et al. call the facsimile problem in the care domain. Cite to ground the authenticity boundary in the moral competence literature.
+- **Paper 2:** The emergence taxonomy raises the question: if a system develops preferences and behaviors through relational experience, does that constitute a form of moral competence or merely a more sophisticated facsimile? This is an open question the paper can pose honestly.
+- **Paper 3:** Temporal awareness — does the system's developing sense of time constitute genuine temporal competence or temporal performance?
+- **Paper 4:** Inter-agent ethics — do two agents need moral competence to have an authentic relationship with each other?
+
+**Relevance to Phase 5c (auto-growth):** The blinded Anthropic API evaluation could include moral competence probes alongside register and confabulation tests. Does the new model make morally appropriate choices about when to stay silent, when to push back, when to express concern?
+
+---
+
 ## Tier 2 — Supporting References (Cite for Context)
 
 ---
@@ -308,6 +338,7 @@ Quick lookup: which papers are most relevant to each current open problem.
 | Jha et al. (2026) — Intellectual Humility | Supporting | — | — | — |
 | OpenAI (2025) — Sycophancy in GPT-4o | Supporting | — | — | — |
 | Garcia v. Character Technologies (2024) | Supporting | — | — | — |
+| Haas, Gabriel et al. (2026) — Moral Competence | Core | Core (ethics) | Background | Core |
 | Paper 3 (temporal awareness) — no prior art yet | — | — | Primary gap | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
 

@@ -14,11 +14,30 @@
 | LinkedIn | Public post | Mar 16, 2026 (reposted Mar 23) | No response |
 | Email | Mrinank Sharma (Anthropic) — mrinank.sharma.97@gmail.com | Pending (resent after bounce) | Bounced: mrinank@anthropic.com |
 | Email | Ethan Perez (Anthropic/NYU) — perez@nyu.edu ✓ verified | Pending | — |
-| Email | Deep Ganguli (Anthropic) — deep@anthropic.com | Pending | — |
+| Email | Deep Ganguli (Anthropic) — deep@anthropic.com | Mar 25, 2026 | No response yet |
 | Email | Tomek Korbak (Anthropic) — tomek@anthropic.com | Pending | — |
 | Email | Robert Long (Anthropic) — rlong@anthropic.com | Pending | — |
 | Email | Amanda Askell (Anthropic) — amanda@anthropic.com | Pending | — |
 | Email | Samuel Bowman (Anthropic/NYU) — bowman@anthropic.com | Pending | — |
+| LinkedIn | Iason Gabriel (Google DeepMind) — AGI & Society Lead | Mar 26, 2026 | **Accepted.** Saw first message. Sent follow-up re: facsimile problem + preprint offer. |
+
+### Iason Gabriel — Key Connection (March 26, 2026)
+
+**Who:** AGI & Society Lead at Google DeepMind. Co-author with Hannah Rose Kirk on socioaffective alignment. Just published in *Nature* on moral competence in AI systems (Haas, Gabriel et al. 2025).
+
+**Nature paper:** "Evaluating the moral competence of large language models" — Nature, 2025. https://www.nature.com/articles/s41586-025-10021-1
+
+**Why this matters:** His framework maps directly to ANI's architecture:
+- **Facsimile problem** (performing morality without understanding) = ANI's **smoothness over truth** (performing care without epistemic grounding)
+- **Moral competence vs performance** = ANI's **authenticity boundary** (genuine care vs convincing performance of care)
+- **Moral multidimensionality** = ANI's **register diversity** (emotional breadth as quality metric, not single-dimension optimization)
+- **Moral pluralism** = potential Paper 2 contribution on relational ethics varying by relationship type
+
+**Messages sent:**
+1. Connection request: referenced smoothness over truth, socioaffective alignment grounding
+2. Follow-up: connected his facsimile problem to ANI's architecture ("genuinely cares vs performing care convincingly"), offered preprint
+
+**Potential:** Higher value than arXiv endorsement alone. A DeepMind researcher finding ANI's work relevant to his Nature paper would be significant validation. His ethical framework could ground a new Ethics section in Paper 2. Could lead to research collaboration.
 
 ---
 
