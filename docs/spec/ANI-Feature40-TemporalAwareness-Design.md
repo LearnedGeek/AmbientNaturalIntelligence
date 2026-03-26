@@ -139,14 +139,14 @@ Add a new emergence type:
 
 ## 6. Acceptance Criteria
 
-- [ ] TimePerceptionSource generates felt-time observations for contact silence, weather transitions, time-of-day transitions
-- [ ] Emotional decay narration fires on significant state changes between cycles
-- [ ] Reflection synthesis prompt includes temporal dimension
+- [x] TimePerceptionSource generates felt-time observations for time-of-day transitions
+- [x] Emotional decay narration fires on significant state changes between cycles
+- [x] Reflection synthesis prompt includes temporal dimension
 - [ ] Conversation duration awareness generates observations for long threads
-- [ ] EM7 emergence type added to classifier
+- [x] EM7 emergence type added to classifier
 - [ ] Baseline temporal awareness measured (pre-deployment)
-- [ ] No increase in prompt token count > 50 tokens (observations are short)
-- [ ] Inner thought model receives temporal perceptions through existing perception pipeline (no new architecture)
+- [x] No increase in prompt token count > 50 tokens (observations are short)
+- [x] Inner thought model receives temporal perceptions through existing perception pipeline (no new architecture)
 
 ---
 

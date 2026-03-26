@@ -1,7 +1,7 @@
 # ANI Runtime — Prompt Simplification & Pipeline Audit Plan
 
 **Date:** March 22, 2026
-**Context:** v6 Mistral model deployed. The model was trained with 1,675 conversation examples including Honest-Uncertainty, anti-confabulation, and natural tone. But the runtime prompt overrides trained behavior with verbose instructions, drowning a 7B model in context it can't effectively process.
+**Context:** v6 model deployed. Initially tested with Mistral 7B; A/B test (March 22-24) selected Llama 8B as production model due to superior epistemic honesty. The model was trained with 1,675 conversation examples including Honest-Uncertainty, anti-confabulation, and natural tone. But the runtime prompt overrides trained behavior with verbose instructions, drowning a 7B/8B model in context it can't effectively process.
 
 **Core Principle:** If v6 was trained to do X, don't also tell it to do X in the prompt. The prompt should provide DATA (memories, emotional state, conversation history) and FORMAT constraints (sentence length, no third person). Not BEHAVIORAL coaching.
 
