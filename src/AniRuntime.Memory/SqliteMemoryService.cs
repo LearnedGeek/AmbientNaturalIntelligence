@@ -143,6 +143,16 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             }
         }
 
+        // Cross-type correction: if this is a Perception/Episodic about the contact,
+        // check if it contradicts an existing Semantic "About Mark" profile memory.
+        // Example: Mark says "I have hazel eyes" → should update "About Mark: Blue eyes"
+        if (record.Embedding is not null &&
+            record.Type is MemoryType.Perception or MemoryType.Episodic &&
+            record.Content.Contains("Mark", StringComparison.OrdinalIgnoreCase))
+        {
+            await TryCrossTypeProfileCorrectionAsync(record, ct).ConfigureAwait(false);
+        }
+
         await InsertMemoryAsync(record, ct).ConfigureAwait(false);
 
         // Feature 31: Create links to related memories after insert
@@ -575,6 +585,69 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         {
             _log.LogWarning(ex, "Memory merge failed — will insert as new record");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Cross-type profile correction: when a Perception/Episodic record about the contact
+    /// is semantically similar to an existing "About Mark" Semantic memory, merge/update the
+    /// profile memory with the newer information. This catches corrections like
+    /// "I have hazel eyes" updating "About Mark: Blue eyes" across memory types.
+    /// </summary>
+    private async Task TryCrossTypeProfileCorrectionAsync(MemoryRecord record, CancellationToken ct)
+    {
+        if (record.Embedding is null || _ollama is null) return;
+
+        try
+        {
+            await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+            await using var cmd = conn.CreateCommand();
+
+            // Only compare against Semantic "About Mark" / "Shared experience" profile memories
+            cmd.CommandText = """
+                SELECT id, content, embedding FROM memories
+                WHERE type = $type
+                  AND embedding IS NOT NULL
+                  AND (content LIKE 'About %' OR content LIKE 'Shared experience%' OR content LIKE 'Interest:%')
+                ORDER BY occurred_at DESC
+                LIMIT 100
+                """;
+            cmd.Parameters.AddWithValue("$type", (int)MemoryType.Semantic);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                if (reader.IsDBNull(2)) continue;
+
+                var existingEmbedding = DeserialisedEmbedding((byte[])reader[2]);
+                if (existingEmbedding is null || existingEmbedding.Length != record.Embedding.Length)
+                    continue;
+
+                var similarity = CosineSimilarity(record.Embedding, existingEmbedding);
+
+                // Lower threshold than same-type merge (0.70) — cross-type corrections
+                // are topically related but phrased differently ("Mark texted: I have hazel eyes"
+                // vs "About Mark: Blue eyes — the kind that...")
+                if (similarity >= 0.70f)
+                {
+                    var existingId = reader.GetString(0);
+                    var existingContent = reader.GetString(1);
+
+                    _log.LogInformation(
+                        "Cross-type correction candidate (cosine={Similarity:F3}): '{Existing}' may be updated by '{New}'",
+                        similarity,
+                        existingContent[..Math.Min(50, existingContent.Length)],
+                        record.Content[..Math.Min(50, record.Content.Length)]);
+
+                    await MergeMemoriesAsync(existingId, existingContent, record.Content, ct)
+                        .ConfigureAwait(false);
+                    return; // Only correct one profile memory per incoming record
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Cross-type profile correction failed — continuing without");
         }
     }
 
