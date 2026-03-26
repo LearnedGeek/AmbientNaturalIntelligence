@@ -90,6 +90,12 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         MemoryType.Semantic,  // Feature 30: profile facts are prime merge candidates
     };
 
+    // Merge cooldown: prevent the same record from being merged multiple times in succession.
+    // Without this, repetitive inner thoughts create a feedback loop:
+    // merge → produce similar content → merge again next cycle → repeat.
+    private readonly Dictionary<string, DateTimeOffset> _recentMerges = new();
+    private static readonly TimeSpan MergeCooldown = TimeSpan.FromHours(1);
+
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
     {
         // Auto-embed content if no embedding provided and Ollama is available
@@ -322,7 +328,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
-        // Feature 31: Link-enhanced retrieval — follow 1-hop links to find connected memories
+        // Feature 31: Link-enhanced retrieval — follow 1-hop links to find connected memories.
+        // Relevance-scored: linked memories are only injected if they're relevant to the
+        // current query (cosine > 0.40). This prevents the "Thunder & Storm blender" where
+        // loosely connected but topically irrelevant memories flood the context.
         try
         {
             var resultIds = new HashSet<string>(ranked.Select(r => r.Record.Id.ToString()));
@@ -330,9 +339,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
             if (linkedMemories.Count > 0)
             {
-                // Load linked memories not already in results
-                var linkedRecords = new List<ScoredMemory>();
-                foreach (var linkedId in linkedMemories.Where(id => !resultIds.Contains(id)).Take(3))
+                const float LinkRelevanceThreshold = 0.40f;
+                var linkedCandidates = new List<ScoredMemory>();
+
+                foreach (var linkedId in linkedMemories.Where(id => !resultIds.Contains(id)))
                 {
                     await using var linkCmd = conn.CreateCommand();
                     linkCmd.CommandText = "SELECT * FROM memories WHERE id = $id";
@@ -342,17 +352,28 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                     {
                         if (linked.Embedding is null || linked.Embedding.Length != queryEmbedding.Length) continue;
                         var cosine = CosineSimilarity(queryEmbedding, linked.Embedding);
+
+                        // Only include linked memories that are relevant to the current query
+                        if (cosine < LinkRelevanceThreshold) continue;
+
                         var composite = ComputeRetrievalScore(queryEmbedding, linked);
                         // Small bonus for being linked to a direct match
-                        linkedRecords.Add(new ScoredMemory(linked, composite + 0.1f, cosine));
+                        linkedCandidates.Add(new ScoredMemory(linked, composite + 0.05f, cosine));
                     }
                 }
 
-                if (linkedRecords.Count > 0)
+                if (linkedCandidates.Count > 0)
                 {
-                    ranked.AddRange(linkedRecords);
+                    // Rank by relevance, take top 3
+                    var topLinked = linkedCandidates
+                        .OrderByDescending(x => x.CosineSimilarity)
+                        .Take(3)
+                        .ToList();
+
+                    ranked.AddRange(topLinked);
                     ranked = ranked.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
-                    _log.LogDebug("Link-enhanced retrieval: added {Count} linked memories", linkedRecords.Count);
+                    _log.LogDebug("Link-enhanced retrieval: {Candidates} candidates above threshold, added top {Count}",
+                        linkedCandidates.Count, topLinked.Count);
                 }
             }
         }
@@ -521,7 +542,14 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                     return new MergeCandidateResult(reader.GetString(0), reader.GetString(1), true);
 
                 if (similarity >= MergeThreshold)
-                    return new MergeCandidateResult(reader.GetString(0), reader.GetString(1), false);
+                {
+                    var candidateId = reader.GetString(0);
+                    // Merge cooldown: skip records that were merged recently
+                    if (_recentMerges.TryGetValue(candidateId, out var lastMerge) &&
+                        DateTimeOffset.UtcNow - lastMerge < MergeCooldown)
+                        continue;
+                    return new MergeCandidateResult(candidateId, reader.GetString(1), false);
+                }
             }
 
             return null;
@@ -572,6 +600,14 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             cmd.Parameters.AddWithValue("$occurred_at", DateTimeOffset.UtcNow.ToString("O"));
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+            // Record merge cooldown to prevent feedback loops
+            _recentMerges[existingId] = DateTimeOffset.UtcNow;
+
+            // Clean up old cooldown entries
+            var expired = _recentMerges.Where(kv => DateTimeOffset.UtcNow - kv.Value > MergeCooldown)
+                .Select(kv => kv.Key).ToList();
+            foreach (var key in expired) _recentMerges.Remove(key);
 
             _log.LogInformation("Memory merge: updated {ExistingId} — '{Old}' + '{New}' → '{Merged}'",
                 existingId,
