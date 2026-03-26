@@ -56,10 +56,13 @@ public class AniOptions
 
     // Memory retrieval — Feature 20: Park et al. three-way scoring
     // score = α×cosine + β×importance + γ×recency_decay
-    public double RetrievalWeightCosine     { get; set; } = 0.5;
-    public double RetrievalWeightImportance { get; set; } = 0.3;
-    public double RetrievalWeightRecency    { get; set; } = 0.2;
-    public double RetrievalRecencyDecayHours { get; set; } = 168.0; // λ for e^(-t/λ), ~7 day half-life
+    // Retrieval scoring: cosine dominates (is this memory about what we're talking about?),
+    // recency tiebreaks (prefer recent over stale when equally relevant),
+    // importance is a minor factor (don't let high-importance noise outrank low-importance relevance).
+    public double RetrievalWeightCosine     { get; set; } = 0.65;
+    public double RetrievalWeightImportance { get; set; } = 0.10;
+    public double RetrievalWeightRecency    { get; set; } = 0.25;
+    public double RetrievalRecencyDecayHours { get; set; } = 48.0; // λ for e^(-t/λ), ~2 day half-life (was 168/7-day — too slow, stale memories dominated)
 
     // AC1: Retrieval confidence thresholding — minimum cosine similarity for a memory
     // to be considered relevant. Below this, the memory is filtered out and the model
