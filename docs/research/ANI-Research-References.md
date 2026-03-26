@@ -287,15 +287,41 @@ Quick lookup: which papers are most relevant to each current open problem.
 
 ---
 
+## Paper Applicability Quick Reference
+
+| Reference | Paper 1 | Paper 2 | Paper 3 | Paper 4 |
+|-----------|---------|---------|---------|---------|
+| Park et al. (2023) — Generative Agents | Core | Core | Background | Core |
+| Packer et al. (2023) — MemGPT | Core | Supporting | — | — |
+| Chhikara et al. (2025) — Mem0 | Core | Core (Feature 30) | — | — |
+| Xu et al. (2025) — A-MEM | Supporting | Core (Feature 31) | — | — |
+| Liu et al. (2025) — Inner Thoughts | Core | Supporting | — | — |
+| Deng et al. (2025) — Proactive AI Survey | Core | Supporting | — | — |
+| Li et al. (2025) — Artificial Emotion | Core | Core | — | — |
+| Borotschnig (2025) — Synthetic Emotions | Supporting | Core (Feature 35) | — | — |
+| Kirk et al. (2025) — Socioaffective Alignment | Supporting | Core (framing) | — | Core |
+| Karpathy (2026) — Autoresearch | — | Core (5c framing) | — | — |
+| Kuppens et al. (2010) — Emotional Dynamics | Core | — | — | — |
+| Fang et al. (2025) — Longitudinal Chatbot | Core | — | — | — |
+| Ajeesh & Joseph (2025) — Compassion Illusion | Supporting | — | — | — |
+| Abbas et al. (2025) — Proactive Agent Study | Supporting | — | — | — |
+| Jha et al. (2026) — Intellectual Humility | Supporting | — | — | — |
+| OpenAI (2025) — Sycophancy in GPT-4o | Supporting | — | — | — |
+| Garcia v. Character Technologies (2024) | Supporting | — | — | — |
+| Paper 3 (temporal awareness) — no prior art yet | — | — | Primary gap | — |
+| Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
+
+---
+
 ## Notes
 
+- **This is the canonical reference file.** The duplicate in `docs/spec/emergence/` has been removed.
 - All Tier 1 references should be cited in Related Work
 - Tier 2 references should be cited where specifically relevant to each paper section
 - Tier 3 references are background — cite selectively where they directly support a claim
 - Full DOIs and arXiv links should be verified before final submission
-- Build a Zotero library with these entries before drafting the paper
 - When OC encounters an algorithmic problem that might have prior art solutions, add candidate papers here for the research instance to evaluate
 
 ---
 
-*Last substantive update: March 11, 2026. Merged OC's Tier 2 additions (Deng, Ajeesh & Joseph, Borotschnig, Abbas, Jha, Li, arXiv 2504.14112, Conformal Abstention) with research instance's expanded Liu et al. entry (comparison table, full DOI, project page) and enhanced annotations throughout. Nothing from either version was dropped.*
+*Last substantive update: March 26, 2026. Consolidated from two files (docs/research/ and docs/spec/emergence/) into single canonical file. Added paper applicability matrix. Duplicate in emergence folder removed.*
