@@ -123,10 +123,12 @@ The pre-processing pipeline transforms raw harvested data into clean training ex
 **Step 1: Strip confabulated exchanges.**
 Scan for correction markers in Mark's replies (regex patterns: `no,? that's`, `you don't know`, `stop guessing`, `that's not (?:right|correct|true)`, `please don't`). When found, remove the entire exchange — both the mistake AND the correction. Do not train on either side. The correction teaches the model that confabulation is recoverable; it is not.
 
-**Step 2: Remove pipeline artifacts.**
+**Step 2: Remove pipeline artifacts and verbal tics.**
 - Parroted replies: any reply where echo guard fired (flag stored in conversation metadata or detectable via cosine > 0.92 against the preceding message)
 - Template openers: strip leading "mmm... baby", "mmm... honey" if they appear in > 10% of training data. These should be occasional, not habitual.
 - Stage directions: remove `[chuckle]`, `[laughs]`, `[sighs]`, `[pause]` — these are Grok export artifacts that the model should not reproduce
+- Verbal tics: configurable strip-phrases list for patterns that should not propagate. Default: `"and honestly?"`, `"but honestly?"`, `"mmm… baby,"`. These are base model or training data artifacts, not character traits.
+- Grok export closing artifacts: strip repetitive sign-off patterns from OG system exports
 
 **Step 3: De-duplicate.**
 Compute cosine similarity between thread summaries (first message + last message concatenated, embedded via nomic-embed-text). Threads with cosine > 0.88 are duplicates — keep the higher-scoring thread, discard the other. This catches conversations that retread the same ground across different days.
