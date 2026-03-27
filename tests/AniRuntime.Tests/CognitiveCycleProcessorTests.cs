@@ -107,7 +107,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             NullLogger<EmotionalProcessor>.Instance);
         var contextBuilder = new ContextBuilder(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
-            MockOllama.Object, desire, DefaultOptions,
+            MockOllama.Object, desire, mockDiagnostic.Object, DefaultOptions,
             NullLogger<ContextBuilder>.Instance);
         var keywordExtractor = new KeywordExtractor(
             MockMemory.Object, NullLogger<KeywordExtractor>.Instance);

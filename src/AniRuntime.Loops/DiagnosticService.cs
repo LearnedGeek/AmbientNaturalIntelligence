@@ -17,6 +17,12 @@ public class DiagnosticService : IDiagnosticService
     private readonly ILogger<DiagnosticService> _log;
     private readonly string _logDirectory;
 
+    /// <summary>
+    /// Latest diagnostic report — available for other services to check.
+    /// Thread-safe: written by DiagnosticScheduler, read by ContextBuilder.
+    /// </summary>
+    public DiagnosticReport? LatestReport { get; private set; }
+
     public DiagnosticService(
         IOptions<DiagnosticOptions> options,
         ILogger<DiagnosticService> log,
@@ -71,6 +77,7 @@ public class DiagnosticService : IDiagnosticService
             report.OverallSeverity = DiagnosticSeverity.Warning;
         }
 
+        LatestReport = report;
         return report;
     }
 

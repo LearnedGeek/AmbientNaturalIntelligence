@@ -183,6 +183,10 @@ public static class PromptBuilder
             sections.AddRange(allAvoidTopics.Select(t => $"  - \"{t}...\""));
         }
 
+        // Feature 41: Gentle curiosity redirect when diagnostic detects theme anchoring
+        if (!string.IsNullOrEmpty(snapshot.ThoughtDiversityNudge))
+            sections.Add(snapshot.ThoughtDiversityNudge);
+
         // Translate desire level to qualitative language — prevents model from anchoring on "100%"
         var desireHint = DescribeDesireLevel(snapshot.DesireState.DesireToConnect, cs.PrimaryContactName);
         if (desireHint.Length > 0)

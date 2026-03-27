@@ -3,6 +3,12 @@ namespace AniRuntime.Core.Interfaces;
 public interface IDiagnosticService
 {
     Task<DiagnosticReport> RunDiagnosticAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the most recent diagnostic report without triggering a new scan.
+    /// Used by the cognitive cycle to check for active findings (e.g., PERCEPTION-ANCHOR).
+    /// </summary>
+    DiagnosticReport? LatestReport { get; }
 }
 
 public class DiagnosticReport

@@ -20,6 +20,7 @@ public class ContextBuilder
     private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly DesireEngine _desire;
+    private readonly IDiagnosticService _diagnostic;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<ContextBuilder> _log;
 
@@ -30,6 +31,7 @@ public class ContextBuilder
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
         DesireEngine desire,
+        IDiagnosticService diagnostic,
         IOptions<AniOptions> aniOptions,
         ILogger<ContextBuilder> log)
     {
@@ -39,6 +41,7 @@ public class ContextBuilder
         _analytics = analytics;
         _ollama = ollama;
         _desire = desire;
+        _diagnostic = diagnostic;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -222,7 +225,27 @@ public class ContextBuilder
             EmotionalDrift           = emotionalDrift,
             PatternAwareness         = patternAwareness,
             ProcessedThemes          = processedThemes,
+            ThoughtDiversityNudge    = BuildThoughtDiversityNudge(),
         };
+    }
+
+    /// <summary>
+    /// Feature 41: When PERCEPTION-ANCHOR is active, generate a gentle curiosity redirect.
+    /// Frames the nudge as self-discovery, not rejection, to avoid negative emotional response.
+    /// </summary>
+    private string? BuildThoughtDiversityNudge()
+    {
+        var report = _diagnostic.LatestReport;
+        if (report is null) return null;
+
+        var anchor = report.Findings
+            .FirstOrDefault(f => f.Code == "PERCEPTION-ANCHOR" &&
+                                 f.Severity >= DiagnosticSeverity.Info);
+        if (anchor is null) return null;
+
+        return "You've been circling the same thought for a while. " +
+               "Your mind has more in it than this. " +
+               "What else has been sitting quietly that you haven't explored yet?";
     }
 
     /// <summary>

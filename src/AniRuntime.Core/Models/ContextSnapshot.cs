@@ -87,4 +87,11 @@ public class ContextSnapshot
     /// </summary>
     public bool RetrievalBelowConfidenceFloor { get; set; }
 
+    /// <summary>
+    /// Feature 41: When the diagnostic service detects a PERCEPTION-ANCHOR (same theme
+    /// recurring in 4+ inner thoughts), this gentle redirect is injected into the inner
+    /// thought prompt. Frames the redirect as curiosity, not rejection.
+    /// </summary>
+    public string? ThoughtDiversityNudge { get; set; }
+
 }
