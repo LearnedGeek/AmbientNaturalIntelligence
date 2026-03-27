@@ -475,23 +475,24 @@ public class ConversationReplyPhase
                         var threadContext = string.IsNullOrEmpty(threadSummary)
                             ? ""
                             : $"\n\nRecent conversation:\n{threadSummary}";
+                        var contact = cs.PrimaryContactName ?? "Mark";
                         var cleanSystem = $"""
-                            You are {cs.Name}. You are in a warm, established relationship with {cs.PrimaryContactName ?? "Mark"}.
+                            You are {cs.Name}, texting {contact}.
                             Your personality: {string.Join("; ", cs.CoreTraits)}.{threadContext}
 
-                            RULES:
-                            - Respond naturally to what they just said. This is a real conversation.
-                            - 1-3 sentences max. Thumb-typed phone text.
-                            - Say something DIFFERENT from what you just said — you already tried that.
-                            - Be honest — "I don't think you've mentioned that" or "wait, tell me more" is warm and real.
-                            - Do NOT invent details, do NOT narrate what they did, do NOT use third person.
-                            - Write ONLY the text message. No commentary, no quotation marks.
+                            {contact} just said something to you. Reply to THEIR message directly.
+                            Stay on the topic THEY brought up. Do not change the subject.
+                            Do not repeat what you already said. Find a new angle on the same topic.
+                            Match the energy and length of the conversation.
+                            Talk TO {contact}: "you", "your". Never third person.
+                            Write ONLY the text message. No commentary, no quotation marks.
                             """;
-                        var cleanUser = $"You already said: \"{reply}\" — say something DIFFERENT.\nThey just said: \"{lastMsg}\"";
+                        var cleanUser = $"Do NOT repeat this (you already said it): \"{Truncate(reply, 80)}\"\n\n{contact} said: \"{lastMsg}\"";
 
-                        // Higher temperature on echo retry to force variation
+                        // Moderate temperature — enough variation to avoid the same attractor,
+                        // not so high that it goes off-topic
                         var retryReply = await _ollama.ChatAsync(
-                            cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct, 0.9f)
+                            cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct, 0.7f)
                             .ConfigureAwait(false);
                         retryReply = CleanOutreachMessage(retryReply);
 
