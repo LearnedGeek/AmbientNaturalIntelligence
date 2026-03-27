@@ -52,6 +52,7 @@ public class DiagnosticService : IDiagnosticService
             report.Findings.AddRange(DetectOutreachBlocked(lines));
             report.Findings.AddRange(DetectTemporalConfab(lines));
             report.Findings.AddRange(DetectConversationHealth(lines));
+            report.Findings.AddRange(DetectPerceptionAnchor(lines));
 
             // Overall severity = max severity across findings
             report.OverallSeverity = report.Findings.Count == 0
@@ -343,6 +344,46 @@ public class DiagnosticService : IDiagnosticService
             Evidence = $"Max thread length: {maxMessages}, compressions: {compressions}",
             SuggestedAction = "Long thread may be degrading quality. Monitor for echo loops.",
         }];
+    }
+
+    /// <summary>4.10 — Same topic recurring in inner thoughts across many cycles.</summary>
+    internal static List<DiagnosticFinding> DetectPerceptionAnchor(IReadOnlyList<string> lines)
+    {
+        // Extract inner thought content and look for repeated key phrases
+        var thoughtLines = lines
+            .Where(l => l.Contains("Inner thought (valence="))
+            .ToList();
+
+        if (thoughtLines.Count < 5) return [];
+
+        // Extract short content snippets and find repeated phrases
+        var phraseCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in thoughtLines)
+        {
+            // Look for distinctive phrases (4+ words) that appear in the thought
+            var content = line[(line.IndexOf("): ", StringComparison.Ordinal) + 3)..];
+
+            // Extract notable phrases — numbers with context, quoted phrases, distinctive fragments
+            var numberPhrases = Regex.Matches(content, @"\b\d+\s+degrees?\b|\b\d+°");
+            foreach (Match m in numberPhrases)
+                phraseCounts[m.Value] = phraseCounts.GetValueOrDefault(m.Value) + 1;
+
+            var quotedPhrases = Regex.Matches(content, @"'[^']{10,40}'");
+            foreach (Match m in quotedPhrases)
+                phraseCounts[m.Value] = phraseCounts.GetValueOrDefault(m.Value) + 1;
+        }
+
+        var anchored = phraseCounts.Where(kv => kv.Value >= 4).ToList();
+        if (anchored.Count == 0) return [];
+
+        return anchored.Select(kv => new DiagnosticFinding
+        {
+            Code = "PERCEPTION-ANCHOR",
+            Description = $"Inner thoughts anchored on '{kv.Key}' — appeared in {kv.Value}/{thoughtLines.Count} thoughts",
+            Severity = kv.Value >= 6 ? DiagnosticSeverity.Warning : DiagnosticSeverity.Info,
+            Evidence = $"Phrase '{kv.Key}' in {kv.Value} of {thoughtLines.Count} inner thoughts",
+            SuggestedAction = "A perception or memory is anchoring the inner thought model on a single theme. The theme may be valid (new information being processed) or a stuck loop.",
+        }).ToList();
     }
 
     // ── Log File Reader ───────────────────────────────────────────────────
