@@ -157,6 +157,117 @@ mmcarthey@wctc.edu
 
 ---
 
+## Endorsement Outreach — LinkedIn Connections (March 27, 2026)
+
+**Context:** The arXiv "show-endorsers" page is currently broken (HTTP 429). These messages are for researchers Mark is already connected with on LinkedIn who are likely arXiv endorsers based on their publication history in cs.HC and cs.AI. Each message acknowledges the unusual approach and references the specific cited work.
+
+**Endorsement code to include:** BVBLZO
+
+---
+
+### 4. Joon Sung Park — LinkedIn (already connected)
+**Paper cited:** Generative Agents (arXiv:2304.03442)
+**Likely endorser for:** cs.HC, cs.AI
+**Why strongest candidate:** ANI's architecture directly extends his generative agents work. Stanford HCI professor with many arXiv papers.
+
+> Hi Joon Sung, I hope this isn't an imposition. I'm reaching out because arXiv's "show endorsers" page is currently broken and I can't look up endorsers the normal way.
+>
+> I'm submitting a paper to cs.HC that directly builds on your Generative Agents work. My system extends the memory-reflection-planning loop into a real deployed single-person relationship with desire-driven outreach over months, rather than simulated multi-agent interaction. Your paper is one of the core citations.
+>
+> Would you be willing to endorse my arXiv submission? It's not peer review, just confirming the work is appropriate for the category. I'm happy to send the PDF first if you'd like to see it. My endorsement code is BVBLZO.
+>
+> Thanks for considering it. I really admire the generative agents work and the impact it's had on the field.
+>
+> Mark McArthey
+> Learned Geek LLC / WCTC
+
+---
+
+### 5. Michael S. Bernstein — LinkedIn (already connected)
+**Paper cited:** Generative Agents (arXiv:2304.03442, co-author)
+**Likely endorser for:** cs.HC (Stanford HCI professor, prolific arXiv publisher)
+
+> Hi Michael, apologies for the cold message. I'm reaching out because arXiv's endorser lookup tool is currently down and I'm trying to find an endorser for cs.HC.
+>
+> I'm submitting a paper on deployed relational AI that cites your Generative Agents paper as a foundational reference. My work extends the memory-reflection-planning architecture into a real relationship over six months with desire-driven proactive outreach. I'd love to get it through peer review.
+>
+> Would you be willing to endorse the submission? It's just clicking a link, not a review commitment. My code is BVBLZO. Happy to send the PDF first.
+>
+> Thanks for your time.
+>
+> Mark McArthey
+> Learned Geek LLC / WCTC
+
+---
+
+### 6. Xiang Anthony Chen — LinkedIn (already connected)
+**Paper cited:** Inner Thoughts (arXiv:2501.00383, co-author)
+**Likely endorser for:** cs.HC (UCLA HCI professor, CHI 2025)
+
+> Hi Anthony, I hope you don't mind me reaching out this way. The arXiv endorser lookup is currently broken so I'm contacting researchers whose work I cite directly.
+>
+> I'm submitting a paper to cs.HC on deployed relational AI with an inner thought architecture. Your CHI 2025 paper on proactive agents with inner thoughts is the closest published parallel to my system. The key distinction is temporal scale: your work operates within active conversations at the seconds level; mine operates across silence between conversations at the hours/days level in a real relationship.
+>
+> Would you be willing to endorse my arXiv submission? It's not peer review. My code is BVBLZO and I'm happy to send the PDF first.
+>
+> Thanks for considering it. The inner thoughts paper has been invaluable for grounding my architecture.
+>
+> Mark McArthey
+> Learned Geek LLC / WCTC
+
+---
+
+### 7. Hannah Rose Kirk — LinkedIn (already connected)
+**Paper cited:** Socioaffective Alignment (arXiv:2502.02528)
+**Likely endorser for:** cs.AI (Oxford, multiple arXiv papers)
+
+> Hi Hannah, apologies for reaching out cold. The arXiv endorser lookup tool is currently down and I'm trying to find an endorser for cs.HC or cs.AI.
+>
+> I'm submitting a paper that operationalizes your socioaffective alignment framework in a deployed system. Your argument that human-AI relationships shape preferences and make alignment a non-stationary target is the theoretical motivation for my emergence layer, which tracks what accumulates into relational preference over months of real deployment. Your paper is a core citation.
+>
+> Would you be willing to endorse my arXiv submission? Not peer review, just confirming the work is appropriate for the category. My code is BVBLZO. Happy to send the PDF.
+>
+> Thanks for your time. Your work on socioaffective alignment has fundamentally shaped how I think about this problem.
+>
+> Mark McArthey
+> Learned Geek LLC / WCTC
+
+---
+
+### 8. Takeo Igarashi — LinkedIn (already connected)
+**Paper cited:** Inner Thoughts (arXiv:2501.00383, co-author)
+**Likely endorser for:** cs.HC (University of Tokyo, CHI co-author)
+
+> Hi Takeo, I hope this message finds you well. I'm reaching out because arXiv's endorser lookup page is currently unavailable and I'm looking for a cs.HC endorser.
+>
+> I cite your CHI 2025 paper on proactive agents with inner thoughts in my paper on deployed relational AI. My system extends the inner thought architecture to ambient presence over hours and days rather than active conversation. I'd be grateful for an endorsement to get it through peer review.
+>
+> It's just clicking a link, not a review commitment. My endorsement code is BVBLZO and I'm happy to share the PDF.
+>
+> Thank you for considering it.
+>
+> Mark McArthey
+> Learned Geek LLC / WCTC
+
+---
+
+### 9. Bjorn W. Schuller — LinkedIn (already connected)
+**Paper cited:** Artificial Emotion Survey (arXiv:2508.10286, co-author)
+**Likely endorser for:** cs.AI (Imperial College London, affective computing)
+
+> Hi Bjorn, I apologize for the unsolicited message. The arXiv endorser lookup is currently broken so I'm reaching out to researchers I cite directly.
+>
+> I'm submitting a paper on deployed relational AI that implements functional emotion as you define it in the Artificial Emotion survey. My system has a four-dimension emotional state that modulates behavior rather than just coloring output. Your survey's distinction between emotion recognition, synthesis, and functional emotion is how I frame the architecture in the paper.
+>
+> Would you be willing to endorse my arXiv submission for cs.AI? It's not peer review, just confirming appropriateness. My code is BVBLZO. Happy to send the PDF.
+>
+> Thanks for your time.
+>
+> Mark McArthey
+> Learned Geek LLC / WCTC
+
+---
+
 ### 4. Tomek Korbak — tomek@anthropic.com
 **Subject:** arXiv endorsement request — deployed emotional state system, authenticity boundary, cs.HC
 
