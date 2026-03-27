@@ -87,12 +87,17 @@ public class CognitiveCycleProcessorTests : AniTestBase
         });
         var emergenceStore = new EmergenceStore(emergenceOptions, NullLogger<EmergenceStore>.Instance);
 
+        var mockDiagnostic = new Mock<IDiagnosticService>();
+        mockDiagnostic.Setup(d => d.RunDiagnosticAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DiagnosticReport());
+
         var adminHandler = new AdminCommandHandler(
             MockMemory.Object, MockMemory.Object, MockMemory.Object,
             _mockConversations.Object,
             desire,
             dispatcher,
             emergenceStore,
+            mockDiagnostic.Object,
             DefaultOptions,
             NullLogger<AdminCommandHandler>.Instance);
 

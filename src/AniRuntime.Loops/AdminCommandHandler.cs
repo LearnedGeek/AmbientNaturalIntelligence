@@ -28,6 +28,7 @@ public class AdminCommandHandler
     private readonly DesireEngine        _desire;
     private readonly AniActionDispatcher _dispatcher;
     private readonly EmergenceStore      _emergence;
+    private readonly IDiagnosticService  _diagnostic;
     private readonly AniOptions          _aniOptions;
     private readonly ILogger<AdminCommandHandler> _log;
 
@@ -43,6 +44,7 @@ public class AdminCommandHandler
         DesireEngine                    desire,
         AniActionDispatcher             dispatcher,
         EmergenceStore                  emergence,
+        IDiagnosticService              diagnostic,
         IOptions<AniOptions>            aniOptions,
         ILogger<AdminCommandHandler>    log)
     {
@@ -53,6 +55,7 @@ public class AdminCommandHandler
         _desire        = desire;
         _dispatcher    = dispatcher;
         _emergence     = emergence;
+        _diagnostic    = diagnostic;
         _aniOptions    = aniOptions.Value;
         _log           = log;
     }
@@ -83,6 +86,7 @@ public class AdminCommandHandler
             "new-thread" => await HandleNewThreadAsync(ct).ConfigureAwait(false),
             "rebuild-links" => await HandleRebuildLinksAsync(ct).ConfigureAwait(false),
             "rebuild-emergence" => await HandleRebuildEmergenceAsync(ct).ConfigureAwait(false),
+            "diagnose" => await HandleDiagnoseAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -316,6 +320,13 @@ public class AdminCommandHandler
             _log.LogError(ex, "Rebuild emergence failed");
             return $"ERROR: Rebuild emergence failed — {ex.Message}";
         }
+    }
+
+    private async Task<string> HandleDiagnoseAsync(CancellationToken ct)
+    {
+        var report = await _diagnostic.RunDiagnosticAsync(ct).ConfigureAwait(false);
+        _log.LogInformation("Admin: diagnose — {Summary}", report.Summary);
+        return $"Diagnostic: {report.Summary}";
     }
 
     private static string FormatAge(DateTimeOffset timestamp)

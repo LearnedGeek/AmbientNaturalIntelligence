@@ -61,6 +61,7 @@ try
     builder.Services.Configure<VoiceOptions>(config.GetSection("Voice"));
     builder.Services.Configure<ImageOptions>(config.GetSection("Images"));
     builder.Services.Configure<EmergenceOptions>(config.GetSection("Emergence"));
+    builder.Services.Configure<DiagnosticOptions>(config.GetSection("Diagnostic"));
 
     // ── Core services ─────────────────────────────────────────────────────────
     // ISP: Single SqliteMemoryService instance registered against all interfaces.
@@ -177,6 +178,10 @@ try
     builder.Services.AddSingleton<SessionNotifier>();
     builder.Services.AddSingleton<ISessionNotifier>(sp => sp.GetRequiredService<SessionNotifier>());
     builder.Services.AddHostedService<AniHeartbeatService>();
+
+    // ── Feature 41: Diagnostic service — automated log scanning ──────────────
+    builder.Services.AddSingleton<IDiagnosticService, DiagnosticService>();
+    builder.Services.AddHostedService<DiagnosticScheduler>();
 
     // ── H3: Rate limiting — prevent webhook flooding ──────────────────────────
     builder.Services.AddRateLimiter(options =>
