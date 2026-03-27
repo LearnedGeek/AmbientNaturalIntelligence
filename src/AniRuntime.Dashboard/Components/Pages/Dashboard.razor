@@ -7,10 +7,64 @@
 @inject IMemoryPersistence MemoryPersist
 @inject IMemoryMaintenance MemoryMaintenance
 @inject IConversationService Conversations
+@inject IDiagnosticService DiagnosticService
 @using AniRuntime.Core
 @using AniRuntime.Loops
 
 <h1>ANI Dashboard</h1>
+
+@if (_diagnosticReport is not null)
+{
+    var badgeColor = _diagnosticReport.OverallSeverity switch
+    {
+        DiagnosticSeverity.Healthy => "#4caf50",
+        DiagnosticSeverity.Info => "#2196f3",
+        DiagnosticSeverity.Warning => "#ff9800",
+        DiagnosticSeverity.Critical => "#f44336",
+        _ => "#607d8b",
+    };
+    var badgeIcon = _diagnosticReport.OverallSeverity switch
+    {
+        DiagnosticSeverity.Healthy => "OK",
+        DiagnosticSeverity.Info => "i",
+        DiagnosticSeverity.Warning => "!",
+        DiagnosticSeverity.Critical => "!!",
+        _ => "?",
+    };
+    <section style="margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="background: @badgeColor; color: white; width: 2.5rem; height: 2.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem;">@badgeIcon</div>
+            <div>
+                <strong>System Health: @_diagnosticReport.OverallSeverity</strong>
+                <br />
+                <small style="opacity: 0.6;">@_diagnosticReport.LinesScanned lines scanned, @(_diagnosticReport.WindowScanned.TotalMinutes.ToString("F0")) min window — @_diagnosticReport.Timestamp.LocalDateTime.ToString("h:mm tt")</small>
+            </div>
+            <button @onclick="RunDiagnostic" style="margin-left: auto; padding: 0.3em 0.8em; border-radius: 4px; background: rgba(255,255,255,0.1); color: inherit; border: none; cursor: pointer;">Run Now</button>
+        </div>
+        @if (_diagnosticReport.Findings.Count > 0)
+        {
+            <div style="margin-top: 0.5rem;">
+                @foreach (var finding in _diagnosticReport.Findings)
+                {
+                    var fColor = finding.Severity switch
+                    {
+                        DiagnosticSeverity.Warning => "#ff9800",
+                        DiagnosticSeverity.Critical => "#f44336",
+                        DiagnosticSeverity.Info => "#2196f3",
+                        _ => "#607d8b",
+                    };
+                    <div style="border-left: 3px solid @fColor; padding: 0.3em 0.6em; margin-top: 0.3rem; font-size: 0.85em;">
+                        <strong style="color: @fColor;">[@finding.Code]</strong> @finding.Description
+                        @if (finding.SuggestedAction is not null)
+                        {
+                            <br /><small style="opacity: 0.6;">Suggestion: @finding.SuggestedAction</small>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+}
 
 <section>
     <hgroup>
@@ -140,6 +194,7 @@
     private List<EmotionalContribution> _contributions = new();
     private List<EmotionalContribution> _allContributions = new();
     private ConversationThread? _activeThread;
+    private DiagnosticReport? _diagnosticReport;
 
     protected override async Task OnInitializedAsync()
     {
@@ -150,6 +205,19 @@
         _contributions = await MemoryAnalytics.GetActiveContributionsAsync();
         _allContributions = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));
         _activeThread = await Conversations.GetActiveThreadAsync();
+
+        try { _diagnosticReport = await DiagnosticService.RunDiagnosticAsync(); }
+        catch { _diagnosticReport = null; }
+    }
+
+    private async Task RunDiagnostic()
+    {
+        try
+        {
+            _diagnosticReport = await DiagnosticService.RunDiagnosticAsync();
+            StateHasChanged();
+        }
+        catch { /* diagnostic failure is non-critical */ }
     }
 
     private EmotionalContribution? FindContributionForThought(MemoryRecord thought)
