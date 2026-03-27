@@ -92,22 +92,44 @@ public class ContextBuilder
             .FirstOrDefault();
 
         // Thought loop detection via semantic search — find recent inner thoughts that
-        // are similar to the current context. If similarity is high, the model is stuck
-        // in a loop and needs stronger diversity signals.
+        // are similar to the current context OR to each other. If similarity is high,
+        // the model is stuck in a loop and needs stronger diversity signals.
+        //
+        // Two-pronged detection:
+        // 1. Compare perceptions to recent thoughts (are we about to think about something we already covered?)
+        // 2. Compare the most recent thought to older thoughts (are we stuck on the same theme?)
+        // The second prong catches loops like "hazel eyes" where the theme doesn't appear
+        // in perceptions but keeps recurring in inner thoughts.
         var similarThoughts = new List<MemoryRecord>();
-        if (perceptions.Count > 0)
+        try
         {
-            var thoughtQuery = string.Join(". ", perceptions.Select(p => p.Summary));
-            try
+            // Prong 1: perceptions vs thoughts
+            if (perceptions.Count > 0)
             {
+                var thoughtQuery = string.Join(". ", perceptions.Select(p => p.Summary));
                 var results = await _search.SearchByTypeAsync(
                     thoughtQuery, MemoryType.InnerThought, 3, ct).ConfigureAwait(false);
-                similarThoughts = results.ToList();
+                similarThoughts.AddRange(results);
             }
-            catch (Exception ex)
+
+            // Prong 2: most recent thought vs older thoughts
+            var lastThought = recentMem
+                .Where(m => m.Type == MemoryType.InnerThought)
+                .OrderByDescending(m => m.OccurredAt)
+                .FirstOrDefault();
+            if (lastThought is not null)
             {
-                _log.LogWarning(ex, "Thought similarity search failed — continuing without");
+                var results = await _search.SearchByTypeAsync(
+                    lastThought.Content, MemoryType.InnerThought, 5, ct).ConfigureAwait(false);
+                // Exclude the thought itself and dedup against prong 1
+                var existingIds = similarThoughts.Select(m => m.Id).ToHashSet();
+                existingIds.Add(lastThought.Id);
+                similarThoughts.AddRange(results.Where(r => !existingIds.Contains(r.Id)));
             }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Thought similarity search failed — continuing without");
         }
 
         // Topic-weighted diversity: rerank relevant memories to prefer topics that are
