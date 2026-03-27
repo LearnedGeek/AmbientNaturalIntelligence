@@ -103,12 +103,19 @@ else
 
     <section>
         <h3>Highlight Reel</h3>
-        <small style="opacity: 0.7;">
-            @(filtered.Count) emergence moments
-            @(_selectedTypes.Count > 0 ? "(filtered)" : "— by resonance score")
-            — with inner thought text
-        </small>
-        @foreach (var entry in filtered.Take(20))
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+            <small style="opacity: 0.7;">
+                @(filtered.Count) emergence moments
+                @(_selectedTypes.Count > 0 ? "(filtered)" : "")
+                — with inner thought text
+            </small>
+            <div style="display: flex; gap: 0.4em;">
+                <button @onclick='() => SetHighlightSort("score")' style="@SortButtonStyle(_highlightSort == "score")">By Score</button>
+                <button @onclick='() => SetHighlightSort("date")' style="@SortButtonStyle(_highlightSort == "date")">By Date</button>
+            </div>
+        </div>
+        @{ var sorted = _highlightSort == "date" ? filtered.OrderByDescending(e => e.Timestamp).ToList() : filtered; }
+        @foreach (var entry in sorted.Take(20))
         {
             var obs = ParseObservation(entry.CycleObservationJson);
             var types = ParseEmergenceTypes(entry.EmergenceTypesJson);
@@ -294,6 +301,13 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
     private List<EmergenceLogEntry> _highlights = new();
     private int _maxTypeCount;
     private HashSet<string> _selectedTypes = new();
+    private string _highlightSort = "score";
+
+    private void SetHighlightSort(string mode) => _highlightSort = mode;
+
+    private string SortButtonStyle(bool active) => active
+        ? "padding: 0.2em 0.6em; border-radius: 4px; background: #2196f3; color: white; border: none; cursor: pointer; font-size: 0.8em;"
+        : "padding: 0.2em 0.6em; border-radius: 4px; background: rgba(255,255,255,0.1); color: inherit; border: none; cursor: pointer; font-size: 0.8em;";
 
     protected override async Task OnInitializedAsync()
     {
