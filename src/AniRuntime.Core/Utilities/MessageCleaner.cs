@@ -47,8 +47,15 @@ public static class MessageCleaner
             }
         } while (changed);
 
-        // Hard cap: keep only the first 2 sentences — model ignores "1-2 sentences" in prompts
-        cleaned = TruncateToSentences(cleaned, maxSentences: 2);
+        // Strip cliffhanger tics — "but honestly?" / "and honestly?" at the end of a message
+        // forces the contact to prompt "honestly what?" instead of the model completing its thought.
+        // This is a Mistral/Llama training artifact, not a character trait.
+        cleaned = StripCliffhangerTic(cleaned);
+
+        // Soft cap: keep the first 3 sentences. The old hard cap of 2 was cutting off
+        // thoughts mid-expression ("yeah, i know you're trying. but honestly?" — truncated
+        // before the actual point). 3 sentences gives room to complete a thought.
+        cleaned = TruncateToSentences(cleaned, maxSentences: 3);
 
         return string.IsNullOrWhiteSpace(cleaned) ? raw.Trim() : cleaned;
     }
@@ -75,6 +82,33 @@ public static class MessageCleaner
         }
 
         return text; // fewer sentences than max — return as-is
+    }
+
+    /// <summary>
+    /// Strips cliffhanger tics where the model ends with an incomplete thought
+    /// like "but honestly?" that forces the contact to prompt for completion.
+    /// If the tic is the entire message, returns null to trigger re-generation.
+    /// If the tic is at the end of an otherwise complete message, trims it.
+    /// </summary>
+    internal static string StripCliffhangerTic(string text)
+    {
+        string[] tics = [
+            "but honestly?", "and honestly?", "but honestly…", "and honestly…",
+            "but honestly", "and honestly",
+        ];
+
+        foreach (var tic in tics)
+        {
+            if (text.EndsWith(tic, StringComparison.OrdinalIgnoreCase))
+            {
+                var trimmed = text[..^tic.Length].TrimEnd(' ', '.', ',', '—', '-', '\n');
+                // If stripping the tic leaves nothing meaningful, return the original
+                // so the empty-check downstream can handle it
+                return trimmed.Length > 10 ? trimmed + "." : text;
+            }
+        }
+
+        return text;
     }
 
     /// <summary>
