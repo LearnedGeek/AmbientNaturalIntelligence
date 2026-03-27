@@ -184,12 +184,12 @@ public class SqliteConversationService : IConversationService, IDisposable
         try
         {
             var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
-            var speakerName = message.Role == Roles.Ani ? character.Name : character.PrimaryContactName;
+            var contactName = character.PrimaryContactName ?? "Mark";
 
             await _memory.SaveAsync(new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
-                Content        = $"{speakerName} said: \"{message.Content}\"",
+                Content        = MemoryPrefixes.FormatSpeaker(message.Role, character.Name, contactName, message.Content),
                 Importance     = 0.6f,
                 RelationalValence = message.Role == Roles.Mark ? 0.7f : 0.5f,
                 SourceName     = "conversation",

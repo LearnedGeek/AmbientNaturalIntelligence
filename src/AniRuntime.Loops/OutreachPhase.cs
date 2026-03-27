@@ -125,7 +125,7 @@ public class OutreachPhase
         await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
-            Content    = $"{cs.Name} reached out: {decision.Message}",
+            Content    = MemoryPrefixes.FormatOutreach(cs.PrimaryContactName ?? "Mark", decision.Message),
             Importance = 0.7f,
             OccurredAt = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);

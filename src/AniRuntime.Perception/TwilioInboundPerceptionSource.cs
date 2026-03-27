@@ -149,7 +149,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
                 {
                     SourceName    = SourceName,
                     Category      = Category,
-                    Summary       = $"{contactName} texted: \"{msg.Body}\"",
+                    Summary       = MemoryPrefixes.FormatContactPerception(contactName, msg.Body),
                     ContactRelevance = 0.95f,
                     OccurredAt    = msg.DateSent,
                     OriginChannelId = msg.Sid.StartsWith("DASHBOARD-") ? "dashboard" : "sms",

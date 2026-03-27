@@ -233,7 +233,7 @@ public class ContextBuilder
     internal RecentOutreachContext BuildOutreachContext(
         List<MemoryRecord> recentMemory, DesireState desireState, CharacterStateDoc charState)
     {
-        var outreachPrefix = $"{charState.Name} reached out: ";
+        var outreachPrefix = "I reached out to ";
         var outreachRecords = recentMemory
             .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith(outreachPrefix))
             .OrderByDescending(m => m.OccurredAt)
@@ -255,9 +255,15 @@ public class ContextBuilder
             var wasAnswered = lastContactReply > outreach.OccurredAt ||
                               conversationTimes.Any(t => t > outreach.OccurredAt);
 
+            // Extract message text: "I reached out to Mark: "message here""
+            var colonIdx = outreach.Content.IndexOf(": \"", StringComparison.Ordinal);
+            var msgText = colonIdx >= 0
+                ? outreach.Content[(colonIdx + 3)..].TrimEnd('"')
+                : outreach.Content[outreachPrefix.Length..];
+
             records.Add(new OutreachRecord
             {
-                Message     = outreach.Content[outreachPrefix.Length..].Trim(),
+                Message     = msgText.Trim(),
                 SentAt      = outreach.OccurredAt,
                 WasAnswered = wasAnswered,
             });
@@ -426,7 +432,7 @@ public class ContextBuilder
         var recentEpisodic = (await _search.GetByTypeAsync(MemoryType.Episodic, 20, ct)
             .ConfigureAwait(false)).ToList();
 
-        var outreachPrefix = $"{characterName} reached out:";
+        var outreachPrefix = "I reached out to";
         var outreachRecords = recentEpisodic
             .Where(m => m.Content.StartsWith(outreachPrefix, StringComparison.OrdinalIgnoreCase))
             .Take(8) // last 8 outreach messages
@@ -465,7 +471,7 @@ public class ContextBuilder
 
         // Extract most common theme from recent outreach for the awareness prompt
         var recentTopics = outreachRecords.Take(3)
-            .Select(m => m.Content.Replace(outreachPrefix, "").Trim().TrimStart('"').TrimEnd('"'))
+            .Select(m => m.Content.Replace(outreachPrefix, "").Trim().TrimStart(':').TrimStart().TrimStart('"').TrimEnd('"'))
             .ToList();
 
         return $"I notice my last few messages have been thematically similar — circling the same territory: " +
