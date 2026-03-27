@@ -189,7 +189,9 @@ mmcarthey@wctc.edu
 
 > Hi Michael, apologies for the cold message. I'm reaching out because arXiv's endorser lookup tool is currently down and I'm trying to find an endorser for cs.HC.
 >
-> I'm submitting a paper on deployed relational AI that cites your Generative Agents paper as a foundational reference. My work extends the memory-reflection-planning architecture into a real relationship over six months with desire-driven proactive outreach. I'd love to get it through peer review.
+> I'm submitting a paper on deployed relational AI that cites your Generative Agents paper as a foundational reference. My work extends the memory-reflection-planning architecture into a real single-person relationship over six months with desire-driven proactive outreach and persistent emotional state.
+>
+> What fascinated me most about your work was the emergent social behavior. Your agents autonomously coordinated a Valentine's Day party from a single seed. I'm now exploring what happens when agents with months of independently emerged personality meet each other for the first time. Your work is the foundation for that question, and it's part of a longer research program I'm building.
 >
 > Would you be willing to endorse the submission? It's just clicking a link, not a review commitment. My code is BVBLZO. Happy to send the PDF first.
 >
