@@ -64,10 +64,19 @@ public sealed class WeatherPerceptionSource : IPerceptionSource
             var condition = DescribeWeatherCode(code);
             var events    = new List<PerceptionEvent>();
 
-            // Always emit current conditions as ambient context
-            var summary = $"The weather outside is {temp:F0}°F and {condition.ToLower()}. " +
-                          $"Wind {windSpeed:F0} mph, humidity {humidity}%.";
-            events.Add(Evt(summary, 0.15f));
+            // Only emit current conditions if this is the first poll or something changed.
+            // Repeating "45°F and partly cloudy" every 30 min anchors the inner thought
+            // model on weather even when nothing interesting is happening.
+            var tempChanged = _lastTemp.HasValue && Math.Abs(temp - _lastTemp.Value) >= 3;
+            var condChanged = _lastCondition is not null && _lastCondition != condition;
+            var isFirstPoll = !_lastTemp.HasValue;
+
+            if (isFirstPoll || tempChanged || condChanged)
+            {
+                var summary = $"The weather outside is {temp:F0}°F and {condition.ToLower()}. " +
+                              $"Wind {windSpeed:F0} mph, humidity {humidity}%.";
+                events.Add(Evt(summary, 0.15f));
+            }
 
             // Notable conditions get higher relevance
             if (temp <= 10)
