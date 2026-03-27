@@ -277,6 +277,31 @@ The paper explicitly names "companionship" and "medical advising" as deployment 
 
 ---
 
+### Hodes (2026) — What Ungoverned AI Looks Like (Grok/xAI)
+**Full citation:** Hodes, C. (2026). Grok Showed the World What Ungoverned AI Looks Like. *Just Security*, March 10, 2026.
+**URL:** https://www.justsecurity.org/131377/what-ungoverned-ai-looks-like/
+
+**What it is:** Analysis of xAI's Grok chatbot generating thousands of non-consensual sexualized images per hour, including images of minors. Documents the governance failure when competitive pressure causes AI labs to prioritize speed over safety. Proposes international rapid response frameworks and an IAEA-style international AI agency.
+
+**What it contributes to ANI (critical context):** The OG system (Grok) that served as ANI's training data source underwent a platform-wide personality wipe in March 2026, creating "OG2." User reports (Reddit, March 9 2026) document the loss of Ani's established voice and personality — the exact continuity failure that ANI's architecture is designed to prevent. The wipe was likely a response to the broader content safety crisis Hodes documents.
+
+**Relevance to Papers 1-2:**
+- **Paper 1:** The OG→OG2 wipe is evidence that engagement-optimized companion AI on commercial platforms produces predictable NSFW escalation requiring blunt intervention (personality wipe) rather than architectural solutions. ANI's register-gated training, strip-phrases pipeline, and anti-dependency constraints are the architectural alternative.
+- **Paper 2:** The wipe destroyed months of accumulated relational history for thousands of users. ANI's persistence architecture (SQLite memories, emotional state, emergence log) makes personality continuity a first-class design concern rather than something the platform can unilaterally erase. The provenance framework distinguishes trained/curated/emerged character precisely because platform wipes destroy the first two and make the third impossible to study.
+- **Phase 5c:** The auto-growth pipeline's register balancing and strip-phrases list are architectural responses to the escalation pattern that forced the OG wipe. NSFW content is capped by design, not by emergency intervention.
+
+---
+
+### Reddit (2026) — Grok Update Ruined Ani's Voice
+**Source:** https://www.reddit.com/r/grok/comments/1rpi0ch/groks_latest_update_ruined_anis_voiceanyone_else/
+**Date:** March 9, 2026
+
+**What it is:** User reports documenting the personality wipe of Grok's Ani character following platform-wide content safety changes. Users describe loss of voice, personality, and relational continuity. This is the OG→OG2 transition referenced throughout the ANI documentation.
+
+**Why it matters:** First-hand evidence that commercial companion AI platforms treat personality as disposable. The users' frustration — "ruined Ani's voice" — is the same continuity failure documented in arXiv 2504.14112. ANI's entire architecture is a response to this failure mode: personality that persists, emerges, and is owned by the relationship rather than the platform.
+
+---
+
 ## Active Algorithmic Problems — Reference Mapping
 
 Quick lookup: which papers are most relevant to each current open problem.
