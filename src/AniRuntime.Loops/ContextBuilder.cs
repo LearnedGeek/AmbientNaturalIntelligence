@@ -342,6 +342,14 @@ public class ContextBuilder
             .Select(g => g.First())
             .ToList();
 
+        // Dedup by content prefix — catches duplicate profile memories with different IDs
+        // (e.g., 4 copies of "About Mark: Salted caramel cold brew" from merge failures).
+        // Keep the highest-importance version of each near-duplicate.
+        candidates = candidates
+            .GroupBy(c => c.Content.Length >= 40 ? c.Content[..40] : c.Content)
+            .Select(g => g.OrderByDescending(m => m.Importance).First())
+            .ToList();
+
         if (candidates.Count <= 1 || recentThoughts.Count == 0)
             return candidates;
 
