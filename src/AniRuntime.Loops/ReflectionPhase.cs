@@ -101,8 +101,26 @@ public class ReflectionPhase
 
         var sourceIds = recentMemories.Select(m => m.Id).ToList();
 
+        // Check existing profile memories to avoid duplicating what we already know.
+        // The reflection synthesis tends to regenerate the same profile facts each cycle
+        // ("About Mark: Learning Spanish", "Shared experience: Duck Norris") — without
+        // this check, each run creates a new copy. 620 duplicates were cleaned on Mar 28.
+        var existingProfiles = (await _persist.GetRecentAsync(100, ct).ConfigureAwait(false))
+            .Where(m => m.Type == MemoryType.Semantic && m.SourceName == "reflection")
+            .Select(m => m.Content.Length >= 50 ? m.Content[..50] : m.Content)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var saved = 0;
         foreach (var observation in observations)
         {
+            // Skip if we already have a reflection memory with this prefix
+            var prefix = observation.Length >= 50 ? observation[..50] : observation;
+            if (existingProfiles.Contains(prefix))
+            {
+                _log.LogDebug("Reflection: skipping duplicate '{Prefix}...'", prefix[..Math.Min(40, prefix.Length)]);
+                continue;
+            }
+
             var record = new MemoryRecord
             {
                 Type = MemoryType.Semantic,
@@ -113,9 +131,11 @@ public class ReflectionPhase
             };
 
             await _persist.SaveAsync(record, ct).ConfigureAwait(false);
+            existingProfiles.Add(prefix); // Prevent saving duplicates within same batch
+            saved++;
         }
 
-        _log.LogInformation("Reflection synthesis: generated {Count} observations from {SourceCount} recent memories",
-            observations.Count, recentMemories.Count);
+        _log.LogInformation("Reflection synthesis: generated {Count} observations from {SourceCount} recent memories ({Saved} new, {Skipped} duplicates skipped)",
+            observations.Count, recentMemories.Count, saved, observations.Count - saved);
     }
 }
