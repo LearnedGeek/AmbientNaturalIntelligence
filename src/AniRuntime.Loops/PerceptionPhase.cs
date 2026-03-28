@@ -75,7 +75,11 @@ public class PerceptionPhase
 
         foreach (var p in perceptions)
         {
-            if (p.ContactRelevance < 0.25f || p.SourceName == "time")
+            // Skip low-relevance perceptions, time (always emitted), and contact-state
+            // guesses ("Mark is probably [activity]"). Contact-state is useful as cycle
+            // context but shouldn't be persisted — generic guesses about routines match
+            // too many queries and poison retrieval (14/17 retrievals on "Mark is probably Flexible").
+            if (p.ContactRelevance < 0.25f || p.SourceName is "time" or "contact-state")
                 continue;
 
             if (_recentPerceptions.ContainsKey(p.Summary))
