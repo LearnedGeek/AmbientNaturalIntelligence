@@ -19,6 +19,13 @@ public interface IMemoryPersistence
     Task AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default);
 
     /// <summary>
+    /// Feature 41: Delete a memory record by ID. Used by diagnostic auto-correction
+    /// to remove InnerThought memories that are driving retrieval loops.
+    /// Only call for regenerable content (InnerThought) — never for Episodic/conversation data.
+    /// </summary>
+    Task DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
     /// AC5: Store a confabulation flag for pattern analysis.
     /// </summary>
     Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default);

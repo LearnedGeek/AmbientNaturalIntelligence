@@ -1028,6 +1028,26 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             _log.LogInformation("Anchored memory {Id}: {Reason}", id, reason);
     }
 
+    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+
+        // Delete links first (foreign key)
+        await using var linkCmd = conn.CreateCommand();
+        linkCmd.CommandText = "DELETE FROM memory_links WHERE source_id = $id OR target_id = $id";
+        linkCmd.Parameters.AddWithValue("$id", id.ToString());
+        await linkCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Delete the memory
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM memories WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id.ToString());
+        var rows = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        if (rows > 0)
+            _log.LogInformation("Deleted memory {Id}", id);
+    }
+
     // ── AC5: Confabulation Flags ──────────────────────────────────────────────
 
     public async Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default)
