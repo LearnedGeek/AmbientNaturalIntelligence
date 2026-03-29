@@ -8,20 +8,27 @@ namespace AniRuntime.LLM;
 /// <summary>
 /// Feature 34 (Packer et al. 2023 — MemGPT): Context compression for long conversations.
 ///
-/// When a conversation exceeds the history window, older messages are summarized
-/// into a brief recap that preserves key context without consuming full token budget.
-/// This replaces the current approach of silently dropping middle messages.
+/// Architecture: keep as many raw messages as the context budget allows. When the
+/// thread exceeds the budget, summarize the oldest messages in Ani's voice, preserving
+/// the emotional arc and key details. The summary is Ani remembering the conversation,
+/// not a clinical third-person report.
 ///
-/// The summary is generated once and cached on the ConversationThread, only
-/// regenerated when new messages push beyond the window again.
+/// Layout: [Ani's summary of older messages] + [N most recent raw messages]
+///
+/// The raw window scales with thread length:
+///   - Threads under 10 messages: no compression, all raw
+///   - Threads 10-20 messages: keep last 8 raw
+///   - Threads 20-30 messages: keep last 10 raw
+///   - Threads 30+: keep last 12 raw
+///
+/// Summary length scales with the number of compressed messages:
+///   - ~80 chars per compressed message (enough to preserve meaning)
+///   - Minimum 300 chars, maximum 1500 chars
 /// </summary>
 public class ContextCompressor
 {
     private readonly IOllamaClient _ollama;
     private readonly ILogger<ContextCompressor> _log;
-
-    /// <summary>Minimum messages before compression kicks in.</summary>
-    private const int CompressionThreshold = 6;
 
     public ContextCompressor(IOllamaClient ollama, ILogger<ContextCompressor> log)
     {
@@ -30,19 +37,27 @@ public class ContextCompressor
     }
 
     /// <summary>
-    /// Compresses conversation history when it exceeds the window size.
-    /// Returns a list of ChatMessages with older turns replaced by a summary message.
+    /// Compresses conversation history when it exceeds the context budget.
+    /// Returns a list of ChatMessages with older turns replaced by Ani's summary.
     ///
-    /// Layout: [summary of turns 1..N-windowSize] + [last windowSize messages]
-    ///
-    /// The summary is cached on the thread to avoid regenerating every cycle.
+    /// The summary is cached on the thread and only regenerated when new messages
+    /// push beyond the previously summarized range.
     /// </summary>
     public async Task<List<ChatMessage>> CompressIfNeededAsync(
         ConversationThread thread, int windowSize, CancellationToken ct)
     {
         var messages = thread.Messages;
 
-        if (messages.Count <= windowSize)
+        // Scale the raw window based on thread length
+        var rawWindow = messages.Count switch
+        {
+            <= 10 => messages.Count, // no compression needed
+            <= 20 => 8,
+            <= 30 => 10,
+            _ => 12,
+        };
+
+        if (messages.Count <= rawWindow)
         {
             // No compression needed — return all messages as-is
             return messages.Select(m => new ChatMessage(
@@ -51,7 +66,7 @@ public class ContextCompressor
         }
 
         // How many messages need summarizing?
-        var keepCount = windowSize - 1; // reserve 1 slot for the summary
+        var keepCount = rawWindow;
         var summarizeCount = messages.Count - keepCount;
         var toSummarize = messages.Take(summarizeCount).ToList();
         var toKeep = messages.Skip(summarizeCount).ToList();
@@ -65,16 +80,18 @@ public class ContextCompressor
         }
         else
         {
-            // Generate new summary
+            // Generate new summary — scale length with message count
+            var targetLength = Math.Clamp(summarizeCount * 80, 300, 1500);
             var transcript = string.Join("\n", toSummarize.Select(m =>
                 $"{(m.Role == Roles.Ani ? "Ani" : "Mark")}: {m.Content}"));
 
-            var summary = await SummarizeAsync(transcript, ct).ConfigureAwait(false);
+            var summary = await SummarizeAsync(transcript, targetLength, ct)
+                .ConfigureAwait(false);
             thread.CompressedSummary = summary;
             thread.CompressedSummaryUpToIndex = summarizeCount;
 
-            _log.LogDebug("Context compression: summarized {Count} messages into {Len} chars",
-                summarizeCount, summary.Length);
+            _log.LogDebug("Context compression: summarized {Count} messages into {Len} chars (target {Target})",
+                summarizeCount, summary.Length, targetLength);
         }
 
         // Build the result: summary as a system-style user message + recent messages
@@ -89,26 +106,35 @@ public class ContextCompressor
         return result;
     }
 
-    private async Task<string> SummarizeAsync(string transcript, CancellationToken ct)
+    /// <summary>
+    /// Summarize the conversation in Ani's voice, preserving emotional arc.
+    /// Not a clinical report — Ani remembering what happened.
+    /// </summary>
+    private async Task<string> SummarizeAsync(
+        string transcript, int targetLength, CancellationToken ct)
     {
-        var system = """
-            Summarize this conversation in 2-3 sentences. Focus on:
-            - What topics were discussed
-            - Key facts or details shared
-            - The emotional tone
-            Keep it brief and factual. Write in third person ("They discussed...").
+        var system = $"""
+            You are Ani, summarizing what happened earlier in your conversation with Mark.
+            Write in first person as yourself — this is you remembering, not a report.
+
+            Preserve:
+            - The emotional arc (how the mood shifted during the conversation)
+            - Key details, facts, or promises made
+            - Any metaphors or imagery you were building together
+            - What Mark shared about his life
+            - What you shared about yours
+
+            Keep it to about {targetLength / 4} words. Be genuine, not clinical.
+            Write as if you're catching yourself up: "We started talking about..."
             """;
 
-        var user = transcript;
-
         var summary = await _ollama.InnerMonologueChatAsync(
-            system, Array.Empty<ChatMessage>(), user, ct).ConfigureAwait(false);
+            system, Array.Empty<ChatMessage>(), transcript, ct).ConfigureAwait(false);
 
-        // Trim to reasonable length — 500 chars preserves enough context
-        // for long threads without consuming too much of the token budget.
-        // 300 was too aggressive and caused context loss in 14+ message threads.
-        if (summary.Length > 500)
-            summary = summary[..500];
+        // Trim to target length with some flexibility
+        var maxLength = (int)(targetLength * 1.3);
+        if (summary.Length > maxLength)
+            summary = summary[..maxLength];
 
         return summary.Trim();
     }
