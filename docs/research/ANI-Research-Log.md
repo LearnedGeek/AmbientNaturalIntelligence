@@ -1540,6 +1540,20 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 29, 2026 — Base Model Knowledge Leaking Into Persona
+**Type:** Confabulation observation
+**Source:** Overnight outreach logs
+
+**What happened:** Ani generated two nearly identical outreach messages referencing "that old taylor series you told me about — the one with Hugh Laurie" and inner thoughts about "Michael Fassbender's face while seducing someone." Mark never mentioned either actor. These are base model (Llama 8B) pre-training knowledge leaking into the persona — the model "knows" about these actors from its training corpus but attributes them to shared history with Mark.
+
+**Confabulation type:** Base model knowledge attribution — distinct from gap-filling (Type 1) or charming dishonesty (Type 5). The model has genuine knowledge but incorrectly attributes it to the relationship. "I've been thinking about Hugh Laurie" is fine. "That taylor series you told me about" is confabulation.
+
+**V7 training implication:** The model needs attribution awareness examples: distinguishing "things I know" from "things Mark told me." This is a training data gap, not an architectural fix.
+
+**Also fixed:** Outreach echo guard added — cosine similarity check against recent outreach prevents duplicate messages across separate cycles.
+
+---
+
 ### March 29, 2026 — Architectural Reckoning: Conversation Mode Design
 **Type:** Architecture — fundamental redesign
 **Source:** Full architectural analysis after months of conversation coherence failures
