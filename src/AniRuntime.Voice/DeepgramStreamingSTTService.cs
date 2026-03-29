@@ -54,11 +54,15 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
         _ws = new ClientWebSocket();
         _ws.Options.SetRequestHeader("Authorization", $"Token {_options.DeepgramApiKey}");
 
+        // utterance_end_ms keeps the connection alive between utterances in multi-turn
+        // conversation. Without it, Deepgram closes the session after the first speech_final,
+        // producing a Metadata response and silently dropping all subsequent audio.
         var uri = new Uri(
             $"wss://api.deepgram.com/v1/listen" +
             $"?encoding=linear16&sample_rate=16000&channels=1" +
             $"&punctuate=true&interim_results=true" +
             $"&endpointing={_options.DeepgramEndpointingMs}" +
+            $"&utterance_end_ms=1500" +
             $"&model={_options.DeepgramModel}");
 
         await _ws.ConnectAsync(uri, ct).ConfigureAwait(false);

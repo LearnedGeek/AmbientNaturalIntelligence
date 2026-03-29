@@ -157,8 +157,6 @@ public class StreamingVoiceOrchestrator
                 if (!session.IsAniSpeaking) return;
                 session.EndSpeaking();
                 stt.ClearPendingSegments();
-                // Wake up Deepgram connection before resuming — prevents stale WebSocket
-                // from silently dropping audio after long playback periods.
                 stt.SendKeepAlive();
                 await SendJsonToClient(new { type = "listening" }, token).ConfigureAwait(false);
                 _log.LogDebug("Streaming voice: playback done, resumed listening");
@@ -312,6 +310,7 @@ public class StreamingVoiceOrchestrator
         var buffer = new byte[4096];
         long totalAudioBytes = 0;
         int audioFrameCount = 0;
+        int comfortNoiseFrames = 0;
 
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
@@ -322,10 +321,21 @@ public class StreamingVoiceOrchestrator
 
             if (result.MessageType == WebSocketMessageType.Binary)
             {
-                // Skip forwarding audio while Ani is speaking to prevent echo
                 if (session.IsAniSpeaking)
+                {
+                    // Send comfort noise (zero-filled PCM) to keep Deepgram connection alive.
+                    // Without this, Deepgram closes the WebSocket after ~5s of zero audio,
+                    // producing a Metadata response and silently dropping all subsequent audio.
+                    // The real mic audio is suppressed (not forwarded) to prevent echo.
+                    comfortNoiseFrames++;
+                    if (comfortNoiseFrames % 50 == 1) // ~1 per second at 20ms chunks
+                    {
+                        await stt.SendAudioAsync(ComfortNoise, ct).ConfigureAwait(false);
+                    }
                     continue;
+                }
 
+                comfortNoiseFrames = 0;
                 totalAudioBytes += result.Count;
                 audioFrameCount++;
                 if (audioFrameCount == 1 || audioFrameCount % 500 == 0)
@@ -412,6 +422,13 @@ public class StreamingVoiceOrchestrator
     }
 
     private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.CamelCase;
+
+    /// <summary>
+    /// 20ms of silent PCM 16kHz 16-bit mono audio (640 bytes of zeros).
+    /// Sent to Deepgram during Ani's playback to keep the WebSocket alive.
+    /// Deepgram closes connections that receive zero audio for ~5 seconds.
+    /// </summary>
+    private static readonly ReadOnlyMemory<byte> ComfortNoise = new byte[640];
 
     private record ControlMessage
     {
