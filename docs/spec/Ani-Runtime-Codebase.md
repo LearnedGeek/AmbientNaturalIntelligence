@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.5 — Phase 6 continued + Features 40–41 + Diagnostic Service + Context/Retrieval rebalance
+1.6 — Conversation Mode Phase 1–4 deployed + lean prompt + confabulation-driven retrieval
 Status
-Active Development — Phase 1–4 complete. Phase 5 streaming voice deployed. Phase 6 memory reform in progress. Features 33–41 deployed. Feature 40: Temporal awareness affordances (felt-time, EM7). Feature 41: DiagnosticService — 10 pattern detectors, auto-correction, ///diagnose command, dashboard health badge. Outreach echo guard. Context compression rewritten (scaled window, Ani's voice summaries). Retrieval scoring rebalanced (cosine 0.65 / importance 0.10 / recency 0.25). Content-based dedup in diversity re-rank. Weather perception change-only. Conversation Mode design doc created. A/B conclusion: Llama 8B over Mistral 7B.
+Active Development — Phase 1–4 complete. Phase 5 streaming voice deployed. Phase 6 memory reform in progress. Features 33–41 deployed. Conversation Mode Phase 1–4 deployed: lean prompt, confabulation-driven retrieval, structured ConversationState, async emotional processing. Feature 40: Temporal awareness affordances (felt-time, EM7). Feature 41: DiagnosticService — 10 pattern detectors, auto-correction, ///diagnose command, dashboard health badge. Outreach echo guard. Context compression rewritten (scaled window, Ani's voice summaries). Retrieval scoring rebalanced (cosine 0.65 / importance 0.10 / recency 0.25). Content-based dedup in diversity re-rank. Weather perception change-only. A/B conclusion: Llama 8B over Mistral 7B.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -51,6 +51,7 @@ AniRuntime.sln
 │   │   │   ├── PerceptionEvent.cs
 │   │   │   ├── OpenLoop.cs
 │   │   │   ├── OutreachDecision.cs
+│   │   │   ├── ConversationState.cs  # Conversation Mode: tracks topic, register, commitments, key facts, shared imagery programmatically
 │   │   │   └── RelationshipHealth.cs # Feature 4: composite score + phase
 │   │   ├── Interfaces/
 │   │   │   ├── IPerceptionSource.cs
@@ -89,7 +90,7 @@ AniRuntime.sln
 │   │   ├── DesireEngine.cs
 │   │   ├── AdminCommandHandler.cs         # + ///flag confabulation feedback command (AC5)
 │   │   ├── RegisterTracker.cs              # Register hit counting per conversation — 10 registers including Resilience (emergent)
-│   │   ├── ConversationReplyPhase.cs       # Inbound conversation pipeline: care/hurt detection, reply decisions, composition
+│   │   ├── ConversationReplyPhase.cs       # Inbound conversation pipeline: care/hurt detection, reply decisions, composition, DetectConversationConfabulation (heuristic confabulation check — ungrounded proper nouns, shared history claims, ungrounded numbers)
 │   │   ├── ContextBuilder.cs              # Memory retrieval + diversity re-ranking + dedup-by-ID + keyword relevance boost
 │   │   └── AniRuntime.Loops.csproj
 │   │
@@ -109,7 +110,7 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.LLM/             # Ollama client + prompt builders
 │   │   ├── OllamaClient.cs
-│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:"), time/date injection
+│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:"), time/date injection, BuildLeanConversationPrompt (minimal persona + conversation history, no retrieval)
 │   │   ├── ContextCompressor.cs      # Feature 34 (Packer et al. 2023 — MemGPT): conversation compression — cached summary on ConversationThread
 │   │   ├── ContextSnapshotBuilder.cs
 │   │   ├── KeywordExtractor.cs       # TF-IDF keyword extraction — corpus-based IDF, lazy corpus build from memory
@@ -1032,7 +1033,7 @@ Test files:
 46. Relevance-scored link retrieval — Linked memories filtered by cosine > 0.40 threshold. Prevents tangential links from polluting context.
 47. Diagnostic auto-correction (Feature 41) — `DiagnosticService` with 10 pattern detectors (ECHO-LOOP, RETRIEVAL-POISON, THOUGHT-LOOP, EMOTIONAL-SATURATION, CONFABULATION-CORRECTION, MERGE-STORM, OUTREACH-BLOCKED, TEMPORAL-CONFAB, LONG-THREAD, PERCEPTION-ANCHOR). `DiagnosticScheduler` runs every 10 min. Escalating auto-correction with admin alerting. `///diagnose` command. Dashboard health badge. `GET /api/v1/diagnostic` endpoint.
 48. Temporal awareness affordances (Feature 40) — Felt-time observations injected into perception. EM7 classifier for temporal emergence patterns.
-49. Conversation Mode design — Architectural redesign separating conversation from ambient cognition. Design doc: `docs/spec/ANI-ConversationMode-Design.md`.
+49. Conversation Mode Phase 1–4 deployed — Lean prompt (BuildLeanConversationPrompt: persona + conversation history, no retrieval), confabulation-driven retrieval (DetectConversationConfabulation: heuristic check triggers retrieval on demand), structured ConversationState (topic, register, commitments, key facts, shared imagery — no LLM summarization), async emotional processing (Features 10, 18, 19 moved from pre-reply to post-dispatch). Ambient pipeline unchanged. Design doc: `docs/spec/ANI-ConversationMode-Design.md`.
 
 14. Change Log
 
@@ -1043,6 +1044,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 1.6 | Mar 29, 2026 | Conversation Mode Phase 1–4 deployed: lean prompt (BuildLeanConversationPrompt), confabulation-driven retrieval (DetectConversationConfabulation), structured ConversationState, async emotional processing (Features 10/18/19 post-dispatch). |
 | 1.5 | Mar 28, 2026 | Feature 41: DiagnosticService — 10 pattern detectors (ECHO-LOOP, RETRIEVAL-POISON, THOUGHT-LOOP, EMOTIONAL-SATURATION, CONFABULATION-CORRECTION, MERGE-STORM, OUTREACH-BLOCKED, TEMPORAL-CONFAB, LONG-THREAD, PERCEPTION-ANCHOR), DiagnosticScheduler (10 min), dashboard health badge, escalating auto-correction, ///diagnose admin command, GET /api/v1/diagnostic. Feature 40: Temporal awareness affordances (felt-time, EM7). Outreach echo guard (cosine dedup across cycles). Context compression rewritten (scaled window 8/10/12, ~80 chars/msg, Ani's voice). Retrieval scoring rebalanced (cosine 0.65 / importance 0.10 / recency 0.25, 48h decay). Content-based dedup in diversity re-rank (prefix grouping). Weather perception change-only. Contact-state perceptions no longer persisted. Reflection synthesis dedup. Sentence truncation removed from MessageCleaner. Cross-type profile correction. Quality-gated merging (ContainsNovelSpecifics). Speaker attribution fix ("I said to Mark:"). Relevance-scored link retrieval (cosine > 0.40). A/B conclusion: Llama 8B over Mistral 7B. Conversation Mode design doc created. |
 | 1.4 | Mar 25, 2026 | Phase 6 features deployed. Feature 33: MotivationScorer (Liu et al. 2025) — per-thought motivation scoring multiplies desire drift [0.3–1.5]. Feature 34: ContextCompressor (Packer et al. 2023 / MemGPT) — conversation compression with cached summary on ConversationThread. Feature 35: EmotionDesireModifier (Borotschnig 2025) — worry accelerates / low energy suppresses desire drift. Feature 36: Memory profile dashboard (MemoryGraph.razor at /memory). Feature 38: EmergenceClassifier (EM1–EM6) with emergence_types column, dashboard type distribution + highlight reel + clickable filters. ///rebuild-links and ///rebuild-emergence admin commands. ContextBuilder dedup-by-ID before diversity re-ranking. Keyword relevance boost in ConversationReplyPhase. Time/date injection in PromptBuilder. A/B test concluded: Llama 8B over Mistral 7B for conversation. Models updated to v6 (ani-v6-conversation, ani-v6-inner). Dashboard nav: Dashboard \| Chat \| Memory \| Emergence. |
 | 1.1 | Mar 19, 2026 | SOLID refactoring: IMemoryService ISP split into 5 focused interfaces (IMemoryPersistence, IMemorySearch, IStateStore, IMemoryAnalytics, IMemoryMaintenance) + full consumer migration. ConversationFeatureDetector extracted from ConversationReplyPhase. PerceptionPhase + InnerThoughtPhase extracted from CognitiveCycleProcessor. JsonDefaults consolidation (9→1). IConversationGateState decoupling. Production hardening: AC5 ///flag confabulation feedback, /health endpoint (H1), rate limiting on /sms/inbound (H3), security headers (H5), charming dishonesty detection (UP1). Dashboard: register heatmap, V6 Growth Readiness score, per-register progress bars, gap guidance. 383 tests. |

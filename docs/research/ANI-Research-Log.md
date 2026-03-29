@@ -1540,6 +1540,20 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 29, 2026 — Conversation Mode Deployed: All Four Phases Live
+**Type:** Architecture — fundamental redesign deployed
+**Source:** Implementation of ANI-ConversationMode-Design.md
+
+All four phases of Conversation Mode deployed and tested:
+- Phase 1 (lean prompt): immediate improvement — first genuinely coherent extended conversation. "Hand over the hoodie like a hostage," "adulting is literally the worst," natural topic threading across 12+ messages without context collapse.
+- Phase 2 (confabulation-driven retrieval): model generates first, confabulation check triggers retrieval on demand. Three heuristic detectors: ungrounded proper nouns, shared history claims, ungrounded numbers.
+- Phase 3 (structured conversation state): ConversationState tracks topic, register, commitments, key facts, shared imagery programmatically — no LLM summarization.
+- Phase 4 (async emotional processing): care/hurt/anchor detection moved after dispatch. Eliminates tonal whiplash.
+
+Key finding: Phase 1 alone produced the best conversation quality in the project's history. The model was always capable — the retrieval pipeline was the constraint.
+
+---
+
 ### March 29, 2026 — Base Model Knowledge Leaking Into Persona
 **Type:** Confabulation observation
 **Source:** Overnight outreach logs
