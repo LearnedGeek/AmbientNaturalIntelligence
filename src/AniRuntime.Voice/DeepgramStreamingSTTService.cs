@@ -136,6 +136,16 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
         }
     }
 
+    /// <summary>
+    /// Buffer for is_final segments that haven't reached speech_final yet.
+    /// Deepgram sends is_final when a segment's transcription stabilizes,
+    /// but speech_final only when the speaker actually stops talking.
+    /// Without this buffer, a breath pause mid-sentence triggers the debounce
+    /// and fires a half-utterance ("Are you really eating cold chicken soup?")
+    /// before the speaker finishes ("That's new, but I guess the cornflakes...").
+    /// </summary>
+    private readonly List<string> _pendingSegments = new();
+
     private void ProcessTranscriptMessage(string json)
     {
         try
@@ -145,7 +155,16 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
 
             if (msg?.IsFinal == true && !string.IsNullOrWhiteSpace(transcript))
             {
-                Debounce.AddSegment(transcript);
+                _pendingSegments.Add(transcript);
+
+                if (msg.SpeechFinal)
+                {
+                    // Speaker stopped — flush all accumulated segments as one utterance
+                    var fullUtterance = string.Join(" ", _pendingSegments);
+                    _pendingSegments.Clear();
+                    Debounce.AddSegment(fullUtterance);
+                }
+                // If speech_final=false, just accumulate — speaker is still talking
             }
             else if (msg?.IsFinal != true && !string.IsNullOrWhiteSpace(transcript))
             {
@@ -158,7 +177,11 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
         }
     }
 
-    public void ClearPendingSegments() => Debounce.Clear();
+    public void ClearPendingSegments()
+    {
+        _pendingSegments.Clear();
+        Debounce.Clear();
+    }
 
     public void SendKeepAlive()
     {
