@@ -98,6 +98,16 @@ public class OutreachPhase
             return;
         }
 
+        // Outreach echo guard: check against recent outreach messages to prevent duplicates
+        // across cycles. The conversation echo guard only checks within a thread — this
+        // catches the same message composed in separate outreach cycles.
+        if (await IsOutreachEchoAsync(message, snapshot, ct).ConfigureAwait(false))
+        {
+            _log.LogWarning("Outreach echo: composed message too similar to recent outreach — suppressing");
+            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(15), ct).ConfigureAwait(false);
+            return;
+        }
+
         // Step 3: Light pronoun fix — only if third-person leaked through
         var rewritten = await FixPronounsIfNeeded(message, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
@@ -417,6 +427,63 @@ public class OutreachPhase
     /// Strips meta-commentary the model adds when roleplaying the act of texting.
     /// </summary>
     private static string? CleanOutreachMessage(string? raw) => Core.Utilities.MessageCleaner.Clean(raw);
+
+    /// <summary>
+    /// Check if the composed outreach message is too similar to recent outreach.
+    /// Uses the outreach episodic memories (prefixed "I reached out to") to find
+    /// recent sends and compares via embedding cosine similarity.
+    /// </summary>
+    private async Task<bool> IsOutreachEchoAsync(
+        string message, ContextSnapshot snapshot, CancellationToken ct)
+    {
+        try
+        {
+            var recentOutreach = snapshot.RecentMemory
+                .Where(m => m.Type == MemoryType.Episodic &&
+                            m.Content.StartsWith("I reached out to", StringComparison.OrdinalIgnoreCase) &&
+                            m.Embedding is { Length: > 0 })
+                .Take(5)
+                .ToList();
+
+            if (recentOutreach.Count == 0) return false;
+
+            var messageEmbedding = await _ollama.EmbedAsync(message, ct).ConfigureAwait(false);
+            if (messageEmbedding.Length == 0) return false;
+
+            foreach (var recent in recentOutreach)
+            {
+                if (recent.Embedding!.Length != messageEmbedding.Length) continue;
+
+                var similarity = CosineSimilarity(messageEmbedding, recent.Embedding!);
+                if (similarity > 0.85f)
+                {
+                    _log.LogWarning("Outreach echo detected (similarity={Sim:F3}): new message matches recent outreach '{Content}'",
+                        similarity, recent.Content[..Math.Min(60, recent.Content.Length)]);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Outreach echo check failed — allowing send");
+            return false;
+        }
+    }
+
+    private static float CosineSimilarity(float[] a, float[] b)
+    {
+        float dot = 0, normA = 0, normB = 0;
+        for (var i = 0; i < a.Length; i++)
+        {
+            dot += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        var denom = MathF.Sqrt(normA) * MathF.Sqrt(normB);
+        return denom == 0 ? 0 : dot / denom;
+    }
 
     internal static float ParseValenceScore(string raw)
     {
