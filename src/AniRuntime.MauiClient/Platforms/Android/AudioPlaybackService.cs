@@ -10,6 +10,7 @@ public class AudioPlaybackService : IAudioPlaybackService
 {
     private AudioTrack? _track;
     private int _bytesWritten;
+    private int _playbackHeadBaseline; // PlaybackHeadPosition at start of current utterance
 
     private const int SampleRate = 16000;
     private const ChannelOut Channel = ChannelOut.Mono;
@@ -69,21 +70,29 @@ public class AudioPlaybackService : IAudioPlaybackService
 
     /// <summary>
     /// Estimated milliseconds of audio remaining in the AudioTrack buffer.
-    /// At 16kHz, 16-bit mono: 32,000 bytes per second of audio.
+    /// Uses a baseline PlaybackHeadPosition captured at ResetByteCounter() to
+    /// correctly track per-utterance playback progress. Without the baseline,
+    /// PlaybackHeadPosition is cumulative across all utterances and causes
+    /// EstimatedRemainingMs to go negative on Turn 2+, making playback_done
+    /// fire before audio finishes playing.
     /// </summary>
     public int EstimatedRemainingMs
     {
         get
         {
             if (_track is null) return 0;
-            var playbackHead = _track.PlaybackHeadPosition; // samples played
+            var playbackHead = _track.PlaybackHeadPosition - _playbackHeadBaseline;
             var totalSamples = _bytesWritten / 2; // 16-bit = 2 bytes per sample
             var remainingSamples = Math.Max(0, totalSamples - playbackHead);
             return (int)(remainingSamples * 1000.0 / SampleRate);
         }
     }
 
-    public void ResetByteCounter() => _bytesWritten = 0;
+    public void ResetByteCounter()
+    {
+        _bytesWritten = 0;
+        _playbackHeadBaseline = _track?.PlaybackHeadPosition ?? 0;
+    }
 
     private static void SetSpeakerphone(bool on)
     {
