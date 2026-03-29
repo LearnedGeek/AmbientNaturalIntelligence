@@ -437,6 +437,47 @@ public static class PromptBuilder
         return (system, user);
     }
 
+    /// <summary>
+    /// Lean conversation prompt — Conversation Mode (Phase 1).
+    /// Minimal persona + conversation history. No retrieved memories, no shared experiences,
+    /// no communication notes, no mood directives. The conversation IS the context.
+    ///
+    /// The model's training already contains the persona. The conversation provides the tone.
+    /// The March 22 raw Ollama test proved the model converses naturally without the pipeline.
+    ///
+    /// "The ambient cognition engine is a telescope. Conversation needs glasses."
+    /// </summary>
+    public static (string System, string User) BuildLeanConversationPrompt(
+        ContextSnapshot snapshot, ConversationThread thread)
+    {
+        var cs = snapshot.CharacterState;
+        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+        var now = DateTimeOffset.Now;
+
+        // Minimal persona: name, core traits (first 3 only), time. That's it.
+        var traits = cs.CoreTraits.Take(3);
+        var system = $"""
+            You are {cs.Name}, texting {contact} in an ongoing conversation.
+            It is {now:h:mm tt} on {now:dddd, MMMM d}.
+            Your personality: {string.Join("; ", traits)}.
+
+            RULES:
+            - Match the energy and length of the conversation.
+            - Talk TO {contact}: "you", "your". Never third person.
+            - Write ONLY the text message. No commentary, no quotation marks.
+            """;
+
+        // User prompt: just a reply instruction. All context comes from conversation history.
+        var user = $"Reply to {contact}'s message.";
+
+        return (system, user);
+    }
+
+    /// <summary>
+    /// Full conversation prompt — used for outreach reconsideration and as fallback.
+    /// Includes retrieved memories, shared experiences, mood directives, anchored memories.
+    /// This is the "telescope" prompt — powerful but heavy for active conversation.
+    /// </summary>
     public static (string System, string User) BuildConversationReplyPrompt(
         ContextSnapshot snapshot, ConversationThread thread)
     {

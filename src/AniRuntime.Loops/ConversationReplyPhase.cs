@@ -125,150 +125,29 @@ public class ConversationReplyPhase
             return;
         }
 
-        // Build context for the reply
+        // ═══════════════════════════════════════════════════════════════════════
+        // CONVERSATION MODE (Phase 1): The conversation IS the context.
+        //
+        // The full retrieval pipeline (intent extraction, 3 embedding searches,
+        // keyword extraction, diversity re-ranking, memory injection) was designed
+        // for ambient cognition. During active conversation, it actively degrades
+        // quality by competing with the conversation history for the model's
+        // limited attention. The March 22 raw Ollama test proved the model
+        // converses naturally without the pipeline.
+        //
+        // "The ambient cognition engine is a telescope. Conversation needs glasses."
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Build minimal context — character state and emotional state only.
+        // No retrieval, no memory search, no intent extraction, no keyword search.
         var snapshot = await _contextBuilder.BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
-        // Re-search relevant memories using semantic intent, not raw message text.
-        // Intent extraction uses the 3B model to distill "Thanks yeah I decided to just
-        // relax tonight. No work." → "relaxing at home, taking the evening off" — which
-        // prevents retrieval contamination from shared surface tokens (e.g., "relaxing"
-        // pulling in old "Sarah muscular therapy" memories).
-        // AC1: Use scored search to apply confidence thresholding on cosine similarity.
-        try
-        {
-            var searchIntent = await _intent.ExtractIntentAsync(lastMessage, ct).ConfigureAwait(false);
-            var scoredResults = await _search.SearchWithScoresAsync(searchIntent, 5, ct).ConfigureAwait(false);
-            var scoredList = scoredResults.ToList();
+        // Skip the entire retrieval pipeline in conversation mode.
+        // The model gets: persona + conversation history. That's it.
+        _log.LogDebug("Conversation mode: retrieval pipeline bypassed — conversation is the context");
 
-            // TF-IDF keyword extraction: search with distinctive words to find
-            // topic-specific memories ("consulting business" → "Learned Geek")
-            // that the full message embedding misses due to casual noise.
-            var keywordQuery = await _keywords.ExtractSearchQueryAsync(lastMessage, 5, ct).ConfigureAwait(false);
-            if (keywordQuery is not null)
-            {
-                var existingIds = new HashSet<Guid>(scoredList.Select(s => s.Record.Id));
-
-                // Broad keyword search across all memory types
-                var keywordResults = await _search.SearchWithScoresAsync(keywordQuery, 5, ct).ConfigureAwait(false);
-                var newFromKeywords = keywordResults.Where(s => !existingIds.Contains(s.Record.Id)).ToList();
-                if (newFromKeywords.Count > 0)
-                {
-                    _log.LogDebug("TF-IDF dual search: keyword query \"{Query}\" found {Count} additional memories",
-                        keywordQuery, newFromKeywords.Count);
-                    scoredList.AddRange(newFromKeywords);
-                    foreach (var s in newFromKeywords) existingIds.Add(s.Record.Id);
-                }
-
-                // Targeted Semantic memory search — biographical facts, profile data,
-                // and relationship knowledge live here. These are exactly the memories
-                // that casual message search misses but keyword search should find.
-                // Semantic memories represent user profile data that should always be
-                // discoverable regardless of conversational phrasing.
-                var semanticResults = await _search.SearchByTypeAsync(
-                    keywordQuery, MemoryType.Semantic, 3, ct).ConfigureAwait(false);
-                var newFromSemantic = semanticResults
-                    .Where(r => !existingIds.Contains(r.Id))
-                    .Select(r => new ScoredMemory(r, 1.0f, 1.0f)) // priority: always above confidence floor
-                    .ToList();
-                if (newFromSemantic.Count > 0)
-                {
-                    _log.LogDebug("Semantic priority search: \"{Query}\" found {Count} profile/fact memories",
-                        keywordQuery, newFromSemantic.Count);
-                    scoredList.AddRange(newFromSemantic);
-                }
-            }
-
-            var confidenceFloor = (float)_aniOptions.RetrievalConfidenceFloor;
-
-            // AC1: Filter out memories below the cosine similarity confidence floor.
-            // Low-cosine matches are the primary driver of confabulation — the model
-            // over-generalizes from semantically unrelated memories that happen to be
-            // important or recent.
-            var aboveFloor = scoredList.Where(s => s.CosineSimilarity >= confidenceFloor).ToList();
-            var belowFloor = scoredList.Count - aboveFloor.Count;
-
-            if (belowFloor > 0)
-            {
-                _log.LogDebug("AC1: Filtered {Filtered} memories below confidence floor {Floor:F2} (kept {Kept})",
-                    belowFloor, confidenceFloor, aboveFloor.Count);
-            }
-
-            // AC1 + AC3: If ALL results fell below the floor, set the flag so prompt builders
-            // inject an explicit null-result instruction instead of leaving context ambiguously empty.
-            if (aboveFloor.Count == 0 && scoredList.Count > 0)
-            {
-                snapshot.RetrievalBelowConfidenceFloor = true;
-                _log.LogInformation("AC1: All {Total} retrieved memories below confidence floor {Floor:F2} — null-result flag set",
-                    scoredList.Count, confidenceFloor);
-            }
-
-            var messageRelevant = aboveFloor.Select(s => s.Record).ToList();
-
-            // Filter out:
-            // 1. The inbound message itself (just saved, would echo back as context)
-            // 2. Closed conversation summaries
-            // CS7: Filter out self-referential records — the inbound message echoed back as
-            // both Episodic ("Mark said:") and Perception ("Mark texted:") records. Both are
-            // echoes of the message being replied to and contaminate the context window.
-            var contactName = snapshot.CharacterState.PrimaryContactName ?? "Mark";
-            var msgPrefix30 = lastMessage.Length > 30 ? lastMessage[..30] : lastMessage;
-            messageRelevant = messageRelevant
-                .Where(m => !IsMessageEcho(m.Content, contactName, msgPrefix30))
-                .Where(m => !m.Content.StartsWith(MemoryPrefixes.ConversationSummary))
-                .ToList();
-
-            // Re-rank for diversity against recent thoughts
-            var recentThoughts = (await _search.GetByTypeAsync(MemoryType.InnerThought, 5, ct)
-                .ConfigureAwait(false)).ToList();
-            // CS6: Shared with BuildThoughtContextAsync — see ContextBuilder.ReRankForDiversityAsync
-            messageRelevant = await _contextBuilder.ReRankForDiversityAsync(messageRelevant, recentThoughts, ct)
-                .ConfigureAwait(false);
-
-            // Keyword relevance boost: after diversity re-ranking, adjust scores so
-            // topically relevant memories outrank generic ones ("Good morning") that
-            // happen to score well on diversity metrics alone.
-            if (keywordQuery is not null && messageRelevant.Count > 1)
-            {
-                var keywords = keywordQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var boosted = messageRelevant.Select(m =>
-                {
-                    var contentLower = m.Content.ToLowerInvariant();
-                    bool hasKeyword = keywords.Any(k => contentLower.Contains(k.ToLowerInvariant()));
-                    float boost = hasKeyword ? 0.15f : -0.10f;
-                    return (record: m, boost);
-                })
-                .OrderByDescending(x => x.boost)
-                .ThenBy(x => messageRelevant.IndexOf(x.record)) // preserve diversity order within same boost tier
-                .Select(x => x.record)
-                .ToList();
-
-                if (!boosted.SequenceEqual(messageRelevant))
-                {
-                    _log.LogDebug("Keyword relevance boost: reordered {Count} memories using keywords \"{Keywords}\"",
-                        messageRelevant.Count, keywordQuery);
-                }
-                messageRelevant = boosted;
-            }
-
-            // AC6: Topic-mismatch detection DISABLED.
-            // Over-triggered on casual conversation — flagged nearly every message,
-            // causing all memories to be skipped. The confidence floor (0.60) already
-            // filters irrelevant memories. If a memory passes the floor, let the model see it.
-            // The raw model handles irrelevant context naturally.
-
-            snapshot.RelevantMemory = messageRelevant;
-            _log.LogDebug("Conversation context: re-searched with message text, {Count} relevant memories (confidence floor={Floor:F2})",
-                messageRelevant.Count, confidenceFloor);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Conversation memory re-search failed — using perception-based results");
-        }
-
-        // Populate RecentHistory with a recency-windowed view of the conversation thread.
+        // Populate RecentHistory — as many raw messages as the context can hold.
         // Feature 34 (MemGPT): Context compression for long conversations.
-        // When threads exceed the window, older messages are summarized into a brief
-        // recap rather than silently dropped. Preserves early context in compressed form.
         var historyWindow = _aniOptions.ConversationHistoryWindowSize;
         snapshot.RecentHistory = await _compressor.CompressIfNeededAsync(
             thread, historyWindow, ct).ConfigureAwait(false);
@@ -378,18 +257,14 @@ public class ConversationReplyPhase
         // The LLM call to extract and verify claims added latency without improving
         // conversation quality. The model handles unknown topics naturally.
 
-        // Step 2: Generate reply (free text, using conversation model)
-        // AC4: Temperature splitting — use lower temperature when memories are grounded
-        // (reduces confabulation on factual claims) vs standard for creative expression.
-        var hasGroundedMemories = snapshot.RelevantMemory.Count > 0 && !snapshot.RetrievalBelowConfidenceFloor;
-        var replyTemperature = hasGroundedMemories
-            ? _ollamaOptions.MemoryGroundedTemperature
-            : _ollamaOptions.CreativeTemperature;
-        _log.LogDebug("AC4: Temperature={Temperature:F1} (grounded={Grounded})", replyTemperature, hasGroundedMemories);
+        // Step 2: Generate reply
+        // Conversation mode: lean prompt, creative temperature.
+        // No memory grounding check — the conversation provides all context.
+        var replyTemperature = _ollamaOptions.CreativeTemperature;
 
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
-            : PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+            : PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
         var reply = await _ollama.ChatAsync(
             replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct, replyTemperature)
             .ConfigureAwait(false);
