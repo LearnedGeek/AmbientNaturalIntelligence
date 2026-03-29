@@ -150,6 +150,17 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
     {
         try
         {
+            // Check message type before deserializing — UtteranceEnd and Metadata
+            // have different schemas than Results and will throw JsonException
+            // if deserialized as DeepgramResponse (channel is an array, not an object).
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("type", out var typeProp))
+            {
+                var msgType = typeProp.GetString();
+                if (msgType is "Metadata" or "UtteranceEnd")
+                    return; // not transcript data — skip
+            }
+
             var msg = JsonSerializer.Deserialize<DeepgramResponse>(json);
             var transcript = msg?.Channel?.Alternatives?.FirstOrDefault()?.Transcript;
 
