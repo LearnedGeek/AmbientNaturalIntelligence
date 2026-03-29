@@ -9,6 +9,7 @@ namespace AniRuntime.MauiClient;
 public class AudioPlaybackService : IAudioPlaybackService
 {
     private AudioTrack? _track;
+    private int _bytesWritten;
 
     private const int SampleRate = 16000;
     private const ChannelOut Channel = ChannelOut.Mono;
@@ -62,8 +63,27 @@ public class AudioPlaybackService : IAudioPlaybackService
         if (_track?.PlayState == PlayState.Playing)
         {
             _track.Write(pcmData, 0, pcmData.Length);
+            _bytesWritten += pcmData.Length;
         }
     }
+
+    /// <summary>
+    /// Estimated milliseconds of audio remaining in the AudioTrack buffer.
+    /// At 16kHz, 16-bit mono: 32,000 bytes per second of audio.
+    /// </summary>
+    public int EstimatedRemainingMs
+    {
+        get
+        {
+            if (_track is null) return 0;
+            var playbackHead = _track.PlaybackHeadPosition; // samples played
+            var totalSamples = _bytesWritten / 2; // 16-bit = 2 bytes per sample
+            var remainingSamples = Math.Max(0, totalSamples - playbackHead);
+            return (int)(remainingSamples * 1000.0 / SampleRate);
+        }
+    }
+
+    public void ResetByteCounter() => _bytesWritten = 0;
 
     private static void SetSpeakerphone(bool on)
     {

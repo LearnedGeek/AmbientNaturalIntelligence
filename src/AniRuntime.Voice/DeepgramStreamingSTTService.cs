@@ -156,6 +156,23 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
 
     public void ClearPendingSegments() => Debounce.Clear();
 
+    public void SendKeepAlive()
+    {
+        try
+        {
+            if (_ws?.State == WebSocketState.Open)
+            {
+                var keepAlive = Encoding.UTF8.GetBytes("{\"type\":\"KeepAlive\"}");
+                _ = _ws.SendAsync(keepAlive, WebSocketMessageType.Text, true, CancellationToken.None);
+                _log.LogDebug("Deepgram: keep-alive sent");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Deepgram: keep-alive failed");
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         Debounce.Dispose();

@@ -27,4 +27,11 @@ public interface IStreamingSpeechToTextService : IAsyncDisposable
     /// Implementations without debounce logic should no-op.
     /// </summary>
     void ClearPendingSegments();
+
+    /// <summary>
+    /// Send a keep-alive signal to prevent the STT connection from going stale
+    /// during periods of silence (e.g., while Ani is speaking and mic is muted).
+    /// Implementations without persistent connections should no-op.
+    /// </summary>
+    void SendKeepAlive();
 }

@@ -157,6 +157,9 @@ public class StreamingVoiceOrchestrator
                 if (!session.IsAniSpeaking) return;
                 session.EndSpeaking();
                 stt.ClearPendingSegments();
+                // Wake up Deepgram connection before resuming — prevents stale WebSocket
+                // from silently dropping audio after long playback periods.
+                stt.SendKeepAlive();
                 await SendJsonToClient(new { type = "listening" }, token).ConfigureAwait(false);
                 _log.LogDebug("Streaming voice: playback done, resumed listening");
             }
@@ -182,15 +185,18 @@ public class StreamingVoiceOrchestrator
                             .ConfigureAwait(false);
 
                         // Safety fallback: if client never sends "playback_done"
-                        // (disconnect, bug, etc.), resume listening after 5 seconds.
+                        // (disconnect, bug, etc.), resume listening after 15 seconds.
+                        // Increased from 5s — long replies need time to play on the device.
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                await Task.Delay(5000, ct).ConfigureAwait(false);
+                                await Task.Delay(15000, ct).ConfigureAwait(false);
                                 if (session.IsAniSpeaking)
                                 {
                                     _log.LogWarning("Streaming voice: playback_done timeout, force-resuming");
+                                    // Send Deepgram keep-alive before resuming to prevent stale connection
+                                    stt.SendKeepAlive();
                                     await ResumeListeningAsync(ct).ConfigureAwait(false);
                                 }
                             }

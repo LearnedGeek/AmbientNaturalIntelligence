@@ -256,6 +256,7 @@ public partial class MainPage : ContentPage
 
                     case "reply_start":
                         _isMuted = true; // stop sending audio while Ani speaks
+                        _audioPlayback.ResetByteCounter();
                         StatusLabel.Text = "Ani is speaking...";
                         StatusLabel.TextColor = Color.FromArgb("#aa66cc");
                         TalkButton.BackgroundColor = Color.FromArgb("#4a2a6a");
@@ -263,11 +264,22 @@ public partial class MainPage : ContentPage
 
                     case "reply_end":
                         TranscriptLabel.Text = "";
-                        // Keep mic muted until AudioTrack drains buffered audio,
-                        // then tell the server we're done playing so it can resume listening.
+                        // Wait for AudioTrack to drain, then signal the server.
+                        // Server will send "listening" which is the ONLY path that unmutes.
+                        // Don't set _isMuted here — single responsibility: server controls listening state.
                         _ = Task.Run(async () =>
                         {
-                            await Task.Delay(1500); // let AudioTrack buffer drain
+                            // Poll until AudioTrack has drained (check every 200ms)
+                            var maxWait = 15000; // safety cap: 15 seconds
+                            var waited = 0;
+                            while (_audioPlayback.EstimatedRemainingMs > 200 && waited < maxWait)
+                            {
+                                await Task.Delay(200);
+                                waited += 200;
+                            }
+                            await Task.Delay(300); // small buffer after drain
+                            _audioPlayback.ResetByteCounter();
+                            // Signal server — it will send "listening" back which unmutes
                             await SendJsonAsync(new { type = "playback_done" });
                         });
                         break;

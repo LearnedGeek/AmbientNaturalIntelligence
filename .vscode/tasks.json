@@ -96,17 +96,30 @@
       "problemMatcher": []
     },
     {
-      "label": "MAUI: Build Android",
+      "label": "MAUI: Build Android (Phone)",
+      "type": "shell",
+      "command": "dotnet build src/AniRuntime.MauiClient/AniRuntime.MauiClient.csproj -c Debug -f net10.0-android -r android-arm",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "MAUI: Build Android (Emulator)",
       "type": "shell",
       "command": "dotnet build src/AniRuntime.MauiClient/AniRuntime.MauiClient.csproj -c Debug -f net10.0-android",
       "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "MAUI: Deploy to Phone",
+      "type": "shell",
+      "command": "adb install -r src/AniRuntime.MauiClient/bin/Debug/net10.0-android/android-arm/com.learnedgeek.ani.voice-Signed.apk",
+      "problemMatcher": [],
+      "dependsOn": "MAUI: Build Android (Phone)"
     },
     {
       "label": "MAUI: Deploy to Emulator",
       "type": "shell",
       "command": "adb install -r src/AniRuntime.MauiClient/bin/Debug/net10.0-android/com.learnedgeek.ani.voice-Signed.apk",
       "problemMatcher": [],
-      "dependsOn": "MAUI: Build Android"
+      "dependsOn": "MAUI: Build Android (Emulator)"
     }
   ]
 }
