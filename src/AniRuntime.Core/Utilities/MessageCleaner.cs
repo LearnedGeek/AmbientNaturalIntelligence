@@ -52,10 +52,11 @@ public static class MessageCleaner
         // This is a Mistral/Llama training artifact, not a character trait.
         cleaned = StripCliffhangerTic(cleaned);
 
-        // Soft cap: keep the first 3 sentences. The old hard cap of 2 was cutting off
-        // thoughts mid-expression ("yeah, i know you're trying. but honestly?" — truncated
-        // before the actual point). 3 sentences gives room to complete a thought.
-        cleaned = TruncateToSentences(cleaned, maxSentences: 3);
+        // No sentence truncation. The 3-sentence cap was a guardrail from when the pipeline
+        // was drowning the model with noise. The pipeline is fixed. Let her speak her mind.
+        // Truncation was hiding confabulation, masking data quality issues, and cutting off
+        // thoughts mid-expression. The diagnostic service, echo guard, and emergence classifier
+        // are the real guardrails now — not silent censorship.
 
         return string.IsNullOrWhiteSpace(cleaned) ? raw.Trim() : cleaned;
     }
