@@ -182,9 +182,31 @@ public class StreamingVoiceOrchestrator
                             SendJsonToClient, ct)
                             .ConfigureAwait(false);
 
+                        // Comfort noise: send silent PCM to Deepgram every second while
+                        // Ani speaks. The client's mic is muted during playback so no
+                        // frames arrive from the client — without server-side comfort noise,
+                        // Deepgram closes the WebSocket after ~5s of silence.
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                while (session.IsAniSpeaking && !ct.IsCancellationRequested)
+                                {
+                                    await stt.SendAudioAsync(ComfortNoise, ct).ConfigureAwait(false);
+                                    await Task.Delay(1000, ct).ConfigureAwait(false);
+                                }
+                                _log.LogDebug("Streaming voice: comfort noise stopped (speaking={Speaking})",
+                                    session.IsAniSpeaking);
+                            }
+                            catch (OperationCanceledException) { }
+                            catch (Exception ex)
+                            {
+                                _log.LogDebug(ex, "Streaming voice: comfort noise failed");
+                            }
+                        });
+
                         // Safety fallback: if client never sends "playback_done"
                         // (disconnect, bug, etc.), resume listening after 15 seconds.
-                        // Increased from 5s — long replies need time to play on the device.
                         _ = Task.Run(async () =>
                         {
                             try
@@ -193,7 +215,6 @@ public class StreamingVoiceOrchestrator
                                 if (session.IsAniSpeaking)
                                 {
                                     _log.LogWarning("Streaming voice: playback_done timeout, force-resuming");
-                                    // Send Deepgram keep-alive before resuming to prevent stale connection
                                     stt.SendKeepAlive();
                                     await ResumeListeningAsync(ct).ConfigureAwait(false);
                                 }
