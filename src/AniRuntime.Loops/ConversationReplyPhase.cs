@@ -278,10 +278,60 @@ public class ConversationReplyPhase
             return;
         }
 
-        // AC2/UP1 removed — v6 was trained on honest uncertainty and anti-confabulation.
-        // Both models handle unknown topics naturally when the pipeline doesn't drown them
-        // in irrelevant context. The re-generation calls added 2 extra LLM round-trips
-        // and produced worse output (clean-slate prompts lost conversation history).
+        // ═══════════════════════════════════════════════════════════════════════
+        // CONVERSATION MODE Phase 2: Confabulation-driven retrieval.
+        //
+        // The model generated a reply with conversation-only context.
+        // Now check: does the reply assert facts not established in the conversation?
+        // If yes, retrieve memories to ground the response and regenerate.
+        // The model's own uncertainty is the trigger — not a schedule, not a keyword list.
+        // ═══════════════════════════════════════════════════════════════════════
+        if (!isReconsideration)
+        {
+            var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage);
+            if (confabCheck.IsConfabulated)
+            {
+                _log.LogInformation("Confabulation detected in reply: {Reason}. Retrieving memories for grounding.",
+                    confabCheck.Reason);
+
+                // Single targeted retrieval — one search, not the full pipeline
+                try
+                {
+                    var groundingMemories = await _search.SearchWithScoresAsync(lastMessage, 5, ct)
+                        .ConfigureAwait(false);
+                    var grounded = groundingMemories
+                        .Where(s => s.CosineSimilarity >= (float)_aniOptions.RetrievalConfidenceFloor)
+                        .Select(s => s.Record)
+                        .Take(3)
+                        .ToList();
+
+                    if (grounded.Count > 0)
+                    {
+                        // Regenerate with memory context
+                        snapshot.RelevantMemory = grounded;
+                        var groundedPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                        var groundedReply = await _ollama.ChatAsync(
+                            groundedPrompt.System, snapshot.RecentHistory, groundedPrompt.User, ct, replyTemperature)
+                            .ConfigureAwait(false);
+                        groundedReply = CleanOutreachMessage(groundedReply);
+
+                        if (!string.IsNullOrWhiteSpace(groundedReply))
+                        {
+                            _log.LogInformation("Confabulation-grounded reply: {Reply}", groundedReply);
+                            reply = groundedReply;
+                        }
+                    }
+                    else
+                    {
+                        _log.LogDebug("No memories above confidence floor — keeping original reply");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug(ex, "Confabulation grounding retrieval failed — keeping original reply");
+                }
+            }
+        }
 
         // Add reply to in-memory thread BEFORE echo guard so subsequent replies
         // in the same conversation cycle can see this one. Without this, the echo
@@ -482,6 +532,74 @@ public class ConversationReplyPhase
 
     private static bool IsMessageEcho(string memoryContent, string contactName, string msgPrefix30)
         => ConversationFeatureDetector.IsMessageEcho(memoryContent, contactName, msgPrefix30);
+
+    /// <summary>
+    /// Conversation Mode Phase 2: Detect if a reply contains confabulated claims.
+    /// Checks for assertions about shared history, specific facts, or attributed
+    /// knowledge that wasn't established in the conversation thread.
+    ///
+    /// The model's own confabulation is the signal for when retrieval is needed.
+    /// Not a keyword list — a behavioral check.
+    /// </summary>
+    private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation(
+        string reply, ConversationThread thread, string lastMessage)
+    {
+        var replyLower = reply.ToLowerInvariant();
+
+        // Build a set of topics/names/facts mentioned in the conversation
+        var conversationText = string.Join(" ",
+            thread.Messages.TakeLast(12).Select(m => m.Content.ToLowerInvariant()));
+
+        // Check 1: Does the reply reference a specific person not mentioned in the conversation?
+        // Proper nouns (capitalized words that aren't sentence starters) in the reply
+        // that don't appear anywhere in the conversation history.
+        var replyWords = reply.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 1; i < replyWords.Length; i++) // skip index 0 (sentence start)
+        {
+            var word = replyWords[i].TrimEnd('.', ',', '!', '?', ':', ';', '"', '\'');
+            if (word.Length < 3 || !char.IsUpper(word[0])) continue;
+            if (char.IsUpper(word[0]) && !conversationText.Contains(word.ToLowerInvariant()))
+            {
+                // Skip common non-name capitalized words
+                if (word is "I" or "I'm" or "I'll" or "I've" or "I'd" or "OK" or "Monday"
+                    or "Tuesday" or "Wednesday" or "Thursday" or "Friday" or "Saturday" or "Sunday"
+                    or "January" or "February" or "March" or "April" or "May" or "June"
+                    or "July" or "August" or "September" or "October" or "November" or "December")
+                    continue;
+
+                return (true, $"Reply mentions '{word}' which wasn't in the conversation");
+            }
+        }
+
+        // Check 2: Does the reply claim shared history?
+        string[] sharedHistoryMarkers =
+        [
+            "you told me", "you mentioned", "you said you", "remember when",
+            "last time we", "you showed me", "i remember you", "we talked about",
+            "you brought up", "when you told me",
+        ];
+        foreach (var marker in sharedHistoryMarkers)
+        {
+            if (replyLower.Contains(marker))
+            {
+                // Check if the claimed reference is actually in the conversation
+                var afterMarker = replyLower[(replyLower.IndexOf(marker) + marker.Length)..];
+                var claimedTopic = afterMarker.Split('.', '!', '?', ',')[0].Trim();
+                if (claimedTopic.Length > 3 && !conversationText.Contains(claimedTopic))
+                    return (true, $"Reply claims shared history ('{marker}') about topic not in conversation");
+            }
+        }
+
+        // Check 3: Does the reply assert specific facts (dates, times, numbers) not in the conversation?
+        var replyNumbers = System.Text.RegularExpressions.Regex.Matches(reply, @"\b\d{2,}\b");
+        foreach (System.Text.RegularExpressions.Match num in replyNumbers)
+        {
+            if (!conversationText.Contains(num.Value))
+                return (true, $"Reply contains number '{num.Value}' not mentioned in conversation");
+        }
+
+        return (false, null);
+    }
 
     private static readonly HashSet<string> ContinuationPatterns = new(StringComparer.OrdinalIgnoreCase)
     {
