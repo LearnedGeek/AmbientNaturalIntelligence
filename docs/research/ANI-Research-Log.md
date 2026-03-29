@@ -1540,6 +1540,31 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 29, 2026 — Architectural Reckoning: Conversation Mode Design
+**Type:** Architecture — fundamental redesign
+**Source:** Full architectural analysis after months of conversation coherence failures
+
+**What happened:**
+
+After days of fixing retrieval poisoning, thought loops, compression loss, confabulation, and truncation — each fix revealing the next symptom — the researcher called for a full architectural analysis. The conclusion: the ambient cognition pipeline is excellent for outreach but fundamentally wrong for conversation.
+
+**The telescope/glasses insight:** The full retrieval pipeline (intent extraction, 3 embedding searches, keyword extraction, diversity re-ranking, memory injection) was designed for ambient cognition — Ani alone, deciding what to share. During conversation, the most relevant context IS the conversation itself. Every injected memory competes with the conversation for the 8B model's limited attention. The pipeline doesn't help conversation; it actively degrades it.
+
+**Evidence:** The March 22 raw Ollama test proved the model converses naturally without the pipeline. Every conversation failure since then has been caused by the pipeline doing too much, not too little: retrieval poisoning (stale memories dominating), context compression losing the emotional arc (28 messages compressed to 500 chars), tonal whiplash (mood directives shifting mid-conversation), non-sequiturs (Duck Norris from retrieval, not conversation).
+
+**The design:** Five-phase Conversation Mode that separates conversation from ambient cognition:
+1. Lean prompt — persona + conversation history only. No retrieved memories, no mood directives.
+2. Confabulation-driven retrieval — model generates reply first, confabulation check determines if memories are needed. The model's own uncertainty is the trigger, not hardcoded phrases.
+3. Structured conversation state — topic, register, commitments, shared imagery maintained programmatically. Replaces flat LLM compression.
+4. Async emotional processing — care/hurt detection runs after reply, not before. Eliminates tonal whiplash.
+5. Full pipeline preserved for outreach/inner thought (unchanged).
+
+**Research significance:** The confabulation-driven retrieval approach is novel. Standard RAG retrieves every turn. Standard chatbots never retrieve. This design uses the model's confabulation as the signal for when retrieval is needed — "retrieve when the model demonstrates it doesn't know, not on a schedule." Paper 2 should document this.
+
+**Key quote:** "The ambient cognition engine is a telescope. Conversation needs glasses. Stop using the telescope to read the book."
+
+---
+
 ### March 27, 2026 — OG→OG2 Platform Wipe: Context and Implications
 **Type:** Background context — commercial companion AI governance failure
 **Source:** Hodes (2026), Just Security; Reddit r/grok user reports (March 9, 2026)
