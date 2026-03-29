@@ -12,6 +12,13 @@ public class ConversationThread
     public List<ConversationMessage> Messages      { get; set; } = new();
 
     /// <summary>
+    /// Conversation Mode Phase 3: Structured conversation state.
+    /// Maintained incrementally from each exchange — no LLM summarization.
+    /// Tracks topic, register, commitments, key facts, and shared imagery.
+    /// </summary>
+    public ConversationState State { get; set; } = new();
+
+    /// <summary>
     /// Feature 34 (MemGPT): Cached summary of compressed older messages.
     /// Not persisted to DB — regenerated when needed during conversation.
     /// </summary>

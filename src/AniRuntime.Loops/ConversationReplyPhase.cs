@@ -146,6 +146,10 @@ public class ConversationReplyPhase
         // The model gets: persona + conversation history. That's it.
         _log.LogDebug("Conversation mode: retrieval pipeline bypassed — conversation is the context");
 
+        // Phase 3: Update structured conversation state from Mark's message
+        var contactName = snapshot.CharacterState.PrimaryContactName ?? "Mark";
+        thread.State.UpdateFromMessage(lastMessage, contactName, contactName);
+
         // Populate RecentHistory — as many raw messages as the context can hold.
         // Feature 34 (MemGPT): Context compression for long conversations.
         var historyWindow = _aniOptions.ConversationHistoryWindowSize;
@@ -198,55 +202,10 @@ public class ConversationReplyPhase
             await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
         }
 
-        // Feature 10: Receiving Care — detect when contact is checking in on Ani
-        if (emotionalState is not null && ConversationFeatureDetector.DetectCareGivingIntent(lastMessage))
-        {
-            _log.LogInformation("Care detected in message — creating care contribution");
-            await _emotional.SaveDirectContributionAsync(emotionalState,
-                "receiving care — someone checked in on me",
-                warmth: 0.1f, energy: 0.05f, worry: -0.1f, playfulness: 0f,
-                ImpactCategory.Conversation, ct).ConfigureAwait(false);
-        }
-
-        // Feature 19: Lexical Emotional Anchors
-        if (emotionalState is not null)
-        {
-            var anchorContributions = ConversationFeatureDetector.BuildLexicalAnchorContributions(lastMessage, snapshot.CharacterState);
-            if (anchorContributions.Count > 0)
-            {
-                foreach (var ac in anchorContributions)
-                    await _persist.SaveEmotionalContributionAsync(ac, ct).ConfigureAwait(false);
-
-                var allContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
-                emotionalState.ComputeFromContributions(allContributions);
-                await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
-                _log.LogInformation("Lexical anchors triggered: {Count} — contributions created", anchorContributions.Count);
-            }
-        }
-
-        // Feature 18: Reactive Withdrawal — detect dismissive or hurtful intent.
-        if (emotionalState is not null && ConversationFeatureDetector.DetectHurtIntent(lastMessage))
-        {
-            _log.LogInformation("Hurt detected in message — creating H1 withdrawal contribution");
-            await _emotional.SaveDirectContributionAsync(emotionalState,
-                "hurt detected — pulling back emotionally",
-                warmth: -0.12f, energy: -0.10f, worry: -0.15f, playfulness: -0.10f,
-                ImpactCategory.Conversation, ct).ConfigureAwait(false);
-
-            _withdrawalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
-            _log.LogInformation("Withdrawal active until {Expires}", _withdrawalExpiresAt.Value.ToString("HH:mm"));
-
-            // Save as inner thought so future cycles can reference "something felt off"
-            await _persist.SaveAsync(new MemoryRecord
-            {
-                Type       = MemoryType.InnerThought,
-                Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
-                Importance = 0.6f,
-            }, ct).ConfigureAwait(false);
-        }
-
-        // Feature 18: Pass withdrawal state to prompt builder for tone injection
-        snapshot.IsWithdrawn = IsWithdrawn;
+        // Features 10, 18, 19 — emotional processing moved to AFTER reply dispatch (Phase 4).
+        // Care detection, lexical anchors, and hurt detection ran here previously,
+        // causing tonal whiplash when mood directives shifted mid-conversation.
+        // Now they run post-dispatch so the reply is fast and emotionally consistent.
 
         // Feature 15 Layer 3: Contradiction detection disabled — the LLM call produced
         // false positives on casual conversation ("are you sick?" vs "what's going on?"
@@ -462,6 +421,9 @@ public class ConversationReplyPhase
         var channel = _channels.Resolve(originChannelId);
         await channel.SendReplyAsync(reply, ct).ConfigureAwait(false);
 
+        // Phase 3: Update structured conversation state from Ani's reply
+        thread.State.UpdateFromMessage(reply, Roles.Ani, contactName);
+
         // Step 5: Persist Ani's reply to DB (already added to in-memory thread before echo guard)
         // Update content in case echo guard replaced it.
         replyMessage.Content = reply;
@@ -481,6 +443,59 @@ public class ConversationReplyPhase
 
         // Feature 21: Feedback-weighted importance
         await BoostRelatedMemoryImportanceAsync(lastMessage, ct).ConfigureAwait(false);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // CONVERSATION MODE Phase 4: Async emotional processing.
+        // Care detection, lexical anchors, and hurt detection run AFTER the reply
+        // is dispatched. This eliminates tonal whiplash from mood directive shifts
+        // within the conversation. Results inform the NEXT cycle, not this reply.
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // Feature 10: Receiving Care
+        if (emotionalState is not null && ConversationFeatureDetector.DetectCareGivingIntent(lastMessage))
+        {
+            _log.LogInformation("Care detected (post-reply) — creating care contribution");
+            await _emotional.SaveDirectContributionAsync(emotionalState,
+                "receiving care — someone checked in on me",
+                warmth: 0.1f, energy: 0.05f, worry: -0.1f, playfulness: 0f,
+                ImpactCategory.Conversation, ct).ConfigureAwait(false);
+        }
+
+        // Feature 19: Lexical Emotional Anchors
+        if (emotionalState is not null)
+        {
+            var anchorContributions = ConversationFeatureDetector.BuildLexicalAnchorContributions(lastMessage, snapshot.CharacterState);
+            if (anchorContributions.Count > 0)
+            {
+                foreach (var ac in anchorContributions)
+                    await _persist.SaveEmotionalContributionAsync(ac, ct).ConfigureAwait(false);
+
+                var allContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                emotionalState.ComputeFromContributions(allContributions);
+                await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
+                _log.LogInformation("Lexical anchors triggered (post-reply): {Count}", anchorContributions.Count);
+            }
+        }
+
+        // Feature 18: Reactive Withdrawal
+        if (emotionalState is not null && ConversationFeatureDetector.DetectHurtIntent(lastMessage))
+        {
+            _log.LogInformation("Hurt detected (post-reply) — creating H1 withdrawal contribution");
+            await _emotional.SaveDirectContributionAsync(emotionalState,
+                "hurt detected — pulling back emotionally",
+                warmth: -0.12f, energy: -0.10f, worry: -0.15f, playfulness: -0.10f,
+                ImpactCategory.Conversation, ct).ConfigureAwait(false);
+
+            _withdrawalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
+            _log.LogInformation("Withdrawal active until {Expires}", _withdrawalExpiresAt.Value.ToString("HH:mm"));
+
+            await _persist.SaveAsync(new MemoryRecord
+            {
+                Type       = MemoryType.InnerThought,
+                Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
+                Importance = 0.6f,
+            }, ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

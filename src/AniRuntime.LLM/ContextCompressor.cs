@@ -94,11 +94,23 @@ public class ContextCompressor
                 summarizeCount, summary.Length, targetLength);
         }
 
-        // Build the result: summary as a system-style user message + recent messages
-        var result = new List<ChatMessage>
+        // Build the result: structured state + optional LLM summary + recent messages
+        var result = new List<ChatMessage>();
+
+        // Phase 3: Structured conversation state — compact, programmatic, no LLM call.
+        // Provides topic, register, commitments, key facts, shared imagery in ~50-80 tokens.
+        var stateBlock = thread.State.ToPromptBlock();
+        if (stateBlock is not null)
         {
-            new("user", $"[Earlier in this conversation: {thread.CompressedSummary}]")
-        };
+            result.Add(new("user", stateBlock));
+        }
+
+        // LLM summary as fallback for context the structured state doesn't capture
+        if (thread.CompressedSummary is not null)
+        {
+            result.Add(new("user", $"[Earlier in this conversation: {thread.CompressedSummary}]"));
+        }
+
         result.AddRange(toKeep.Select(m => new ChatMessage(
             m.Role == Roles.Ani ? "assistant" : "user",
             m.Content)));
