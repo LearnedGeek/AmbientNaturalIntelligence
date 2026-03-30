@@ -106,7 +106,6 @@ public class ElevenLabsV3StreamingService : IStreamingTextToSpeechService
         {
             text,
             model_id = "eleven_v3",
-            output_format = "pcm_16000",
             voice_settings = new
             {
                 stability = voiceSettings.Stability,
@@ -118,7 +117,9 @@ public class ElevenLabsV3StreamingService : IStreamingTextToSpeechService
         var json = JsonSerializer.Serialize(requestBody, JsonOpts);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var url = $"https://api.elevenlabs.io/v1/text-to-speech/{_options.ElevenLabsVoiceId}/stream";
+        // output_format must be a URL query parameter, not in the JSON body.
+        // In the body it's ignored and ElevenLabs returns MP3 (audio/mpeg) instead of PCM.
+        var url = $"https://api.elevenlabs.io/v1/text-to-speech/{_options.ElevenLabsVoiceId}/stream?output_format=pcm_16000";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Content = content;
