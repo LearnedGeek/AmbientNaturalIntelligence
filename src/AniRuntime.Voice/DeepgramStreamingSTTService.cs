@@ -179,11 +179,13 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
                 {
                     // speech_final not yet received — start a safety timer.
                     // Deepgram doesn't always send speech_final (observed in production).
-                    // If we have pending segments and no speech_final arrives within 3s,
+                    // If we have pending segments and no speech_final arrives within 5s,
                     // flush the buffer anyway to prevent the conversation from hanging.
+                    // 5s gives natural speakers time to pause for thought without being
+                    // cut off mid-sentence (was 3s — too aggressive, split every turn).
                     _ = Task.Run(async () =>
                     {
-                        await Task.Delay(3000).ConfigureAwait(false);
+                        await Task.Delay(5000).ConfigureAwait(false);
                         if (_pendingSegments.Count > 0)
                         {
                             var fullUtterance = string.Join(" ", _pendingSegments);

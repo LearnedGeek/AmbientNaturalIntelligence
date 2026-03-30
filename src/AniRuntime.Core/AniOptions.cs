@@ -201,7 +201,7 @@ public class VoiceOptions
     // Deepgram streaming STT
     public string DeepgramApiKey             { get; set; } = string.Empty;
     public string DeepgramModel              { get; set; } = "nova-3";
-    public int    DeepgramEndpointingMs      { get; set; } = 500;  // silence before finalizing utterance
+    public int    DeepgramEndpointingMs      { get; set; } = 1500;  // silence before finalizing utterance (was 500 — too aggressive, split mid-sentence on breath pauses)
 }
 
 public class ImageOptions
