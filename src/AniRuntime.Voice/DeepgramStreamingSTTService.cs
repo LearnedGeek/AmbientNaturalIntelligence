@@ -175,7 +175,25 @@ public class DeepgramStreamingSTTService : IStreamingSpeechToTextService
                     _pendingSegments.Clear();
                     Debounce.AddSegment(fullUtterance);
                 }
-                // If speech_final=false, just accumulate — speaker is still talking
+                else
+                {
+                    // speech_final not yet received — start a safety timer.
+                    // Deepgram doesn't always send speech_final (observed in production).
+                    // If we have pending segments and no speech_final arrives within 3s,
+                    // flush the buffer anyway to prevent the conversation from hanging.
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(3000).ConfigureAwait(false);
+                        if (_pendingSegments.Count > 0)
+                        {
+                            var fullUtterance = string.Join(" ", _pendingSegments);
+                            _pendingSegments.Clear();
+                            _log.LogDebug("Deepgram: speech_final timeout — flushing {Count} pending segments",
+                                fullUtterance.Split(' ').Length);
+                            Debounce.AddSegment(fullUtterance);
+                        }
+                    });
+                }
             }
             else if (msg?.IsFinal != true && !string.IsNullOrWhiteSpace(transcript))
             {
