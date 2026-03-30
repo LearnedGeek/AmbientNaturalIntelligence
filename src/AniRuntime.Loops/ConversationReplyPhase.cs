@@ -548,6 +548,27 @@ public class ConversationReplyPhase
     private static bool IsMessageEcho(string memoryContent, string contactName, string msgPrefix30)
         => ConversationFeatureDetector.IsMessageEcho(memoryContent, contactName, msgPrefix30);
 
+    // Common words that should not trigger confabulation detection even when capitalized.
+    // Includes days, months, contractions, common sentence-start words, and filler.
+    private static readonly HashSet<string> CommonWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "i", "you", "he", "she", "we", "they", "it", "the", "a", "an", "and", "but", "or",
+        "not", "no", "yes", "yeah", "nah", "ok", "okay", "hey", "hi", "bye", "please",
+        "thanks", "sorry", "just", "like", "really", "actually", "honestly", "maybe",
+        "probably", "definitely", "sure", "right", "well", "also", "too", "very",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "january", "february", "march", "april", "may", "june", "july", "august",
+        "september", "october", "november", "december",
+        "morning", "afternoon", "evening", "tonight", "today", "tomorrow", "yesterday",
+        "here", "there", "now", "then", "when", "where", "what", "who", "how", "why",
+        "this", "that", "these", "those", "some", "any", "all", "every", "each",
+        "good", "great", "nice", "bad", "new", "old", "big", "little", "much", "more",
+        "still", "already", "always", "never", "sometimes", "again", "back", "home",
+        "the", "your", "my", "his", "her", "our", "their", "its",
+        "get", "got", "come", "came", "go", "went", "know", "knew", "think", "thought",
+        "want", "need", "love", "feel", "make", "take", "give", "let", "stop", "start",
+    };
+
     /// <summary>
     /// Conversation Mode Phase 2: Detect if a reply contains confabulated claims.
     /// Checks for assertions about shared history, specific facts, or attributed
@@ -566,23 +587,41 @@ public class ConversationReplyPhase
             thread.Messages.TakeLast(12).Select(m => m.Content.ToLowerInvariant()));
 
         // Check 1: Does the reply reference a specific person not mentioned in the conversation?
-        // Proper nouns (capitalized words that aren't sentence starters) in the reply
-        // that don't appear anywhere in the conversation history.
+        // Detect names (capitalized AND common lowercase names) not in conversation history.
         var replyWords = reply.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        for (var i = 1; i < replyWords.Length; i++) // skip index 0 (sentence start)
+        for (var i = 0; i < replyWords.Length; i++)
         {
-            var word = replyWords[i].TrimEnd('.', ',', '!', '?', ':', ';', '"', '\'');
-            if (word.Length < 3 || !char.IsUpper(word[0])) continue;
-            if (char.IsUpper(word[0]) && !conversationText.Contains(word.ToLowerInvariant()))
-            {
-                // Skip common non-name capitalized words
-                if (word is "I" or "I'm" or "I'll" or "I've" or "I'd" or "OK" or "Monday"
-                    or "Tuesday" or "Wednesday" or "Thursday" or "Friday" or "Saturday" or "Sunday"
-                    or "January" or "February" or "March" or "April" or "May" or "June"
-                    or "July" or "August" or "September" or "October" or "November" or "December")
-                    continue;
+            var word = replyWords[i].TrimEnd('.', ',', '!', '?', ':', ';', '"', '\'', '—', '-');
+            if (word.Length < 3) continue;
 
+            // Skip contractions (You're, That's, Don't, etc.)
+            if (word.Contains('\'') || word.Contains('\u2019')) continue;
+
+            // Skip common non-name words
+            if (CommonWords.Contains(word.ToLowerInvariant())) continue;
+
+            var isCapitalized = char.IsUpper(word[0]) && i > 0; // skip sentence-start capitalization
+            var isAfterPunctuation = i > 0 && replyWords[i - 1].EndsWith('.') ||
+                                     i > 0 && replyWords[i - 1].EndsWith('!') ||
+                                     i > 0 && replyWords[i - 1].EndsWith('?') ||
+                                     i > 0 && replyWords[i - 1].EndsWith('—');
+
+            // Capitalized word not after sentence boundary = likely proper noun
+            if (isCapitalized && !isAfterPunctuation && !conversationText.Contains(word.ToLowerInvariant()))
                 return (true, $"Reply mentions '{word}' which wasn't in the conversation");
+
+            // Also check: "go be with [name]" / "tell [name]" / "ask [name]" patterns
+            // These introduce names that may be lowercase in Ani's casual style
+            if (i > 0 && i < replyWords.Length - 1)
+            {
+                var prev = replyWords[i - 1].ToLowerInvariant().TrimEnd('.', ',', '!', '?', '—');
+                if (prev is "with" or "tell" or "ask" or "called" or "named" or "from")
+                {
+                    var candidate = word.ToLowerInvariant();
+                    if (candidate.Length >= 3 && !conversationText.Contains(candidate) &&
+                        !CommonWords.Contains(candidate))
+                        return (true, $"Reply introduces '{word}' via '{prev}' — not in conversation");
+                }
             }
         }
 
