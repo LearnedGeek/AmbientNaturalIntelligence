@@ -102,7 +102,8 @@ try
         if (streamingEnabled)
         {
             builder.Services.AddTransient<IStreamingSpeechToTextService, DeepgramStreamingSTTService>();
-            builder.Services.AddTransient<IStreamingTextToSpeechService, ElevenLabsStreamingTTSService>();
+            // v3 HTTP streaming replaces v2 WebSocket — supports audio tags
+            builder.Services.AddTransient<IStreamingTextToSpeechService, ElevenLabsV3StreamingService>();
             builder.Services.AddSingleton<VoiceTurnPipeline>();
             builder.Services.AddSingleton<StreamingVoiceOrchestrator>();
         }
@@ -141,6 +142,7 @@ try
     builder.Services.AddHttpClient("weather");
     builder.Services.AddSingleton<IPerceptionSource, WeatherPerceptionSource>();
     builder.Services.AddHttpClient("twilio");
+    builder.Services.AddHttpClient("elevenlabs-v3");
     builder.Services.AddSingleton<TwilioInboundPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
     builder.Services.AddSingleton<IChatInbound>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
