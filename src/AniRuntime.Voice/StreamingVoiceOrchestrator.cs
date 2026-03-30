@@ -152,10 +152,19 @@ public class StreamingVoiceOrchestrator
             // Resumes listening after client confirms audio playback is done.
             // This prevents echo: mic stays muted until speaker finishes draining.
             // Guard: only acts when IsAniSpeaking is true, so naturally idempotent.
+            // Comfort noise CTS — shared between turn handler and resume handler.
+            // Comfort noise runs from turn start until playback_done is received.
+            CancellationTokenSource? activeComfortNoiseCts = null;
+
             async Task ResumeListeningAsync(CancellationToken token)
             {
                 if (!session.IsAniSpeaking) return;
                 session.EndSpeaking();
+
+                // Stop comfort noise — playback is done, Deepgram can hear the mic again
+                activeComfortNoiseCts?.Cancel();
+                activeComfortNoiseCts = null;
+
                 stt.ClearPendingSegments();
                 stt.SendKeepAlive();
                 await SendJsonToClient(new { type = "listening" }, token).ConfigureAwait(false);
@@ -179,8 +188,11 @@ public class StreamingVoiceOrchestrator
                     {
                         // Start comfort noise BEFORE the turn — with HTTP streaming TTS,
                         // ProcessTurnAsync blocks until all sentences are synthesized.
-                        // If comfort noise starts after, Deepgram dies during synthesis.
-                        var comfortNoiseCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        // Comfort noise continues after synthesis until playback_done
+                        // (cancelled in ResumeListeningAsync, not here).
+                        activeComfortNoiseCts?.Cancel();
+                        activeComfortNoiseCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        var comfortNoiseCts = activeComfortNoiseCts;
                         _ = Task.Run(async () =>
                         {
                             try
@@ -208,8 +220,10 @@ public class StreamingVoiceOrchestrator
                             SendJsonToClient, ct)
                             .ConfigureAwait(false);
 
-                        // Stop comfort noise now that the turn is complete
-                        comfortNoiseCts.Cancel();
+                        // Do NOT stop comfort noise here. The client is still playing audio
+                        // through the speaker. Deepgram needs comfort noise until playback_done
+                        // is received (handled in ResumeListeningAsync). The CTS will be
+                        // cancelled when the session ends or the next turn starts.
 
                         // Safety fallback: if client never sends "playback_done"
                         // (disconnect, bug, etc.), resume listening after 15 seconds.
