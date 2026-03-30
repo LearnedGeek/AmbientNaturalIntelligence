@@ -1,4 +1,5 @@
 using AniRuntime.Actions;
+using Mosaik.Core;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
@@ -548,26 +549,28 @@ public class ConversationReplyPhase
     private static bool IsMessageEcho(string memoryContent, string contactName, string msgPrefix30)
         => ConversationFeatureDetector.IsMessageEcho(memoryContent, contactName, msgPrefix30);
 
-    // Common words that should not trigger confabulation detection even when capitalized.
-    // Includes days, months, contractions, common sentence-start words, and filler.
-    private static readonly HashSet<string> CommonWords = new(StringComparer.OrdinalIgnoreCase)
+    // Catalyst NLP pipeline — loaded once, reused for all confabulation checks.
+    // POS tagging identifies proper nouns (PROPN) regardless of hardcoded word lists.
+    private static Catalyst.Pipeline? _nlpPipeline;
+    private static bool _nlpInitialized;
+
+    private static void EnsureNlpInitialized()
     {
-        "i", "you", "he", "she", "we", "they", "it", "the", "a", "an", "and", "but", "or",
-        "not", "no", "yes", "yeah", "nah", "ok", "okay", "hey", "hi", "bye", "please",
-        "thanks", "sorry", "just", "like", "really", "actually", "honestly", "maybe",
-        "probably", "definitely", "sure", "right", "well", "also", "too", "very",
-        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-        "january", "february", "march", "april", "may", "june", "july", "august",
-        "september", "october", "november", "december",
-        "morning", "afternoon", "evening", "tonight", "today", "tomorrow", "yesterday",
-        "here", "there", "now", "then", "when", "where", "what", "who", "how", "why",
-        "this", "that", "these", "those", "some", "any", "all", "every", "each",
-        "good", "great", "nice", "bad", "new", "old", "big", "little", "much", "more",
-        "still", "already", "always", "never", "sometimes", "again", "back", "home",
-        "the", "your", "my", "his", "her", "our", "their", "its",
-        "get", "got", "come", "came", "go", "went", "know", "knew", "think", "thought",
-        "want", "need", "love", "feel", "make", "take", "give", "let", "stop", "start",
-    };
+        if (_nlpInitialized) return;
+        _nlpInitialized = true;
+        try
+        {
+            Catalyst.Models.English.Register();
+            _nlpPipeline = Catalyst.Pipeline.ForAsync(Mosaik.Core.Language.English)
+                .GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // NLP initialization failure is non-fatal — confabulation check
+            // falls through to other heuristics (shared history markers, numbers).
+            _nlpPipeline = null;
+        }
+    }
 
     /// <summary>
     /// Conversation Mode Phase 2: Detect if a reply contains confabulated claims.
@@ -580,6 +583,8 @@ public class ConversationReplyPhase
     private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation(
         string reply, ConversationThread thread, string lastMessage)
     {
+        EnsureNlpInitialized();
+
         var replyLower = reply.ToLowerInvariant();
 
         // Build a set of topics/names/facts mentioned in the conversation
@@ -587,41 +592,35 @@ public class ConversationReplyPhase
             thread.Messages.TakeLast(12).Select(m => m.Content.ToLowerInvariant()));
 
         // Check 1: Does the reply reference a specific person not mentioned in the conversation?
-        // Detect names (capitalized AND common lowercase names) not in conversation history.
-        var replyWords = reply.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        for (var i = 0; i < replyWords.Length; i++)
+        // Uses Catalyst POS tagger to detect proper nouns (PROPN) — no hardcoded word lists.
+        // The NLP model identifies "Kathy", "Hugh", "Laurie" as PROPN automatically.
+        if (_nlpPipeline is not null)
         {
-            var word = replyWords[i].TrimEnd('.', ',', '!', '?', ':', ';', '"', '\'', '—', '-');
-            if (word.Length < 3) continue;
-
-            // Skip contractions (You're, That's, Don't, etc.)
-            if (word.Contains('\'') || word.Contains('\u2019')) continue;
-
-            // Skip common non-name words
-            if (CommonWords.Contains(word.ToLowerInvariant())) continue;
-
-            var isCapitalized = char.IsUpper(word[0]) && i > 0; // skip sentence-start capitalization
-            var isAfterPunctuation = i > 0 && replyWords[i - 1].EndsWith('.') ||
-                                     i > 0 && replyWords[i - 1].EndsWith('!') ||
-                                     i > 0 && replyWords[i - 1].EndsWith('?') ||
-                                     i > 0 && replyWords[i - 1].EndsWith('—');
-
-            // Capitalized word not after sentence boundary = likely proper noun
-            if (isCapitalized && !isAfterPunctuation && !conversationText.Contains(word.ToLowerInvariant()))
-                return (true, $"Reply mentions '{word}' which wasn't in the conversation");
-
-            // Also check: "go be with [name]" / "tell [name]" / "ask [name]" patterns
-            // These introduce names that may be lowercase in Ani's casual style
-            if (i > 0 && i < replyWords.Length - 1)
+            try
             {
-                var prev = replyWords[i - 1].ToLowerInvariant().TrimEnd('.', ',', '!', '?', '—');
-                if (prev is "with" or "tell" or "ask" or "called" or "named" or "from")
+                var doc = new Catalyst.Document(reply, Mosaik.Core.Language.English);
+                _nlpPipeline.ProcessSingle(doc);
+
+                foreach (var span in doc)
                 {
-                    var candidate = word.ToLowerInvariant();
-                    if (candidate.Length >= 3 && !conversationText.Contains(candidate) &&
-                        !CommonWords.Contains(candidate))
-                        return (true, $"Reply introduces '{word}' via '{prev}' — not in conversation");
+                    var properNouns = span.Tokens
+                        .Where(t => t.POS == Catalyst.PartOfSpeech.PROPN)
+                        .Select(t => t.Value)
+                        .ToList();
+
+                    foreach (var noun in properNouns)
+                    {
+                        if (noun.Length < 3) continue;
+                        // Skip "I" which sometimes gets tagged as PROPN
+                        if (noun is "I") continue;
+                        if (!conversationText.Contains(noun.ToLowerInvariant()))
+                            return (true, $"Reply mentions proper noun '{noun}' not in conversation");
+                    }
                 }
+            }
+            catch
+            {
+                // NLP failure is non-blocking — fall through to other checks
             }
         }
 
