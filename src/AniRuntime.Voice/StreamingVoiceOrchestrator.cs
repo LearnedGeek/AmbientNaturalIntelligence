@@ -177,33 +177,39 @@ public class StreamingVoiceOrchestrator
                     }
                     try
                     {
-                        await _pipeline.ProcessTurnAsync(
-                            session, transcript, tts,
-                            SendJsonToClient, ct)
-                            .ConfigureAwait(false);
-
-                        // Comfort noise: send silent PCM to Deepgram every second while
-                        // Ani speaks. The client's mic is muted during playback so no
-                        // frames arrive from the client — without server-side comfort noise,
-                        // Deepgram closes the WebSocket after ~5s of silence.
+                        // Start comfort noise BEFORE the turn — with HTTP streaming TTS,
+                        // ProcessTurnAsync blocks until all sentences are synthesized.
+                        // If comfort noise starts after, Deepgram dies during synthesis.
+                        var comfortNoiseCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                while (session.IsAniSpeaking && !ct.IsCancellationRequested)
+                                while (!comfortNoiseCts.Token.IsCancellationRequested)
                                 {
-                                    await stt.SendAudioAsync(ComfortNoise, ct).ConfigureAwait(false);
-                                    await Task.Delay(1000, ct).ConfigureAwait(false);
+                                    await stt.SendAudioAsync(ComfortNoise, comfortNoiseCts.Token)
+                                        .ConfigureAwait(false);
+                                    await Task.Delay(1000, comfortNoiseCts.Token).ConfigureAwait(false);
                                 }
-                                _log.LogDebug("Streaming voice: comfort noise stopped (speaking={Speaking})",
-                                    session.IsAniSpeaking);
                             }
                             catch (OperationCanceledException) { }
                             catch (Exception ex)
                             {
                                 _log.LogDebug(ex, "Streaming voice: comfort noise failed");
                             }
+                            finally
+                            {
+                                _log.LogDebug("Streaming voice: comfort noise stopped");
+                            }
                         });
+
+                        await _pipeline.ProcessTurnAsync(
+                            session, transcript, tts,
+                            SendJsonToClient, ct)
+                            .ConfigureAwait(false);
+
+                        // Stop comfort noise now that the turn is complete
+                        comfortNoiseCts.Cancel();
 
                         // Safety fallback: if client never sends "playback_done"
                         // (disconnect, bug, etc.), resume listening after 15 seconds.
