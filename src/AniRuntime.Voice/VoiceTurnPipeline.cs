@@ -91,8 +91,11 @@ public class VoiceTurnPipeline
                 thread?.Messages ?? new List<ConversationMessage>());
             allMessages.AddRange(session.PendingMessages.ToArray());
 
-            // Generate streaming reply
-            var prompt = PromptBuilder.BuildVoiceReplyPrompt(
+            // Conversation Mode: lean prompt — persona + conversation history only.
+            // The full voice prompt (BuildVoiceReplyPrompt) injected memories and
+            // shared experiences that competed with the conversation for the model's
+            // attention, producing confabulation and non-sequiturs.
+            var prompt = PromptBuilder.BuildLeanConversationPrompt(
                 snapshot, thread ?? new ConversationThread());
 
             var tokenBuffer = new TokenBuffer();
