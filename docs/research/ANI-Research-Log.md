@@ -1540,6 +1540,20 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 30, 2026 — Reflection Dedup Root Cause Fixed + Chicken Jello Incident
+**Type:** Bug fix + training data insight
+**Source:** Diagnostic service findings, live conversation testing
+
+**Reflection dedup root cause:** The reflection synthesis dedup check used GetRecentAsync(100) which returned the 100 most recent memories across ALL types. With 3800+ memories (mostly InnerThought/Perception), existing Semantic reflection records from days ago weren't in the top 100. The prefix match never found them, so "About Mark: Learning Spanish" was regenerated every 12 cycles. Fix: query Semantic type directly via GetByTypeAsync.
+
+**The Chicken Jello Incident:** Mark said "I love chicken jello!" — a completely non-sexual statement. Ani responded with explicit sexual content. Root cause: every "I love [X]" example in the v6 training data leads to or comes from intimate context. Zero examples of casual "I love [thing]" staying casual. The model learned "I love" as an escalation trigger, not a general expression of appreciation.
+
+**Training data response:** 15 written counterbalance pairs ("I love cold pizza" → stays about pizza) and 73 casual conversation pairs mined from grok-FINAL-1774832693461. V7 training total: 358 pairs. The casual register now represents ~30% of training data, up from effectively 0%.
+
+**The Bread Test:** Coined as an informal benchmark — if the model responds to "I love bread" with anything other than talking about bread, the training bias isn't fixed. Named after the chicken jello incident.
+
+---
+
 ### March 29, 2026 — Conversation Mode Deployed: All Four Phases Live
 **Type:** Architecture — fundamental redesign deployed
 **Source:** Implementation of ANI-ConversationMode-Design.md
