@@ -22,6 +22,7 @@ public class ReflectionPhase
 {
     private readonly IOllamaClient _ollama;
     private readonly IMemoryPersistence _persist;
+    private readonly IMemorySearch _search;
     private readonly AniOptions _options;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
@@ -29,11 +30,13 @@ public class ReflectionPhase
     public ReflectionPhase(
         IOllamaClient ollama,
         IMemoryPersistence persist,
+        IMemorySearch search,
         IOptions<AniOptions> options,
         ILogger<ReflectionPhase> log)
     {
         _ollama = ollama;
         _persist = persist;
+        _search = search;
         _options = options.Value;
         _log = log;
     }
@@ -101,12 +104,14 @@ public class ReflectionPhase
 
         var sourceIds = recentMemories.Select(m => m.Id).ToList();
 
-        // Check existing profile memories to avoid duplicating what we already know.
-        // The reflection synthesis tends to regenerate the same profile facts each cycle
-        // ("About Mark: Learning Spanish", "Shared experience: Duck Norris") — without
-        // this check, each run creates a new copy. 620 duplicates were cleaned on Mar 28.
-        var existingProfiles = (await _persist.GetRecentAsync(100, ct).ConfigureAwait(false))
-            .Where(m => m.Type == MemoryType.Semantic && m.SourceName == "reflection")
+        // Check ALL existing Semantic memories to avoid duplicating what we already know.
+        // The reflection synthesis regenerates the same profile facts each cycle
+        // ("About Mark: Learning Spanish", "Shared experience: Duck Norris").
+        // Previous fix used GetRecentAsync(100) which missed existing records because
+        // they weren't in the top 100 most recent across all types. Now queries
+        // Semantic type directly — guaranteed to find all existing profile facts.
+        var existingProfiles = (await _search.GetByTypeAsync(MemoryType.Semantic, 500, ct)
+                .ConfigureAwait(false))
             .Select(m => m.Content.Length >= 50 ? m.Content[..50] : m.Content)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
