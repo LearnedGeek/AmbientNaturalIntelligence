@@ -138,51 +138,51 @@ public class ElevenLabsV3StreamingService : IStreamingTextToSpeechService
                 return;
             }
 
-            // Read the chunked response stream — each chunk is raw PCM 16-bit audio.
-            // PCM 16-bit requires 2-byte alignment — if an HTTP chunk ends on an odd byte,
-            // hold the last byte and prepend it to the next chunk. Misaligned samples
-            // produce static/garbled audio on the AudioTrack.
+            // Read the HTTP response stream and buffer into ~32KB blocks before forwarding.
+            // The HTTP stream arrives in small chunks (~8KB). Sending many small WebSocket
+            // frames to the MAUI AudioTrack causes garbled audio on budget Android devices
+            // (Samsung A03s). Buffering into larger blocks produces clean playback.
+            // PCM 16-bit requires 2-byte alignment — buffer size must be even.
             using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            var buffer = new byte[8192]; // 8KB chunks ~0.25s of 16kHz PCM
+            var readBuffer = new byte[8192];
+            var sendBuffer = new MemoryStream();
+            const int SendThreshold = 32000; // ~1 second of 16kHz PCM, always even
             int bytesRead;
             int totalBytes = 0;
-            byte? pendingByte = null; // held-over byte from odd-length chunk
 
-            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, ct)
+            while ((bytesRead = await stream.ReadAsync(readBuffer, 0, readBuffer.Length, ct)
                 .ConfigureAwait(false)) > 0)
             {
-                int offset = 0;
-                int length = bytesRead;
+                sendBuffer.Write(readBuffer, 0, bytesRead);
 
-                // Prepend held-over byte from previous chunk if present
-                byte[]? chunk;
-                if (pendingByte.HasValue)
+                // Send when buffer exceeds threshold
+                if (sendBuffer.Length >= SendThreshold)
                 {
-                    chunk = new byte[1 + length];
-                    chunk[0] = pendingByte.Value;
-                    Buffer.BlockCopy(buffer, 0, chunk, 1, length);
-                    pendingByte = null;
-                    length = chunk.Length;
+                    var chunk = sendBuffer.ToArray();
+                    // Ensure 2-byte alignment
+                    var alignedLength = chunk.Length - (chunk.Length % 2);
+                    if (alignedLength > 0)
+                    {
+                        totalBytes += alignedLength;
+                        AudioChunkReceived?.Invoke(new ReadOnlyMemory<byte>(chunk, 0, alignedLength));
+                    }
+                    sendBuffer.SetLength(0);
+                    // Hold back any odd byte
+                    if (chunk.Length % 2 != 0)
+                        sendBuffer.WriteByte(chunk[^1]);
                 }
-                else
-                {
-                    chunk = new byte[length];
-                    Buffer.BlockCopy(buffer, 0, chunk, 0, length);
-                }
+            }
 
-                // If odd length, hold the last byte for next chunk
-                if (length % 2 != 0)
+            // Flush remaining buffered audio
+            if (sendBuffer.Length > 0)
+            {
+                var remaining = sendBuffer.ToArray();
+                var alignedLength = remaining.Length - (remaining.Length % 2);
+                if (alignedLength > 0)
                 {
-                    pendingByte = chunk[length - 1];
-                    length -= 1;
-                    var aligned = new byte[length];
-                    Buffer.BlockCopy(chunk, 0, aligned, 0, length);
-                    chunk = aligned;
+                    totalBytes += alignedLength;
+                    AudioChunkReceived?.Invoke(new ReadOnlyMemory<byte>(remaining, 0, alignedLength));
                 }
-
-                totalBytes += chunk.Length;
-                if (chunk.Length > 0)
-                    AudioChunkReceived?.Invoke(chunk);
             }
 
             _log.LogDebug("ElevenLabs v3: streamed {Bytes} bytes of audio", totalBytes);
