@@ -12,6 +12,7 @@ using AniRuntime.Dashboard;
 using AniRuntime.Emergence;
 using AniRuntime.Emergence.Models;
 using AniRuntime.Voice;
+using LearnedGeek.ML;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -184,6 +185,10 @@ try
     // ── Feature 41: Diagnostic service — automated log scanning ──────────────
     builder.Services.AddSingleton<IDiagnosticService, DiagnosticService>();
     builder.Services.AddHostedService<DiagnosticScheduler>();
+
+    // ── LearnedGeek.ML — LM-Kit emotion/sarcasm classification ─────────────
+    builder.Services.Configure<MLOptions>(config.GetSection("LMKit"));
+    builder.Services.AddLearnedGeekML();
 
     // ── H3: Rate limiting — prevent webhook flooding ──────────────────────────
     builder.Services.AddRateLimiter(options =>
@@ -508,6 +513,7 @@ try
         Log.Information("║  API:    http://localhost:5100/api/v1/ani/status");
         Log.Information("║  Voice:   {Status}", voiceEnabled ? "enabled (http://localhost:5100/voice/inbound)" : "disabled");
         Log.Information("║  Emergence: {Status}", emergenceEnabled ? "enabled (ani-emergence.db)" : "disabled");
+        Log.Information("║  LM-Kit:  enabled (lazy load on first classification)");
         Log.Information("╚══════════════════════════════════════════╝");
     }
 
