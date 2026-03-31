@@ -78,16 +78,71 @@
     <section>
         <h3>Emotional State</h3>
         <div class="grid">
-            <EmotionalStateCard Label="Warmth" Value="@_emotional.Warmth" />
-            <EmotionalStateCard Label="Energy" Value="@_emotional.Energy" />
-            <EmotionalStateCard Label="Worry" Value="@_emotional.Worry" />
-            <EmotionalStateCard Label="Playfulness" Value="@_emotional.Playfulness" />
+            <EmotionalStateCard Label="Warmth" Value="@_emotional.Warmth"
+                IsSelected="@(_selectedDimension == "Warmth")" OnClick="@(() => ToggleDimension("Warmth"))" />
+            <EmotionalStateCard Label="Energy" Value="@_emotional.Energy"
+                IsSelected="@(_selectedDimension == "Energy")" OnClick="@(() => ToggleDimension("Energy"))" />
+            <EmotionalStateCard Label="Worry" Value="@_emotional.Worry"
+                IsSelected="@(_selectedDimension == "Worry")" OnClick="@(() => ToggleDimension("Worry"))" />
+            <EmotionalStateCard Label="Playfulness" Value="@_emotional.Playfulness"
+                IsSelected="@(_selectedDimension == "Playfulness")" OnClick="@(() => ToggleDimension("Playfulness"))" />
         </div>
         @if (!string.IsNullOrEmpty(_emotional.Describe()))
         {
             <p><em>@_emotional.Describe()</em></p>
         }
     </section>
+
+    @if (_selectedDimension is not null)
+    {
+        var filtered = GetContributionsForDimension(_selectedDimension);
+        var dimensionColor = _selectedDimension switch
+        {
+            "Warmth" => "#4caf50",
+            "Energy" => "#2196f3",
+            "Worry" => "#ff9800",
+            "Playfulness" => "#9c27b0",
+            _ => "#607d8b",
+        };
+        <section>
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <h3 style="margin: 0; color: @dimensionColor;">@_selectedDimension Contributors</h3>
+                <small style="opacity: 0.6;">@filtered.Count active</small>
+                <button @onclick="@(() => ToggleDimension(_selectedDimension))"
+                        style="margin-left: auto; padding: 0.2em 0.6em; border-radius: 4px; background: rgba(255,255,255,0.1); color: inherit; border: none; cursor: pointer; font-size: 0.85em;">Clear</button>
+            </div>
+            @if (filtered.Count == 0)
+            {
+                <p style="opacity: 0.5;"><em>No active contributions affecting @_selectedDimension</em></p>
+            }
+            else
+            {
+                @foreach (var c in filtered)
+                {
+                    var delta = GetDelta(c, _selectedDimension);
+                    var decay = c.DecayFactor(DateTimeOffset.UtcNow);
+                    var effective = delta * c.Severity * (float)decay;
+                    var age = DateTimeOffset.UtcNow - c.CreatedAt;
+                    var ageStr = age.TotalHours < 1 ? $"{age.TotalMinutes:F0}m ago" : $"{age.TotalHours:F1}h ago";
+                    <div style="border-left: 3px solid @dimensionColor; padding: 0.4em 0.8em; margin-bottom: 0.4rem; background: rgba(255,255,255,0.03);">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                            <span style="font-size: 0.9em;">@(string.IsNullOrEmpty(c.SourceContent) ? "(no source)" : c.SourceContent)</span>
+                            <span style="font-size: 0.8em; white-space: nowrap; margin-left: 1em;">
+                                <span style="color: @dimensionColor; font-weight: bold;">@FormatDelta(effective)</span>
+                                <span style="opacity: 0.5;"> (raw @FormatDelta(delta))</span>
+                            </span>
+                        </div>
+                        <div style="font-size: 0.75em; opacity: 0.5; margin-top: 0.2em;">
+                            @c.Category | @(string.IsNullOrEmpty(c.Register) ? "—" : c.Register) | sev: @c.Severity.ToString("F2") | decay: @decay.ToString("F2") | @ageStr
+                            <button style="margin-left: 0.5em; font-size: 0.9em; padding: 0 0.3em; cursor: pointer;"
+                                    @onclick="() => ExpireContribution(c.Id)"
+                                    title="Expire this contribution">✕</button>
+                        </div>
+                    </div>
+                }
+            }
+        </section>
+    }
 }
 
 @if (_desire is not null && _emotional is not null)
@@ -195,6 +250,7 @@
     private List<EmotionalContribution> _allContributions = new();
     private ConversationThread? _activeThread;
     private DiagnosticReport? _diagnosticReport;
+    private string? _selectedDimension;
 
     protected override async Task OnInitializedAsync()
     {
@@ -237,6 +293,29 @@
         await MemoryPersist.SaveEmotionalStateAsync(state);
         _emotional = state;
     }
+
+    private void ToggleDimension(string dimension)
+    {
+        _selectedDimension = _selectedDimension == dimension ? null : dimension;
+    }
+
+    private List<EmotionalContribution> GetContributionsForDimension(string dimension)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return _contributions
+            .Where(c => !c.IsEffectivelyZero(now) && Math.Abs(GetDelta(c, dimension)) > 0.001f)
+            .OrderByDescending(c => Math.Abs(GetDelta(c, dimension) * c.Severity * (float)c.DecayFactor(now)))
+            .ToList();
+    }
+
+    private static float GetDelta(EmotionalContribution c, string dimension) => dimension switch
+    {
+        "Warmth" => c.WarmthDelta,
+        "Energy" => c.EnergyDelta,
+        "Worry" => c.WorryDelta,
+        "Playfulness" => c.PlayfulnessDelta,
+        _ => 0f,
+    };
 
     private static string FormatDelta(float delta) =>
         delta >= 0 ? $"+{delta:F2}" : $"{delta:F2}";
