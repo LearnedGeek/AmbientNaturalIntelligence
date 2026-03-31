@@ -71,6 +71,11 @@ public class AniOptions
     // by importance/recency of semantically unrelated memories.
     public double RetrievalConfidenceFloor  { get; set; } = 0.60;
 
+    // Phase 3: ML confabulation classification threshold.
+    // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
+    // with confidence >= this value. Start conservative, tighten if needed.
+    public float ConfabulationClassificationThreshold { get; set; } = 0.60f;
+
     // Conversation mode — active back-and-forth with Mark
     public int    ConversationHistoryWindowSize { get; set; } = 6;
     public double ConversationHeartbeatSeconds  { get; set; } = 45.0;

@@ -30,6 +30,9 @@ public static class ServiceCollectionExtensions
         // ML-powered voice tag enricher (bridges classification → v3 audio tags)
         services.TryAddSingleton<MLVoiceTagEnricher>();
 
+        // Persona summary cache — ground truth for confabulation verification
+        services.TryAddSingleton<PersonaSummaryCache>();
+
         // Comparison service for heuristic vs ML accuracy evaluation
         services.TryAddSingleton<ClassificationComparisonService>();
 

@@ -98,12 +98,55 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         }
     }
 
-    public Task<ConfabulationResult> DetectConfabulationAsync(
+    public async Task<ConfabulationResult> DetectConfabulationAsync(
         string reply, string conversationContext, CancellationToken ct = default)
     {
-        // Phase 3: Will use custom fine-tuned model or Categorization with grounded/confabulated labels.
-        // For now, return not-confabulated. Catalyst POS + regex pipeline remains primary.
-        return Task.FromResult(new ConfabulationResult(false, 0f, null));
+        await EnsureInitializedAsync(ct).ConfigureAwait(false);
+
+        if (_model is null || string.IsNullOrWhiteSpace(reply))
+            return new ConfabulationResult(false, 0f, null);
+
+        try
+        {
+            var categorizer = new Categorization(_model)
+            {
+                AllowUnknownCategory = false,
+                Guidance = $"Given the following context about the speaker, classify whether the reply makes claims that contradict the known facts.\n\nContext:\n{conversationContext}",
+            };
+
+            var categories = new List<string> { "grounded", "speculative", "confabulated" };
+            var descriptions = new List<string>
+            {
+                "The reply is consistent with the persona and conversation, or makes no factual claims about identity, work, or relationships",
+                "The reply makes claims that could be true but are not confirmed or denied by the known facts",
+                "The reply asserts facts that contradict the persona — invents specific details about identity, job, workplace, location, coworkers, or activities that conflict with known facts",
+            };
+
+            var bestIndex = await Task.Run(() =>
+                categorizer.GetBestCategory(categories, descriptions, reply, normalize: true, ct), ct)
+                .ConfigureAwait(false);
+
+            if (bestIndex < 0)
+                return new ConfabulationResult(false, 0f, null);
+
+            var category = categories[bestIndex];
+            var confidence = categorizer.Confidence;
+
+            _log.LogDebug("Confabulation classification: {Reply} → {Category} ({Confidence:F2})",
+                reply.Length > 80 ? reply[..80] + "..." : reply, category, confidence);
+
+            return category switch
+            {
+                "confabulated" => new ConfabulationResult(true, confidence, $"ML classified as confabulated ({confidence:F2})"),
+                "speculative" => new ConfabulationResult(false, confidence, $"ML classified as speculative ({confidence:F2})"),
+                _ => new ConfabulationResult(false, confidence, null),
+            };
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "LMKit confabulation classification failed");
+            return new ConfabulationResult(false, 0f, null);
+        }
     }
 
     public Task<RegisterResult> ClassifyRegisterAsync(string text, CancellationToken ct = default)

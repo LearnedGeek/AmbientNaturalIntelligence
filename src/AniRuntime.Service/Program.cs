@@ -480,6 +480,21 @@ try
         }
     }
 
+    // ── Load persona cache for confabulation verification ──────────────────
+    await using (var scope2 = app.Services.CreateAsyncScope())
+    {
+        var memory = scope2.ServiceProvider.GetRequiredService<IMemoryService>();
+        var charState = await memory.GetCharacterStateAsync();
+        var personaCache = scope2.ServiceProvider.GetRequiredService<PersonaSummaryCache>();
+        personaCache.LoadFrom(
+            charState.Name,
+            charState.Occupation,
+            charState.PrimaryContactName,
+            charState.SelfConcept,
+            charState.FamilyContext,
+            charState.LearnedAboutContact);
+    }
+
     // ── Startup status dump ───────────────────────────────────────────────
     await using (var scope = app.Services.CreateAsyncScope())
     {

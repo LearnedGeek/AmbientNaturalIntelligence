@@ -4,6 +4,8 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using LearnedGeek.ML;
+using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -32,6 +34,8 @@ public class ConversationReplyPhase
     private readonly ContextCompressor _compressor;
     private readonly AniOptions _aniOptions;
     private readonly OllamaOptions _ollamaOptions;
+    private readonly ITextClassificationService? _mlClassifier;
+    private readonly PersonaSummaryCache? _personaCache;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -57,7 +61,9 @@ public class ConversationReplyPhase
         ContextCompressor compressor,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
-        ILogger<ConversationReplyPhase> log)
+        ILogger<ConversationReplyPhase> log,
+        ITextClassificationService? mlClassifier = null,
+        PersonaSummaryCache? personaCache = null)
     {
         _state = state;
         _persist = persist;
@@ -76,6 +82,8 @@ public class ConversationReplyPhase
         _compressor = compressor;
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
+        _mlClassifier = mlClassifier;
+        _personaCache = personaCache;
         _log = log;
     }
 
@@ -249,6 +257,31 @@ public class ConversationReplyPhase
         if (!isReconsideration)
         {
             var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage);
+
+            // If fast checks didn't catch it, run ML semantic verification
+            if (!confabCheck.IsConfabulated && _mlClassifier is not null && _personaCache?.IsLoaded == true)
+            {
+                var conversationContext = string.Join("\n",
+                    thread.Messages.TakeLast(12).Select(m => $"{m.Role}: {m.Content}"));
+                var context = $"{conversationContext}\n\nPersona: {_personaCache.Summary}";
+
+                var mlConfab = await _mlClassifier.DetectConfabulationAsync(reply, context, ct)
+                    .ConfigureAwait(false);
+
+                if (mlConfab.IsConfabulated && mlConfab.Confidence >= _aniOptions.ConfabulationClassificationThreshold)
+                {
+                    confabCheck = (true, $"ML semantic: {mlConfab.Reason}");
+                    _log.LogInformation("ML confabulation gate triggered ({Confidence:F2}): {Reason}",
+                        mlConfab.Confidence, mlConfab.Reason);
+                }
+                else
+                {
+                    _log.LogDebug("ML confabulation check: {Category} ({Confidence:F2})",
+                        mlConfab.IsConfabulated ? "confabulated (below threshold)" : mlConfab.Reason ?? "grounded",
+                        mlConfab.Confidence);
+                }
+            }
+
             if (confabCheck.IsConfabulated)
             {
                 _log.LogInformation("Confabulation detected in reply: {Reason}. Retrieving memories for grounding.",
