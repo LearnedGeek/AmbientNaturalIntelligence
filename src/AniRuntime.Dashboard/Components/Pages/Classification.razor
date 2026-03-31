@@ -29,6 +29,14 @@
             style="padding: 0.5em 1.2em; border-radius: 4px; background: #ff9800; color: white; border: none; cursor: pointer; font-weight: bold;">
         @(_backfillInProgress ? "Backfilling..." : "Backfill Nulls")
     </button>
+    @if (_divergenceTrend.Count > 0)
+    {
+        <small style="opacity: 0.6;">Trend: @_divergenceTrend.Count days loaded</small>
+    }
+    else
+    {
+        <small style="opacity: 0.6;">Trend: @_totalWithDivergence contributions with divergence data</small>
+    }
     <small style="opacity: 0.6;">
         @if (_scanStatus is not null)
         {
@@ -40,6 +48,27 @@
         }
     </small>
 </div>
+
+@if (_divergenceTrend.Count > 0)
+{
+    <section>
+        <h3>Divergence Trend</h3>
+        <small style="opacity: 0.6;">Average state-expression divergence per day (0 = aligned, 1 = divergent)</small>
+        <div style="display: flex; align-items: flex-end; gap: 2px; height: 120px; margin-top: 0.5rem; padding: 0.5rem 0;">
+            @foreach (var day in _divergenceTrend)
+            {
+                var barHeight = Math.Max(day.AvgDivergence * 100, 2);
+                var barColor = day.AvgDivergence >= 0.70f ? "#f44336" : day.AvgDivergence >= 0.40f ? "#ff9800" : "#4caf50";
+                <div style="display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 20px;">
+                    <small style="font-size: 0.6em; opacity: 0.5; margin-bottom: 2px;">@day.Count</small>
+                    <div style="width: 100%; max-width: 40px; height: @(barHeight)px; background: @barColor; border-radius: 2px 2px 0 0;"
+                         title="@day.Date.ToString("MMM d"): avg @day.AvgDivergence.ToString("F2") (@day.Count items)"></div>
+                    <small style="font-size: 0.6em; opacity: 0.4; margin-top: 2px;">@day.Date.ToString("M/d")</small>
+                </div>
+            }
+        </div>
+    </section>
+}
 
 @if (ComparisonService.LatestSummary is not null)
 {
@@ -69,27 +98,6 @@
             </article>
         </div>
     </section>
-
-    @if (_divergenceTrend.Count > 0)
-    {
-        <section>
-            <h3>Divergence Trend</h3>
-            <small style="opacity: 0.6;">Average state-expression divergence per day (0 = aligned, 1 = divergent)</small>
-            <div style="display: flex; align-items: flex-end; gap: 2px; height: 120px; margin-top: 0.5rem; padding: 0.5rem 0;">
-                @foreach (var day in _divergenceTrend)
-                {
-                    var barHeight = Math.Max(day.AvgDivergence * 100, 2);
-                    var barColor = day.AvgDivergence >= 0.70f ? "#f44336" : day.AvgDivergence >= 0.40f ? "#ff9800" : "#4caf50";
-                    <div style="display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 20px;">
-                        <small style="font-size: 0.6em; opacity: 0.5; margin-bottom: 2px;">@day.Count</small>
-                        <div style="width: 100%; max-width: 40px; height: @(barHeight)px; background: @barColor; border-radius: 2px 2px 0 0;"
-                             title="@day.Date.ToString("MMM d"): avg @day.AvgDivergence.ToString("F2") (@day.Count items)"></div>
-                        <small style="font-size: 0.6em; opacity: 0.4; margin-top: 2px;">@day.Date.ToString("M/d")</small>
-                    </div>
-                }
-            </div>
-        </section>
-    }
 
     <section>
         <h3>ML Emotion Distribution</h3>
@@ -176,6 +184,7 @@
     private string _sortBy = "disagreements";
     private int _scanDays = 30;
     private bool _backfillInProgress;
+    private int _totalWithDivergence;
     private HashSet<Guid> _expandedItems = new();
     private List<DivergenceDay> _divergenceTrend = new();
 
@@ -201,6 +210,7 @@
     private async Task LoadDivergenceTrend()
     {
         var contributions = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));
+        _totalWithDivergence = contributions.Count(c => c.DivergenceScore.HasValue);
         _divergenceTrend = contributions
             .Where(c => c.DivergenceScore.HasValue)
             .GroupBy(c => c.CreatedAt.LocalDateTime.Date)
