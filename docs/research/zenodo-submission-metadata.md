@@ -24,7 +24,7 @@ Reaching Out Because She Wants To: Desire-Driven Ambient Presence in a Deployed 
 McArthey, Mark
 ```
 - Affiliation: `Learned Geek LLC; Waukesha County Technical College`
-- ORCID: (create one at https://orcid.org if you don't have one — takes 2 minutes, worth having)
+- ORCID: `0009-0000-0122-5015` (https://orcid.org/0009-0000-0122-5015)
 
 ## Description (Abstract)
 
