@@ -302,13 +302,23 @@ Feature flags per classifier allow incremental rollout.
 
 ### Phase 1: Voice Tags
 - [ ] Install LM-Kit.NET NuGet package
-- [ ] Create ITextClassificationService interface
+- [x] Create ITextClassificationService interface
 - [ ] Implement LMKitClassificationService
 - [ ] Load emotion + sarcasm models at startup
 - [ ] Replace VoiceTagEnricher regex with emotion classification
-- [ ] Build emotion+time → v3 tag mapping table
+- [x] Build emotion+time → v3 tag mapping table
 - [ ] Test voice quality with ML-selected tags
 - [ ] Log emotion classification results for tuning
+
+**Completed infrastructure (LearnedGeek.ML library):**
+- [x] ITextClassificationService + ITagMappingService interfaces
+- [x] Model records (EmotionResult, SarcasmResult, ConfabulationResult, RegisterResult, NamedEntity)
+- [x] TagMappingService (Stage 1 static rules, 24 rules, priority-ranked)
+- [x] StaticTagMap.json (emotion+time+confidence → v3 tag)
+- [x] MLVoiceTagEnricher (async pipeline: classify → map → tag, sarcasm override)
+- [x] MLOptions configuration class
+- [x] ServiceCollectionExtensions (AddLearnedGeekML DI registration)
+- [x] 30 tests (21 TagMapping + 9 MLVoiceTagEnricher)
 
 ### Phase 2: Emotional Validation
 - [ ] Add emotion classification to conversation reply pipeline
