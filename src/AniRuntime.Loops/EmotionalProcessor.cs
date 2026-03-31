@@ -78,7 +78,7 @@ public class EmotionalProcessor
             var isOutreachReady = string.Equals(register, "Curiosity", StringComparison.OrdinalIgnoreCase)
                 && warmth > 0.05f; // warmth > 0.05 implies the connecting element involves the contact
 
-            var sourceContent = content.Length > 200 ? content[..200] : content;
+            var sourceContent = content.Length > 500 ? content[..500] : content;
 
             // Semantic dedup: if a similar thought already has an active contribution,
             // refresh it (update deltas, reset decay clock) instead of stacking.
