@@ -2,7 +2,7 @@
 **Status:** Draft — substantially complete. Updated March 16, 2026 (Phase 5 streaming voice deployed, 280 tests, MAUI Android client, design principle finding). Ready for final review and LaTeX conversion.  
 **Target:** arXiv cs.HC (Human-Computer Interaction) and cs.AI  
 **Estimated length when complete:** 8,000–10,000 words  
-**Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
+**Author:** Mark McArthey, Learned Geek LLC (markm@learnedgeek.com)
 
 ---
 

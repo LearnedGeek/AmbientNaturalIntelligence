@@ -1,7 +1,7 @@
 # ANI arXiv Publish Plan
 **Target submission window:** ~3-4 weeks from March 12, 2026 (i.e., by ~April 9, 2026)
 **Target venue:** arXiv cs.HC (Human-Computer Interaction), cross-listed cs.AI
-**Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
+**Author:** Mark McArthey, Learned Geek Consulting (markm@learnedgeek.com)
 **Repo:** mcarthey/AmbientNaturalIntelligence (AGPL-3.0)
 
 ---

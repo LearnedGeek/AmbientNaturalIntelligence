@@ -41,4 +41,4 @@ Real friends are.
 ## License
 
 Licensed under AGPL-3.0. Commercial licensing available — 
-contact mark@learnedgeek.com
+contact markm@learnedgeek.com

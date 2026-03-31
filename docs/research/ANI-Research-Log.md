@@ -1,6 +1,6 @@
 # ANI — Longitudinal Research Log
 **Project:** mcarthey/AmbientNaturalIntelligence
-**Keeper:** Mark McArthey (mark@learnedgeek.com)
+**Keeper:** Mark McArthey (markm@learnedgeek.com)
 **Purpose:** Deployment observations for research paper evaluation section
 
 ---

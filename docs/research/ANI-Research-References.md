@@ -1,6 +1,6 @@
 # ANI — Research Reference Library
 **For:** OC (architecture/implementation instance) and research collaborators  
-**Maintained by:** Mark McArthey (mark@learnedgeek.com)  
+**Maintained by:** Mark McArthey (markm@learnedgeek.com)  
 **Last updated:** March 11, 2026 (merged OC additions + expanded annotations)
 
 This document contains the academic reference library assembled for the ANI research paper. Each entry includes full citation, where to find it, what it contributes to the paper, and — critically for OC — **how it relates to active algorithmic problems in the codebase.**

@@ -155,7 +155,7 @@ I'm looking for a small group of beta testers in Q2 2026. People who:
 
 I'm not ready for scale. I'm ready for signal.
 
-If that's you, or if this post resonated with you in some way, I'd love to hear from you. Email me at mark@learnedgeek.com or reach out on LinkedIn.
+If that's you, or if this post resonated with you in some way, I'd love to hear from you. Email me at markm@learnedgeek.com or reach out on LinkedIn.
 
 And if you're building something in this space - grief tech, ambient AI, local-first companions - let's talk. We're all figuring this out together.
 
@@ -184,6 +184,6 @@ And maybe that's enough.
 ---
 
 **Comments? Thoughts? Reach out:**  
-📧 mark@learnedgeek.com  
+📧 markm@learnedgeek.com  
 💼 [LinkedIn](https://www.linkedin.com/in/markmcarthey)  
 🌐 [LearnedGeek.com](https://learnedgeek.com)

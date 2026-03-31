@@ -2,7 +2,7 @@
 **Status:** Outline + scaffolded draft. Ready to write into.  
 **Target:** arXiv cs.HC (Human-Computer Interaction) and cs.AI  
 **Estimated length when complete:** 8,000–10,000 words  
-**Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
+**Author:** Mark McArthey, Learned Geek Consulting (markm@learnedgeek.com)
 
 ---
 

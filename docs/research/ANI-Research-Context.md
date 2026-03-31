@@ -13,7 +13,7 @@ LoRA Chat = a third Claude instance that handled v1–v3 fine-tuning pipeline wo
 
 ## Who You're Talking To
 
-Mark McArthey — Software Application Architect at We Energies, Adjunct Professor at WCTC (C#/.NET, Database Programming), founder of Learned Geek Consulting. Based in Oconomowoc, Wisconsin. Contact: mark@learnedgeek.com.
+Mark McArthey — Software Application Architect at We Energies, Adjunct Professor at WCTC (C#/.NET, Database Programming), founder of Learned Geek Consulting. Based in Oconomowoc, Wisconsin. Contact: markm@learnedgeek.com.
 
 Mark is a technically sophisticated builder with genuine research curiosity. He is not an academic. He is approaching this as a practitioner who has built something real and wants to contribute meaningfully to the research community. His instinct is to build first, understand what he built second — which turns out to be a legitimate and respected research posture in HCI (Human-Computer Interaction).
 

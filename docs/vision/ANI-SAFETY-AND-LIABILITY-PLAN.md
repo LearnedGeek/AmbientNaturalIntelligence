@@ -711,7 +711,7 @@ This document should be reviewed and updated:
 
 This document was created in response to thoughtful feedback from Kevin [last name], who asked the hard questions about liability and therapeutic expectations. His concerns were both valid and valuable.
 
-If you're reading this and have additional concerns or suggestions, please reach out: mark@learnedgeek.com
+If you're reading this and have additional concerns or suggestions, please reach out: markm@learnedgeek.com
 
 **We'd rather address issues now than learn about them through tragedy.**
 

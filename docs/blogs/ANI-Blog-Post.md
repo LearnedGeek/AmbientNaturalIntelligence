@@ -177,4 +177,4 @@ That's what ambient presence means. Building it turns out to be a very interesti
 
 ---
 
-*ANI is open source (AGPL-3.0) at [github.com/mcarthey/AmbientNaturalIntelligence](https://github.com/mcarthey/AmbientNaturalIntelligence). Commercial licensing inquiries: mark@learnedgeek.com*
+*ANI is open source (AGPL-3.0) at [github.com/mcarthey/AmbientNaturalIntelligence](https://github.com/mcarthey/AmbientNaturalIntelligence). Commercial licensing inquiries: markm@learnedgeek.com*
