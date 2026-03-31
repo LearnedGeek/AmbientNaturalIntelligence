@@ -3,6 +3,7 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -20,7 +21,23 @@ public class EmotionalProcessor
     private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly AniOptions _aniOptions;
+    private readonly ITextClassificationService? _mlClassifier;
     private readonly ILogger<EmotionalProcessor> _log;
+
+    // Alignment map: which ML emotions correspond to which heuristic registers
+    private static readonly Dictionary<string, HashSet<string>> EmotionRegisterAlignment = new()
+    {
+        ["happiness"] = ["Delight", "Playfulness", "Warmth"],
+        ["sadness"] = ["Longing", "Hurt", "Existential", "Wistful"],
+        ["anger"] = ["Hurt", "Frustration"],
+        ["fear"] = ["Concern", "Existential"],
+        ["neutral"] = ["Curiosity", "Existential", "Resilience"],
+        ["love"] = ["Tenderness", "Longing", "Warmth"],
+        ["curiosity"] = ["Curiosity"],
+        ["amusement"] = ["Playfulness", "Delight"],
+        ["surprise"] = ["Curiosity", "Delight"],
+        ["disgust"] = ["Frustration", "Hurt"],
+    };
 
     public EmotionalProcessor(
         IStateStore state,
@@ -28,7 +45,8 @@ public class EmotionalProcessor
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IOptions<AniOptions> aniOptions,
-        ILogger<EmotionalProcessor> log)
+        ILogger<EmotionalProcessor> log,
+        ITextClassificationService? mlClassifier = null)
     {
         _state = state;
         _persist = persist;
@@ -36,6 +54,7 @@ public class EmotionalProcessor
         _ollama = ollama;
         _aniOptions = aniOptions.Value;
         _log = log;
+        _mlClassifier = mlClassifier;
     }
 
     /// <summary>
@@ -105,6 +124,7 @@ public class EmotionalProcessor
                     match.Register = register;
                     match.CreatedAt = DateTimeOffset.UtcNow;
                     match.SourceContent = sourceContent;
+                    await ClassifyWithMLAsync(match, sourceContent, ct).ConfigureAwait(false);
                     await _persist.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
                     _log.LogDebug("Refreshed existing emotional contribution (semantic match)");
 
@@ -135,13 +155,17 @@ public class EmotionalProcessor
 
             await _persist.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);
 
+            // ML classification: run LM-Kit on the same content for dual-signal tracking
+            await ClassifyWithMLAsync(contribution, sourceContent, ct).ConfigureAwait(false);
+
             // Recompute state from all active contributions
             var contributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
             state.ComputeFromContributions(contributions);
             await _persist.SaveEmotionalStateAsync(state, ct).ConfigureAwait(false);
 
-            _log.LogDebug("Emotional contribution ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
-                effectiveCategory, register, severity, halfLife, warmth, energy, worry, playfulness);
+            _log.LogDebug("Emotional contribution ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00} ML={MLEmotion}({MLConf:F2}) div={Div:F2}",
+                effectiveCategory, register, severity, halfLife, warmth, energy, worry, playfulness,
+                contribution.MLEmotion ?? "—", contribution.MLConfidence ?? 0f, contribution.DivergenceScore ?? 0f);
         }
         catch (Exception ex)
         {
@@ -205,6 +229,50 @@ public class EmotionalProcessor
         {
             _log.LogWarning(ex, "Open loop pressure calculation failed — continuing without");
         }
+    }
+
+    /// <summary>
+    /// Run LM-Kit classification on the contribution's source content and compute divergence.
+    /// Non-fatal: if classification fails, the contribution keeps its heuristic values only.
+    /// </summary>
+    private async Task ClassifyWithMLAsync(EmotionalContribution contribution, string text, CancellationToken ct)
+    {
+        if (_mlClassifier is null || string.IsNullOrWhiteSpace(text)) return;
+
+        try
+        {
+            var emotion = await _mlClassifier.ClassifyEmotionAsync(text, ct).ConfigureAwait(false);
+            var sarcasm = await _mlClassifier.DetectSarcasmAsync(text, ct).ConfigureAwait(false);
+
+            contribution.MLEmotion = emotion.PrimaryEmotion;
+            contribution.MLConfidence = emotion.Confidence;
+            contribution.MLSarcasmDetected = sarcasm.IsSarcastic;
+            contribution.DivergenceScore = ComputeDivergence(emotion.PrimaryEmotion, contribution.Register);
+
+            _log.LogDebug("ML classification: {Text} → {Emotion} ({Confidence:F2}), heuristic={Register}, divergence={Div:F2}",
+                text.Length > 60 ? text[..60] + "..." : text,
+                emotion.PrimaryEmotion, emotion.Confidence, contribution.Register, contribution.DivergenceScore);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "ML classification failed — contribution keeps heuristic values only");
+        }
+    }
+
+    /// <summary>
+    /// Compute divergence between ML emotion and heuristic register.
+    /// 0.0 = aligned (emotion maps naturally to the register),
+    /// 1.0 = fully divergent (no alignment mapping exists).
+    /// </summary>
+    private static float ComputeDivergence(string mlEmotion, string heuristicRegister)
+    {
+        if (string.IsNullOrEmpty(mlEmotion) || string.IsNullOrEmpty(heuristicRegister))
+            return 0.5f; // Unknown — neutral divergence
+
+        if (EmotionRegisterAlignment.TryGetValue(mlEmotion, out var alignedRegisters))
+            return alignedRegisters.Contains(heuristicRegister) ? 0.0f : 1.0f;
+
+        return 1.0f; // Unknown emotion — fully divergent
     }
 
     public (float warmth, float energy, float worry, float playfulness, string register, float severity)

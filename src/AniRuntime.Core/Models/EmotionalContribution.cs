@@ -63,6 +63,26 @@ public class EmotionalContribution
     /// <summary>Optional embedding for semantic similarity checks.</summary>
     public float[]? Embedding { get; set; }
 
+    // ── ML classification (LM-Kit) — dual-signal: state + expression ─────────
+    // Stored alongside heuristic Register for divergence tracking.
+    // Null until LM-Kit classifies (lazy, async).
+
+    /// <summary>LM-Kit detected emotion from text content (e.g., "sadness", "love", "curiosity").</summary>
+    public string? MLEmotion { get; set; }
+
+    /// <summary>LM-Kit emotion classification confidence (0.0–1.0).</summary>
+    public float? MLConfidence { get; set; }
+
+    /// <summary>Whether LM-Kit detected sarcasm in the text.</summary>
+    public bool? MLSarcasmDetected { get; set; }
+
+    /// <summary>
+    /// Divergence score: how much the ML expression differs from the heuristic state.
+    /// 0.0 = aligned (state and expression agree), 1.0 = fully divergent.
+    /// Null until both classifications are available.
+    /// </summary>
+    public float? DivergenceScore { get; set; }
+
     /// <summary>
     /// Compute the decay factor at a given point in time.
     /// Returns a multiplier 0.0–1.0 to apply to the initial deltas.

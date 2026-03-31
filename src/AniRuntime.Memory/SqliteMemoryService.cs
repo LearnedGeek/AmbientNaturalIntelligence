@@ -1178,9 +1178,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.CommandText = """
             INSERT OR REPLACE INTO emotional_contributions
                 (id, source_content, warmth_delta, energy_delta, concern_delta, playfulness_delta,
-                 created_at, half_life_hours, category, embedding, severity, is_outreach_ready, register)
+                 created_at, half_life_hours, category, embedding, severity, is_outreach_ready, register,
+                 ml_emotion, ml_confidence, ml_sarcasm, divergence_score)
             VALUES ($id, $source, $warmth, $energy, $concern, $playfulness,
-                    $created, $halflife, $category, $embedding, $severity, $outreach, $register)
+                    $created, $halflife, $category, $embedding, $severity, $outreach, $register,
+                    $ml_emotion, $ml_confidence, $ml_sarcasm, $divergence)
             """;
         cmd.Parameters.AddWithValue("$id", contribution.Id.ToString());
         cmd.Parameters.AddWithValue("$source", contribution.SourceContent);
@@ -1197,6 +1199,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$severity", contribution.Severity);
         cmd.Parameters.AddWithValue("$outreach", contribution.IsOutreachReady ? 1 : 0);
         cmd.Parameters.AddWithValue("$register", contribution.Register);
+        cmd.Parameters.AddWithValue("$ml_emotion", (object?)contribution.MLEmotion ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ml_confidence", (object?)contribution.MLConfidence ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ml_sarcasm", contribution.MLSarcasmDetected.HasValue ? (contribution.MLSarcasmDetected.Value ? 1 : 0) : DBNull.Value);
+        cmd.Parameters.AddWithValue("$divergence", (object?)contribution.DivergenceScore ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
@@ -1426,7 +1432,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             embedding = DeserialisedEmbedding(blob);
         }
 
-        return new EmotionalContribution
+        var contribution = new EmotionalContribution
         {
             Id = Guid.Parse(reader.GetString(reader.GetOrdinal("id"))),
             SourceContent = reader.GetString(reader.GetOrdinal("source_content")),
@@ -1442,6 +1448,22 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             IsOutreachReady = reader.GetInt32(reader.GetOrdinal("is_outreach_ready")) == 1,
             Register = TryGetRegister(reader),
         };
+
+        // ML classification fields — may not exist in older DBs
+        try
+        {
+            var mlOrd = reader.GetOrdinal("ml_emotion");
+            if (!reader.IsDBNull(mlOrd)) contribution.MLEmotion = reader.GetString(mlOrd);
+            var confOrd = reader.GetOrdinal("ml_confidence");
+            if (!reader.IsDBNull(confOrd)) contribution.MLConfidence = reader.GetFloat(confOrd);
+            var sarcOrd = reader.GetOrdinal("ml_sarcasm");
+            if (!reader.IsDBNull(sarcOrd)) contribution.MLSarcasmDetected = reader.GetInt32(sarcOrd) == 1;
+            var divOrd = reader.GetOrdinal("divergence_score");
+            if (!reader.IsDBNull(divOrd)) contribution.DivergenceScore = reader.GetFloat(divOrd);
+        }
+        catch { /* columns may not exist in older DBs — safe to ignore */ }
+
+        return contribution;
     }
 
     private static string TryGetRegister(Microsoft.Data.Sqlite.SqliteDataReader reader)
@@ -1819,6 +1841,40 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addRegister = conn.CreateCommand();
             addRegister.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN register TEXT NOT NULL DEFAULT 'Wistful'";
             addRegister.ExecuteNonQuery();
+        }
+
+        // Migration: add ML classification columns to emotional_contributions
+        using var pragmaCmd6 = conn.CreateCommand();
+        pragmaCmd6.CommandText = "PRAGMA table_info(emotional_contributions)";
+        using var reader6 = pragmaCmd6.ExecuteReader();
+        var hasMLColumns = false;
+        while (reader6.Read())
+        {
+            if (reader6.GetString(1) == "ml_emotion")
+            {
+                hasMLColumns = true;
+                break;
+            }
+        }
+        reader6.Close();
+
+        if (!hasMLColumns)
+        {
+            using var addMLEmotion = conn.CreateCommand();
+            addMLEmotion.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN ml_emotion TEXT";
+            addMLEmotion.ExecuteNonQuery();
+
+            using var addMLConfidence = conn.CreateCommand();
+            addMLConfidence.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN ml_confidence REAL";
+            addMLConfidence.ExecuteNonQuery();
+
+            using var addMLSarcasm = conn.CreateCommand();
+            addMLSarcasm.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN ml_sarcasm INTEGER";
+            addMLSarcasm.ExecuteNonQuery();
+
+            using var addDivergence = conn.CreateCommand();
+            addDivergence.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN divergence_score REAL";
+            addDivergence.ExecuteNonQuery();
         }
     }
 

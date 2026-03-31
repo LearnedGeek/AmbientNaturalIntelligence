@@ -5,6 +5,7 @@
     <ProjectReference Include="..\AniRuntime.Actions\AniRuntime.Actions.csproj" />
     <ProjectReference Include="..\AniRuntime.Emergence\AniRuntime.Emergence.csproj" />
     <ProjectReference Include="..\AniRuntime.LLM\AniRuntime.LLM.csproj" />
+    <ProjectReference Include="..\LearnedGeek.ML\LearnedGeek.ML.csproj" />
   </ItemGroup>
 
   <ItemGroup>
