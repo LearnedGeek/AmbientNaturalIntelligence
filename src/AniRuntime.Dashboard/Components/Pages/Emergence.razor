@@ -65,7 +65,7 @@ else
     <section>
         <h3>Emergence Types</h3>
         <small style="opacity: 0.7;">What kinds of emergent thinking have been detected (last 30 days) — click to filter highlights</small>
-        <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
+        <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
             @foreach (var type in EmergenceTypeInfo.All)
             {
                 _typeDistribution.TryGetValue(type.Code, out var count);
@@ -396,6 +396,7 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
             new EmergenceTypeInfo("EM5-emotional-synthesis", "EM5", "Emotional Synthesis", "#4caf50"),
             new EmergenceTypeInfo("EM6-anticipatory-concern", "EM6", "Anticipatory Concern", "#00bcd4"),
             new EmergenceTypeInfo("EM7-temporal-awareness", "EM7", "Temporal Awareness", "#ff5722"),
+            new EmergenceTypeInfo("EM8-display-rule-divergence", "EM8", "Display Rules", "#795548"),
         };
 
         private static readonly Dictionary<string, EmergenceTypeInfo> _lookup =
