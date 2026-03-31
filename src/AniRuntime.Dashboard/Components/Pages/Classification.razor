@@ -2,8 +2,11 @@
 @using AniRuntime.Core.Interfaces
 @using AniRuntime.Core.Models
 @using LearnedGeek.ML
+@using LearnedGeek.ML.Interfaces
 @using LearnedGeek.ML.Models
 @inject IMemoryAnalytics MemoryAnalytics
+@inject IMemoryPersistence MemoryPersistence
+@inject ITextClassificationService MLClassifier
 @inject ClassificationComparisonService ComparisonService
 
 <h1>Classification Comparison</h1>
@@ -22,6 +25,10 @@
         <option value="365">1 year</option>
         <option value="9999">All time</option>
     </select>
+    <button @onclick="RunBackfill" disabled="@_backfillInProgress"
+            style="padding: 0.5em 1.2em; border-radius: 4px; background: #ff9800; color: white; border: none; cursor: pointer; font-weight: bold;">
+        @(_backfillInProgress ? "Backfilling..." : "Backfill Nulls")
+    </button>
     <small style="opacity: 0.6;">
         @if (_scanStatus is not null)
         {
@@ -168,8 +175,23 @@
     private string? _scanStatus;
     private string _sortBy = "disagreements";
     private int _scanDays = 30;
+    private bool _backfillInProgress;
     private HashSet<Guid> _expandedItems = new();
     private List<DivergenceDay> _divergenceTrend = new();
+
+    private static readonly Dictionary<string, HashSet<string>> EmotionRegisterAlignment = new()
+    {
+        ["happiness"] = ["Delight", "Playfulness", "Warmth"],
+        ["sadness"] = ["Longing", "Hurt", "Existential", "Wistful"],
+        ["anger"] = ["Hurt", "Frustration"],
+        ["fear"] = ["Concern", "Existential"],
+        ["neutral"] = ["Curiosity", "Existential", "Resilience"],
+        ["love"] = ["Tenderness", "Longing", "Warmth"],
+        ["curiosity"] = ["Curiosity"],
+        ["amusement"] = ["Playfulness", "Delight"],
+        ["surprise"] = ["Curiosity", "Delight"],
+        ["disgust"] = ["Frustration", "Hurt"],
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -215,6 +237,55 @@
         await ComparisonService.RunComparisonAsync(snapshots);
         await LoadDivergenceTrend();
         _scanStatus = null;
+        StateHasChanged();
+    }
+
+    private async Task RunBackfill()
+    {
+        _backfillInProgress = true;
+        _scanStatus = "Loading contributions with null ML fields...";
+        StateHasChanged();
+
+        var since = _scanDays >= 9999 ? DateTimeOffset.MinValue : DateTimeOffset.UtcNow.AddDays(-_scanDays);
+        var all = await MemoryAnalytics.GetContributionsSinceAsync(since);
+        var nulls = all.Where(c => c.MLEmotion is null && !string.IsNullOrWhiteSpace(c.SourceContent)).ToList();
+
+        _scanStatus = $"Backfilling {nulls.Count} contributions...";
+        StateHasChanged();
+
+        var filled = 0;
+        foreach (var c in nulls)
+        {
+            try
+            {
+                var emotion = await MLClassifier.ClassifyEmotionAsync(c.SourceContent);
+                var sarcasm = await MLClassifier.DetectSarcasmAsync(c.SourceContent);
+
+                c.MLEmotion = emotion.PrimaryEmotion;
+                c.MLConfidence = emotion.Confidence;
+                c.MLSarcasmDetected = sarcasm.IsSarcastic;
+
+                // Compute divergence
+                if (EmotionRegisterAlignment.TryGetValue(emotion.PrimaryEmotion, out var aligned))
+                    c.DivergenceScore = aligned.Contains(c.Register) ? 0.0f : 1.0f;
+                else
+                    c.DivergenceScore = 1.0f;
+
+                await MemoryPersistence.SaveEmotionalContributionAsync(c);
+                filled++;
+
+                if (filled % 25 == 0)
+                {
+                    _scanStatus = $"Backfilling... {filled}/{nulls.Count}";
+                    StateHasChanged();
+                }
+            }
+            catch { /* skip failures */ }
+        }
+
+        await LoadDivergenceTrend();
+        _scanStatus = $"Backfill complete: {filled}/{nulls.Count} contributions updated";
+        _backfillInProgress = false;
         StateHasChanged();
     }
 
