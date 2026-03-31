@@ -254,11 +254,34 @@ public class ConversationReplyPhase
                 _log.LogInformation("Confabulation detected in reply: {Reason}. Retrieving memories for grounding.",
                     confabCheck.Reason);
 
-                // Single targeted retrieval — one search, not the full pipeline
+                // Targeted retrieval — search both the user's message and the confabulated
+                // content. For identity/activity claims, searching the reply itself finds
+                // profile memories ("works at bookstore", "Mark's daughter Mia") that
+                // contradict the confabulation. Searching the user's message provides
+                // conversational context for regeneration.
                 try
                 {
-                    var groundingMemories = await _search.SearchWithScoresAsync(lastMessage, 5, ct)
+                    var searchQuery = confabCheck.Reason?.Contains("self-activity") == true
+                        || confabCheck.Reason?.Contains("contact-activity") == true
+                        || confabCheck.Reason?.Contains("relationship fact") == true
+                        ? reply  // Search the confabulated reply to find contradicting profile memories
+                        : lastMessage;  // Search the user's message for contextual grounding
+
+                    var groundingMemories = await _search.SearchWithScoresAsync(searchQuery, 5, ct)
                         .ConfigureAwait(false);
+
+                    // For identity claims, also search profile-specific terms
+                    if (searchQuery == reply)
+                    {
+                        var profileMemories = await _search.SearchWithScoresAsync(
+                            "my job work bookstore schedule", 5, ct).ConfigureAwait(false);
+                        groundingMemories = groundingMemories
+                            .Concat(profileMemories)
+                            .DistinctBy(s => s.Record.Id)
+                            .OrderByDescending(s => s.CosineSimilarity)
+                            .ToList();
+                    }
+
                     var grounded = groundingMemories
                         .Where(s => s.CosineSimilarity >= (float)_aniOptions.RetrievalConfidenceFloor)
                         .Select(s => s.Record)
@@ -649,6 +672,51 @@ public class ConversationReplyPhase
         {
             if (!conversationText.Contains(num.Value))
                 return (true, $"Reply contains number '{num.Value}' not mentioned in conversation");
+        }
+
+        // Check 4: Does the reply make factual claims about self, contact, or relationship
+        // that aren't established in the conversation? These are identity/activity confabulations
+        // where the model invents plausible details about its own life, the contact's life,
+        // or shared experiences. Triggers retrieval against profile/semantic memories.
+        //
+        // Self-claims: "I just finished a meeting", "I'm a developer", "my shift ends at..."
+        // Contact-claims: "your class", "your sister", "your job at..."
+        // Relationship-claims: "our anniversary", "that restaurant we went to"
+        string[] selfActivityMarkers =
+        [
+            "i just finished", "i've got a", "i have a", "i'm heading to",
+            "my meeting", "my shift", "my appointment", "my class", "my boss",
+            "my coworker", "my job", "i was working on", "i've been working",
+            "just got out of", "just got back from", "i'm at work", "i'm at the",
+            "after my shift", "before my shift", "on my break", "on my lunch",
+        ];
+        string[] contactActivityMarkers =
+        [
+            "your class", "your shift", "your meeting", "your appointment",
+            "your boss", "your coworker", "your sister", "your brother",
+            "your mom", "your dad", "your daughter", "your wife",
+            "your job at", "your work at", "when you get home from",
+        ];
+        string[] relationshipMarkers =
+        [
+            "our place", "our spot", "our anniversary", "that restaurant we",
+            "that time we", "when we went to", "our plan to", "our trip",
+        ];
+
+        foreach (var marker in selfActivityMarkers)
+        {
+            if (replyLower.Contains(marker) && !conversationText.Contains(marker))
+                return (true, $"Reply claims self-activity ('{marker}') not established in conversation");
+        }
+        foreach (var marker in contactActivityMarkers)
+        {
+            if (replyLower.Contains(marker) && !conversationText.Contains(marker))
+                return (true, $"Reply claims contact-activity ('{marker}') not established in conversation");
+        }
+        foreach (var marker in relationshipMarkers)
+        {
+            if (replyLower.Contains(marker) && !conversationText.Contains(marker))
+                return (true, $"Reply claims relationship fact ('{marker}') not established in conversation");
         }
 
         return (false, null);
