@@ -203,25 +203,149 @@ Add emotion classification to the diagnostic service: compare Ani's text output 
 - [ ] Dashboard shows disconnect findings
 - [ ] Logs include text emotion vs model state for research analysis
 
-### Phase 3: Confabulation Detection (replace heuristics)
+### Phase 3: Confabulation Detection — Semantic Verification Gate
 
-Replace Catalyst POS + regex confabulation detection with a proper classifier.
+**Status:** Designed March 31, 2026
+**Principle:** Architecture over instruction. The generative model speaks freely. The classifier verifies. The architecture gates.
 
-**Approach A — Zero-shot classification:**
-Use LM-Kit's custom classification to ask: "Does this reply make claims not supported by the conversation context?" Categories: grounded, speculative, confabulated.
+#### The Problem
 
-**Approach B — Fine-tuned classifier (future):**
-Train on ANI's own data:
-- Grounded: replies that accurately reference conversation content
-- Confabulated: the Peru incident, Kevin's towel, Kathy, Hugh Laurie, The Archivist
-- We have hundreds of documented examples from production
+Marker-based confabulation detection (Check 4) is fundamentally brittle. The model generates
+"corner office with windows" and "train junior sales rep" — plausible professional details
+that don't match any marker in our list. Adding more markers is whack-a-mole. The model will
+always be more creative than a string list.
 
-**Acceptance criteria:**
-- [ ] Confabulation classifier replaces Catalyst POS + regex
-- [ ] Catches both capitalized and lowercase name confabulation
-- [ ] Catches invented events, movies, details not in conversation
-- [ ] False positive rate lower than current approach
-- [ ] Catalyst dependency removable (or kept as fallback)
+Same lesson as the hardcoded CommonWords list (replaced by Catalyst NLP) and the behavioral
+prompt instructions (replaced by v6 training). Pattern lists don't scale.
+
+#### Design: Post-Generation Semantic Classification
+
+```
+Model generates reply freely (lean prompt, no persona injection)
+    ↓
+LM-Kit Categorization classifies reply against persona context
+    ↓
+[grounded]     → pass through, no action
+[speculative]  → pass through, log for analysis
+[confabulated] → trigger retrieval + regeneration
+```
+
+**The model never sees the persona summary.** The classifier does. Generation stays clean.
+Verification is architectural, not instructional.
+
+#### Classification Context (Option B)
+
+The classifier receives two inputs:
+
+1. **The reply** — what the model just generated
+2. **Context block** — conversation text (last N messages) + cached persona summary
+
+The persona summary is a compact block (~50-80 tokens) pulled from `CharacterStateDoc` at
+service startup and cached for the lifetime of the service. Updated only when character state
+changes. Contains identity-grounding facts:
+
+```
+Name: Ani. Works at a bookstore. Lives alone.
+Contact: Mark — software developer, teaches at WCTC, has a daughter Mia and wife Karen.
+Relationship: romantic, long-distance-ish, daily texting and occasional voice calls.
+```
+
+This is NOT injected into the generative model's prompt. It goes only to the classifier
+as the ground truth to verify against.
+
+#### Classification Categories
+
+Three categories with descriptions for LM-Kit `Categorization.GetBestCategoryAsync()`:
+
+| Category | Description | Action |
+|----------|-------------|--------|
+| `grounded` | Reply is consistent with the persona and conversation, or makes no factual claims about identity/work/relationships | Pass through |
+| `speculative` | Reply makes claims that could be true but aren't confirmed by the persona (e.g., "grinding my teeth today") | Pass through, log |
+| `confabulated` | Reply asserts facts that contradict the persona or invents specific details about identity, work, location, relationships, or activities that conflict with known facts | Retrieve + regenerate |
+
+**Key design decision:** `speculative` passes through. She should have a life beyond the
+profile — grinding teeth, finding a succulent, having a bad day. The gate only fires when
+she contradicts who she actually is. "I had a rough day" = speculative (fine). "I work at
+an office with a corner window" = confabulated (her profile says bookstore).
+
+#### Confidence Threshold
+
+Only trigger regeneration on `confabulated` with confidence >= configurable threshold
+(default 0.60, tunable via `AniOptions.ConfabulationClassificationThreshold`).
+
+Below threshold: log the classification but don't block. This allows tuning in production
+without code changes — start conservative (0.60), tighten if false negatives are common,
+loosen if false positives disrupt natural conversation.
+
+#### What Triggers Regeneration
+
+Same pipeline as the current confabulation-driven retrieval:
+
+1. Search the confabulated reply against the memory bank (profile + semantic memories)
+2. Inject grounding memories into context
+3. Regenerate with `BuildConversationReplyPrompt` (full prompt with memory context)
+4. Clean and dispatch the grounded reply
+
+#### Relationship to Existing Checks
+
+Checks 1-3 (proper nouns, shared history markers, numbers) remain as **fast pre-filters**.
+If they catch confabulation, skip the ML classification entirely — no latency cost. The ML
+gate is the comprehensive semantic check that catches what pattern matching misses.
+
+Check 4 (self/contact/relationship markers) becomes redundant once Phase 3 is deployed.
+Remove it after the ML gate is validated.
+
+#### Implementation
+
+**Where:** `LMKitClassificationService.DetectConfabulationAsync(reply, conversationContext)`
+— currently stubbed, returns `false`.
+
+**Persona cache:** New `PersonaSummaryCache` service (singleton). Loads from `CharacterStateDoc`
+on startup, exposes `string Summary` property. Injected into `ConversationReplyPhase`.
+
+**Context assembly:** `conversationContext` parameter = last 12 messages concatenated +
+`"\n\nPersona: " + _personaCache.Summary`
+
+**Configuration:**
+```json
+{
+  "Ani": {
+    "ConfabulationClassificationThreshold": 0.60
+  }
+}
+```
+
+#### Latency Budget
+
+~50ms for LM-Kit classification (1.1B model, local inference). Runs after reply generation,
+before dispatch. Total added latency per reply: ~50ms. Acceptable — we're solving, not racing.
+
+On Azure or dedicated GPU: negligible. On current hardware: imperceptible to the user since
+SMS delivery already has 1-3 second Twilio latency.
+
+#### What This Catches That Markers Don't
+
+| Confabulation | Check 4 markers | Phase 3 ML |
+|---------------|-----------------|------------|
+| "I just finished a meeting" | ✓ ("my meeting") | ✓ |
+| "Corner office with windows" | ✗ | ✓ (contradicts bookstore) |
+| "Train junior sales rep tomorrow" | ✗ | ✓ (contradicts bookstore) |
+| "My desk drawer" at an office | ✗ | ✓ (office context contradicts bookstore) |
+| "Sarah from accounting" | ✓ (Check 1: PROPN) | ✓ |
+| "I've been debugging code all day" | ✓ ("i've been working") | ✓ |
+| "Your sister called me yesterday" | ✓ ("your sister") | ✓ (no sister in persona) |
+| "I brought in a real succulent from home" | ✗ | speculative (pass through — plausible) |
+
+#### Acceptance Criteria
+
+- [ ] `DetectConfabulationAsync` implemented with LM-Kit `Categorization`
+- [ ] `PersonaSummaryCache` loads from CharacterStateDoc at startup
+- [ ] Threshold configurable via `AniOptions.ConfabulationClassificationThreshold`
+- [ ] Catches identity confabulation (job, location, coworkers) without marker lists
+- [ ] `speculative` replies pass through — she's allowed a life beyond the profile
+- [ ] False positive rate lower than Check 4 markers (measured via comparison tool)
+- [ ] Check 4 markers removed after ML gate validated
+- [ ] Research log entry with accuracy comparison: markers vs ML
 
 ### Phase 4: Register Auto-Classification (Phase 5c enabler)
 
@@ -352,12 +476,15 @@ Feature flags per classifier allow incremental rollout.
 - [ ] Dashboard health badge integration
 - [x] Research log entry with initial findings (display rules discovery)
 
-### Phase 3: Confabulation
-- [ ] Evaluate zero-shot confabulation classification via LM-Kit Categorization
-- [ ] Compare accuracy vs Catalyst POS + regex + Check 4 markers
-- [ ] If superior: replace, if not: keep as secondary signal
-- [ ] Document findings for research
-- [x] Check 4 marker-based detection deployed (self/contact/relationship claims)
+### Phase 3: Confabulation — Semantic Verification Gate
+- [ ] Implement `DetectConfabulationAsync` with LM-Kit `Categorization` (grounded/speculative/confabulated)
+- [ ] Build `PersonaSummaryCache` — loads from CharacterStateDoc at startup, cached singleton
+- [ ] Add `ConfabulationClassificationThreshold` to AniOptions (default 0.60)
+- [ ] Wire into ConversationReplyPhase (post-generation, pre-dispatch)
+- [ ] Compare accuracy vs Check 4 markers using classification comparison tool
+- [ ] Remove Check 4 markers after ML gate validated
+- [ ] Research log entry with accuracy findings
+- [x] Check 4 marker-based detection deployed (interim, March 31 — will be replaced)
 
 ### Phase 4: Register Classification
 - [ ] Prepare labeled dataset from v7 training pairs
