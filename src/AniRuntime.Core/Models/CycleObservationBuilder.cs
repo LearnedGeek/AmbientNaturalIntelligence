@@ -38,6 +38,11 @@ public class CycleObservationBuilder
     public string? ReplyMessage { get; set; }
     public bool ChoseSilence { get; set; }
 
+    // ML classification (dual-signal)
+    public string? MLEmotion { get; set; }
+    public float? MLConfidence { get; set; }
+    public float? DivergenceScore { get; set; }
+
     // Perceptions
     public List<string> PerceptionSummaries { get; set; } = new();
 
@@ -65,6 +70,9 @@ public class CycleObservationBuilder
         ContactMessage         = ContactMessage,
         ReplyMessage           = ReplyMessage,
         ChoseSilence           = ChoseSilence,
+        MLEmotion              = MLEmotion,
+        MLConfidence           = MLConfidence,
+        DivergenceScore        = DivergenceScore,
         PerceptionSummaries    = PerceptionSummaries,
     };
 }

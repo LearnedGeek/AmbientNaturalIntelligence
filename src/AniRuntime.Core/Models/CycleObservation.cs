@@ -28,6 +28,11 @@ public record CycleObservation
     public float Severity { get; init; }
     public string? Register { get; init; }
 
+    // ── ML classification (dual-signal) ──────────────────────────────────────
+    public string? MLEmotion { get; init; }
+    public float? MLConfidence { get; init; }
+    public float? DivergenceScore { get; init; }
+
     // ── Desire ──────────────────────────────────────────────────────────────
     public float DesireToConnect { get; init; }
     public bool DesireThresholdCrossed { get; init; }

@@ -22,12 +22,13 @@ public static partial class EmergenceClassifier
         public const string EmotionalSynthesis = "EM5-emotional-synthesis";
         public const string AnticipatoryConcern = "EM6-anticipatory-concern";
         public const string TemporalAwareness = "EM7-temporal-awareness";
+        public const string DisplayRuleDivergence = "EM8-display-rule-divergence";
 
         public static readonly string[] All =
         [
             RelationalModeling, SymbolicProcessing, LinguisticAnalysis,
             StructuralSelfAwareness, EmotionalSynthesis, AnticipatoryConcern,
-            TemporalAwareness
+            TemporalAwareness, DisplayRuleDivergence
         ];
     }
 
@@ -65,6 +66,9 @@ public static partial class EmergenceClassifier
 
         if (IsTemporalAwareness(combined))
             types.Add(Types.TemporalAwareness);
+
+        if (IsDisplayRuleDivergence(obs))
+            types.Add(Types.DisplayRuleDivergence);
 
         return types;
     }
@@ -262,6 +266,22 @@ public static partial class EmergenceClassifier
         var signals = (hasFeltTime ? 1 : 0) + (hasTemporalArc ? 1 : 0) +
                       (hasDuration ? 1 : 0) + (hasEmotionalArc ? 1 : 0);
         return signals >= 2;
+    }
+
+    /// <summary>
+    /// EM8: State-expression divergence — the system's felt emotional state diverges
+    /// from what its generated text expresses. Analogous to human display rules
+    /// (saying "I'm fine" when feeling worried). Detected when both ML classification
+    /// and heuristic register are present but do not align, with high ML confidence.
+    /// </summary>
+    internal static bool IsDisplayRuleDivergence(CycleObservation obs)
+    {
+        // Requires dual-signal data
+        if (obs.DivergenceScore is null || obs.MLEmotion is null || obs.MLConfidence is null)
+            return false;
+
+        // High divergence (state and expression disagree) with confident ML classification
+        return obs.DivergenceScore >= 0.9f && obs.MLConfidence >= 0.50f;
     }
 
     // Compiled regex patterns for performance (called every cycle)
