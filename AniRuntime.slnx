@@ -11,6 +11,7 @@
     <Project Path="src/AniRuntime.Voice/AniRuntime.Voice.csproj" />
     <Project Path="src/AniRuntime.Service/AniRuntime.Service.csproj" />
     <Project Path="src/AniRuntime.MauiClient/AniRuntime.MauiClient.csproj" />
+    <Project Path="src/LearnedGeek.ML/LearnedGeek.ML.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AniRuntime.Tests/AniRuntime.Tests.csproj" />

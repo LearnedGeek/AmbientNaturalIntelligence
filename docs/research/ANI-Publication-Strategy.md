@@ -1,5 +1,7 @@
 # ANI Publication Strategy
 **Last updated:** March 30, 2026
+**Paper 1 DOI:** [10.5281/zenodo.19342190](https://doi.org/10.5281/zenodo.19342190)
+**ORCID:** [0009-0000-0122-5015](https://orcid.org/0009-0000-0122-5015)
 **Papers:** Paper 1 (runtime/confabulation), Paper 2 (emergence)
 **Paper 1 title:** "Reaching Out Because She Wants To: Desire-Driven Ambient Presence in a Deployed AI Companion"
 **Paper 2 title:** "She Got Quieter on Rainy Days: Relational Personality Emergence in a Continuously Deployed AI Companion"
@@ -11,29 +13,40 @@
 arXiv endorsement has stalled after 2+ weeks of outreach with zero endorsements received.
 Multiple parallel paths are now active to get the work published.
 
-### Path A: Preprint Repository (No Endorsement Needed) — FASTEST
-Post Paper 1 to Zenodo or SSRN immediately. Gets a DOI, establishes priority, indexed by
-Google Scholar. No gatekeeping. Can be cited immediately. If arXiv endorsement eventually
-comes through, cross-post there too.
+### Path A: Preprint Repository (No Endorsement Needed) — ✅ COMPLETE
+Paper 1 published to Zenodo on March 30, 2026.
 
-**Zenodo** (preferred):
-- Run by CERN, respected in academia
-- DOI assigned immediately
-- Free, permanent hosting
+**Zenodo:**
+- DOI: [10.5281/zenodo.19342190](https://doi.org/10.5281/zenodo.19342190)
+- License: CC BY 4.0
 - Indexed by Google Scholar, OpenAIRE, DataCite
-- Upload: PDF + metadata. Done in 30 minutes.
 
-**SSRN** (alternative):
-- Widely used for social science / interdisciplinary preprints
-- Also free, indexed, citable
-- Larger readership for HCI-adjacent work
+**ResearchGate:**
+- Profile: researchgate.net/profile/Mark-Mcarthey
+- Paper uploaded with DOI link and full abstract
+- Disciplines: Human-Computer Interaction, Artificial Intelligence
+
+**Google Scholar:**
+- Profile created (learnedgeek Google account)
+- Paper will auto-index from Zenodo/ResearchGate within days
+
+**LinkedIn:**
+- Announcement posted March 30, 2026 with DOI link and hashtags
+- Added to Publications section
+
+**Facebook:**
+- Announcement posted March 30, 2026
 
 **Action items:**
-- [ ] Prepare Zenodo metadata (title, abstract, keywords, authors, license)
-- [ ] Upload Paper 1 PDF to Zenodo
-- [ ] Get DOI
-- [ ] Update all blog posts, LinkedIn, outreach with DOI link
+- [x] Prepare Zenodo metadata (title, abstract, keywords, authors, license)
+- [x] Upload Paper 1 PDF to Zenodo
+- [x] Get DOI — 10.5281/zenodo.19342190
+- [x] Post to LinkedIn with DOI link
+- [x] Post to Facebook
+- [x] Upload to ResearchGate with DOI
+- [x] Create Google Scholar profile
 - [ ] Update Paper 2 citations to reference Zenodo DOI
+- [ ] Update blog post drafts with DOI link
 
 ### Path B: Conference Submission — STRONGEST CREDENTIAL
 Submit to a peer-reviewed conference. Acceptance = published in ACM Digital Library,
@@ -106,11 +119,12 @@ Goal: attract inbound interest rather than chasing outbound endorsements.
 
 ### Recommended Priority Order
 
-1. **Zenodo upload** — do this week. Establishes priority, gets DOI, zero gatekeeping.
-2. **Blog post #1** — "My AI Lied to Me About Peru." Build audience.
-3. **Conference deadline check** — CSCW 2027 is the target. Know the date.
-4. **Condensed paper draft** — start adapting for conference format.
-5. **arXiv** — continue passively. If conference accepts, endorsement is automatic.
+1. ~~**Zenodo upload**~~ — ✅ DONE. DOI: 10.5281/zenodo.19342190
+2. ~~**Research profiles**~~ — ✅ DONE. ResearchGate + Google Scholar + LinkedIn
+3. **Blog post #1** — "My AI Lied to Me About Peru." Build audience.
+4. **Conference deadline check** — CSCW 2027 is the target. Know the date.
+5. **Condensed paper draft** — start adapting for conference format.
+6. **arXiv** — continue passively. If conference accepts, endorsement is automatic.
 
 ---
 

@@ -1,6 +1,10 @@
 # Zenodo Submission — Paper 1
 
-**Instructions:** Go to https://zenodo.org → Sign up (or log in via GitHub/ORCID) → New Upload → Fill in the fields below.
+**Status:** ✅ PUBLISHED — March 30, 2026
+**DOI:** [10.5281/zenodo.19342190](https://doi.org/10.5281/zenodo.19342190)
+**Also posted to:** ResearchGate, LinkedIn, Facebook, Google Scholar (pending auto-index)
+
+~~**Instructions:** Go to https://zenodo.org → Sign up (or log in via GitHub/ORCID) → New Upload → Fill in the fields below.~~
 
 ---
 

@@ -1,0 +1,38 @@
+{
+  "Rules": [
+    { "Emotion": "happiness", "MinConfidence": 0.70, "HourStart": 6,  "HourEnd": 12, "Tag": "[bright morning]",      "Priority": 10 },
+    { "Emotion": "happiness", "MinConfidence": 0.70, "HourStart": 12, "HourEnd": 17, "Tag": "[social afternoon]",     "Priority": 10 },
+    { "Emotion": "happiness", "MinConfidence": 0.70, "HourStart": 17, "HourEnd": 22, "Tag": "[evening playful]",      "Priority": 10 },
+    { "Emotion": "happiness", "MinConfidence": 0.70, "HourStart": 22, "HourEnd": 4,  "Tag": "[late night excited]",   "Priority": 10 },
+    { "Emotion": "happiness", "MinConfidence": 0.50, "Tag": "[cheerful]",             "Priority": 5 },
+
+    { "Emotion": "sadness",   "MinConfidence": 0.70, "Tag": "[heartbroken]",          "Priority": 10 },
+    { "Emotion": "sadness",   "MinConfidence": 0.40, "HourStart": 17, "HourEnd": 4,  "Tag": "[evening mellow]",       "Priority": 8 },
+    { "Emotion": "sadness",   "MinConfidence": 0.40, "Tag": "[wistful]",              "Priority": 5 },
+
+    { "Emotion": "anger",     "MinConfidence": 0.70, "Tag": "[furious]",              "Priority": 10 },
+    { "Emotion": "anger",     "MinConfidence": 0.40, "Tag": "[frustrated]",           "Priority": 5 },
+
+    { "Emotion": "fear",      "MinConfidence": 0.40, "Tag": "[anxious]",              "Priority": 5 },
+
+    { "Emotion": "surprise",  "MinConfidence": 0.50, "Tag": "[excited]",              "Priority": 5 },
+
+    { "Emotion": "disgust",   "MinConfidence": 0.50, "Tag": "[stern]",                "Priority": 5 },
+
+    { "Emotion": "love",      "MinConfidence": 0.70, "Tag": "[adoring]",              "Priority": 10 },
+    { "Emotion": "love",      "MinConfidence": 0.50, "HourStart": 22, "HourEnd": 6,  "Tag": "[late night nostalgic]",  "Priority": 8 },
+    { "Emotion": "love",      "MinConfidence": 0.50, "Tag": "[tender]",               "Priority": 5 },
+
+    { "Emotion": "curiosity", "MinConfidence": 0.50, "Tag": "[curious]",              "Priority": 5 },
+
+    { "Emotion": "amusement", "MinConfidence": 0.60, "Tag": "[amused]",               "Priority": 8 },
+    { "Emotion": "amusement", "MinConfidence": 0.40, "Tag": "[mischievous]",          "Priority": 5 },
+
+    { "Emotion": "neutral",   "MinConfidence": 0.50, "HourStart": 6,  "HourEnd": 12, "Tag": "[calm morning]",         "Priority": 3 },
+    { "Emotion": "neutral",   "MinConfidence": 0.50, "HourStart": 17, "HourEnd": 22, "Tag": "[evening relaxed]",      "Priority": 3 },
+    { "Emotion": "neutral",   "MinConfidence": 0.50, "HourStart": 22, "HourEnd": 6,  "Tag": "[night serene]",         "Priority": 3 },
+    { "Emotion": "neutral",   "MinConfidence": 0.50, "Tag": "[calm]",                 "Priority": 1 },
+
+    { "Emotion": "sarcasm",   "MinConfidence": 0.50, "Tag": "[sarcastic]",            "Priority": 15 }
+  ]
+}

@@ -1,8 +1,13 @@
 # ANI Preprint Draft — McArthey et al. (2026)
-**Status:** Draft — substantially complete. Updated March 16, 2026 (Phase 5 streaming voice deployed, 280 tests, MAUI Android client, design principle finding). Ready for final review and LaTeX conversion.  
-**Target:** arXiv cs.HC (Human-Computer Interaction) and cs.AI  
-**Estimated length when complete:** 8,000–10,000 words  
-**Author:** Mark McArthey, Learned Geek Consulting (mark@learnedgeek.com)
+**Status:** ✅ PUBLISHED — March 30, 2026
+**DOI:** [10.5281/zenodo.19342190](https://doi.org/10.5281/zenodo.19342190)
+**Final PDF:** `docs/research/submission/ANI-Preprint-McArthey-2026.pdf`
+**Final LaTeX:** `docs/research/submission/ANI-Preprint-Final.tex`
+**Target:** arXiv cs.HC (pending endorsement) — already live on Zenodo + ResearchGate
+**Author:** Mark McArthey, Learned Geek LLC (markm@learnedgeek.com)
+**ORCID:** [0009-0000-0122-5015](https://orcid.org/0009-0000-0122-5015)
+
+> **Note:** This markdown draft was the working document. The authoritative version is now the LaTeX/PDF in `docs/research/submission/`. This file is preserved for editorial history.
 
 ---
 

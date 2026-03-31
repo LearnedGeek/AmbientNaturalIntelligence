@@ -1,0 +1,281 @@
+using FluentAssertions;
+using LearnedGeek.ML.Models;
+using LearnedGeek.ML.TagMapping;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace AniRuntime.Tests;
+
+public class TagMappingServiceTests
+{
+    private readonly TagMappingService _sut;
+
+    public TagMappingServiceTests()
+    {
+        // Find the StaticTagMap.json relative to test execution
+        var projectRoot = FindProjectRoot();
+        var jsonPath = Path.Combine(projectRoot, "src", "LearnedGeek.ML", "TagMapping", "StaticTagMap.json");
+        _sut = new TagMappingService(NullLogger<TagMappingService>.Instance, jsonPath);
+    }
+
+    [Fact]
+    public void Resolve_HappyMorning_ReturnsBrightMorning()
+    {
+        var emotion = MakeEmotion("happiness", 0.85f);
+        var morning = new DateTimeOffset(2026, 3, 30, 8, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, morning);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[bright morning]");
+        result.Source.Should().Be("static");
+    }
+
+    [Fact]
+    public void Resolve_HappyEvening_ReturnsEveningPlayful()
+    {
+        var emotion = MakeEmotion("happiness", 0.80f);
+        var evening = new DateTimeOffset(2026, 3, 30, 19, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, evening);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[evening playful]");
+    }
+
+    [Fact]
+    public void Resolve_HappyAfternoon_ReturnsSocialAfternoon()
+    {
+        var emotion = MakeEmotion("happiness", 0.75f);
+        var afternoon = new DateTimeOffset(2026, 3, 30, 14, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, afternoon);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[social afternoon]");
+    }
+
+    [Fact]
+    public void Resolve_SadnessHighConfidence_ReturnsHeartbroken()
+    {
+        var emotion = MakeEmotion("sadness", 0.80f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[heartbroken]");
+    }
+
+    [Fact]
+    public void Resolve_SadnessLowConfidence_ReturnsWistful()
+    {
+        var emotion = MakeEmotion("sadness", 0.50f);
+        var morning = new DateTimeOffset(2026, 3, 30, 10, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, morning);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[wistful]");
+    }
+
+    [Fact]
+    public void Resolve_AngerHighConfidence_ReturnsFurious()
+    {
+        var emotion = MakeEmotion("anger", 0.85f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[furious]");
+    }
+
+    [Fact]
+    public void Resolve_AngerLowConfidence_ReturnsFrustrated()
+    {
+        var emotion = MakeEmotion("anger", 0.50f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[frustrated]");
+    }
+
+    [Fact]
+    public void Resolve_Sarcasm_HighestPriority()
+    {
+        var emotion = MakeEmotion("sarcasm", 0.70f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[sarcastic]");
+    }
+
+    [Fact]
+    public void Resolve_LoveHighConfidence_ReturnsAdoring()
+    {
+        var emotion = MakeEmotion("love", 0.80f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[adoring]");
+    }
+
+    [Fact]
+    public void Resolve_LoveLateNight_ReturnsLateNightNostalgic()
+    {
+        var emotion = MakeEmotion("love", 0.55f);
+        var lateNight = new DateTimeOffset(2026, 3, 30, 23, 30, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, lateNight);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[late night nostalgic]");
+    }
+
+    [Fact]
+    public void Resolve_NeutralMorning_ReturnsCalmMorning()
+    {
+        var emotion = MakeEmotion("neutral", 0.70f);
+        var morning = new DateTimeOffset(2026, 3, 30, 9, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, morning);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[calm morning]");
+    }
+
+    [Fact]
+    public void Resolve_NeutralEvening_ReturnsEveningRelaxed()
+    {
+        var emotion = MakeEmotion("neutral", 0.65f);
+        var evening = new DateTimeOffset(2026, 3, 30, 20, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, evening);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[evening relaxed]");
+    }
+
+    [Fact]
+    public void Resolve_NeutralLateNight_ReturnsNightSerene()
+    {
+        var emotion = MakeEmotion("neutral", 0.60f);
+        var lateNight = new DateTimeOffset(2026, 3, 31, 1, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, lateNight);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[night serene]");
+    }
+
+    [Fact]
+    public void Resolve_Fear_ReturnsAnxious()
+    {
+        var emotion = MakeEmotion("fear", 0.60f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[anxious]");
+    }
+
+    [Fact]
+    public void Resolve_Amusement_ReturnsAmused()
+    {
+        var emotion = MakeEmotion("amusement", 0.70f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[amused]");
+    }
+
+    [Fact]
+    public void Resolve_UnknownEmotion_ReturnsNull()
+    {
+        var emotion = MakeEmotion("confused", 0.90f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void Resolve_BelowMinConfidence_ReturnsNull()
+    {
+        var emotion = MakeEmotion("anger", 0.20f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void Resolve_SecondaryEmotionMatch_MatchesFromScores()
+    {
+        // Primary is neutral, but has secondary sarcasm in scores
+        var emotion = new EmotionResult(
+            "neutral", 0.40f,
+            new Dictionary<string, float>
+            {
+                ["neutral"] = 0.40f,
+                ["sarcasm"] = 0.60f,
+            });
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[sarcastic]");
+    }
+
+    [Fact]
+    public void Resolve_OvernightHourRange_WrapsCorrectly()
+    {
+        // Happiness at 2 AM should match the 22-4 range
+        var emotion = MakeEmotion("happiness", 0.80f);
+        var twoAm = new DateTimeOffset(2026, 3, 31, 2, 0, 0, TimeSpan.Zero);
+
+        var result = _sut.Resolve(emotion, twoAm);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[late night excited]");
+    }
+
+    [Fact]
+    public void RecordFeedback_DoesNotThrow()
+    {
+        // Stage 1: just logs, no exceptions
+        var act = () => _sut.RecordFeedback("[cheerful]", "happiness", true);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Resolve_Curiosity_ReturnsCurious()
+    {
+        var emotion = MakeEmotion("curiosity", 0.65f);
+
+        var result = _sut.Resolve(emotion);
+
+        result.Should().NotBeNull();
+        result!.Tag.Should().Be("[curious]");
+    }
+
+    private static EmotionResult MakeEmotion(string primary, float confidence)
+    {
+        return new EmotionResult(primary, confidence,
+            new Dictionary<string, float> { [primary] = confidence });
+    }
+
+    private static string FindProjectRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir, "AniRuntime.slnx")))
+                return dir;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new InvalidOperationException("Could not find project root (AniRuntime.slnx)");
+    }
+}

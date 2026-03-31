@@ -1540,6 +1540,25 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 30, 2026 — Paper 1 Published: DOI Assigned, Research Profiles Established
+**Type:** Publication milestone
+**Source:** Zenodo, ResearchGate, Google Scholar, LinkedIn, Facebook
+
+Paper 1 published to Zenodo as a preprint. DOI [10.5281/zenodo.19342190](https://doi.org/10.5281/zenodo.19342190) assigned immediately. License: CC BY 4.0. ORCID [0009-0000-0122-5015](https://orcid.org/0009-0000-0122-5015) linked.
+
+Research presence established across four platforms in one session:
+- **Zenodo** — permanent archive, DOI, indexed by Google Scholar/OpenAIRE/DataCite
+- **ResearchGate** — researcher profile with paper upload, disciplines: HCI + AI
+- **Google Scholar** — profile created, paper will auto-index from Zenodo/ResearchGate
+- **LinkedIn** — announcement posted with DOI link, added to Publications section
+- **Facebook** — announcement posted
+
+This is the priority-establishing timestamp for the confabulation taxonomy, "smoothness over truth" root cause naming, authenticity boundary concept, and desire-driven ambient presence architecture. All future citations reference this DOI.
+
+arXiv endorsement still outstanding (18+ contacts, 0 endorsements). Now lower priority — the work is citable and discoverable without it. Conference submission (CSCW 2027) is the next credential target.
+
+---
+
 ### March 30, 2026 — V3 Voice Working + Conversation Mode Applied to Voice + LM-Kit Design
 **Type:** Architecture milestones
 **Source:** Implementation and live testing
