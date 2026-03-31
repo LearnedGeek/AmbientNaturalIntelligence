@@ -108,8 +108,16 @@
             <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
                 <h3 style="margin: 0; color: @dimensionColor;">@_selectedDimension Contributors</h3>
                 <small style="opacity: 0.6;">@filtered.Count active</small>
-                <button @onclick="@(() => ToggleDimension(_selectedDimension))"
-                        style="margin-left: auto; padding: 0.2em 0.6em; border-radius: 4px; background: rgba(255,255,255,0.1); color: inherit; border: none; cursor: pointer; font-size: 0.85em;">Clear</button>
+                <div style="margin-left: auto; display: flex; gap: 0.3rem;">
+                    <button @onclick="@(() => SetSort("score"))"
+                            style="padding: 0.2em 0.5em; border-radius: 4px; background: @(_contributionSort == "score" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)"); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">Score</button>
+                    <button @onclick="@(() => SetSort("severity"))"
+                            style="padding: 0.2em 0.5em; border-radius: 4px; background: @(_contributionSort == "severity" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)"); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">Sev</button>
+                    <button @onclick="@(() => SetSort("decay"))"
+                            style="padding: 0.2em 0.5em; border-radius: 4px; background: @(_contributionSort == "decay" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)"); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">Decay</button>
+                    <button @onclick="@(() => ToggleDimension(_selectedDimension))"
+                            style="padding: 0.2em 0.6em; border-radius: 4px; background: rgba(255,255,255,0.1); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">✕</button>
+                </div>
             </div>
             @if (filtered.Count == 0)
             {
@@ -124,16 +132,20 @@
                     var effective = delta * c.Severity * (float)decay;
                     var age = DateTimeOffset.UtcNow - c.CreatedAt;
                     var ageStr = age.TotalHours < 1 ? $"{age.TotalMinutes:F0}m ago" : $"{age.TotalHours:F1}h ago";
+                    var isExpanded = _expandedContributions.Contains(c.Id);
                     <div style="border-left: 3px solid @dimensionColor; padding: 0.4em 0.8em; margin-bottom: 0.4rem; background: rgba(255,255,255,0.03);">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                            <span style="font-size: 0.9em;">@(string.IsNullOrEmpty(c.SourceContent) ? "(no source)" : c.SourceContent)</span>
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; cursor: pointer;"
+                             @onclick="() => ToggleExpand(c.Id)">
+                            <span style="font-size: 0.9em; @(isExpanded ? "" : "overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%;")">@(string.IsNullOrEmpty(c.SourceContent) ? "(no source)" : c.SourceContent)</span>
                             <span style="font-size: 0.8em; white-space: nowrap; margin-left: 1em;">
-                                <span style="color: @dimensionColor; font-weight: bold;">@FormatDelta(effective)</span>
+                                <span style="color: @HeatColor(effective); font-weight: bold;">@FormatDelta(effective)</span>
                                 <span style="opacity: 0.5;"> (raw @FormatDelta(delta))</span>
                             </span>
                         </div>
                         <div style="font-size: 0.75em; opacity: 0.5; margin-top: 0.2em;">
-                            @c.Category | @(string.IsNullOrEmpty(c.Register) ? "—" : c.Register) | sev: @c.Severity.ToString("F2") | decay: @decay.ToString("F2") | @ageStr
+                            @c.Category | @(string.IsNullOrEmpty(c.Register) ? "—" : c.Register) |
+                            sev: <span style="color: @HeatColor(c.Severity);">@c.Severity.ToString("F2")</span> |
+                            decay: <span style="color: @HeatColor((float)decay);">@decay.ToString("F2")</span> | @ageStr
                             <button style="margin-left: 0.5em; font-size: 0.9em; padding: 0 0.3em; cursor: pointer;"
                                     @onclick="() => ExpireContribution(c.Id)"
                                     title="Expire this contribution">✕</button>
@@ -251,6 +263,8 @@
     private ConversationThread? _activeThread;
     private DiagnosticReport? _diagnosticReport;
     private string? _selectedDimension;
+    private string _contributionSort = "score";
+    private HashSet<Guid> _expandedContributions = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -297,15 +311,32 @@
     private void ToggleDimension(string dimension)
     {
         _selectedDimension = _selectedDimension == dimension ? null : dimension;
+        _expandedContributions.Clear();
+    }
+
+    private void SetSort(string sort)
+    {
+        _contributionSort = sort;
+    }
+
+    private void ToggleExpand(Guid id)
+    {
+        if (!_expandedContributions.Remove(id))
+            _expandedContributions.Add(id);
     }
 
     private List<EmotionalContribution> GetContributionsForDimension(string dimension)
     {
         var now = DateTimeOffset.UtcNow;
-        return _contributions
-            .Where(c => !c.IsEffectivelyZero(now) && Math.Abs(GetDelta(c, dimension)) > 0.001f)
-            .OrderByDescending(c => Math.Abs(GetDelta(c, dimension) * c.Severity * (float)c.DecayFactor(now)))
-            .ToList();
+        var filtered = _contributions
+            .Where(c => !c.IsEffectivelyZero(now) && Math.Abs(GetDelta(c, dimension)) > 0.001f);
+
+        return _contributionSort switch
+        {
+            "severity" => filtered.OrderByDescending(c => c.Severity).ToList(),
+            "decay" => filtered.OrderByDescending(c => c.DecayFactor(now)).ToList(),
+            _ => filtered.OrderByDescending(c => Math.Abs(GetDelta(c, dimension) * c.Severity * (float)c.DecayFactor(now))).ToList(),
+        };
     }
 
     private static float GetDelta(EmotionalContribution c, string dimension) => dimension switch
@@ -322,4 +353,30 @@
 
     private static string DeltaColor(float delta) =>
         delta > 0.01f ? "#4caf50" : delta < -0.01f ? "#f44336" : "#888";
+
+    private static string HeatColor(float value)
+    {
+        // Heatmap: negative values red, zero gray, positive green
+        // For severity/decay (0-1): low=red, mid=yellow, high=green
+        var abs = Math.Abs(value);
+        if (value < -0.01f)
+        {
+            // Negative: red spectrum (more negative = more red)
+            var t = Math.Min(abs / 0.35f, 1f);
+            var r = 255;
+            var g = (int)(255 * (1 - t * 0.7f));
+            var b = (int)(255 * (1 - t * 0.85f));
+            return $"rgb({r},{g},{b})";
+        }
+        if (value > 0.01f)
+        {
+            // Positive: green spectrum (more positive = more green)
+            var t = Math.Min(abs / 0.35f, 1f);
+            var r = (int)(255 * (1 - t * 0.7f));
+            var g = 255;
+            var b = (int)(255 * (1 - t * 0.85f));
+            return $"rgb({r},{g},{b})";
+        }
+        return "#888";
+    }
 }
