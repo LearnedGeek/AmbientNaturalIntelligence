@@ -24,22 +24,50 @@ LM-Kit.NET replaces all of these with one framework: small local models that act
 
 ## 2. Architecture
 
+### LearnedGeek.ML — Shared Classification Library
+
+The classification service is extracted into a shared library that both ANI and DrOk consume.
+The library is domain-agnostic — it classifies text. What consumers do with the classification
+(pick a voice tag vs detect patient distress) is their concern.
+
 ```
-LM-Kit Classification Service (singleton, loaded at startup)
-├── EmotionClassifier     — 5+ emotion categories on any text
-├── SarcasmClassifier     — sarcastic vs sincere detection
-├── ConfabulationClassifier — grounded vs confabulated claims (custom)
-├── RegisterClassifier    — ANI register taxonomy (custom)
-└── EntityRecognizer      — person/place/org detection
+LearnedGeek.ML (shared class library — NuGet or project reference)
+├── ITextClassificationService (interface)
+├── LMKitClassificationService (implementation)
+├── ITagMappingService (emotion → tag resolution)
+├── TagMappingService (static → semantic → learned evolution)
+├── Models/
+│   ├── EmotionClassifier      — 5+ emotion categories
+│   ├── SarcasmClassifier      — sarcastic vs sincere
+│   ├── ConfabulationClassifier — grounded vs confabulated (custom)
+│   ├── RegisterClassifier     — ANI register taxonomy (custom)
+│   └── EntityRecognizer       — person/place/org detection
+└── TagMapping/
+    ├── StaticTagMap.json      — Phase 1 hardcoded mappings
+    ├── TagEmbeddingIndex      — Phase 2 semantic similarity
+    └── LearnedPreferences     — Phase 3 feedback-driven evolution
 
 Consumers:
-├── VoiceTagEnricher      → EmotionClassifier + SarcasmClassifier → v3 tag
-├── ConversationReplyPhase → ConfabulationClassifier → retrieval trigger
-├── DiagnosticService     → EmotionClassifier → emotional model validation
-├── EmergenceClassifier   → RegisterClassifier → richer EM typing
-├── Phase 5c Harvest      → RegisterClassifier → auto-tag training pairs
-└── DrOk/Infanzia         → EmotionClassifier + EntityRecognizer → cross-domain
+├── AniRuntime (ANI)
+│   ├── VoiceTagEnricher       → EmotionClassifier + SarcasmClassifier → v3 tag
+│   ├── ConversationReplyPhase → ConfabulationClassifier → retrieval trigger
+│   ├── DiagnosticService      → EmotionClassifier → emotional model validation
+│   ├── EmergenceClassifier    → RegisterClassifier → richer EM typing
+│   └── Phase 5c Harvest       → RegisterClassifier → auto-tag training pairs
+│
+└── PhysicianAssistant (DrOk/Infanzia)
+    ├── Triage                 → EmotionClassifier → patient distress detection
+    ├── Intake                 → EntityRecognizer → patient/guardian names
+    ├── Compliance             → EntityRecognizer → PII detection/redaction
+    └── Conversation           → EmotionClassifier → tone-appropriate responses
 ```
+
+### Cross-Platform Benefits
+
+One trained model, two products. The emotion classifier that helps Ani sound tender
+also helps DrOk detect a distressed parent. Each product teaches the library something
+different — ANI teaches emotional nuance, DrOk teaches clinical sensitivity. Both
+improve together through the shared `LearnedPreferences` feedback mechanism.
 
 ### Core Service
 
@@ -105,7 +133,47 @@ Sentence → LM-Kit emotion classify → emotion-to-tag mapping → ElevenLabs v
 | neutral + evening | 17-22 | [evening relaxed] |
 | sarcasm detected | any | [sarcastic] |
 
-The full 1,806 tag library is available for more granular mapping as we tune.
+### Dynamic Tag Mapping Evolution
+
+The static mapping table above is the starting point. The tag mapping evolves through three stages,
+all implemented in `LearnedGeek.ML.TagMappingService`:
+
+**Stage 1 — Static (launch):**
+Hardcoded emotion + time-of-day → tag table. Simple, predictable, tunable by editing JSON.
+Gets us running immediately. The table above is Stage 1.
+
+**Stage 2 — Semantic (learn):**
+Use LM-Kit's embedding capabilities to match emotion classification results *semantically*
+against the 1,806 tag descriptions. Each tag has a description: "[evening playful] — Speaker
+sounds fun and lighthearted in the evening." Compute embedding similarity between the detected
+emotion state and all tag descriptions. The closest semantic match wins — no hardcoded table.
+
+```
+Detected: happiness (0.85 confidence), time: 8:15 PM
+→ Embed "happiness, high confidence, evening"
+→ Compare against all 1,806 tag description embeddings
+→ Top match: [evening spirited] (0.92 similarity)
+→ Runner up: [evening playful] (0.89 similarity)
+→ Select: [evening spirited]
+```
+
+This discovers tag nuances the static table can't capture. "Evening spirited" vs "evening playful"
+is a distinction a human mapping table wouldn't make but semantic similarity resolves naturally.
+
+**Stage 3 — Learned (evolve):**
+Feed listener feedback back into the mapping. Sources of feedback:
+
+- Mark's engagement signals (longer replies, laughter, "haha", continued conversation)
+- Conversation quality scores (from Phase 5c evaluation)
+- Emergence events (did the tag choice produce EM2/EM5 emergence in the listener?)
+- Explicit corrections ("that sounded weird" → negative signal for the tag used)
+
+Over time, the mapping learns: `[wistful]` produces better engagement than `[melancholic]` for
+sadness in evening context. `[mischievous]` works better than `[playful]` when Ani says "idiot."
+
+This feedback loop lives in `LearnedGeek.ML` — it improves tag selection for ANI voice delivery
+AND could improve tone selection for DrOk's patient-facing messages. The library gets smarter
+across all products.
 
 **Acceptance criteria:**
 - [ ] LM-Kit NuGet package installed and builds
