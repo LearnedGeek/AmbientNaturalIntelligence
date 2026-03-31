@@ -305,10 +305,10 @@ Feature flags per classifier allow incremental rollout.
 - [x] Create ITextClassificationService interface
 - [x] Implement LMKitClassificationService
 - [x] Load emotion + sarcasm models at startup (lazy, first-use)
-- [ ] Replace VoiceTagEnricher regex with emotion classification
+- [ ] Replace VoiceTagEnricher regex with emotion classification (deferred — dual-signal approach instead)
 - [x] Build emotion+time → v3 tag mapping table
-- [ ] Test voice quality with ML-selected tags
-- [ ] Log emotion classification results for tuning
+- [ ] Test voice quality with ML-selected tags (A/B test: heuristic vs ML vs dual-signal)
+- [x] Log emotion classification results for tuning (stored on every contribution)
 
 **Completed infrastructure (LearnedGeek.ML library):**
 - [x] ITextClassificationService + ITagMappingService interfaces
@@ -319,19 +319,45 @@ Feature flags per classifier allow incremental rollout.
 - [x] MLOptions configuration class
 - [x] ServiceCollectionExtensions (AddLearnedGeekML DI registration)
 - [x] 30 tests (21 TagMapping + 9 MLVoiceTagEnricher)
+- [x] Wired into ANI service Program.cs (AddLearnedGeekML + MLOptions config)
+- [x] ClassificationComparisonService (side-by-side heuristic vs ML evaluation)
+- [x] Classification comparison dashboard page (/classification)
+- [x] Configurable scan window (7d / 30d / 90d / 6mo / 1yr / All time)
+- [x] Backfill button — retroactively populate ML fields on null contributions
+
+**Discovery: State-Expression Divergence (March 31, 2026):**
+- [x] Discovered that heuristic (state) and ML (expression) measure orthogonal properties
+- [x] 18% tag agreement, 27% emotion alignment — systematic, not random
+- [x] Reframed: ML is extension, not replacement — dual-signal approach
+- [x] Paper 2 Section 5.18 written: "Emergent Display Rules"
+
+**Dual-signal pipeline (March 31, 2026):**
+- [x] ML classification stored on every new EmotionalContribution (MLEmotion, MLConfidence, MLSarcasmDetected)
+- [x] Divergence score per contribution (0.0 = aligned, 1.0 = divergent)
+- [x] Divergence trend chart on /classification (auto-loads from stored data)
+- [x] CycleObservation + builder updated with ML fields for emergence layer
+- [x] EM8: Display Rule Divergence emergence type added (8 types total)
+- [x] EM8 on emergence tab with filter support
+
+**Confabulation Check 4 (March 31, 2026):**
+- [x] Self-activity detection ("I just finished a meeting", "my shift", "I've been working")
+- [x] Contact-activity detection ("your class", "your sister", "your job at")
+- [x] Relationship fact detection ("our anniversary", "that restaurant we")
+- [x] Targeted profile retrieval on trigger (searches confabulated reply, not just user message)
 
 ### Phase 2: Emotional Validation
-- [ ] Add emotion classification to conversation reply pipeline
-- [ ] Implement disconnect detection logic
+- [x] Add emotion classification to conversation reply pipeline (dual-signal on every contribution)
+- [ ] Implement disconnect detection logic (state says X but expression says Y → flag)
 - [ ] Add EMOTIONAL-DISCONNECT to diagnostic service
 - [ ] Dashboard health badge integration
-- [ ] Research log entry with initial findings
+- [x] Research log entry with initial findings (display rules discovery)
 
 ### Phase 3: Confabulation
-- [ ] Evaluate zero-shot confabulation classification
-- [ ] Compare accuracy vs Catalyst POS + regex
+- [ ] Evaluate zero-shot confabulation classification via LM-Kit Categorization
+- [ ] Compare accuracy vs Catalyst POS + regex + Check 4 markers
 - [ ] If superior: replace, if not: keep as secondary signal
 - [ ] Document findings for research
+- [x] Check 4 marker-based detection deployed (self/contact/relationship claims)
 
 ### Phase 4: Register Classification
 - [ ] Prepare labeled dataset from v7 training pairs
@@ -341,15 +367,18 @@ Feature flags per classifier allow incremental rollout.
 - [ ] Accuracy evaluation on held-out set
 
 ### Phase 5: Cross-Domain
+- [x] Cross-project note for DrOk (docs/research/ANI-Cross-Project-LearnedGeek-ML.md)
 - [ ] Evaluate LM-Kit for DrOk requirements
 - [ ] PII detection testing with medical text
 - [ ] Emotion detection on patient messages
+- [ ] State-expression divergence for patient suppression detection
 - [ ] Document cross-domain transfer findings
 
 ### Phase 6: Emergence
-- [ ] ML-based EM classification evaluation
+- [x] EM8 Display Rule Divergence type added
+- [ ] ML-based EM classification evaluation (replace regex heuristics)
 - [ ] Compare accuracy vs regex heuristics
-- [ ] New emergence type discovery
+- [ ] Divergence profile per register as maturity metric
 - [ ] Research documentation
 
 ## 7. Research Significance
