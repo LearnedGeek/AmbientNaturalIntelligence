@@ -301,10 +301,10 @@ Feature flags per classifier allow incremental rollout.
 ## 6. Task Checklist
 
 ### Phase 1: Voice Tags
-- [ ] Install LM-Kit.NET NuGet package
+- [x] Install LM-Kit.NET NuGet package (v2026.3.5)
 - [x] Create ITextClassificationService interface
-- [ ] Implement LMKitClassificationService
-- [ ] Load emotion + sarcasm models at startup
+- [x] Implement LMKitClassificationService
+- [x] Load emotion + sarcasm models at startup (lazy, first-use)
 - [ ] Replace VoiceTagEnricher regex with emotion classification
 - [x] Build emotion+time → v3 tag mapping table
 - [ ] Test voice quality with ML-selected tags

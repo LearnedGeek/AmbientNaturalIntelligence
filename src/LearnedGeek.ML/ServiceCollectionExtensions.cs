@@ -24,8 +24,11 @@ public static class ServiceCollectionExtensions
         // Tag mapping: singleton — rules loaded once, reused across requests
         services.TryAddSingleton<ITagMappingService, TagMappingService>();
 
-        // Classification: registered by the consumer when LM-Kit models are available.
-        // If no implementation is registered, consumers should check for null/use feature flags.
+        // Classification: LM-Kit backed, lazy model loading on first use
+        services.TryAddSingleton<ITextClassificationService, LMKitClassificationService>();
+
+        // ML-powered voice tag enricher (bridges classification → v3 audio tags)
+        services.TryAddSingleton<MLVoiceTagEnricher>();
 
         return services;
     }
