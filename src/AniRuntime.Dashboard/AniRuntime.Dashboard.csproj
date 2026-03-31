@@ -16,6 +16,7 @@
     <ProjectReference Include="..\AniRuntime.Memory\AniRuntime.Memory.csproj" />
     <ProjectReference Include="..\AniRuntime.Loops\AniRuntime.Loops.csproj" />
     <ProjectReference Include="..\AniRuntime.Emergence\AniRuntime.Emergence.csproj" />
+    <ProjectReference Include="..\LearnedGeek.ML\LearnedGeek.ML.csproj" />
   </ItemGroup>
 
 </Project>

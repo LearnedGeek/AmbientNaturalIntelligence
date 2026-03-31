@@ -1,0 +1,187 @@
+@page "/classification"
+@using AniRuntime.Core.Interfaces
+@using AniRuntime.Core.Models
+@using LearnedGeek.ML
+@using LearnedGeek.ML.Models
+@inject IMemoryAnalytics MemoryAnalytics
+@inject ClassificationComparisonService ComparisonService
+
+<h1>Classification Comparison</h1>
+<p><em>Heuristic registers vs LM-Kit ML classification — side by side</em></p>
+
+<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+    <button @onclick="RunScan" disabled="@ComparisonService.ScanInProgress"
+            style="padding: 0.5em 1.2em; border-radius: 4px; background: #2196f3; color: white; border: none; cursor: pointer; font-weight: bold;">
+        @(ComparisonService.ScanInProgress ? "Scanning..." : "Run Full Scan")
+    </button>
+    <small style="opacity: 0.6;">
+        @if (_scanStatus is not null)
+        {
+            @_scanStatus
+        }
+        else if (ComparisonService.LatestSummary is not null)
+        {
+            <text>Last scan: @ComparisonService.LatestSummary.ScanTimestamp.LocalDateTime.ToString("h:mm tt") — @ComparisonService.LatestSummary.TotalCompared items</text>
+        }
+    </small>
+</div>
+
+@if (ComparisonService.LatestSummary is not null)
+{
+    var s = ComparisonService.LatestSummary;
+    <section>
+        <h3>Summary</h3>
+        <div class="grid">
+            <article>
+                <header>Total Compared</header>
+                <div style="text-align: center;">
+                    <p style="font-size: 2em; margin: 0;">@s.TotalCompared</p>
+                </div>
+            </article>
+            <article>
+                <header>Tag Agreement</header>
+                <div style="text-align: center;">
+                    <p style="font-size: 2em; margin: 0; color: @AgreementColor(s.TagAgreementRate)">@s.TagAgreementRate.ToString("P0")</p>
+                    <small>@s.TagMatches / @s.TotalCompared</small>
+                </div>
+            </article>
+            <article>
+                <header>Emotion Alignment</header>
+                <div style="text-align: center;">
+                    <p style="font-size: 2em; margin: 0; color: @AgreementColor(s.EmotionAgreementRate)">@s.EmotionAgreementRate.ToString("P0")</p>
+                    <small>@s.EmotionAlignments / @s.TotalCompared</small>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section>
+        <h3>ML Emotion Distribution</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+            @foreach (var kvp in s.MLEmotionDistribution.OrderByDescending(x => x.Value))
+            {
+                var pct = (float)kvp.Value / s.TotalCompared;
+                <div style="padding: 0.4em 0.8em; background: rgba(33,150,243,0.15); border-radius: 4px; font-size: 0.9em;">
+                    <strong>@kvp.Key</strong> @kvp.Value <small style="opacity: 0.6;">(@pct.ToString("P0"))</small>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section>
+        <h3>Heuristic Register Distribution</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+            @foreach (var kvp in s.HeuristicRegisterDistribution.OrderByDescending(x => x.Value))
+            {
+                var pct = (float)kvp.Value / s.TotalCompared;
+                <div style="padding: 0.4em 0.8em; background: rgba(156,39,176,0.15); border-radius: 4px; font-size: 0.9em;">
+                    <strong>@kvp.Key</strong> @kvp.Value <small style="opacity: 0.6;">(@pct.ToString("P0"))</small>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@if (ComparisonService.Comparisons.Count > 0)
+{
+    <section>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0;">Detailed Comparison</h3>
+            <div style="margin-left: auto; display: flex; gap: 0.3rem;">
+                <button @onclick="@(() => _sortBy = "confidence")"
+                        style="padding: 0.2em 0.5em; border-radius: 4px; background: @(_sortBy == "confidence" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)"); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">Confidence</button>
+                <button @onclick="@(() => _sortBy = "disagreements")"
+                        style="padding: 0.2em 0.5em; border-radius: 4px; background: @(_sortBy == "disagreements" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)"); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">Disagreements</button>
+                <button @onclick="@(() => _sortBy = "all")"
+                        style="padding: 0.2em 0.5em; border-radius: 4px; background: @(_sortBy == "all" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)"); color: inherit; border: none; cursor: pointer; font-size: 0.8em;">All</button>
+            </div>
+        </div>
+
+        @{
+            var sorted = GetSortedComparisons();
+        }
+
+        <div style="max-height: 600px; overflow-y: auto;">
+            @foreach (var c in sorted.Take(100))
+            {
+                var alignColor = c.EmotionAligns ? "#4caf50" : "#f44336";
+                var tagColor = c.TagsMatch ? "#4caf50" : "#ff9800";
+                var isExpanded = _expandedItems.Contains(c.Id);
+                <div style="border-left: 3px solid @alignColor; padding: 0.4em 0.8em; margin-bottom: 0.3rem; background: rgba(255,255,255,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; cursor: pointer;"
+                         @onclick="() => ToggleExpand(c.Id)">
+                        <span style="font-size: 0.85em; @(isExpanded ? "" : "overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%;")">
+                            @(string.IsNullOrEmpty(c.SourceContent) ? "(no source)" : c.SourceContent)
+                        </span>
+                        <span style="font-size: 0.8em; white-space: nowrap; margin-left: 0.5em;">
+                            <span style="color: #9c27b0;">@c.HeuristicRegister</span>
+                            →
+                            <span style="color: #2196f3; font-weight: bold;">@c.MLEmotion (@c.MLConfidence.ToString("F2"))</span>
+                            <span style="color: @alignColor; margin-left: 0.3em;">@(c.EmotionAligns ? "✓" : "✗")</span>
+                        </span>
+                    </div>
+                    @if (isExpanded)
+                    {
+                        <div style="font-size: 0.75em; opacity: 0.6; margin-top: 0.3em;">
+                            Heuristic: @c.HeuristicCategory / @c.HeuristicRegister (sev @c.HeuristicSeverity.ToString("F2"))
+                            | ML: @c.MLEmotion (@c.MLConfidence.ToString("F2"))
+                            @if (c.MLSarcasmDetected) { <span style="color: #ff9800;"> | sarcasm: @c.MLSarcasmConfidence.ToString("F2")</span> }
+                            | Tags: <span style="color: @tagColor;">@(c.HeuristicTag ?? "—") → @(c.MLTag ?? "—")</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    private string? _scanStatus;
+    private string _sortBy = "disagreements";
+    private HashSet<Guid> _expandedItems = new();
+
+    private async Task RunScan()
+    {
+        _scanStatus = "Loading contributions...";
+        StateHasChanged();
+
+        var contributions = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.UtcNow.AddDays(-30));
+        var snapshots = contributions
+            .Where(c => !string.IsNullOrWhiteSpace(c.SourceContent))
+            .Select(c => new ContributionSnapshot(
+                c.Id,
+                c.SourceContent,
+                c.Register ?? "",
+                c.Category.ToString(),
+                c.Severity))
+            .ToList();
+
+        _scanStatus = $"Classifying {snapshots.Count} contributions with LM-Kit...";
+        StateHasChanged();
+
+        await ComparisonService.RunComparisonAsync(snapshots);
+        _scanStatus = null;
+        StateHasChanged();
+    }
+
+    private List<ClassificationComparison> GetSortedComparisons()
+    {
+        var items = ComparisonService.Comparisons;
+        return _sortBy switch
+        {
+            "confidence" => items.OrderByDescending(c => c.MLConfidence).ToList(),
+            "disagreements" => items.Where(c => !c.EmotionAligns).Concat(items.Where(c => c.EmotionAligns))
+                .ToList(),
+            _ => items.ToList(),
+        };
+    }
+
+    private void ToggleExpand(Guid id)
+    {
+        if (!_expandedItems.Remove(id))
+            _expandedItems.Add(id);
+    }
+
+    private static string AgreementColor(float rate) =>
+        rate >= 0.80f ? "#4caf50" : rate >= 0.50f ? "#ff9800" : "#f44336";
+}

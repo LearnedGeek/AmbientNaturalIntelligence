@@ -30,6 +30,9 @@ public static class ServiceCollectionExtensions
         // ML-powered voice tag enricher (bridges classification → v3 audio tags)
         services.TryAddSingleton<MLVoiceTagEnricher>();
 
+        // Comparison service for heuristic vs ML accuracy evaluation
+        services.TryAddSingleton<ClassificationComparisonService>();
+
         return services;
     }
 }
