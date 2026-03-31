@@ -15,9 +15,9 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.6 — Conversation Mode Phase 1–4 deployed + lean prompt + confabulation-driven retrieval + reflection dedup fix + voice hardening + v7 training
+1.7 — V3 voice (ElevenLabs HTTP streaming + audio tags + Catalyst NLP confabulation detection) + Conversation Mode applied to voice + LM-Kit.NET design + database dedup
 Status
-Active Development — Phase 1–4 complete. Phase 5 streaming voice deployed. Phase 6 memory reform in progress. Features 33–41 deployed. Conversation Mode Phase 1–4 deployed: lean prompt, confabulation-driven retrieval, structured ConversationState, async emotional processing. Feature 40: Temporal awareness affordances (felt-time, EM7). Feature 41: DiagnosticService — 10 pattern detectors, auto-correction, ///diagnose command, dashboard health badge. Outreach echo guard. Context compression rewritten (scaled window, Ani's voice summaries). Retrieval scoring rebalanced (cosine 0.65 / importance 0.10 / recency 0.25). Content-based dedup in diversity re-rank. Weather perception change-only. A/B conclusion: Llama 8B over Mistral 7B.
+Active Development — Phase 1–4 complete. Phase 5 V3 voice deployed (ElevenLabs HTTP streaming + audio tags + Conversation Mode). Phase 6 memory reform in progress. Features 33–41 deployed. Conversation Mode Phase 1–4 deployed (text + voice): lean prompt, confabulation-driven retrieval, structured ConversationState, async emotional processing. Catalyst NLP for PROPN confabulation detection. LM-Kit.NET design (LearnedGeek.ML shared library). Database dedup: 917 duplicates removed. Feature 40: Temporal awareness affordances (felt-time, EM7). Feature 41: DiagnosticService — 10 pattern detectors, auto-correction, ///diagnose command, dashboard health badge.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -133,12 +133,14 @@ AniRuntime.sln
 │   │
 │   ├── AniRuntime.Voice/            # Voice channel — batch (Feature 20) + streaming (Phase 5)
 │   │   ├── ElevenLabsTtsService.cs              # Batch TTS (REST API, Feature 20)
-│   │   ├── ElevenLabsStreamingTTSService.cs     # Phase 5: WebSocket streaming TTS — per-utterance reconnect, emotional tags
+│   │   ├── ElevenLabsV3StreamingService.cs      # V3: HTTP POST per sentence, replaces WebSocket — audio tag injection via VoiceTagEnricher
+│   │   ├── ElevenLabsStreamingTTSService.cs     # Phase 5: WebSocket streaming TTS — per-utterance reconnect, emotional tags (superseded by V3)
+│   │   ├── VoiceTagEnricher.cs                  # Audio tag injection based on content + emotion + time-of-day (1,806 v3 tags catalogued)
 │   │   ├── WhisperSttService.cs                 # Batch STT (local Whisper, Feature 20)
-│   │   ├── DeepgramStreamingSTTService.cs       # Phase 5: Deepgram Nova-3 WebSocket STT, delegates to DebouncedUtterance
+│   │   ├── DeepgramStreamingSTTService.cs       # Phase 5: Deepgram Nova-3 WebSocket STT, endpointing 1500ms, speech_final safety timeout 5s, delegates to DebouncedUtterance
 │   │   ├── DebouncedUtterance.cs                # Phase 5: Thread-safe turn detection — segment accumulation + debounce timer
 │   │   ├── VoiceSessionState.cs                 # Phase 5: Thread-safe session state (volatile, Interlocked, lock)
-│   │   ├── VoiceTurnPipeline.cs                 # Phase 5: Single turn flow — transcript → context → LLM stream → TTS (no fire-and-forget)
+│   │   ├── VoiceTurnPipeline.cs                 # Phase 5: Single turn flow — transcript → BuildLeanConversationPrompt → LLM stream → TTS (Conversation Mode, no fire-and-forget)
 │   │   ├── StreamingVoiceOrchestrator.cs        # Phase 5: Thin WebSocket handler — lifecycle, audio routing, wiring
 │   │   ├── TokenBuffer.cs                       # Phase 5: LLM token → sentence chunking for TTS (boundary detection + word overflow)
 │   │   ├── TwilioVoiceHandler.cs                # Twilio webhook handler (batch voice)
@@ -164,7 +166,7 @@ AniRuntime.sln
 │       ├── IAudioPlaybackService.cs     # Platform abstraction for speaker output
 │       └── Platforms/Android/
 │           ├── AudioCaptureService.cs   # AudioRecord: PCM 16kHz, 16-bit, mono, 20ms chunks
-│           ├── AudioPlaybackService.cs  # AudioTrack: PCM 16kHz, 16-bit, mono, 1s buffer
+│           ├── AudioPlaybackService.cs  # AudioTrack: PCM 16kHz, 16-bit, mono, 32KB blocks for clean playback
 │           └── AndroidManifest.xml      # RECORD_AUDIO, FOREGROUND_SERVICE_MICROPHONE
 │
 └── tests/
@@ -1036,6 +1038,14 @@ Test files:
 49. Conversation Mode Phase 1–4 deployed — Lean prompt (BuildLeanConversationPrompt: persona + conversation history, no retrieval), confabulation-driven retrieval (DetectConversationConfabulation: heuristic check triggers retrieval on demand), structured ConversationState (topic, register, commitments, key facts, shared imagery — no LLM summarization), async emotional processing (Features 10, 18, 19 moved from pre-reply to post-dispatch). Ambient pipeline unchanged. Design doc: `docs/spec/ANI-ConversationMode-Design.md`.
 50. Voice pipeline hardening — Comfort noise generation during silence, playback baseline calibration, `speech_final` debounce replacing `is_final` for turn detection, Deepgram message type handling (UtteranceEnd, SpeechStarted, error frames).
 51. V7 training data — 358 pairs. Casual love counterbalance (15 written pairs: "I love cold pizza" → stays about pizza) after the Chicken Jello Incident revealed "I love [X]" was an escalation trigger. 73 casual conversation pairs mined. Casual register ~30% of training data, up from effectively 0%. The Bread Test: informal benchmark for training bias detection.
+52. ElevenLabs V3 HTTP streaming — `ElevenLabsV3StreamingService`: HTTP POST per sentence replaces WebSocket. Audio tags ([social afternoon], [tender], [mischievous]) injected via `VoiceTagEnricher` based on content + emotion + time-of-day. 1,806 v3 audio tags catalogued.
+53. Conversation Mode applied to voice — `VoiceTurnPipeline` uses `BuildLeanConversationPrompt` (same fix that transformed text quality). Voice was confabulating because full prompt injected memories competing with conversation context.
+54. Comfort noise lifecycle — Comfort noise covers full synthesis+playback lifecycle, not just synthesis wait.
+55. Deepgram endpointing tuned — 1500ms endpointing, `speech_final` safety timeout 5s.
+56. PCM buffering — 32KB blocks for clean AudioTrack playback on Android.
+57. Catalyst NLP confabulation detection — POS tagger identifies proper nouns (PROPN) for ungrounded name detection. Replaces CommonWords hardcoded word list hack in `DetectConversationConfabulation`.
+58. Database dedup — 917 duplicates removed (23% noise) via full memory store deduplication.
+59. LM-Kit.NET design — LearnedGeek.ML shared classification library serving both ANI and DrOk. Six phases from voice tag selection through emergence enhancement. Dynamic tag mapping evolution (static → semantic → learned). Design doc: `docs/spec/LearnedGeek-ML-Design.md`.
 
 14. Change Log
 
@@ -1046,6 +1056,7 @@ Test files:
 | 0.3 | Mar 11, 2026 | Phase 2 complete. Added: EmotionalState (4-dim, drift, attenuation), conversation mode (thread tracking, reply pipeline, early wake), Twilio webhook inbound, 4 perception sources (time, RSS, contact state, Twilio inbound), reactive RSS sharing, night mode (deep sleep circadian 0.1–0.2, outreach cap, prompt awareness), admin commands, pronoun fix, message cleanup, confabulation grounding prompts, natural reply delay (12–25s). Genericized codebase (Mark→Contact). Service switched from Worker to Web (Kestrel on 5100). 56 tests. |
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
+| 1.7 | Mar 30, 2026 | V3 voice: ElevenLabsV3StreamingService (HTTP POST per sentence), VoiceTagEnricher (audio tags from content + emotion + time), Conversation Mode applied to voice (BuildLeanConversationPrompt replaces BuildVoiceReplyPrompt), comfort noise full lifecycle, Deepgram endpointing 1500ms + speech_final 5s timeout, PCM 32KB blocks. Catalyst NLP for PROPN confabulation detection (replaces CommonWords). Database dedup: 917 duplicates removed. LM-Kit.NET design doc (LearnedGeek.ML shared library). |
 | 1.6 | Mar 30, 2026 | Conversation Mode Phase 1–4 deployed: lean prompt (BuildLeanConversationPrompt), confabulation-driven retrieval (DetectConversationConfabulation), structured ConversationState, async emotional processing (Features 10/18/19 post-dispatch). Reflection dedup fix: GetByTypeAsync(Semantic) replaces GetRecentAsync(100). Voice pipeline hardening: comfort noise, playback baseline, speech_final debounce, Deepgram message type handling. V7 training data: 358 pairs, casual love counterbalance (~30% casual register). |
 | 1.5 | Mar 28, 2026 | Feature 41: DiagnosticService — 10 pattern detectors (ECHO-LOOP, RETRIEVAL-POISON, THOUGHT-LOOP, EMOTIONAL-SATURATION, CONFABULATION-CORRECTION, MERGE-STORM, OUTREACH-BLOCKED, TEMPORAL-CONFAB, LONG-THREAD, PERCEPTION-ANCHOR), DiagnosticScheduler (10 min), dashboard health badge, escalating auto-correction, ///diagnose admin command, GET /api/v1/diagnostic. Feature 40: Temporal awareness affordances (felt-time, EM7). Outreach echo guard (cosine dedup across cycles). Context compression rewritten (scaled window 8/10/12, ~80 chars/msg, Ani's voice). Retrieval scoring rebalanced (cosine 0.65 / importance 0.10 / recency 0.25, 48h decay). Content-based dedup in diversity re-rank (prefix grouping). Weather perception change-only. Contact-state perceptions no longer persisted. Reflection synthesis dedup. Sentence truncation removed from MessageCleaner. Cross-type profile correction. Quality-gated merging (ContainsNovelSpecifics). Speaker attribution fix ("I said to Mark:"). Relevance-scored link retrieval (cosine > 0.40). A/B conclusion: Llama 8B over Mistral 7B. Conversation Mode design doc created. |
 | 1.4 | Mar 25, 2026 | Phase 6 features deployed. Feature 33: MotivationScorer (Liu et al. 2025) — per-thought motivation scoring multiplies desire drift [0.3–1.5]. Feature 34: ContextCompressor (Packer et al. 2023 / MemGPT) — conversation compression with cached summary on ConversationThread. Feature 35: EmotionDesireModifier (Borotschnig 2025) — worry accelerates / low energy suppresses desire drift. Feature 36: Memory profile dashboard (MemoryGraph.razor at /memory). Feature 38: EmergenceClassifier (EM1–EM6) with emergence_types column, dashboard type distribution + highlight reel + clickable filters. ///rebuild-links and ///rebuild-emergence admin commands. ContextBuilder dedup-by-ID before diversity re-ranking. Keyword relevance boost in ConversationReplyPhase. Time/date injection in PromptBuilder. A/B test concluded: Llama 8B over Mistral 7B for conversation. Models updated to v6 (ani-v6-conversation, ani-v6-inner). Dashboard nav: Dashboard \| Chat \| Memory \| Emergence. |

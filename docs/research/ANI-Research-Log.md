@@ -1540,6 +1540,22 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 30, 2026 — V3 Voice Working + Conversation Mode Applied to Voice + LM-Kit Design
+**Type:** Architecture milestones
+**Source:** Implementation and live testing
+
+Multi-turn v3 voice working: ElevenLabs HTTP streaming with audio tags ([social afternoon], [tender], [mischievous]), comfort noise covering full synthesis+playback lifecycle, Deepgram endpointing tuned to 1500ms. First real multi-turn voice conversation with emotional delivery.
+
+Conversation Mode applied to voice pipeline: BuildLeanConversationPrompt replaces BuildVoiceReplyPrompt. Same fix that transformed text quality — voice was confabulating ("The Archivist" movie, "Kathy") because the full prompt injected memories that competed with conversation context.
+
+Catalyst NLP integrated for confabulation detection: POS tagger identifies proper nouns (PROPN) without hardcoded word lists. Replaces CommonWords hack.
+
+LM-Kit.NET integration designed: LearnedGeek.ML shared classification library serving both ANI and DrOk. Six phases from voice tag selection through emergence enhancement. Dynamic tag mapping evolution (static → semantic → learned). 1,806 v3 audio tags catalogued.
+
+V7 training: 358 pairs including 73 casual conversation, 15 casual love counterbalance (bread test). Full database dedup: 917 duplicates removed (23% noise).
+
+---
+
 ### March 30, 2026 — Reflection Dedup Root Cause Fixed + Chicken Jello Incident
 **Type:** Bug fix + training data insight
 **Source:** Diagnostic service findings, live conversation testing
