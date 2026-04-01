@@ -10,7 +10,13 @@
 @inject ClassificationComparisonService ComparisonService
 
 <h1>Classification Comparison</h1>
-<p><em>Heuristic registers vs LM-Kit ML classification — side by side</em></p>
+<p><em>Heuristic registers vs LM-Kit ML classification — side by side.</em>
+<small style="opacity: 0.6; display: block; margin-top: 0.3rem;">
+Two systems classify the same inner thought text independently.
+<strong>Heuristic</strong> measures emotional <em>state</em> (what dimension is active — Warmth, Energy, etc).
+<strong>LM-Kit ML</strong> measures textual <em>expression</em> (what emotion the words convey to a reader).
+These are complementary, not competing — divergence reveals emotional complexity (display rules), not classification error.
+</small></p>
 
 <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
     <button @onclick="RunScan" disabled="@ComparisonService.ScanInProgress"
@@ -53,7 +59,10 @@
 {
     <section>
         <h3>Divergence Trend</h3>
-        <small style="opacity: 0.6;">Average state-expression divergence per day (0 = aligned, 1 = divergent)</small>
+        <small style="opacity: 0.6;">Average state-expression divergence per day. Each bar = one day, number = contribution count.
+        Divergence measures the gap between emotional state (how she feels) and expression (what her words convey).
+        0.0 = aligned (state matches text), 1.0 = divergent (display rules — like saying "I'm fine" when worried).
+        Green &lt; 0.40, orange 0.40-0.70, red &gt; 0.70. Some divergence is healthy — it indicates emotional complexity.</small>
         <div style="display: flex; align-items: flex-end; gap: 2px; height: 120px; margin-top: 0.5rem; padding: 0.5rem 0;">
             @foreach (var day in _divergenceTrend)
             {
@@ -74,7 +83,9 @@
 {
     <section>
         <h3>Register Diversity Trend</h3>
-        <small style="opacity: 0.6;">Unique emotional registers per day (max 10) — target: 5+ for healthy diversity</small>
+        <small style="opacity: 0.6;">Unique emotional registers per day (max 10). Number = unique registers that day.
+        Measures thought diversity: are inner thoughts producing varied emotional content or repeating the same register?
+        Green = 7+ (highly diverse), blue = 4-6 (moderate), orange = 1-3 (needs improvement). Target: 5+ sustained.</small>
         <div style="display: flex; align-items: flex-end; gap: 2px; height: 100px; margin-top: 0.5rem; padding: 0.5rem 0;">
             @foreach (var day in _registerTrend)
             {

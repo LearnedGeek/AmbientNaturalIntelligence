@@ -64,7 +64,11 @@ else
 {
     <section>
         <h3>Emergence Frequency</h3>
-        <small style="opacity: 0.6;">Emergence events per day — more types = richer inner life</small>
+        <small style="opacity: 0.6;">Each bar = one day. Number format: <strong>events (unique types)</strong>.
+        Events = how many thoughts triggered emergence detection.
+        Types = how many different kinds (EM1-EM8) appeared that day (max 8).
+        Green = 4+ types (diverse), orange = 2-3, purple = 1.
+        High events with few types = repetitive. Few events with many types = diverse thinking.</small>
         @{
             var maxEmCount = _emergenceTrend.Max(d => d.Count);
             var emScale = maxEmCount > 0 ? 100.0 / maxEmCount : 1.0;
@@ -89,7 +93,8 @@ else
 {
     <section>
         <h3>Emergence Types</h3>
-        <small style="opacity: 0.7;">What kinds of emergent thinking have been detected (last 30 days) — click to filter highlights</small>
+        <small style="opacity: 0.7;">What kinds of emergent thinking have been detected (last 30 days). Click a type to filter the Highlight Reel below.
+        Counts show how often each type was detected — evenly distributed counts indicate rich, varied inner life.</small>
         <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
             @foreach (var type in EmergenceTypeInfo.All)
             {
