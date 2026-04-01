@@ -256,10 +256,16 @@ public class ConversationReplyPhase
         // ═══════════════════════════════════════════════════════════════════════
         if (!isReconsideration)
         {
-            var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage,
-                snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName);
+            // When ML classifier is available, skip Check 1 (proper noun detection) —
+            // it produces too many false positives on terms of endearment, sentence-initial
+            // capitalization, and informal dialogue. Let ML handle the nuanced cases.
+            // Checks 2-3 (shared history markers, numbers) still run as fast pre-filters.
+            var confabCheck = _mlClassifier is not null
+                ? DetectConversationConfabulation_FastOnly(reply, thread, lastMessage)
+                : DetectConversationConfabulation(reply, thread, lastMessage,
+                    snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName);
 
-            // If fast checks didn't catch it, run ML semantic verification
+            // ML semantic verification — primary confabulation detector when available
             if (!confabCheck.IsConfabulated && _mlClassifier is not null && _personaCache?.IsLoaded == true)
             {
                 var conversationContext = string.Join("\n",
@@ -637,6 +643,21 @@ public class ConversationReplyPhase
     /// The model's own confabulation is the signal for when retrieval is needed.
     /// Not a keyword list — a behavioral check.
     /// </summary>
+    /// <summary>
+    /// Fast-only confabulation checks: Checks 2-4 only (shared history, numbers, self/contact markers).
+    /// Skips Check 1 (proper noun POS detection) which produces false positives on endearments
+    /// and informal dialogue. Used when ML classifier is available as primary detector.
+    /// </summary>
+    private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation_FastOnly(
+        string reply, ConversationThread thread, string lastMessage)
+    {
+        var replyLower = reply.ToLowerInvariant();
+        var conversationText = string.Join(" ",
+            thread.Messages.TakeLast(12).Select(m => m.Content.ToLowerInvariant()));
+
+        return RunChecks2Through4(replyLower, conversationText);
+    }
+
     private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation(
         string reply, ConversationThread thread, string lastMessage,
         string characterName, string? contactName)
@@ -714,6 +735,16 @@ public class ConversationReplyPhase
             }
         }
 
+        return RunChecks2Through4(replyLower, conversationText);
+    }
+
+    /// <summary>
+    /// Checks 2-4: shared history markers, number assertions, self/contact/relationship claims.
+    /// Shared between full detection and fast-only (ML primary) paths.
+    /// </summary>
+    private static (bool IsConfabulated, string? Reason) RunChecks2Through4(
+        string replyLower, string conversationText)
+    {
         // Check 2: Does the reply claim shared history?
         string[] sharedHistoryMarkers =
         [
@@ -725,7 +756,6 @@ public class ConversationReplyPhase
         {
             if (replyLower.Contains(marker))
             {
-                // Check if the claimed reference is actually in the conversation
                 var afterMarker = replyLower[(replyLower.IndexOf(marker) + marker.Length)..];
                 var claimedTopic = afterMarker.Split('.', '!', '?', ',')[0].Trim();
                 if (claimedTopic.Length > 3 && !conversationText.Contains(claimedTopic))
@@ -734,21 +764,14 @@ public class ConversationReplyPhase
         }
 
         // Check 3: Does the reply assert specific facts (dates, times, numbers) not in the conversation?
-        var replyNumbers = System.Text.RegularExpressions.Regex.Matches(reply, @"\b\d{2,}\b");
+        var replyNumbers = System.Text.RegularExpressions.Regex.Matches(replyLower, @"\b\d{2,}\b");
         foreach (System.Text.RegularExpressions.Match num in replyNumbers)
         {
             if (!conversationText.Contains(num.Value))
                 return (true, $"Reply contains number '{num.Value}' not mentioned in conversation");
         }
 
-        // Check 4: Does the reply make factual claims about self, contact, or relationship
-        // that aren't established in the conversation? These are identity/activity confabulations
-        // where the model invents plausible details about its own life, the contact's life,
-        // or shared experiences. Triggers retrieval against profile/semantic memories.
-        //
-        // Self-claims: "I just finished a meeting", "I'm a developer", "my shift ends at..."
-        // Contact-claims: "your class", "your sister", "your job at..."
-        // Relationship-claims: "our anniversary", "that restaurant we went to"
+        // Check 4: Self/contact/relationship activity markers (interim — will be replaced by ML)
         string[] selfActivityMarkers =
         [
             "i just finished", "i've got a", "i have a", "i'm heading to",
