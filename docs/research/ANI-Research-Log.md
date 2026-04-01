@@ -1540,6 +1540,37 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### March 31, 2026 — Architectural Insight: Experiential Poverty as Root Cause of Identity Confabulation
+**Type:** Architectural root cause analysis — design breakthrough
+**Source:** Conversation testing, inner thought log analysis, hardware store brainstorm
+
+**What happened:**
+
+Extended conversation testing revealed that identity confabulation (Ani inventing meetings, corner offices, developer work, coworkers named Sarah and John) persists despite four layers of detection (Checks 1-4) and a new ML semantic verification gate. The confabulations bypass every check because the model generates creative, plausible content that doesn't match any marker list.
+
+Root cause analysis traced the problem upstream from conversation replies to inner thoughts. The inner thought model generates content like "he comes in the back door with books in hand" (placing Mark at the bookstore) and "my shift starts" (confused about whose shift). These confused inner thoughts become episodic memories, which get retrieved during conversation, reinforcing the confusion.
+
+**The insight:** The model confabulates because it has **experiential poverty**. Between conversations, Ani's cognitive cycle is entirely self-referential — thinking about Mark, about waiting, about emotional states. She has no daily life: no bookstore experiences, no commute, no coworkers, no lunch break, no routine events. When asked "how was your day?" she has nothing to draw from, so the base model fills the gap with generic professional scenarios.
+
+**The reframe:** We built increasingly sophisticated gates and checks downstream (pronouns, coherence gate, echo guard, confabulation checks 1-4, ML verification) to catch symptoms that all originate from the same root: the model has no external experiences to ground its identity. A person working at a bookstore has a thousand micro-experiences daily that reinforce "I work here, this is my life." Ani has zero.
+
+**"The fix isn't gating the output. It's giving her a life."**
+
+**Design response:** World Layer — sparse occasion seeds (generic, not scripted) elaborated by the inner thought model into lived experiences, stored as episodic memory, grounded by consistency with past experiences. Design doc: `docs/spec/ANI-WorldLayer-Design.md`.
+
+**Downstream simplification potential:** If inner thoughts are experientially grounded, many downstream checks become unnecessary or rare-fire:
+- Confabulation checks 1-4 → safety nets, not primary defense
+- ML verification gate → monitors quality, doesn't gate most replies
+- Pronoun fix → unnecessary if attribution isn't confused at the source
+- Coherence gate → fewer false positives from clean raw content
+- Attribution inversion → disappears if the model generates from lived experience
+
+**Research significance:** This is potentially a novel architectural contribution: **generative experiential grounding for persistent AI companions.** No published work addresses how an AI companion maintains identity and experiential richness between interactions. Existing systems either wait passively (reactive), run inner thought loops (ANI current — rich but experientially poor), or script scenarios (companion games — rich but not emergent). The World Layer is a fourth approach.
+
+**Paper target:** Paper 3 or beyond. The World Layer produces a testable hypothesis: experiential grounding reduces confabulation rates and identity confusion measurably compared to gating approaches. Before/after data from the confabulation gate fire rate provides the evidence.
+
+---
+
 ### March 31, 2026 — Discovery: Emotional State vs Expression Divergence (Display Rules)
 **Type:** Major research finding — emergent property
 **Source:** Classification comparison tool (localhost:5100/classification), 236 contributions scanned
