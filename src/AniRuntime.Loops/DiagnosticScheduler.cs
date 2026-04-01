@@ -133,11 +133,21 @@ public class DiagnosticScheduler : BackgroundService
     {
         if (recurrence < 3)
         {
-            _log.LogInformation("Auto-correct [RETRIEVAL-POISON] scan {Recurrence}: reducing importance (topic: {Topic})",
-                recurrence + 1, finding.Description[..Math.Min(60, finding.Description.Length)]);
-            // Importance reduction happens through the existing memory search —
-            // the next retrieval will score it lower with the new weights.
-            // No direct DB modification needed at this level.
+            // Actually reduce importance of the poisoning memory by 0.15 per scan.
+            // Extract the memory content prefix from the finding description.
+            // Format: "Memory 'About Mark: Learning Spanish o...' appeared in X/Y retrievals"
+            var memoryPrefix = ExtractMemoryPrefixFromFinding(finding.Description);
+            if (memoryPrefix is not null)
+            {
+                var reduced = await ReduceMemoryImportanceAsync(memoryPrefix, 0.15f, ct).ConfigureAwait(false);
+                _log.LogInformation("Auto-correct [RETRIEVAL-POISON] scan {Recurrence}: reduced importance by 0.15 on '{Topic}' (found={Found})",
+                    recurrence + 1, memoryPrefix, reduced);
+            }
+            else
+            {
+                _log.LogInformation("Auto-correct [RETRIEVAL-POISON] scan {Recurrence}: could not extract memory prefix from '{Topic}'",
+                    recurrence + 1, finding.Description[..Math.Min(60, finding.Description.Length)]);
+            }
             return;
         }
 
@@ -146,6 +156,45 @@ public class DiagnosticScheduler : BackgroundService
             "deleting InnerThought memories for recurring topic", recurrence + 1);
 
         await DeleteInnerThoughtsByTopicAsync(finding.Description, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Extract the memory content prefix from a retrieval-poison finding description.
+    /// Input: "Memory 'About Mark: Learning Spanish o...' appeared in 7/12 retrievals"
+    /// Output: "About Mark: Learning Spanish o"
+    /// </summary>
+    private static string? ExtractMemoryPrefixFromFinding(string description)
+    {
+        var start = description.IndexOf('\'');
+        var end = description.IndexOf("...'", StringComparison.Ordinal);
+        if (start < 0 || end < 0 || end <= start) return null;
+        return description[(start + 1)..end];
+    }
+
+    /// <summary>
+    /// Reduce importance of memories matching a content prefix by the specified amount.
+    /// Minimum importance is 0.1 — never fully zero out a memory.
+    /// </summary>
+    private async Task<bool> ReduceMemoryImportanceAsync(string contentPrefix, float reduction, CancellationToken ct)
+    {
+        try
+        {
+            var memories = await _search.SearchWithScoresAsync(contentPrefix, 5, ct).ConfigureAwait(false);
+            var match = memories.FirstOrDefault(m =>
+                m.Record.Content.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase));
+
+            if (match is null) return false;
+
+            var record = match.Record;
+            record.Importance = Math.Max(0.1f, record.Importance - reduction);
+            await _persist.SaveAsync(record, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Failed to reduce importance for '{Prefix}'", contentPrefix);
+            return false;
+        }
     }
 
     /// <summary>

@@ -452,20 +452,22 @@ try
             var contactName = charState.PrimaryContactName;
             var facts = new List<(string content, float importance, float relationalValence)>();
 
+            // Importance tiered by category — details should not dominate retrieval.
+            // Foundation facts (family, self) higher than contextual details (interests, communication).
             foreach (var item in charState.LearnedAboutContact)
-                facts.Add(($"About {contactName}: {item}", 0.8f, 0.7f));
+                facts.Add(($"About {contactName}: {item}", 0.4f, 0.7f));
             foreach (var item in charState.SharedExperiences)
-                facts.Add(($"Shared experience: {item}", 0.9f, 0.9f));
+                facts.Add(($"Shared experience: {item}", 0.5f, 0.9f));
             foreach (var item in charState.ThingsContactCares)
-                facts.Add(($"{contactName} cares about: {item}", 0.7f, 0.8f));
+                facts.Add(($"{contactName} cares about: {item}", 0.4f, 0.8f));
             foreach (var item in charState.FamilyContext)
                 facts.Add(($"Family: {item}", 0.6f, 0.5f));
             foreach (var item in charState.SelfConcept)
                 facts.Add(($"Self: {item}", 0.5f, 0.3f));
             foreach (var item in charState.Interests)
-                facts.Add(($"Interest: {item}", 0.5f, 0.4f));
+                facts.Add(($"Interest: {item}", 0.3f, 0.4f));
             foreach (var item in charState.CommunicationNotes)
-                facts.Add(($"Communication: {item}", 0.7f, 0.6f));
+                facts.Add(($"Communication: {item}", 0.3f, 0.6f));
 
             Log.Information("Seeding {Count} backstory facts as searchable memories", facts.Count);
             foreach (var (content, importance, relationalValence) in facts)
