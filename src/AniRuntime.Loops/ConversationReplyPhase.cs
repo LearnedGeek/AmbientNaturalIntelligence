@@ -666,6 +666,17 @@ public class ConversationReplyPhase
         knownNames.Add("Anne");
         knownNames.Add("Annie");
         knownNames.Add("Ani");
+        // Terms of endearment — Catalyst POS tags these as PROPN when sentence-initial
+        knownNames.Add("Baby");
+        knownNames.Add("Babe");
+        knownNames.Add("Honey");
+        knownNames.Add("Sweetie");
+        knownNames.Add("Darling");
+        knownNames.Add("Love");
+        knownNames.Add("Dear");
+        knownNames.Add("Daddy");
+        knownNames.Add("Mama");
+        knownNames.Add("Boo");
 
         // Check 1: Does the reply reference a specific person not mentioned in the conversation?
         // Uses Catalyst POS tagger to detect proper nouns (PROPN) — no hardcoded word lists.
