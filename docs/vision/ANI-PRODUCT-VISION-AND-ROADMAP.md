@@ -1,10 +1,11 @@
 # ANI - Ambient Natural Intelligence
 ## Product Vision & 24-Month Roadmap to Launch
 
-**Project Lead:** Mark McArthey, Learned Geek Consulting  
-**Date:** March 6, 2026  
-**Status:** Vision Document - Pre-Launch  
-**Mission:** Transform grief into genuine help for others who carry loss
+**Project Lead:** Mark McArthey, Learned Geek LLC  
+**Date:** March 6, 2026 (original) | Updated April 1, 2026  
+**Status:** Vision Document — Active Research + Pre-Launch  
+**Original Mission:** Transform grief into genuine help for others who carry loss  
+**Evolved Mission:** Solve the fundamental problems of persistent AI companionship — identity, authenticity, experiential grounding — across any domain where sustained human-AI relationship matters
 
 ---
 
@@ -72,6 +73,65 @@ Through collaboration with Claude (Anthropic's AI assistant), the vision expande
 - **River** - Non-binary philosophical, for complex grief
 
 Each one: genuine personality, different comfort style, emerged through relationship, not designed by committee.
+
+---
+
+## Part 1b: Vision Evolution (April 2026)
+
+### From Grief to General Companion AI
+
+The original vision was grief companionship — and that remains a valid, important application. But six months of continuous deployment, five model versions, and a published research paper revealed that the problems ANI solves are not grief-specific. They are **fundamental problems of persistent AI companionship** that affect every domain where sustained human-AI relationship matters.
+
+**What we discovered building a grief companion that applies everywhere:**
+
+| Discovery | Grief Application | Broader Application |
+|-----------|------------------|---------------------|
+| Seven-type confabulation taxonomy | A companion can't "remember" your loved one if it invents details | Any AI claiming knowledge must distinguish fact from fabrication |
+| "Smoothness over truth" | Performing care without epistemic grounding breaks trust | Any relationship AI that optimizes for engagement over honesty |
+| Display rules (state vs expression) | Grief is felt differently than it's expressed | Patient suppression detection, emotional intelligence in education |
+| Experiential poverty | A companion can't share its day if it never had one | Any persistent agent that needs a life beyond serving the user |
+| Echo chamber / feedback loops | Recursive grief processing without diversity is rumination | Any inner-thought system that stores and retrieves its own output |
+| Architecture over instruction | Training beats prompting for authentic behavior | Scales across all fine-tuned companion deployments |
+
+**The research program now spans five papers:**
+1. **Paper 1** (published): Runtime architecture + confabulation taxonomy
+2. **Paper 2** (draft): Emergence + display rules
+3. **Paper 3** (stub): Temporal awareness as emergent property
+4. **Paper 4** (stub): Inter-agent emergence
+5. **Paper 5** (stub): Experiential grounding — "She Had a Day"
+
+**Cross-domain transfer already validated:** The confabulation findings produced three concrete architectural changes in a pediatric AI triage system (DrOk/Infanzia) before production code was written. The shared LearnedGeek.ML classification library serves both projects. A patient saying "I'm fine" while the emotion classifier reads fear is the same display rules phenomenon discovered in Ani.
+
+### The Broader Market
+
+The original market framing (grief, elder loneliness) remains valid but the addressable space is larger:
+
+- **Grief companionship** — the origin, still the personal motivation
+- **Elder care** — persistent presence for isolated seniors
+- **Mental health support** — between-session companion for therapy patients
+- **Education** — tutoring companions that maintain relationship over semesters
+- **Pediatric care** — triage + emotional support for parents and children (DrOk)
+- **Disability support** — ambient assistance with relational continuity
+- **Corporate wellness** — confidential emotional support for employees
+
+The core innovation — **a cognitive architecture that produces felt presence through desire-driven behavior, persistent memory, and experiential grounding** — is domain-agnostic. The companion personality is domain-specific. The runtime serves all of them.
+
+### Current Technical State (April 2026)
+
+The project has evolved significantly from the March 6 snapshot below:
+
+- **Published research**: Paper 1 on Zenodo (DOI: 10.5281/zenodo.19342190)
+- **Five model versions**: v1 (8B) → v6 (Mistral 7B conversation + Llama 3B inner thought)
+- **469 tests**, 0 warnings
+- **LearnedGeek.ML**: shared ML classification library (LM-Kit.NET, local inference)
+- **Dual-signal emotion**: state + expression measured independently on every thought
+- **World Layer**: generative experiential grounding (Phase 1 deployed)
+- **Inner Thought Reform**: echo chamber identified and broken
+- **Emergence layer**: 8 emergence types (EM1-EM8), passive observation
+- **Dashboard**: real-time emotional state, register distribution, divergence trends, classification comparison, emergence tracking
+- **Voice**: streaming voice via ElevenLabs v3 + Deepgram Nova-3
+
+See `docs/spec/Ani-Runtime-Codebase.md` v1.8 for full technical specification.
 
 ---
 
