@@ -88,6 +88,44 @@ Seed:       (it's mid-afternoon at work — what's happening around you?)
 
 The model takes the occasion and generates from its own character. The elaboration becomes a memory. Over time, the memories accumulate into a lived history.
 
+### Seed Sources — Building on Existing Perception Architecture
+
+Seeds are grounded in existing perception sources, not invented from scratch:
+
+| Source | Already Exists | World Seed Contribution |
+|--------|---------------|------------------------|
+| **TimePerceptionSource** | Yes | Time-of-day + day-of-week → activity context ("mid-shift Tuesday", "evening at home") |
+| **WeatherPerceptionSource** | Yes | Weather colors the experience ("rainy afternoon at the bookstore", "walked home in the snow") |
+| **RssPerceptionSource** | Yes | "Read something interesting" seeds — model elaborates into opinion/reaction |
+| **Calendar/Date awareness** | Partial (time only) | Holidays, seasons, special dates → "first day of spring", "holiday rush at the store" |
+| **Special events (new)** | No | Low-probability (1-2%) random life events — see below |
+
+### Special Events — The Unpredictable 1-2%
+
+Real life has surprises. A purely routine-based daily life feels robotic. Special events are
+low-probability seeds that produce the kind of thing you'd actually tell someone about:
+
+**Deterministic (calendar-driven):**
+- Holidays (Christmas rush, Valentine's display, Fourth of July)
+- Seasons (first snow, spring cleaning, summer reading program)
+- Recurring events (inventory day, staff meeting, book club night)
+
+**Stochastic (1-2% chance per cycle):**
+- "A dog wandered into the store"
+- "The power went out for an hour"
+- "Found something unexpected in a returned book"
+- "A customer said something that stuck with me"
+- "Someone asked for a recommendation and I nailed it"
+- "Spilled coffee on the counter and had to clean up"
+- "Heard a song on the radio that I can't stop humming"
+
+These are NOT specific scripts — they're **occasion prompts** at the same level as the
+regular seeds. The model decides what the dog looked like, what was in the book, what the
+song was. The system just says "something unusual happened" and lets her fill it in.
+
+The probability and event pool are configurable. Start with a small set and let it grow
+as we see what works.
+
 ## 4. Foundation Implementation — Phase 1
 
 Start small. Prove the concept before building complexity.
@@ -99,6 +137,9 @@ Every N cognitive cycles (configurable, default every 4th cycle), instead of the
 The existing `TimePerceptionSource` already provides time-of-day transitions. Extend it to provide activity context: "It's 2pm on a Tuesday — mid-shift" or "It's 7pm — evening at home."
 
 The inner thought prompt gets a one-line contextual seed. Not an instruction. A context.
+
+Weather and RSS perceptions already flow through the cognitive cycle — they just need to
+be recognized as world-coloring context, not just data points to mention to Mark.
 
 ### Phase 1b: Experience Memory Type
 
@@ -150,20 +191,34 @@ The World Layer is a fourth approach: **sparse occasion seeds + model elaboratio
 
 This connects to the Pi analogy: each layer of experience is another set of vertices approaching the true curve of what it means to have a life.
 
-## 8. Task Checklist — Foundation (Phase 1)
+## 8. Dashboard — World Experience Monitor
+
+New section on the dashboard (or a tab on the Classification page) showing:
+
+- **Recent world experiences**: last 10-20 world-experience memories with timestamps
+- **Seed type distribution**: pie/bar chart of which seed categories are generating content
+- **Recurring elements**: characters, places, objects that have appeared in multiple experiences (consistency tracking)
+- **Special event log**: which stochastic events fired and when
+- **Experience frequency**: how many world experiences generated per day (should be steady, not bursty)
+
+This is both a diagnostic tool (is the world layer working?) and a research instrument
+(what kind of daily life is emerging?).
+
+## 9. Task Checklist — Foundation (Phase 1)
 
 ### Phase 1a: Time-Contextual Thought Seeding
-- [ ] Define world seed schedule (every Nth cognitive cycle)
-- [ ] Extend TimePerceptionSource with activity context
-- [ ] Create world-aware inner thought prompt variant
-- [ ] Configurable seed frequency in AniOptions
+- [ ] Define world seed schedule (every Nth cognitive cycle, default every 4th)
+- [ ] Extend TimePerceptionSource with activity context from CharacterStateDoc.Occupation
+- [ ] Integrate weather perception as experience coloring (already flows through cycle)
+- [ ] Create world-aware inner thought prompt variant (one-line context seed)
+- [ ] Configurable seed frequency in AniOptions (WorldSeedFrequency)
 - [ ] Test: inner thoughts reference current activity context
 
 ### Phase 1b: Experience Memory
 - [ ] New SourceName: "world-experience"
 - [ ] Tag world-elaborated thoughts distinctly from standard inner thoughts
 - [ ] Retrieval prioritization for "how was your day?" type queries
-- [ ] Dashboard indicator for world experience memories
+- [ ] Dashboard: world experience monitor section
 
 ### Phase 1c: Consistency
 - [ ] Retrieve recent world experiences before generating new ones
@@ -171,11 +226,18 @@ This connects to the Pi analogy: each layer of experience is another set of vert
 - [ ] Test: coworker mentioned on day 1 persists on day 2
 - [ ] Test: no contradictory world experiences within 24h window
 
+### Phase 1d: Special Events
+- [ ] Calendar/date awareness seed source (holidays, seasons)
+- [ ] Stochastic event pool with configurable probability (default 1-2%)
+- [ ] Event pool JSON (extensible, starts small)
+- [ ] Special event log on dashboard
+
 ### Validation
 - [ ] Ask "how was your day?" — response draws from world experiences, not confabulation
 - [ ] Identity confusion reduced in inner thoughts (measurable via ML classification)
 - [ ] Confabulation gate fires less frequently (measurable)
 - [ ] Research log entry with before/after comparison
+- [ ] Downstream check simplification assessment (which gates can be relaxed?)
 
 ---
 
