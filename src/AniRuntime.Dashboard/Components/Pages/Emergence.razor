@@ -65,10 +65,14 @@ else
     <section>
         <h3>Emergence Frequency</h3>
         <small style="opacity: 0.6;">Emergence events per day — more types = richer inner life</small>
-        <div style="display: flex; align-items: flex-end; gap: 2px; height: 100px; margin-top: 0.5rem; padding: 0.5rem 0;">
+        @{
+            var maxEmCount = _emergenceTrend.Max(d => d.Count);
+            var emScale = maxEmCount > 0 ? 100.0 / maxEmCount : 1.0;
+        }
+        <div style="display: flex; align-items: flex-end; gap: 2px; height: 120px; margin-top: 0.5rem; padding: 0.5rem 0;">
             @foreach (var day in _emergenceTrend)
             {
-                var barHeight = Math.Max(day.Count * 5, 2);
+                var barHeight = Math.Max((int)(day.Count * emScale), 2);
                 var barColor = day.UniqueTypes >= 4 ? "#4caf50" : day.UniqueTypes >= 2 ? "#ff9800" : "#9c27b0";
                 <div style="display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 20px;">
                     <small style="font-size: 0.6em; opacity: 0.5; margin-bottom: 2px;">@day.Count (@day.UniqueTypes)</small>
