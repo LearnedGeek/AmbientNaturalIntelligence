@@ -135,7 +135,39 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
                         LastMessageAt = msg.DateSent,
                     };
                     await _conversations.SaveThreadAsync(thread, ct).ConfigureAwait(false);
-                    _log.LogInformation("New conversation thread started: {ThreadId}", thread.Id);
+                    _log.LogInformation("New conversation thread started: \"{ThreadId}\"", thread.Id);
+
+                    // Seed with most recent outreach if this reply is likely responding to it.
+                    // Without this, she has amnesia about what she just said in outreach.
+                    try
+                    {
+                        var recentOutreach = (await _memory.GetByTypeAsync(
+                            Core.Models.MemoryType.Episodic, 5, ct).ConfigureAwait(false))
+                            .FirstOrDefault(m => m.Content.StartsWith("I reached out to"));
+                        if (recentOutreach is not null &&
+                            (DateTimeOffset.UtcNow - recentOutreach.OccurredAt).TotalMinutes < 60)
+                        {
+                            // Extract the outreach message text from the episodic memory
+                            var outreachText = recentOutreach.Content;
+                            var quoteStart = outreachText.IndexOf('"');
+                            var quoteEnd = outreachText.LastIndexOf('"');
+                            if (quoteStart >= 0 && quoteEnd > quoteStart)
+                                outreachText = outreachText[(quoteStart + 1)..quoteEnd];
+
+                            await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
+                            {
+                                Role    = Roles.Ani,
+                                Content = outreachText,
+                                SentAt  = recentOutreach.OccurredAt,
+                            }, ct).ConfigureAwait(false);
+                            _log.LogInformation("Seeded conversation with recent outreach: {Preview}",
+                                outreachText.Length > 60 ? outreachText[..60] + "..." : outreachText);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogDebug(ex, "Failed to seed outreach context — non-critical");
+                    }
                 }
 
                 await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
