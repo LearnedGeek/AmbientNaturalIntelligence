@@ -2,6 +2,7 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -42,9 +43,11 @@ public class CognitiveCycleProcessor
     private readonly ReflectionPhase                   _reflection;
     private readonly IConversationGateState            _gateState;
     private readonly WorldSeedService                  _worldSeed;
+    private readonly ITextClassificationService?       _mlClassifier;
     private readonly AniOptions                        _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor>  _log;
     private int _cycleCount;
+    private string? _lastAssociativeAnchor;
 
     public CognitiveCycleProcessor(
         IStateStore                    state,
@@ -65,7 +68,8 @@ public class CognitiveCycleProcessor
         IConversationGateState         gateState,
         WorldSeedService               worldSeed,
         IOptions<AniOptions>           aniOptions,
-        ILogger<CognitiveCycleProcessor> log)
+        ILogger<CognitiveCycleProcessor> log,
+        ITextClassificationService?    mlClassifier = null)
     {
         _state             = state;
         _persist           = persist;
@@ -84,6 +88,7 @@ public class CognitiveCycleProcessor
         _reflection        = reflection;
         _gateState         = gateState;
         _worldSeed         = worldSeed;
+        _mlClassifier      = mlClassifier;
         _aniOptions        = aniOptions.Value;
         _log               = log;
     }
@@ -199,6 +204,14 @@ public class CognitiveCycleProcessor
             _log.LogInformation("World seed (cycle {Cycle}): {Seed}", _cycleCount, seed);
         }
 
+        // Associative anchor: inject the previous thought's anchor as a creative fragment.
+        // This enables drift (bookstore → pages → turning points → ...) instead of
+        // thematic repetition (warmth → warmth → warmth).
+        if (_lastAssociativeAnchor is not null && snapshot.WorldSeed is null)
+        {
+            snapshot.WorldSeed = $"The last thing lingering in your mind: {_lastAssociativeAnchor}";
+        }
+
         var (thought, reflection, valence) = await _innerThought.RunAsync(snapshot, ct).ConfigureAwait(false);
         obs.InnerThought = thought;
         obs.Reflection = reflection;
@@ -224,6 +237,22 @@ public class CognitiveCycleProcessor
             isWorldCycle ? "World experience" : "Inner thought", valence, thought);
         if (reflection is not null)
             _log.LogInformation("Reflection: {Reflection}", reflection);
+
+        // Extract associative anchor for the next cycle's creative drift
+        if (_mlClassifier is not null)
+        {
+            try
+            {
+                var anchors = await _mlClassifier.ExtractAnchorsAsync(thought, 1, ct).ConfigureAwait(false);
+                _lastAssociativeAnchor = anchors.FirstOrDefault();
+                if (_lastAssociativeAnchor is not null)
+                    _log.LogDebug("Associative anchor: {Anchor}", _lastAssociativeAnchor);
+            }
+            catch
+            {
+                _lastAssociativeAnchor = null;
+            }
+        }
 
         // Phase 4b: Emotional shift from inner thought
         var preShiftW = emotionalState.Warmth;

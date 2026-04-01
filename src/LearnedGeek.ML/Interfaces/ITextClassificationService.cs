@@ -20,4 +20,11 @@ public interface ITextClassificationService
     Task<RegisterResult> ClassifyRegisterAsync(string text, CancellationToken ct = default);
 
     Task<List<NamedEntity>> ExtractEntitiesAsync(string text, CancellationToken ct = default);
+
+    /// <summary>
+    /// Extract associative anchors — the most evocative keywords or phrases from the text.
+    /// Used by the inner thought pipeline to seed the next cycle with a creative fragment
+    /// rather than feeding back the full thought (which creates echo chambers).
+    /// </summary>
+    Task<List<string>> ExtractAnchorsAsync(string text, int maxAnchors = 2, CancellationToken ct = default);
 }

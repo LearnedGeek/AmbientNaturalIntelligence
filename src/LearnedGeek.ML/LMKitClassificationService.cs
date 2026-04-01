@@ -179,6 +179,38 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         }
     }
 
+    public async Task<List<string>> ExtractAnchorsAsync(string text, int maxAnchors = 2, CancellationToken ct = default)
+    {
+        await EnsureInitializedAsync(ct).ConfigureAwait(false);
+
+        if (_model is null || string.IsNullOrWhiteSpace(text))
+            return [];
+
+        try
+        {
+            var extractor = new KeywordExtraction(_model)
+            {
+                KeywordCount = maxAnchors,
+                MaxNgramSize = 3, // up to 3-word phrases ("fog after rain")
+                Guidance = "Extract the most vivid, concrete, or evocative image or detail — not abstract concepts like 'warmth' or 'love', but specific sensory fragments: sounds, textures, objects, moments.",
+            };
+
+            var keywordItems = await Task.Run(() => extractor.ExtractKeywords(text), ct).ConfigureAwait(false);
+            var keywords = keywordItems.Select(k => k.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+
+            _log.LogDebug("Associative anchors from '{Text}': [{Anchors}]",
+                text.Length > 60 ? text[..60] + "..." : text,
+                string.Join(", ", keywords));
+
+            return keywords;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "LMKit keyword extraction failed — no anchors for this cycle");
+            return [];
+        }
+    }
+
     private async Task EnsureInitializedAsync(CancellationToken ct)
     {
         if (_initialized) return;
