@@ -1179,10 +1179,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             INSERT OR REPLACE INTO emotional_contributions
                 (id, source_content, warmth_delta, energy_delta, concern_delta, playfulness_delta,
                  created_at, half_life_hours, category, embedding, severity, is_outreach_ready, register,
-                 ml_emotion, ml_confidence, ml_sarcasm, divergence_score)
+                 ml_emotion, ml_confidence, ml_sarcasm, divergence_score, associative_anchor)
             VALUES ($id, $source, $warmth, $energy, $concern, $playfulness,
                     $created, $halflife, $category, $embedding, $severity, $outreach, $register,
-                    $ml_emotion, $ml_confidence, $ml_sarcasm, $divergence)
+                    $ml_emotion, $ml_confidence, $ml_sarcasm, $divergence, $anchor)
             """;
         cmd.Parameters.AddWithValue("$id", contribution.Id.ToString());
         cmd.Parameters.AddWithValue("$source", contribution.SourceContent);
@@ -1203,6 +1203,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$ml_confidence", (object?)contribution.MLConfidence ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ml_sarcasm", contribution.MLSarcasmDetected.HasValue ? (contribution.MLSarcasmDetected.Value ? 1 : 0) : DBNull.Value);
         cmd.Parameters.AddWithValue("$divergence", (object?)contribution.DivergenceScore ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$anchor", (object?)contribution.AssociativeAnchor ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
@@ -1460,6 +1461,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             if (!reader.IsDBNull(sarcOrd)) contribution.MLSarcasmDetected = reader.GetInt32(sarcOrd) == 1;
             var divOrd = reader.GetOrdinal("divergence_score");
             if (!reader.IsDBNull(divOrd)) contribution.DivergenceScore = reader.GetFloat(divOrd);
+            var anchorOrd = reader.GetOrdinal("associative_anchor");
+            if (!reader.IsDBNull(anchorOrd)) contribution.AssociativeAnchor = reader.GetString(anchorOrd);
         }
         catch { /* columns may not exist in older DBs — safe to ignore */ }
 
@@ -1875,6 +1878,28 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addDivergence = conn.CreateCommand();
             addDivergence.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN divergence_score REAL";
             addDivergence.ExecuteNonQuery();
+        }
+
+        // Migration: add associative_anchor column
+        using var pragmaCmd7 = conn.CreateCommand();
+        pragmaCmd7.CommandText = "PRAGMA table_info(emotional_contributions)";
+        using var reader7 = pragmaCmd7.ExecuteReader();
+        var hasAnchorColumn = false;
+        while (reader7.Read())
+        {
+            if (reader7.GetString(1) == "associative_anchor")
+            {
+                hasAnchorColumn = true;
+                break;
+            }
+        }
+        reader7.Close();
+
+        if (!hasAnchorColumn)
+        {
+            using var addAnchor = conn.CreateCommand();
+            addAnchor.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN associative_anchor TEXT";
+            addAnchor.ExecuteNonQuery();
         }
     }
 

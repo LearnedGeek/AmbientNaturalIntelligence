@@ -84,6 +84,13 @@ public class EmotionalContribution
     public float? DivergenceScore { get; set; }
 
     /// <summary>
+    /// Associative anchor: the vivid detail extracted from this thought that seeds
+    /// the next cycle's creative drift. Stored for dashboard visualization of
+    /// associative drift chains.
+    /// </summary>
+    public string? AssociativeAnchor { get; set; }
+
+    /// <summary>
     /// Compute the decay factor at a given point in time.
     /// Returns a multiplier 0.0–1.0 to apply to the initial deltas.
     /// </summary>

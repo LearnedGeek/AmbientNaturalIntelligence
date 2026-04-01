@@ -246,7 +246,20 @@ public class CognitiveCycleProcessor
                 var anchors = await _mlClassifier.ExtractAnchorsAsync(thought, 1, ct).ConfigureAwait(false);
                 _lastAssociativeAnchor = anchors.FirstOrDefault();
                 if (_lastAssociativeAnchor is not null)
+                {
                     _log.LogDebug("Associative anchor: {Anchor}", _lastAssociativeAnchor);
+
+                    // Store anchor on the most recent contribution for dashboard visualization
+                    var recentContribs = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                    var latest = recentContribs
+                        .Where(c => c.SourceContent.StartsWith(thought.Length > 50 ? thought[..50] : thought, StringComparison.OrdinalIgnoreCase))
+                        .FirstOrDefault();
+                    if (latest is not null)
+                    {
+                        latest.AssociativeAnchor = _lastAssociativeAnchor;
+                        await _persist.SaveEmotionalContributionAsync(latest, ct).ConfigureAwait(false);
+                    }
+                }
             }
             catch
             {

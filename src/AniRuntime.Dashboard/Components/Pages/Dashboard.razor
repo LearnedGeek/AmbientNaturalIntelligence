@@ -270,6 +270,72 @@
     </section>
 }
 
+@{
+    var driftChain = _contributions
+        .Where(c => c.AssociativeAnchor is not null)
+        .OrderByDescending(c => c.CreatedAt)
+        .Take(20)
+        .Reverse()
+        .ToList();
+}
+@if (driftChain.Count > 1)
+{
+    <section>
+        <h3>Associative Drift</h3>
+        <small style="opacity: 0.6;">How thoughts chain together — each anchor seeds the next thought.
+        Click to expand the full thought. Arrows show the creative drift path.</small>
+
+        <div style="margin-top: 0.5rem;">
+            @for (var i = 0; i < driftChain.Count; i++)
+            {
+                var c = driftChain[i];
+                var isExpanded = _expandedDrift.Contains(c.Id);
+                var anchorColor = c.MLEmotion switch
+                {
+                    "sadness" => "#2196f3",
+                    "happiness" => "#4caf50",
+                    "love" => "#e91e63",
+                    "curiosity" => "#ff9800",
+                    "amusement" => "#9c27b0",
+                    "anger" => "#f44336",
+                    "fear" => "#ff5722",
+                    _ => "#607d8b",
+                };
+                var isWorld = c.SourceContent.Contains("bookstore") || c.SourceContent.Contains("shift") || c.SourceContent.Contains("shelf");
+                <div style="display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.3rem;">
+                    @* Anchor badge *@
+                    <div style="min-width: 110px; text-align: right;">
+                        <span style="background: @(anchorColor)30; color: @anchorColor; padding: 0.2em 0.5em; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: pointer;"
+                              @onclick="() => ToggleDrift(c.Id)"
+                              title="@c.CreatedAt.LocalDateTime.ToString("h:mm tt")">
+                            @c.AssociativeAnchor
+                        </span>
+                        @if (isWorld)
+                        {
+                            <small style="display: block; font-size: 0.6em; opacity: 0.5; margin-top: 1px;">world</small>
+                        }
+                    </div>
+
+                    @* Arrow *@
+                    @if (i < driftChain.Count - 1)
+                    {
+                        <span style="color: rgba(255,255,255,0.3); font-size: 0.8em; margin-top: 0.2em;">→</span>
+                    }
+
+                    @* Expandable thought *@
+                    @if (isExpanded)
+                    {
+                        <div style="flex: 1; font-size: 0.8em; opacity: 0.8; border-left: 2px solid @(anchorColor)40; padding-left: 0.5em;">
+                            <div>@c.SourceContent</div>
+                            <small style="opacity: 0.5;">@c.Register | @(c.MLEmotion ?? "—") (@(c.MLConfidence?.ToString("F2") ?? "—")) | @c.CreatedAt.LocalDateTime.ToString("h:mm tt")</small>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+}
+
 @if (_activeThread is not null)
 {
     <section>
@@ -293,6 +359,7 @@
     private string? _selectedDimension;
     private string _contributionSort = "score";
     private HashSet<Guid> _expandedContributions = new();
+    private HashSet<Guid> _expandedDrift = new();
     private List<(DateOnly Date, int UniqueRegisters, int Total)> _registerTrend = new();
 
     protected override async Task OnInitializedAsync()
@@ -345,6 +412,12 @@
         state.ComputeFromContributions(_contributions);
         await MemoryPersist.SaveEmotionalStateAsync(state);
         _emotional = state;
+    }
+
+    private void ToggleDrift(Guid id)
+    {
+        if (!_expandedDrift.Remove(id))
+            _expandedDrift.Add(id);
     }
 
     private void ToggleDimension(string dimension)
