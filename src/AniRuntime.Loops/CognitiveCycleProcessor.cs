@@ -217,24 +217,36 @@ public class CognitiveCycleProcessor
         obs.Reflection = reflection;
         obs.RelationalValence = valence;
 
-        // Store thought with reflection appended
-        // World-seeded thoughts tagged distinctly for retrieval prioritization
+        // Reform Phase C: Selective memory storage.
+        // Only persist thoughts that are emotionally significant or world experiences.
+        // Low-valence routine thoughts evaporate — like human idle thoughts that never
+        // become memories. This prevents retrieval mass accumulation that creates echo chambers.
         var contentForStorage = reflection is not null
             ? $"{thought} [reflection: {reflection}]"
             : thought;
 
-        await _persist.SaveAsync(new MemoryRecord
-        {
-            Type        = MemoryType.InnerThought,
-            Content     = contentForStorage,
-            RelationalValence = valence,
-            Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
-            SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
-            OccurredAt  = DateTimeOffset.UtcNow,
-        }, ct).ConfigureAwait(false);
+        var shouldPersist = isWorldCycle                                          // Always store world experiences
+            || valence >= (float)_aniOptions.ValenceTriggerThreshold              // Emotionally significant
+            || valence >= 0.50f;                                                  // Moderate significance
 
-        _log.LogInformation("{Type} (valence={Valence:F2}): {Thought}",
-            isWorldCycle ? "World experience" : "Inner thought", valence, thought);
+        if (shouldPersist)
+        {
+            await _persist.SaveAsync(new MemoryRecord
+            {
+                Type        = MemoryType.InnerThought,
+                Content     = contentForStorage,
+                RelationalValence = valence,
+                Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
+                SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
+                OccurredAt  = DateTimeOffset.UtcNow,
+            }, ct).ConfigureAwait(false);
+        }
+
+        _log.LogInformation("{Type} (valence={Valence:F2}{Stored}): {Thought}",
+            isWorldCycle ? "World experience" : "Inner thought",
+            valence,
+            shouldPersist ? "" : ", not stored",
+            thought);
         if (reflection is not null)
             _log.LogInformation("Reflection: {Reflection}", reflection);
 

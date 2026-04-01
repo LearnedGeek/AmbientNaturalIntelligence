@@ -79,6 +79,13 @@ public class EmotionalProcessor
 
             var (warmth, energy, worry, playfulness, register, severity) = ParseEmotionalShift(raw, effectiveMax);
 
+            // Cap ambient thought severity at 0.99 — only real events (conversations,
+            // hurt/care detection) should reach 1.00 and earn true Global tier.
+            // Inner thoughts at 0.99 cube to 0.97, creating headroom that prevents
+            // saturation when 100+ contributions all score near maximum.
+            if (isAmbientCycle && severity >= 1.0f)
+                severity = 0.99f;
+
             // Skip if all zeros — no emotional impact
             if (warmth == 0f && energy == 0f && worry == 0f && playfulness == 0f)
                 return;

@@ -159,9 +159,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
         MockOllama.Setup(o => o.InnerMonologueChatAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                                           It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
                   .ReturnsAsync("I'm thinking about Mark today.");
+        // Valence must be >= 0.50 for selective storage (Reform Phase C)
         MockOllama.Setup(o => o.ChatJsonAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                                           It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                  .ReturnsAsync("""{ "score": 0.3 }""");
+                  .ReturnsAsync("""{ "score": 0.7 }""");
 
         var processor = CreateProcessor();
         await processor.RunAsync(CancellationToken.None);
