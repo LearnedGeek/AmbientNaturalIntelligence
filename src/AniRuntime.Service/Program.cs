@@ -162,6 +162,10 @@ try
     builder.Services.AddSingleton<IReplyChannel, AniRuntime.Dashboard.DashboardReplyChannel>();
     builder.Services.AddSingleton<IReplyChannelResolver, ReplyChannelResolver>();
 
+    // ── World Layer — experiential grounding for inner life ─────────────────
+    builder.Services.Configure<WorldSeedOptions>(config.GetSection("WorldSeed"));
+    builder.Services.AddSingleton<WorldSeedService>();
+
     // ── Cognitive cycle ───────────────────────────────────────────────────────
     builder.Services.AddSingleton<AdminCommandHandler>();
     builder.Services.AddSingleton<EmotionalProcessor>();

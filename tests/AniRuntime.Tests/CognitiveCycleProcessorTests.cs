@@ -1,4 +1,5 @@
 using AniRuntime.Actions;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.Emergence;
@@ -147,6 +148,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             outreach,
             reflection,
             gateState,
+            new WorldSeedService(new Microsoft.Extensions.Options.OptionsWrapper<WorldSeedOptions>(new WorldSeedOptions()), NullLogger<WorldSeedService>.Instance),
             DefaultOptions,
             NullLogger<CognitiveCycleProcessor>.Instance);
     }

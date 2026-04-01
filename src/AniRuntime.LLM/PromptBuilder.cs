@@ -192,7 +192,13 @@ public static class PromptBuilder
         if (desireHint.Length > 0)
             sections.Add(desireHint);
 
-        sections.Add("What is passing through your mind right now?");
+        // World Layer: when a world seed is present, the prompt shifts from
+        // "what are you thinking?" to "what's happening in your life right now?"
+        // The model generates lived experience instead of self-referential thought.
+        if (!string.IsNullOrEmpty(snapshot.WorldSeed))
+            sections.Add(snapshot.WorldSeed);
+        else
+            sections.Add("What is passing through your mind right now?");
 
         var user = string.Join("\n", sections);
         return (system, user);

@@ -41,8 +41,10 @@ public class CognitiveCycleProcessor
     private readonly OutreachPhase                     _outreach;
     private readonly ReflectionPhase                   _reflection;
     private readonly IConversationGateState            _gateState;
+    private readonly WorldSeedService                  _worldSeed;
     private readonly AniOptions                        _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor>  _log;
+    private int _cycleCount;
 
     public CognitiveCycleProcessor(
         IStateStore                    state,
@@ -61,6 +63,7 @@ public class CognitiveCycleProcessor
         OutreachPhase                  outreach,
         ReflectionPhase                reflection,
         IConversationGateState         gateState,
+        WorldSeedService               worldSeed,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log)
     {
@@ -80,6 +83,7 @@ public class CognitiveCycleProcessor
         _outreach          = outreach;
         _reflection        = reflection;
         _gateState         = gateState;
+        _worldSeed         = worldSeed;
         _aniOptions        = aniOptions.Value;
         _log               = log;
     }
@@ -182,12 +186,26 @@ public class CognitiveCycleProcessor
         // Phase 4: Context snapshot + inner thought — delegated to phases
         var snapshot = await _contextBuilder.BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
 
+        // World Layer: every Nth cycle, seed the inner thought with experiential context
+        _cycleCount++;
+        var isWorldCycle = _worldSeed.ShouldSeedThisCycle(_cycleCount);
+        if (isWorldCycle)
+        {
+            var weatherContext = perceptions
+                .FirstOrDefault(p => p.SourceName == "weather")?.Summary;
+            var seed = _worldSeed.GenerateSeed(
+                DateTimeOffset.Now, weatherContext, charState.Occupation);
+            snapshot.WorldSeed = seed;
+            _log.LogInformation("World seed (cycle {Cycle}): {Seed}", _cycleCount, seed);
+        }
+
         var (thought, reflection, valence) = await _innerThought.RunAsync(snapshot, ct).ConfigureAwait(false);
         obs.InnerThought = thought;
         obs.Reflection = reflection;
         obs.RelationalValence = valence;
 
         // Store thought with reflection appended
+        // World-seeded thoughts tagged distinctly for retrieval prioritization
         var contentForStorage = reflection is not null
             ? $"{thought} [reflection: {reflection}]"
             : thought;
@@ -198,10 +216,12 @@ public class CognitiveCycleProcessor
             Content     = contentForStorage,
             RelationalValence = valence,
             Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
+            SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
             OccurredAt  = DateTimeOffset.UtcNow,
         }, ct).ConfigureAwait(false);
 
-        _log.LogInformation("Inner thought (valence={Valence:F2}): {Thought}", valence, thought);
+        _log.LogInformation("{Type} (valence={Valence:F2}): {Thought}",
+            isWorldCycle ? "World experience" : "Inner thought", valence, thought);
         if (reflection is not null)
             _log.LogInformation("Reflection: {Reflection}", reflection);
 

@@ -94,4 +94,11 @@ public class ContextSnapshot
     /// </summary>
     public string? ThoughtDiversityNudge { get; set; }
 
+    /// <summary>
+    /// World Layer: contextual seed for experiential grounding. When present,
+    /// the inner thought model generates a lived experience rather than a
+    /// self-referential thought. Tagged as "world-experience" in memory.
+    /// </summary>
+    public string? WorldSeed { get; set; }
+
 }
