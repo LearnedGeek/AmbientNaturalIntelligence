@@ -1540,6 +1540,57 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 1, 2026 — World Layer Phase 1 Deployed + Surgical Data Cleanup
+**Type:** Feature deployment + maintenance
+**Source:** Implementation + SQLite analysis
+
+World Layer Phase 1a wired into cognitive cycle: every 4th cycle, the inner thought prompt receives a contextual seed based on time-of-day, weather, occupation, and calendar awareness. 2% chance of stochastic special events. Thoughts generated from world seeds tagged as `SourceName = "world-experience"` for retrieval prioritization.
+
+First world experiences generated overnight (April 1): bookstore content including shelving books, reading lists, quiet afternoons. Attribution still confused (placed Mark at the bookstore) but the model is generating occupation-grounded content for the first time.
+
+WorldSeedService: 8 time slots (morning routine through late night), weather integration, 17 US holidays, 20 special event seeds. 34 new tests. WorldSeedOptions configurable (frequency, special event probability).
+
+Surgical data cleanup: removed 191 echo chamber duplicates from InnerThought memories. "Five thirty pm" reduced from 71 copies to 1. "Warmth is/wants/starts" from 64 to 3. Backup preserved at `ani-memory-backup-20260401-pre-cleanup.db`. Remaining 1410 inner thoughts with reduced retrieval mass.
+
+---
+
+### April 1, 2026 — LearnedGeek.ML Deployed: Classification Pipeline + Dashboard
+**Type:** Feature deployment — ML classification infrastructure
+**Source:** Implementation sessions March 31 – April 1
+
+**LearnedGeek.ML library** built and deployed into ANI service:
+- `LMKitClassificationService`: LM-Kit.NET v2026.3.5 — EmotionDetection (5 categories + extended), SarcasmDetection, NamedEntityRecognition, KeywordExtraction. Lazy model loading (~770MB on first use).
+- `TagMappingService`: 24 static rules mapping emotion+time+confidence → v3 audio tags.
+- `MLVoiceTagEnricher`: async pipeline classify → map → tag, with sarcasm override.
+- `ClassificationComparisonService`: side-by-side heuristic vs ML evaluation.
+
+**Dual-signal emotion on every contribution**: ML emotion, confidence, sarcasm, and divergence score stored alongside heuristic register on every new EmotionalContribution. SQLite migration adds 4 columns. Backfill tool retroactively populated all 236 existing contributions.
+
+**Phase 3 ML confabulation gate**: LM-Kit `Categorization` classifies replies as grounded/speculative/confabulated against cached persona summary (PersonaSummaryCache). Generation stays clean — classifier verifies post-generation. Configurable threshold (`ConfabulationClassificationThreshold`, default 0.60).
+
+**Confabulation Check 4** (interim, marker-based): self-activity, contact-activity, and relationship fact detection. Catches "my meeting", "your class", "our anniversary" patterns. Will be replaced by Phase 3 ML gate after validation.
+
+**Dashboard enhancements**:
+- Clickable emotional state cards — filter contributions by dimension
+- Heatmap coloring on scores, click-to-expand text, sort buttons (Score/Sev/Decay)
+- Classification comparison page (`/classification`) with Run Scan, Backfill, configurable window
+- Divergence trend chart (auto-loads from stored data)
+- Register diversity trend on Dashboard and Classification tabs
+- Emergence frequency chart on Emergence tab
+- EM8 Display Rule Divergence emergence type (8 types total)
+- Contextual help text across all dashboard tabs
+- Classification nav link added
+
+**SourceContent capture** increased from 200 to 500 chars for future LM-Kit classification needs.
+
+**Cross-project**: LearnedGeek.ML note delivered to DrOk/PhysicianAssistant project (`docs/research/ANI-Cross-Project-LearnedGeek-ML.md`).
+
+**Research profiles established**: Zenodo (DOI: 10.5281/zenodo.19342190), ResearchGate, Google Scholar, LinkedIn.
+
+**Tests**: 469 passing (34 WorldSeed + 30 LearnedGeek.ML + existing), 0 warnings.
+
+---
+
 ### April 1, 2026 — Inner Thought Reform: Breaking the Echo Chamber
 **Type:** Architectural root cause analysis + fix — third pipeline simplification
 **Source:** Retrieval-poison log analysis, immune system firing rate, flat emergence data

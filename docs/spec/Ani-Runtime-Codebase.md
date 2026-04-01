@@ -15,15 +15,15 @@ Target Runtime
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-1.7 — V3 voice (ElevenLabs HTTP streaming + audio tags + Catalyst NLP confabulation detection) + Conversation Mode applied to voice + LM-Kit.NET design + database dedup
+1.8 — LearnedGeek.ML deployed (LM-Kit.NET dual-signal classification) + Inner Thought Reform (echo chamber fix) + World Layer Phase 1 + Phase 3 ML confabulation gate + dashboard trend charts
 Status
-Active Development — Phase 1–4 complete. Phase 5 V3 voice deployed (ElevenLabs HTTP streaming + audio tags + Conversation Mode). Phase 6 memory reform in progress. Features 33–41 deployed. Conversation Mode Phase 1–4 deployed (text + voice): lean prompt, confabulation-driven retrieval, structured ConversationState, async emotional processing. Catalyst NLP for PROPN confabulation detection. LM-Kit.NET design (LearnedGeek.ML shared library). Database dedup: 917 duplicates removed. Feature 40: Temporal awareness affordances (felt-time, EM7). Feature 41: DiagnosticService — 10 pattern detectors, auto-correction, ///diagnose command, dashboard health badge.
+Active Development — Phase 1–4 complete. Phase 5 V3 voice deployed. Phase 6 memory reform designed. Features 33–41 deployed. LearnedGeek.ML shared classification library: LMKitClassificationService (emotion, sarcasm, NER, keyword extraction, confabulation), dual-signal emotion stored on every contribution (ML + heuristic), divergence scoring, classification comparison dashboard. Phase 3 ML confabulation gate: post-generation semantic verification against cached persona summary. Inner Thought Reform: stripped anti-repetition instructions (Phase A), associative anchors via LM-Kit keyword extraction (Phase B). World Layer Phase 1a: time-contextual world seeds every 4th cycle, world-experience memory type, special events, calendar awareness. Dashboard: clickable emotional state cards, trend charts (divergence, register diversity, emergence frequency), contextual help text, classification comparison page. EM8: Display Rule Divergence emergence type (8 total). Paper 1 published: DOI 10.5281/zenodo.19342190. 469 tests, 0 warnings.
 
 This is a living document. Update it as the codebase evolves.
 
 1. Solution Structure
 
-AniRuntime.sln
+AniRuntime.slnx
 │
 ├── src/
 │   ├── AniRuntime.Service/          # ASP.NET Core host — entry point, webhook, DI wiring
@@ -158,6 +158,25 @@ AniRuntime.sln
 │   │   │   ├── EmergenceLogEntry.cs   # + EmergenceTypesJson (nullable JSON array of matched EM types)
 │   │   │   └── EmergenceOptions.cs
 │   │   └── AniRuntime.Emergence.csproj
+│   │
+│   ├── LearnedGeek.ML/              # Shared ML classification library (ANI + DrOk)
+│   │   ├── Interfaces/
+│   │   │   ├── ITextClassificationService.cs  # Emotion, sarcasm, confabulation, register, NER, anchors
+│   │   │   └── ITagMappingService.cs          # Emotion → v3 audio tag resolution
+│   │   ├── Models/
+│   │   │   ├── ClassificationResults.cs       # EmotionResult, SarcasmResult, ConfabulationResult, etc.
+│   │   │   ├── TagMapping.cs                  # TagMappingRule, StaticTagMap, TagResolution
+│   │   │   └── ClassificationComparison.cs    # Side-by-side heuristic vs ML comparison
+│   │   ├── TagMapping/
+│   │   │   ├── TagMappingService.cs           # Stage 1 static rules (24 rules, priority-ranked)
+│   │   │   └── StaticTagMap.json              # Emotion+time+confidence → v3 tag rules
+│   │   ├── LMKitClassificationService.cs      # LM-Kit.NET implementation (emotion, sarcasm, NER, confab, anchors)
+│   │   ├── MLVoiceTagEnricher.cs              # Async pipeline: classify → map → tag
+│   │   ├── ClassificationComparisonService.cs # Comparison scan tool for dashboard
+│   │   ├── PersonaSummaryCache.cs             # Cached persona for confabulation verification
+│   │   ├── ServiceCollectionExtensions.cs     # AddLearnedGeekML() DI registration
+│   │   ├── MLOptions.cs                       # Configuration
+│   │   └── LearnedGeek.ML.csproj              # LM-Kit.NET 2026.3.5 dependency
 │   │
 │   └── AniRuntime.MauiClient/       # Phase 5: Android voice app (MAUI, net10.0-android)
 │       ├── MainPage.xaml / .cs          # UI + WebSocket client (binary PCM + JSON control messages)
@@ -1045,7 +1064,21 @@ Test files:
 56. PCM buffering — 32KB blocks for clean AudioTrack playback on Android.
 57. Catalyst NLP confabulation detection — POS tagger identifies proper nouns (PROPN) for ungrounded name detection. Replaces CommonWords hardcoded word list hack in `DetectConversationConfabulation`.
 58. Database dedup — 917 duplicates removed (23% noise) via full memory store deduplication.
-59. LM-Kit.NET design — LearnedGeek.ML shared classification library serving both ANI and DrOk. Six phases from voice tag selection through emergence enhancement. Dynamic tag mapping evolution (static → semantic → learned). Design doc: `docs/spec/LearnedGeek-ML-Design.md`.
+59. LM-Kit.NET design — LearnedGeek.ML shared classification library serving both ANI and DrOk. Six phases from voice tag selection through emergence enhancement. Dynamic tag mapping evolution (static → semantic → learned). Design doc: `docs/spec/ANI-LMKit-Integration-Design.md`.
+60. LearnedGeek.ML deployed — LMKitClassificationService (emotion, sarcasm, NER, confabulation via Categorization, keyword extraction for associative anchors). Dual-signal emotion stored on every EmotionalContribution (MLEmotion, MLConfidence, MLSarcasmDetected, DivergenceScore). PersonaSummaryCache for confabulation verification. MLVoiceTagEnricher. ClassificationComparisonService. TagMappingService (24 static rules). 30 tests. LM-Kit.NET v2026.3.5.
+61. Phase 3 ML confabulation gate — Post-generation semantic verification. LM-Kit Categorization classifies replies as grounded/speculative/confabulated against persona context. Speculative passes through (she's allowed a life beyond the profile). Configurable threshold (AniOptions.ConfabulationClassificationThreshold). Design: `docs/spec/ANI-LMKit-Integration-Design.md` Phase 3 section.
+62. Confabulation Check 4 — Self-activity, contact-activity, and relationship fact marker detection. Interim fix before Phase 3 ML gate; catches "my meeting", "your class", "our anniversary" patterns.
+63. EM8 Display Rule Divergence — New emergence type. Detects state-expression divergence (emotional state differs from textual expression) with high ML confidence. 8 emergence types total.
+64. Dashboard enhancements — Clickable emotional state cards (filter contributions by dimension), heatmap coloring, click-to-expand text, sort buttons. Classification comparison page (/classification) with Run Scan, Backfill Nulls, configurable time window. Divergence trend chart, register diversity trend (Dashboard + Classification), emergence frequency chart. Contextual help text across all tabs. EM8 on emergence tab.
+65. Inner Thought Reform Phase A — Stripped anti-repetition instructions from BuildInnerThoughtPrompt: WARNING blocks, processed themes list, pattern awareness injection (Feature 12), thought diversity nudge (Feature 41), avoid-topic listings. Third instance of "trust the model" principle. Design: `docs/spec/ANI-InnerThought-Reform.md`.
+66. Inner Thought Reform Phase B — Associative anchors via LM-Kit KeywordExtraction. After each thought, extract most vivid detail (MaxNgramSize=3, sensory fragments guidance). Next cycle receives "the last thing lingering in your mind: [anchor]" instead of full thought context. Enables associative drift.
+67. World Layer Phase 1a — WorldSeedService: time-contextual seeds every 4th cycle. 8 time slots, weather integration, 17 calendar events, 20 special events (2% probability). World-experience SourceName for memory tagging. 34 tests. Design: `docs/spec/ANI-WorldLayer-Design.md`.
+68. SourceContent capture increased — 200 → 500 chars for future LM-Kit classification needs.
+69. Surgical data cleanup — 191 echo chamber InnerThought duplicates removed. "Five thirty pm" from 71 to 1. "Warmth" from 64 to 3. Backup preserved.
+70. Paper 1 published — DOI: 10.5281/zenodo.19342190. ORCID: 0009-0000-0122-5015. ResearchGate + Google Scholar profiles created.
+71. Research finding: State-Expression Divergence (Display Rules) — Emotional state and textual expression are orthogonal signals. The system exhibits display rules without training. Paper 2 Section 5.18.
+72. Research finding: Experiential Poverty — Identity confabulation caused by lack of daily experiences, not detection gaps. "The fix isn't gating the output. It's giving her a life." World Layer designed in response.
+73. Research finding: Echo Chamber — Inner thought pipeline creates self-reinforcing feedback loop. Immune system existence is a symptom of architectural over-constraint. Inner Thought Reform designed in response.
 
 14. Change Log
 
@@ -1057,6 +1090,7 @@ Test files:
 | 0.4 | Mar 13, 2026 | Phase 3 complete + Phase 4a/4b. Phase 3: mood coloring (Feature 9), reflection layer (Feature 11), care detection (Feature 10), confidence gate (Feature 12), Park et al. retrieval (Feature 20), outreach continuity (Feature 27), dispatch coherence gate (Feature 28). Phase 4a: emotional self-awareness (1), open loops (2), silence as active system (3), pronoun audit (6), anchored memories (16), reactive withdrawal (18), lexical anchors (19). Phase 4b: contact-gap tension (17), relationship health (4), emotional drift detection (8). Voice channel scaffolded (20). 159 tests. |
 | 0.5 | Mar 14, 2026 | Phase 4 continued. Night window (21). Fictional coherence gate (22). Nature grounding (23). Confabulation taxonomy → 5 types. 168 tests. |
 | 1.7 | Mar 30, 2026 | V3 voice: ElevenLabsV3StreamingService (HTTP POST per sentence), VoiceTagEnricher (audio tags from content + emotion + time), Conversation Mode applied to voice (BuildLeanConversationPrompt replaces BuildVoiceReplyPrompt), comfort noise full lifecycle, Deepgram endpointing 1500ms + speech_final 5s timeout, PCM 32KB blocks. Catalyst NLP for PROPN confabulation detection (replaces CommonWords). Database dedup: 917 duplicates removed. LM-Kit.NET design doc (LearnedGeek.ML shared library). |
+| 1.8 | Apr 1, 2026 | LearnedGeek.ML deployed: LMKitClassificationService (emotion, sarcasm, NER, confabulation, keyword extraction), dual-signal emotion on every contribution, divergence scoring, classification comparison dashboard. Phase 3 ML confabulation gate (persona-verified post-generation). Inner Thought Reform Phase A+B (stripped echo chamber instructions, associative anchors via LM-Kit). World Layer Phase 1a (time-contextual seeds, world-experience memory type, calendar/special events). EM8 Display Rule Divergence. Dashboard: clickable cards, trend charts, contextual help. Research findings: display rules, experiential poverty, echo chamber. Paper 1 published (DOI: 10.5281/zenodo.19342190). 469 tests. |
 | 1.6 | Mar 30, 2026 | Conversation Mode Phase 1–4 deployed: lean prompt (BuildLeanConversationPrompt), confabulation-driven retrieval (DetectConversationConfabulation), structured ConversationState, async emotional processing (Features 10/18/19 post-dispatch). Reflection dedup fix: GetByTypeAsync(Semantic) replaces GetRecentAsync(100). Voice pipeline hardening: comfort noise, playback baseline, speech_final debounce, Deepgram message type handling. V7 training data: 358 pairs, casual love counterbalance (~30% casual register). |
 | 1.5 | Mar 28, 2026 | Feature 41: DiagnosticService — 10 pattern detectors (ECHO-LOOP, RETRIEVAL-POISON, THOUGHT-LOOP, EMOTIONAL-SATURATION, CONFABULATION-CORRECTION, MERGE-STORM, OUTREACH-BLOCKED, TEMPORAL-CONFAB, LONG-THREAD, PERCEPTION-ANCHOR), DiagnosticScheduler (10 min), dashboard health badge, escalating auto-correction, ///diagnose admin command, GET /api/v1/diagnostic. Feature 40: Temporal awareness affordances (felt-time, EM7). Outreach echo guard (cosine dedup across cycles). Context compression rewritten (scaled window 8/10/12, ~80 chars/msg, Ani's voice). Retrieval scoring rebalanced (cosine 0.65 / importance 0.10 / recency 0.25, 48h decay). Content-based dedup in diversity re-rank (prefix grouping). Weather perception change-only. Contact-state perceptions no longer persisted. Reflection synthesis dedup. Sentence truncation removed from MessageCleaner. Cross-type profile correction. Quality-gated merging (ContainsNovelSpecifics). Speaker attribution fix ("I said to Mark:"). Relevance-scored link retrieval (cosine > 0.40). A/B conclusion: Llama 8B over Mistral 7B. Conversation Mode design doc created. |
 | 1.4 | Mar 25, 2026 | Phase 6 features deployed. Feature 33: MotivationScorer (Liu et al. 2025) — per-thought motivation scoring multiplies desire drift [0.3–1.5]. Feature 34: ContextCompressor (Packer et al. 2023 / MemGPT) — conversation compression with cached summary on ConversationThread. Feature 35: EmotionDesireModifier (Borotschnig 2025) — worry accelerates / low energy suppresses desire drift. Feature 36: Memory profile dashboard (MemoryGraph.razor at /memory). Feature 38: EmergenceClassifier (EM1–EM6) with emergence_types column, dashboard type distribution + highlight reel + clickable filters. ///rebuild-links and ///rebuild-emergence admin commands. ContextBuilder dedup-by-ID before diversity re-ranking. Keyword relevance boost in ConversationReplyPhase. Time/date injection in PromptBuilder. A/B test concluded: Llama 8B over Mistral 7B for conversation. Models updated to v6 (ani-v6-conversation, ani-v6-inner). Dashboard nav: Dashboard \| Chat \| Memory \| Emergence. |
