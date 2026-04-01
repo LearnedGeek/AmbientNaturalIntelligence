@@ -256,7 +256,8 @@ public class ConversationReplyPhase
         // ═══════════════════════════════════════════════════════════════════════
         if (!isReconsideration)
         {
-            var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage);
+            var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage,
+                snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName);
 
             // If fast checks didn't catch it, run ML semantic verification
             if (!confabCheck.IsConfabulated && _mlClassifier is not null && _personaCache?.IsLoaded == true)
@@ -637,7 +638,8 @@ public class ConversationReplyPhase
     /// Not a keyword list — a behavioral check.
     /// </summary>
     private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation(
-        string reply, ConversationThread thread, string lastMessage)
+        string reply, ConversationThread thread, string lastMessage,
+        string characterName, string? contactName)
     {
         EnsureNlpInitialized();
 
@@ -647,9 +649,28 @@ public class ConversationReplyPhase
         var conversationText = string.Join(" ",
             thread.Messages.TakeLast(12).Select(m => m.Content.ToLowerInvariant()));
 
+        // Known names that should never trigger confabulation detection —
+        // the character's own name, the contact's name, and common variants
+        // (voice transcription produces "anne", "anne rose", "ani rose", etc.)
+        var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            characterName, contactName ?? "",
+        };
+        // Add name fragments (first names, common transcription variants)
+        foreach (var name in new[] { characterName, contactName ?? "" })
+        {
+            foreach (var part in name.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                if (part.Length >= 2) knownNames.Add(part);
+        }
+        // Common transcription variants of "Ani"
+        knownNames.Add("Anne");
+        knownNames.Add("Annie");
+        knownNames.Add("Ani");
+
         // Check 1: Does the reply reference a specific person not mentioned in the conversation?
         // Uses Catalyst POS tagger to detect proper nouns (PROPN) — no hardcoded word lists.
         // The NLP model identifies "Kathy", "Hugh", "Laurie" as PROPN automatically.
+        // Excludes character name, contact name, and known variants.
         if (_nlpPipeline is not null)
         {
             try
@@ -669,6 +690,8 @@ public class ConversationReplyPhase
                         if (noun.Length < 3) continue;
                         // Skip "I" which sometimes gets tagged as PROPN
                         if (noun is "I") continue;
+                        // Skip known names (character, contact, variants)
+                        if (knownNames.Contains(noun)) continue;
                         if (!conversationText.Contains(noun.ToLowerInvariant()))
                             return (true, $"Reply mentions proper noun '{noun}' not in conversation");
                     }
