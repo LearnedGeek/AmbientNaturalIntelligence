@@ -246,20 +246,7 @@ public class CognitiveCycleProcessor
                 var anchors = await _mlClassifier.ExtractAnchorsAsync(thought, 1, ct).ConfigureAwait(false);
                 _lastAssociativeAnchor = anchors.FirstOrDefault();
                 if (_lastAssociativeAnchor is not null)
-                {
                     _log.LogDebug("Associative anchor: {Anchor}", _lastAssociativeAnchor);
-
-                    // Store anchor on the most recent contribution for dashboard visualization
-                    var recentContribs = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
-                    var latest = recentContribs
-                        .Where(c => c.SourceContent.StartsWith(thought.Length > 50 ? thought[..50] : thought, StringComparison.OrdinalIgnoreCase))
-                        .FirstOrDefault();
-                    if (latest is not null)
-                    {
-                        latest.AssociativeAnchor = _lastAssociativeAnchor;
-                        await _persist.SaveEmotionalContributionAsync(latest, ct).ConfigureAwait(false);
-                    }
-                }
             }
             catch
             {
@@ -275,6 +262,24 @@ public class CognitiveCycleProcessor
 
         await _emotional.ApplyEmotionalShiftAsync(emotionalState, thought, ct,
             isAmbientCycle: true, category: ImpactCategory.Ambient).ConfigureAwait(false);
+
+        // Save associative anchor on the contribution that was just created
+        if (_lastAssociativeAnchor is not null)
+        {
+            try
+            {
+                var contribs = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+                var thoughtPrefix = thought.Length > 50 ? thought[..50] : thought;
+                var match = contribs.FirstOrDefault(c =>
+                    c.SourceContent.StartsWith(thoughtPrefix, StringComparison.OrdinalIgnoreCase));
+                if (match is not null)
+                {
+                    match.AssociativeAnchor = _lastAssociativeAnchor;
+                    await _persist.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
+                }
+            }
+            catch { /* anchor save is non-critical */ }
+        }
 
         // Re-read emotional state after shift for emergence observation deltas
         var postShift = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
