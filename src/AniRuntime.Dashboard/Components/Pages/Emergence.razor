@@ -60,6 +60,27 @@ else
     </section>
 }
 
+@if (_emergenceTrend.Count > 1)
+{
+    <section>
+        <h3>Emergence Frequency</h3>
+        <small style="opacity: 0.6;">Emergence events per day — more types = richer inner life</small>
+        <div style="display: flex; align-items: flex-end; gap: 2px; height: 100px; margin-top: 0.5rem; padding: 0.5rem 0;">
+            @foreach (var day in _emergenceTrend)
+            {
+                var barHeight = Math.Max(day.Count * 5, 2);
+                var barColor = day.UniqueTypes >= 4 ? "#4caf50" : day.UniqueTypes >= 2 ? "#ff9800" : "#9c27b0";
+                <div style="display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 20px;">
+                    <small style="font-size: 0.6em; opacity: 0.5; margin-bottom: 2px;">@day.Count (@day.UniqueTypes)</small>
+                    <div style="width: 100%; max-width: 40px; height: @(barHeight)px; background: @barColor; border-radius: 2px 2px 0 0;"
+                         title="@day.Date.ToString("MMM d"): @day.Count events, @day.UniqueTypes unique types"></div>
+                    <small style="font-size: 0.6em; opacity: 0.4; margin-top: 2px;">@day.Date.ToString("M/d")</small>
+                </div>
+            }
+        </div>
+    </section>
+}
+
 @if (_typeDistribution.Count > 0)
 {
     <section>
@@ -299,9 +320,12 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
     private List<EmergenceLogEntry> _logEntries = new();
     private Dictionary<string, int> _typeDistribution = new();
     private List<EmergenceLogEntry> _highlights = new();
+    private List<EmergenceTrendDay> _emergenceTrend = new();
     private int _maxTypeCount;
     private HashSet<string> _selectedTypes = new();
     private string _highlightSort = "score";
+
+    private record EmergenceTrendDay(DateOnly Date, int Count, int UniqueTypes);
 
     private void SetHighlightSort(string mode) => _highlightSort = mode;
 
@@ -327,6 +351,19 @@ else if (_enabled && _stats is not null && _stats.LogEntryCount == 0)
         _typeDistribution = await store.GetTypeDistributionAsync(30);
         _maxTypeCount = _typeDistribution.Values.DefaultIfEmpty(0).Max();
         _highlights = (await store.GetHighlightsAsync(50, 0.2f)).ToList();
+
+        // Build daily trend from log entries — get more for trend analysis
+        var trendEntries = (await store.GetRecentLogEntriesAsync(500)).ToList();
+        _emergenceTrend = trendEntries
+            .Where(e => !string.IsNullOrEmpty(e.EmergenceTypesJson) && e.EmergenceTypesJson != "[]")
+            .GroupBy(e => DateOnly.FromDateTime(e.Timestamp.LocalDateTime.Date))
+            .Select(g => new EmergenceTrendDay(
+                g.Key,
+                g.Count(),
+                g.SelectMany(e => ParseEmergenceTypes(e.EmergenceTypesJson)).Distinct().Count()))
+            .OrderBy(d => d.Date)
+            .TakeLast(14)
+            .ToList();
     }
 
     private float AvgScore()
