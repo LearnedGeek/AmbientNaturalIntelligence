@@ -1540,6 +1540,27 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 1, 2026 — Retrieval Poison Root Cause: Seed Fact Importance Inflation + Auto-Corrector Bug
+**Type:** Bug fix + architectural root cause
+**Source:** Diagnostic log analysis, SQLite inspection
+
+The retrieval-poison detector was firing constantly ("About Mark: Learning Spanish" in 7/12 retrievals) despite the auto-corrector claiming to reduce importance at each scan. Root cause: **two compounding issues**.
+
+**Bug:** `HandleRetrievalPoisonAsync` logged "reducing importance" at scan 1-2 but contained no actual importance reduction code — it was a no-op. The memory's importance never changed.
+
+**Architecture:** All 627 character seed facts were seeded at 0.7-1.0 importance with no differentiation. "Duck Norris" (a fun detail) had the same importance as "Mark's daughter Mia" (foundational relationship fact). Every seed fact dominated retrieval equally, leaving no room for fresh content.
+
+**Fix deployed:**
+1. Auto-corrector now actually reduces importance by 0.15 per scan (min 0.1)
+2. Seed fact importance rebalanced: Family 0.6, Shared experiences 0.5, Self 0.5, About Mark 0.4, Cares about 0.4, Interests 0.3, Communication 0.3
+3. Seeding code in Program.cs updated so new deployments get proper importance from the start
+
+**Connection to Inner Thought Reform:** The echo chamber was fed by two sources: (1) self-referential thought feedback loop (fixed by Reform Phase A+B) and (2) high-importance seed facts dominating every retrieval (fixed here). Both had to be addressed for the World Layer to produce diverse content.
+
+**Future:** Seed fact importance should be ML-classified at seeding time — LM-Kit could assess "is this a foundational identity fact or a casual detail?" instead of relying on category-level heuristics. Tracked in LM-Kit integration design doc.
+
+---
+
 ### April 1, 2026 — World Layer Phase 1 Deployed + Surgical Data Cleanup
 **Type:** Feature deployment + maintenance
 **Source:** Implementation + SQLite analysis

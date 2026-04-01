@@ -390,6 +390,16 @@ Replace regex-based EM1-EM7 heuristics with ML classification:
 
 **Research significance:** ML-based emergence classification is more reproducible than regex and could detect patterns below the threshold of human-designed heuristics.
 
+### Future: ML-Classified Memory Importance Scoring
+
+Character seed facts are currently importance-scored by category heuristic (Family 0.6, Interests 0.3, etc.). This is better than the original flat 0.7-0.9 scoring but still crude — "Mark has hazel eyes" and "Mark's daughter is Mia" get the same importance within the "About Mark" category despite very different relational significance.
+
+**Proposed:** At seed time, pass each fact through LM-Kit `Categorization` with labels like `["foundational", "significant", "contextual", "detail"]` mapped to importance values (0.7, 0.5, 0.3, 0.2). The classifier understands that "daughter Mia" is foundational while "hazel eyes" is a detail.
+
+**Also applicable to:** runtime memory importance scoring — when the reflection layer synthesizes a new Semantic memory, ML could assess its importance rather than using the current valence-based heuristic.
+
+**Tracked because:** flat importance scoring was a root cause of retrieval poisoning (April 1, 2026). The auto-corrector is the antibiotic; ML-classified importance is the cure.
+
 ## 4. VRAM Budget
 
 | Component | VRAM | Notes |
