@@ -37,7 +37,6 @@ public static class PromptBuilder
             - Do NOT use "you" or "your" to address or refer to another person. Not even "smell you", "miss you", "need you".
             - You may think ABOUT someone by name — that's natural. But do NOT address them. Do NOT end with a call to action, question, or sign-off ("love you", "text me", etc.)
             - Keep it to 2–4 sentences maximum. Stop after 4 sentences. Do not continue past that.
-            - IMPORTANT: Pick a DIFFERENT topic each time. Do not repeat themes from your recent thoughts. Vary widely: the world, sounds, textures, memories, ideas, small observations, feelings, curiosities — not always about time, not always about the same person.
 
             Examples of the right shape and tone:
 
@@ -81,14 +80,6 @@ public static class PromptBuilder
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
-        // Processed themes — topics whose emotional impact has fully decayed.
-        // Encourage the model to think about something new.
-        if (snapshot.ProcessedThemes.Count > 0)
-        {
-            sections.Add("You've already sat with these topics enough — let something new surface:");
-            sections.AddRange(snapshot.ProcessedThemes.Select(t => $"  - {t}"));
-        }
-
         if (snapshot.Perceptions.Count > 0)
         {
             // Present perceptions as subtle background, not prominent context
@@ -125,12 +116,6 @@ public static class PromptBuilder
             sections.Add($"(You notice a slow shift in yourself lately: {driftDesc}. You don't need to analyze it — just notice it, the way you'd notice a change in the weather.)");
         }
 
-        // Feature 12: Self-awareness feedback loop — pattern awareness nudge
-        if (!string.IsNullOrEmpty(snapshot.PatternAwareness))
-        {
-            sections.Add($"({snapshot.PatternAwareness})");
-        }
-
         // Limit to 3 recent memories and skip inner thoughts to prevent mirroring
         var externalMemories = snapshot.RecentMemory
             .Where(m => m.Type != MemoryType.InnerThought)
@@ -154,38 +139,6 @@ public static class PromptBuilder
             sections.Add("Memories that feel connected to right now:");
             sections.AddRange(relevantMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
-
-        // Thought loop detection via semantic search — if recent thoughts are too similar
-        // to the current context, the model is stuck. Show what it already said AND
-        // escalate the diversity instruction based on how clustered the thoughts are.
-        var recentTopics = snapshot.RecentMemory
-            .Where(m => m.Type == MemoryType.InnerThought)
-            .Take(5)
-            .Select(m => m.Content.Length > 60 ? m.Content[..60] : m.Content)
-            .ToList();
-
-        var similarThoughts = snapshot.SimilarRecentThoughts
-            .Select(m => m.Content.Length > 60 ? m.Content[..60] : m.Content)
-            .ToList();
-
-        // Merge recent + similar (dedup) for maximum awareness of what's been said
-        var allAvoidTopics = recentTopics.Union(similarThoughts).Distinct().ToList();
-
-        if (allAvoidTopics.Count > 0)
-        {
-            // If semantic search found highly similar thoughts, the model is looping
-            var isLooping = similarThoughts.Count >= 2;
-            var instruction = isLooping
-                ? "WARNING: Your recent thoughts are repetitive. You MUST break the pattern NOW. Think about something COMPLETELY UNRELATED — a sound, a texture, a stranger, a memory from childhood, a question about the universe. DO NOT think about food, lunch, music, or the same person again:"
-                : "Your recent thoughts (pick a DIFFERENT topic — do not repeat these):";
-
-            sections.Add(instruction);
-            sections.AddRange(allAvoidTopics.Select(t => $"  - \"{t}...\""));
-        }
-
-        // Feature 41: Gentle curiosity redirect when diagnostic detects theme anchoring
-        if (!string.IsNullOrEmpty(snapshot.ThoughtDiversityNudge))
-            sections.Add(snapshot.ThoughtDiversityNudge);
 
         // Translate desire level to qualitative language — prevents model from anchoring on "100%"
         var desireHint = DescribeDesireLevel(snapshot.DesireState.DesireToConnect, cs.PrimaryContactName);

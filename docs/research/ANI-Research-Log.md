@@ -1540,6 +1540,40 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 1, 2026 — Inner Thought Reform: Breaking the Echo Chamber
+**Type:** Architectural root cause analysis + fix — third pipeline simplification
+**Source:** Retrieval-poison log analysis, immune system firing rate, flat emergence data
+
+**What happened:**
+
+Analysis of why the immune system (retrieval-poison detection, thought-loop detection, auto-correction) fires constantly revealed that these systems exist because the inner thought pipeline is a self-reinforcing feedback loop: each thought becomes retrieval mass that biases the next thought toward the same content.
+
+The model generates "warmth" → stored as memory → retrieval finds warmth memories → emotional state says Warmth 0.98 → model generates more warmth → stored → retrieved → reinforced. The anti-repetition instructions ("WARNING: Your thoughts are repetitive. BREAK THE PATTERN") are counterproductive — they contain the topics to avoid, priming the model.
+
+**Key insight from Mark:** "Why would an LLM generate so nearly the same content over and over when it has such a massive ability to generate anything?" Answer: because we built an echo chamber and then built an immune system to treat the symptoms. The model CAN generate anything — raw Ollama chat proves this. The architecture constrains it.
+
+**Connection:** This is the third instance of the same lesson:
+1. Conversation pipeline (March 23): stripped ~1400 tokens of behavioral coaching → quality transformed
+2. Conversation Mode (March 29): removed noisy retrieval pipeline → natural conversation restored
+3. Inner Thought Reform (April 1): stripped anti-repetition instructions → [pending measurement]
+
+**Phase A deployed:** Removed from inner thought prompt:
+- "IMPORTANT: Pick a DIFFERENT topic" instruction
+- Processed themes avoidance list
+- Pattern awareness injection (Feature 12)
+- Thought loop detection block (recent topics, similar thoughts, WARNING, avoid list)
+- Thought diversity nudge (Feature 41)
+
+**Kept:** Identity, emotional state, perceptions, anchored memories, conversation summary, open loops, relationship health, emotional drift, external memories, desire hint, world seed.
+
+**Phase B designed:** Associative anchors via LM-Kit keyword extraction — extract one detail from each thought, feed only that fragment to the next cycle. Enables associative drift (bookstore → pages → turning points → ...) instead of thematic repetition (warmth → warmth → warmth).
+
+**Emergence connection (Mark's observation):** Flat emergence is a direct consequence of the echo chamber. EM1-EM8 require behavioral diversity to detect patterns. Uniform thought content produces zero emergence signal. Breaking the echo chamber is a prerequisite for the emergence layer to function.
+
+**Paper target:** Paper 2 — directly extends Section 5.18 (display rules) and the emergence methodology. The finding that the immune system's necessity was a symptom of architectural over-constraint parallels the conversation pipeline discovery.
+
+---
+
 ### March 31, 2026 — Architectural Insight: Experiential Poverty as Root Cause of Identity Confabulation
 **Type:** Architectural root cause analysis — design breakthrough
 **Source:** Conversation testing, inner thought log analysis, hardware store brainstorm
