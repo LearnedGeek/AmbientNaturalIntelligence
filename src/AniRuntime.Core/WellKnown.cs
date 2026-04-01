@@ -13,6 +13,7 @@ public static class Roles
 public static class SourceNames
 {
     public const string CharacterSeed = "character-seed";
+    public const string WorldExperience = "world-experience";
 }
 
 public static class MemoryPrefixes

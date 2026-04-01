@@ -26,4 +26,9 @@
     <InternalsVisibleTo Include="AniRuntime.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="WorldEvents\special-events.json" />
+    <EmbeddedResource Include="WorldEvents\calendar-events.json" />
+  </ItemGroup>
+
 </Project>

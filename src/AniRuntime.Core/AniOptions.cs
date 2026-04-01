@@ -209,6 +209,13 @@ public class VoiceOptions
     public int    DeepgramEndpointingMs      { get; set; } = 1500;  // silence before finalizing utterance (was 500 — too aggressive, split mid-sentence on breath pauses)
 }
 
+public class WorldSeedOptions
+{
+    public bool  Enabled                  { get; set; } = true;
+    public int   WorldSeedFrequency       { get; set; } = 4;     // seed every Nth cycle
+    public float SpecialEventProbability  { get; set; } = 0.02f; // 2% chance per seed
+}
+
 public class ImageOptions
 {
     public bool   Enabled                    { get; set; } = false;

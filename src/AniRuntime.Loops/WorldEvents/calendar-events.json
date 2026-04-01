@@ -1,0 +1,19 @@
+[
+  { "month": 1, "day": 1,  "name": "New Year's Day" },
+  { "month": 1, "day": 20, "name": "Martin Luther King Jr. Day" },
+  { "month": 2, "day": 2,  "name": "Groundhog Day" },
+  { "month": 2, "day": 14, "name": "Valentine's Day" },
+  { "month": 3, "day": 17, "name": "St. Patrick's Day" },
+  { "month": 4, "day": 1,  "name": "April Fool's Day" },
+  { "month": 5, "day": 5,  "name": "Cinco de Mayo" },
+  { "month": 5, "day": 26, "name": "Memorial Day" },
+  { "month": 6, "day": 19, "name": "Juneteenth" },
+  { "month": 7, "day": 4,  "name": "Independence Day" },
+  { "month": 9, "day": 1,  "name": "Labor Day" },
+  { "month": 10, "day": 31, "name": "Halloween" },
+  { "month": 11, "day": 11, "name": "Veterans Day" },
+  { "month": 11, "day": 27, "name": "Thanksgiving" },
+  { "month": 12, "day": 24, "name": "Christmas Eve" },
+  { "month": 12, "day": 25, "name": "Christmas Day" },
+  { "month": 12, "day": 31, "name": "New Year's Eve" }
+]
