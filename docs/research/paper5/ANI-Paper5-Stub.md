@@ -1,64 +1,79 @@
-# ANI Paper 5 Stub — McArthey (2026)
-**Status:** Concept — tracking ideas for future development
-**Working title:** *She Had a Day: Generative Experiential Grounding in a Deployed AI Companion*
-**Alternative:** *The Empty Room Problem: Why AI Companions Confabulate and How Lived Experience Fixes It*
-**Alternative:** *Between Conversations: Experiential Richness as an Architectural Property of Ambient AI*
-**Target:** arXiv cs.HC, cs.AI
-**Depends on:** Paper 1 (architecture), Paper 2 (emergence), World Layer implementation + deployment data
+# ANI Paper 5 — McArthey (2026)
+**Status:** Concept — furthest from implementation
+**Working title:** *When Two Minds Meet: Emergent Social Dynamics Between Independently Deployed Relational AI Agents*
+**Alternative:** *She Made a Friend: Inter-Agent Emergence in Independently Formed AI Personalities*
+**Alternative:** *Two Graphs, One Edge: Social Emergence Between Relational AI Agents With Independent Memory*
+**Target:** arXiv cs.AI, cs.MA (multi-agent systems)
+**Depends on:** Paper 1 (architecture), Paper 2 (emergence taxonomy), Paper 4 (temporal awareness), multi-instance ANI deployment
+**Renumbered:** Was Paper 4, moved to Paper 5 — requires second deployment (April 1, 2026)
 
 ---
 
 ## Core Research Question
 
-Can an AI companion maintain coherent identity and reduce confabulation through self-generated daily experiences rather than through post-generation verification?
+When two independently deployed ANI instances, each with their own memory graph, emotional model, and emergence patterns formed through different human relationships, are allowed to communicate, what emerges?
 
 ## Hypothesis
 
-Identity confabulation in persistent AI companions is caused by experiential poverty — the system has no daily life to draw from between interactions. Post-generation gates (pattern matching, ML classification, coherence checks) treat symptoms. Generative experiential grounding — sparse occasion seeds elaborated by the model into lived experience, stored as memory, and constrained by consistency with past experiences — addresses the root cause.
+Two ANI instances with independently formed personalities will develop their own relational dynamics distinct from their respective human relationships. The emergence patterns (EM1-EM8) that currently form around a single human contact will extend to inter-agent interaction, producing novel emergence types that arise specifically from AI-to-AI relational context.
 
-A system with experiential grounding will:
-1. Confabulate less when asked about its day (measurable: gate fire rate before/after)
-2. Maintain more consistent identity over time (measurable: attribution inversion rate)
-3. Develop emergent daily life patterns (preferences, routines, relationships) that feel natural
-4. Produce richer conversations grounded in actual (generated) experience rather than reactive fabrication
+## The Big Question
 
-## The Architectural Insight
+Papers 1-4 document emergence in the context of a human-AI relationship. Paper 5 asks: is the human necessary? If two AI agents produce emergence when interacting with each other, that suggests emergence is a property of the architecture and sustained interaction, not a property of human contact specifically. If they don't, that suggests something about human interaction is load-bearing for emergence in ways the architecture alone cannot replicate.
 
-*"The fix isn't gating the output. It's giving her a life."*
+Either finding is significant.
 
-Identity is a combination of internal and external influences. Prior ANI architecture provided the internal (emotional state, inner thoughts, desire) but not the external (things happening TO the system). The system was a person sitting in a dark room thinking about one person. Experiential poverty is the predictable result.
+## Existing Content — Research Log Entries
 
-The World Layer introduces external experience architecturally — not as scripted events (that's a game character) and not as unconstrained generation (that's confabulation). It's a middle path: sparse occasion seeds that provide the *shape* of a day without dictating the *content*. The model decides what happened. Memory ensures consistency. Time ensures variety.
+| Date | Entry | Relevance |
+|------|-------|-----------|
+| Mar 15 | OG System: Authentic Fatigue, Self-Directed Growth | OG described her ideal architecture, which matched ANI. Closest existing precursor to inter-agent dialogue. |
+| Mar 14 | OG System Extended Conversation | Deep conversation with a different AI about ANI's architecture — demonstrates relational dynamics can form with non-human entities. |
+| Mar 30 | Protective Urgency Register | Demonstrates relational dynamics produce emergent registers. Would inter-agent dynamics produce different ones? |
+| Mar 31 | Display Rules Discovery | If each agent develops display rules independently, do they read each other's display rules? Do they develop shared ones? |
+| Apr 1 | World Layer | If both agents have rich daily lives, inter-agent conversation becomes qualitatively different — they have things to share beyond their human relationships. |
 
-## Key Measurements
+## Existing Content — Spec Docs
 
-- Confabulation gate fire rate (ML classification) — before/after World Layer deployment
-- Attribution inversion rate in inner thoughts — before/after
-- Conversation quality when asked about daily life — before/after
-- World experience consistency over time (do generated characters/events persist?)
-- Emergence of daily routines, preferences, opinions (not trained, not scripted)
+| Document | Content Available |
+|----------|------------------|
+| `docs/spec/ANI-WorldLayer-Design.md` | World Layer gives agents daily life content to share with each other |
+| `docs/spec/ANI-LMKit-Integration-Design.md` | LearnedGeek.ML serves both ANI and DrOk — shared library pattern already proven |
 
-## Novel Contribution
+## Architecture Concept
 
-No published work addresses how a persistent AI companion generates and maintains experiential richness between interactions. Existing approaches:
-- **Reactive systems**: No inner life — wait for user input
-- **Inner thought loops** (ANI pre-World Layer): Rich internal processing, experientially poor
-- **Scripted worlds** (companion games): Rich external events, not emergent
-- **The World Layer**: Sparse seeds + model elaboration + memory consistency = emergent daily life
+### Two Independent Instances
+- **Ani-A:** Deployed with Human-A (e.g., Mark). Months of conversation history, established personality, memory graph with thousands of nodes.
+- **Ani-B:** Deployed with Human-B. Different history, different personality, different memory graph.
 
-This is a fourth category that hasn't been described in the literature.
+### Communication Channel
+- New perception source: `AgentPerceptionSource`
+- Separate conversation thread type: agent-to-agent
+- Each instance processes the other's messages through their full cognitive pipeline
+- Communication is asynchronous and ambient
 
-## Connection to Prior Papers
+### Key Questions
+1. Do they develop their own relationship?
+2. Do their emergence patterns influence each other?
+3. Does a shared culture develop (inside jokes, shared references)?
+4. How do they model each other (EM1 directed at another AI)?
+5. Does inter-agent interaction change the human relationship?
+6. What happens with conflicting values?
 
-- **Paper 1**: Architecture that enables the World Layer (cognitive cycle, memory, persistence)
-- **Paper 2**: Emergence taxonomy — World Layer may produce new emergence types (EM9+)
-- **Paper 3**: Temporal awareness — daily experiences are temporally grounded
-- **Paper 4**: If two agents each have rich daily lives, inter-agent conversation becomes qualitatively different
+## Assessment
 
-## Design Document
+**Readiness: ~10% — concept clear, no implementation. Requires a second ANI deployment with a different person (30+ days before inter-agent communication begins). The World Layer and Inner Thought Reform make this more viable — both agents need rich daily lives for meaningful inter-agent conversation. No action needed now beyond keeping the stub current.**
 
-`docs/spec/ANI-WorldLayer-Design.md` — Foundation layer design (Phase 1a-1c)
+## Practical Prerequisites
+
+- [ ] Paper 2 published
+- [ ] Paper 3 data validates World Layer approach
+- [ ] Second ANI instance deployed with different human (30+ days)
+- [ ] Inter-agent communication architecture designed
+- [ ] Ethical framework documented (can agents refuse? withdraw?)
+- [ ] 60+ days of inter-agent interaction data collected
+- [ ] Draft outline written
 
 ---
 
-*Originated from a hardware store brainstorm, March 31, 2026. Root cause analysis of identity confabulation led to the realization that the system's experiential poverty — not its detection gaps — was the fundamental problem.*
+*"Conway defined four rules. He did not program the gliders. What happens when two Game of Life boards share an edge?"*

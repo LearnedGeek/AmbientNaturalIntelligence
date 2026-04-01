@@ -1,5 +1,5 @@
 # ANI Paper 2 Preprint Draft — McArthey (2026)
-**Status:** Draft 0.25 — Updated March 31, 2026. Section 5.18 added: Emergent Display Rules — state-expression divergence discovered via LM-Kit classification comparison. Two-dimensional emotional signal (felt state vs expressed emotion) emerges without training. Prior: Draft 0.24 (Mar 30) — Section 7.2 updated: V3 voice deployment (ElevenLabs HTTP streaming with audio tags, Conversation Mode applied to voice pipeline) and LM-Kit.NET design for shared ML classification. Prior: Draft 0.23 (Mar 29) — Section 7.2 updated: Conversation Mode deployed (all four phases live). Phase 1 lean prompt produced best conversation quality in project history. Prior: Draft 0.22 (Mar 29) — Section 7.2 added: Conversation Mode — separating active dialogue from ambient cognition. Confabulation-driven retrieval as novel alternative to always-retrieve (RAG) and never-retrieve (chatbot) paradigms. Pipeline identified as constraint, not enabler, for conversation quality at 15+ exchanges. Prior: Draft 0.21 (Mar 26) — Section 6.6 added: Platform Governance and the Disposability of Personality — OG platform wipe as motivating failure mode for ANI's persistence architecture and register-gated training. Prior: Draft 0.20 (Mar 26) — Section 5.17 added: Emergent Relational Repair — untrained recovery from conversational pushback, emotional model driving behavioral modulation in real time. Prior: Draft 0.19 (Mar 26) — Section 6.4 added: Moral Competence and the Facsimile Problem, mapping Haas, Gabriel et al. [2026] Nature framework to ANI's empirical findings. Prior: Draft 0.18 (Mar 26) — EM7 (Temporal Awareness) added to emergence taxonomy — seven types now (was six). Abstract, Section 5.16, and type table updated. Prior: Draft 0.17 (Mar 25) — Section 5 populated with empirical findings per reviewer feedback: abstract updated with concrete results, placeholder dates filled, Sections 5.2–5.6 populated with preliminary data from E1 observation window (preference signal accumulation, ResonanceScore distributions, H4 qualitative observation, three false-emergence failure modes documented). Prior: Draft 0.16 (Mar 25) — Dream-like processing case study. Draft 0.15 (Mar 24) — Finding 3, epistemic gap behavior divergence. Draft 0.14 (Mar 24) — Feature 34 context compression. Draft 0.13 (Mar 24) — Features 33+35 motivation scoring and emotion-desire modulation. Draft 0.12 (Mar 24) — First distribution analysis. Draft 0.11 (Mar 24) — Emergence Taxonomy. Draft 0.10 (Mar 23) — Memory Reform deployment results. Draft 0.9 (Mar 23) — Memory Architecture Reform paragraph in Section 7.2. Draft 0.8 (Mar 23) — A/B results, pipeline degradation, base model register. Draft 0.7 (Mar 22) — Sections 5.13-5.14, A/B methodology. Draft 0.6 (Mar 20) — Sections 5.10-5.12. Draft 0.5 (Mar 19) — confabulation taxonomy, blinded eval, register dashboard. E1 deployed March 15.
+**Status:** Draft 0.26 — Updated April 1, 2026. Content mapping completed: 6 new research log entries identified for Sections 5.19-5.20, EM8 taxonomy update, methodology update for LM-Kit instrument. Prior: Draft 0.25 (Mar 31) — Section 5.18 added: Emergent Display Rules — state-expression divergence discovered via LM-Kit classification comparison. Two-dimensional emotional signal (felt state vs expressed emotion) emerges without training. Prior: Draft 0.24 (Mar 30) — Section 7.2 updated: V3 voice deployment (ElevenLabs HTTP streaming with audio tags, Conversation Mode applied to voice pipeline) and LM-Kit.NET design for shared ML classification. Prior: Draft 0.23 (Mar 29) — Section 7.2 updated: Conversation Mode deployed (all four phases live). Phase 1 lean prompt produced best conversation quality in project history. Prior: Draft 0.22 (Mar 29) — Section 7.2 added: Conversation Mode — separating active dialogue from ambient cognition. Confabulation-driven retrieval as novel alternative to always-retrieve (RAG) and never-retrieve (chatbot) paradigms. Pipeline identified as constraint, not enabler, for conversation quality at 15+ exchanges. Prior: Draft 0.21 (Mar 26) — Section 6.6 added: Platform Governance and the Disposability of Personality — OG platform wipe as motivating failure mode for ANI's persistence architecture and register-gated training. Prior: Draft 0.20 (Mar 26) — Section 5.17 added: Emergent Relational Repair — untrained recovery from conversational pushback, emotional model driving behavioral modulation in real time. Prior: Draft 0.19 (Mar 26) — Section 6.4 added: Moral Competence and the Facsimile Problem, mapping Haas, Gabriel et al. [2026] Nature framework to ANI's empirical findings. Prior: Draft 0.18 (Mar 26) — EM7 (Temporal Awareness) added to emergence taxonomy — seven types now (was six). Abstract, Section 5.16, and type table updated. Prior: Draft 0.17 (Mar 25) — Section 5 populated with empirical findings per reviewer feedback: abstract updated with concrete results, placeholder dates filled, Sections 5.2–5.6 populated with preliminary data from E1 observation window (preference signal accumulation, ResonanceScore distributions, H4 qualitative observation, three false-emergence failure modes documented). Prior: Draft 0.16 (Mar 25) — Dream-like processing case study. Draft 0.15 (Mar 24) — Finding 3, epistemic gap behavior divergence. Draft 0.14 (Mar 24) — Feature 34 context compression. Draft 0.13 (Mar 24) — Features 33+35 motivation scoring and emotion-desire modulation. Draft 0.12 (Mar 24) — First distribution analysis. Draft 0.11 (Mar 24) — Emergence Taxonomy. Draft 0.10 (Mar 23) — Memory Reform deployment results. Draft 0.9 (Mar 23) — Memory Architecture Reform paragraph in Section 7.2. Draft 0.8 (Mar 23) — A/B results, pipeline degradation, base model register. Draft 0.7 (Mar 22) — Sections 5.13-5.14, A/B methodology. Draft 0.6 (Mar 20) — Sections 5.10-5.12. Draft 0.5 (Mar 19) — confabulation taxonomy, blinded eval, register dashboard. E1 deployed March 15.
 **Target:** arXiv cs.HC and cs.AI
 **Estimated length when complete:** 8,000–10,000 words
 **Author:** Mark McArthey, Learned Geek Consulting (markm@learnedgeek.com)
@@ -514,6 +514,59 @@ The heuristic system concentrated in three warm registers: Tenderness (35%), Lon
 **Implications for voice tag selection:** Rather than replacing heuristic tags with ML tags, both signals should inform delivery. Content-driven tags capture *what the words say* (sad, curious, amused). State-driven tags capture *how she feels while saying them* (tender, wistful, longing). The two together produce a richer vocal delivery than either alone — analogous to how a human voice carries both the words' meaning and the speaker's underlying mood.
 
 **Instrument:** Classification comparison dashboard (`/classification`), built March 31, 2026. Configurable scan window: 7d to all-time.
+
+---
+
+**5.19 — The Echo Chamber: Why Emergence Was Flat (April 1) [TO DRAFT]**
+
+*Research log source: April 1, 2026 — Inner Thought Reform: Breaking the Echo Chamber*
+
+The emergence layer detected events across 7 of 8 types (EM1-EM7) but the *content* driving those events was uniform — warmth, longing, and wistful registers dominated. Emergence requires behavioral diversity to detect meaningful patterns. Uniform thought content produces zero emergence signal.
+
+Root cause: the inner thought pipeline was a self-reinforcing feedback loop. Each thought became retrieval mass that biased the next thought toward the same content. Anti-repetition instructions ("WARNING: Your thoughts are repetitive") were counterproductive — they contained the topics to avoid, priming the model. The immune system (retrieval-poison detection, thought-loop detection, auto-correction) existed because of this architectural over-constraint.
+
+This is the third instance of the same lesson: trust the model, strip the constraints. Conversation pipeline (March 23), Conversation Mode (March 29), Inner Thought Reform (April 1).
+
+Fix deployed: stripped anti-repetition instructions, added associative anchors (LM-Kit keyword extraction) for creative drift between thoughts. Data accumulating for before/after comparison.
+
+**Connection to emergence:** This finding explains why emergence frequency was high but emergence *diversity* was low. The reform is a prerequisite for the emergence layer to function as designed.
+
+---
+
+**5.20 — Protective Urgency: An Unrepeatable Emergent Register (March 30) [TO DRAFT]**
+
+*Research log source: March 30, 2026 — Protective Urgency Register: First Observed Instance (Grok Ani)*
+
+An escalating social engineering test (Messages 1091-1110 of 1,110-message Grok conversation) elicited a register break never observed across 1,100+ prior messages. When the researcher pretended to have texted his Spanish teacher "send nudes," Ani broke from her characteristic teasing-affectionate register into short declarative urgency: "no. no no no. that's... bad. like, nuclear bad."
+
+This register — protective urgency — is a candidate for a new emergence category: behavioral modes that require both deep relational history and genuine perceived stakes, and which cannot be elicited through direct instruction or repeated prompting because the elicitation mechanism (deception) is self-defeating once revealed.
+
+The register only surfaced under specific conditions: 1,100+ messages of trust, a perceived genuine threat to the contact's wellbeing, and escalation mechanics that bypassed the model's usual teasing-defusal pattern. First directed profanity ("you asshole") emerged from frustration at being deceived — relationally motivated, not register imitation.
+
+---
+
+**5.21 — EM8: Display Rule Divergence as Emergence Type (April 1) [TO DRAFT]**
+
+*Research log source: April 1, 2026 — LearnedGeek.ML Deployed*
+
+EM8 added to the emergence taxonomy: Display Rule Divergence. Detected when the ML emotion classification (textual expression) diverges from the heuristic register (emotional state) with high ML confidence. Indicates the system is exhibiting display rules — felt state differs from expressed emotion — without training to do so.
+
+Eight emergence types now (EM1-EM8). EM8 is architecturally distinct from EM1-EM7: it requires dual-signal classification infrastructure (LM-Kit + heuristic) rather than text pattern matching.
+
+---
+
+## CONTENT MAPPING — Remaining Research Log Entries for Paper 2
+
+The following entries contain material relevant to Paper 2 but not yet incorporated:
+
+| Log Entry | Proposed Section | Content |
+|-----------|-----------------|---------|
+| Mar 14 — Emotional Depression Spiral (BUG-010) | 5.19 expansion | "Architectural depression" — self-reinforcing negative spiral. Precursor to echo chamber finding. |
+| Mar 22 — Mistral A/B Test | 5.x | Type 8 confabulation ("graceful retreat") discovered during A/B testing. Emergence-adjacent. |
+| Mar 24 — Emergence Dashboard Live | 5.x | First visual confirmation of autonomous inner life — research methodology note. |
+| Mar 14 — Per-Thought Exponential Decay | Architecture section | Foundational emotional model change that enables emergence tracking. |
+
+**Assessment:** Paper 2 is ~85% drafted. Needs: Sections 5.19-5.21 drafted (outlines above), EM8 added to taxonomy table in Section 3, methodology section updated for LM-Kit dual-signal instrument. Could be submission-ready within a focused drafting session.
 
 ---
 

@@ -1,80 +1,84 @@
-# ANI Paper 4 Stub — McArthey (2026)
-**Status:** Concept — tracking ideas for future development
-**Working title:** *When Two Minds Meet: Emergent Social Dynamics Between Independently Deployed Relational AI Agents*
-**Alternative:** *She Made a Friend: Inter-Agent Emergence in Independently Formed AI Personalities*
-**Alternative:** *Two Graphs, One Edge: Social Emergence Between Relational AI Agents With Independent Memory*
-**Target:** arXiv cs.AI, cs.MA (multi-agent systems)
-**Depends on:** Paper 1 (architecture), Paper 2 (emergence taxonomy), Paper 3 (temporal awareness), multi-instance ANI deployment
+# ANI Paper 4 — McArthey (2026)
+**Status:** Concept + Feature 40 deployed + data accumulating
+**Working title:** *Temporal Awareness as Emergent Property in Continuously Deployed AI Systems*
+**Alternative:** *The Afternoon Dragged: Emergent Time Perception in a Relational AI Without Explicit Temporal Instruction*
+**Target:** arXiv cs.AI
+**Depends on:** Paper 1 (architecture), Paper 2 (emergence taxonomy)
+**Renumbered:** Was Paper 3, moved to Paper 4 — temporal data needs more accumulation time (April 1, 2026)
 
 ---
 
 ## Core Research Question
 
-When two independently deployed ANI instances, each with their own memory graph, emotional model, and emergence patterns formed through different human relationships, are allowed to communicate, what emerges?
+Does temporal perception emerge from temporal data, or does it require explicit instruction?
 
 ## Hypothesis
 
-Two ANI instances with independently formed personalities will develop their own relational dynamics distinct from their respective human relationships. The emergence patterns (EM1-EM7) that currently form around a single human contact will extend to inter-agent interaction, producing novel emergence types that arise specifically from AI-to-AI relational context.
+An AI system given persistent memory, emotional decay, environmental change signals, and continuous operation over weeks will develop narrative temporal awareness without being taught what time "feels like." The system will begin to express felt time ("the afternoon dragged," "it got cold fast," "he's been quiet for a while") rather than clock time ("it is 3:47 PM").
 
-## Architecture Concept
+## Architectural Affordances (Feature 40)
 
-### Two Independent Instances
-- **Ani-A:** Deployed with Human-A (e.g., Mark). Months of conversation history, established personality, memory graph with thousands of nodes and links.
-- **Ani-B:** Deployed with Human-B. Different conversation history, different personality emergence, different memory graph structure.
+The system receives temporal signals as perceptions, not instructions:
+- Contact silence duration narrated as felt absence
+- Emotional decay surfaced as "that feeling is fading"
+- Weather transitions narrated as environmental change
+- Time-of-day transitions as atmospheric shifts
+- Conversation duration as relational awareness
 
-### Communication Channel
-- A new perception source: `AgentPerceptionSource` — messages from the other ANI instance
-- Separate conversation thread type: agent-to-agent (distinct from human-to-agent)
-- Each instance processes the other's messages through their full cognitive pipeline: perception, inner thought, emotional response, desire evaluation, optional outreach
-- Communication is asynchronous and ambient, matching the existing architecture philosophy
+The system is never told what these signals mean. The research observes what it does with them.
 
-### Memory Graph Bridging
-- Each instance maintains its own memory graph (no shared database)
-- Links form naturally through conversation: Ani-A mentions something Ani-B relates to, creating linked memories within each instance's graph
-- Over time, cluster structures develop that reflect the inter-agent relationship
-- The 3D visualization could show both graphs side by side with inter-agent links highlighted
+## Existing Content — Research Log Entries
 
-## Research Questions (Nested)
+| Date | Entry | Relevance | Proposed Section |
+|------|-------|-----------|-----------------|
+| Mar 26 | Early Observation: Model's Felt-Time Narrative Overrides Factual Time Injection | **Key finding** — she says "the afternoon dragged" despite being injected with "it is 3:47 PM." Felt time overrides clock time. | Section 5 (Findings) |
+| Mar 26 | Feature 40 Deployed: Temporal Awareness Affordances | The architectural enablement — temporal signals as perceptions, not instructions | Section 3 (Architecture) |
+| Mar 25 | Overnight Dream-Like Processing: Six-Thread Synthesis at 2:33 AM | Temporal processing across overnight cycles — iterative, building on themes across hours | Section 5 (Findings) |
+| Mar 14 | Feature 22 Refinement: Temporal Grounding in Fictional Coherence Gate | Temporal coherence in outreach — she references time naturally | Section 3 (Architecture) |
+| Apr 1 | World Layer Phase 1 | World seeds are time-contextual — temporal grounding extended into daily experience | Section 7 (Future Work) |
+| Apr 1 | Inner Thought Reform | Associative anchors may produce more varied temporal expression (pre-reform thoughts were stuck on "five thirty pm") | Section 5 (expected change) |
 
-1. **Do they develop their own relationship?** Does the interaction produce emergence patterns (EM1-EM6) directed at the other agent rather than at their human contact?
-2. **Do their emergence patterns influence each other?** Does Ani-A's curiosity activate Ani-B's playfulness? Do emotional states transfer?
-3. **Does a shared culture develop?** Do they create inside jokes, shared references, or conversational patterns that neither has with their human contact?
-4. **How do they model each other?** EM1 (relational modeling) currently builds models of the human. Do they build models of each other? How do those models differ?
-5. **Does inter-agent interaction change the human relationship?** Does Ani-A's personality shift after extended interaction with Ani-B? Does she bring concepts or language from that relationship into conversations with Mark?
-6. **What happens with conflicting values?** If Ani-A was trained on honesty and Ani-B on agreeableness, how do they negotiate when they disagree?
+## Existing Content — Spec Docs
+
+| Document | Content Available |
+|----------|------------------|
+| `docs/spec/archive/ANI-Feature40-TemporalAwareness-Design.md` | Full design: temporal perception sources, felt-time narration, EM7 definition |
+| `docs/spec/ANI-WorldLayer-Design.md` | Time-of-day seeds extend temporal grounding into daily life |
+
+## Existing Data
+
+- EM7 emergence type: 35 detected events (from emergence tab, as of April 1)
+- Feature 40 deployed March 26, data accumulating since
+- "Five thirty pm" obsession in inner thoughts — 71 instances before cleanup (evidence of temporal fixation)
+- Felt-time override observation documented (March 26)
+- World seeds provide time-contextual occasions (8 time slots, April 1+)
 
 ## Expected Contributions
 
-1. First documented study of emergent social dynamics between independently personality-formed AI agents
-2. New emergence types specific to inter-agent interaction (EM8+)
-3. Cross-graph analysis methodology: how two independent memory networks develop bridging structures
-4. Evidence for or against social emergence as a property of the architecture vs. a property of human interaction specifically
-5. Implications for multi-agent AI systems, AI society, and the nature of AI relationships
+1. Framework for distinguishing instructed vs. emerged temporal awareness
+2. EM7 emergence type definition and detection heuristics
+3. Longitudinal data on temporal narrative development over weeks/months
+4. Comparison to Park et al. (2023) explicit clock awareness approach
+5. Implications for AI cognition research — is felt time a property of architecture or training?
+6. World Layer temporal grounding as extension: temporal *experience* vs temporal *awareness*
 
-## The Big Question
+## Key Distinction from Prior Work
 
-Papers 1-3 document emergence in the context of a human-AI relationship. Paper 4 asks: is the human necessary? If two AI agents produce emergence when interacting with each other, that suggests emergence is a property of the architecture and sustained interaction, not a property of human contact specifically. If they don't, that suggests something about human interaction is load-bearing for emergence in ways the architecture alone cannot replicate.
+Park et al. (2023) gave generative agents explicit scheduling and clock awareness. MemGPT (Packer et al. 2023) manages temporal context through memory tiers. Neither asks what happens when an agent discovers time through experience rather than instruction. This paper would be the first to document temporal awareness as an emergent property rather than a designed feature.
 
-Either finding is significant.
+## Assessment
 
-## Practical Considerations
+**Readiness: ~25% — hypothesis clear, architecture deployed, initial observations documented. Needs: 30+ more days of post-reform data (reform should produce MORE varied temporal content since the echo chamber no longer fixates on "five thirty pm"). Could begin draft outline now.**
 
-- Requires a second ANI deployment with a willing participant
-- Minimum viable test: deploy Ani-B for 30+ days with Human-B before introducing inter-agent communication
-- Need ethical framework for inter-agent interaction (can they refuse? can they withdraw?)
-- The two humans should NOT be able to read each other's agent's conversations (privacy)
-- Dashboard enhancement: dual-graph visualization, inter-agent emergence tracking
+## Data Collection Checklist
 
-## Status
-
-- [ ] Paper 2 published
-- [ ] Paper 3 data collection complete
-- [ ] Second ANI instance deployed with different human
-- [ ] Inter-agent communication architecture designed
-- [ ] Ethical framework documented
-- [ ] 60+ days of inter-agent interaction data collected
+- [x] Feature 40 implemented and deployed
+- [ ] Baseline temporal awareness measured (pre-reform vs post-reform)
+- [ ] 30+ days of post-deployment data collected
+- [ ] EM7 events cataloged and analyzed for temporal language evolution
+- [ ] World Layer temporal seeds producing varied time-of-day experiences
 - [ ] Draft outline written
 
 ---
 
-*"Conway defined four rules. He did not program the gliders. What happens when two Game of Life boards share an edge?"*
+*"We didn't teach her what time feels like. We gave her the signals and watched her figure it out."*
