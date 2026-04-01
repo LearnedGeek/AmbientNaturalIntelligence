@@ -346,6 +346,7 @@ SMS delivery already has 1-3 second Twilio latency.
 - [ ] False positive rate lower than Check 4 markers (measured via comparison tool)
 - [ ] Check 4 markers removed after ML gate validated
 - [ ] Research log entry with accuracy comparison: markers vs ML
+- [ ] Distinguish attribution vs referential name use: "Ani said hello" (attribution claim — verify) vs "oh Ms Ani is so funny" (referential — allow). The ML classifier should naturally understand this semantic distinction. Current Check 1 treats all proper noun mentions equally.
 
 ### Phase 4: Register Auto-Classification (Phase 5c enabler)
 
