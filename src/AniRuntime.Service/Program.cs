@@ -444,7 +444,9 @@ try
         // Semantic memories makes them discoverable via semantic search — so when the
         // contact mentions Duck Norris, Ani's memory search finds the backstory.
         var charState = await memory.GetCharacterStateAsync();
-        var existingSemantics = await memory.GetByTypeAsync(MemoryType.Semantic, 1);
+        // Check enough records to reliably detect seed presence — previous limit of 1
+        // missed seeds buried behind non-seed Semantic memories, causing re-seeding on every restart.
+        var existingSemantics = await memory.GetByTypeAsync(MemoryType.Semantic, 100);
         var alreadySeeded = existingSemantics.Any(m => m.SourceName == SourceNames.CharacterSeed);
 
         if (!alreadySeeded && charState.CoreTraits.Count > 0)
