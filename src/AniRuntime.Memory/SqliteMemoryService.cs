@@ -175,7 +175,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var cmd  = conn.CreateCommand();
 
         cmd.CommandText = """
-            INSERT INTO memories
+            INSERT OR REPLACE INTO memories
                 (id, type, content, raw_json, importance, relational_valence, embedding,
                  is_resolved, source_name, occurred_at, created_at, resolved_at,
                  tier, anchor_reason, anchored_at)
