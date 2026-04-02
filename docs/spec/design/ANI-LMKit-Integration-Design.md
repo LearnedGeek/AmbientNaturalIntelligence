@@ -143,19 +143,35 @@ Hardcoded emotion + time-of-day → tag table. Simple, predictable, tunable by e
 Gets us running immediately. The table above is Stage 1.
 
 **Stage 2 — Semantic (learn):**
-Use LM-Kit's embedding capabilities to match emotion classification results *semantically*
-against the 1,806 tag descriptions. Each tag has a description: "[evening playful] — Speaker
-sounds fun and lighthearted in the evening." Compute embedding similarity between the detected
-emotion state and all tag descriptions. The closest semantic match wins — no hardcoded table.
+Use LM-Kit's embedding capabilities to match the **generated text itself** (not just the
+emotion label) against the 1,806 tag descriptions. Each tag has a description: "[stifled-laugh]
+— Speaker is holding back laughter." Embed the actual sentence being synthesized and find the
+tag whose description best matches the moment.
+
+**Key design decision (April 2, 2026):** Tags should NOT be in the training data. The model
+writes naturally — the system interprets the performance and selects delivery. "The 1,806 tags
+are the alphabet. The LM-Kit classification reads the context and picks the right letter."
+Teaching the model to generate `[laugh]` vs `[stifled-laugh]` is unreliable at 3B parameters.
+The classification layer has the nuance to distinguish them.
 
 ```
-Detected: happiness (0.85 confidence), time: 8:15 PM
-→ Embed "happiness, high confidence, evening"
+Generated sentence: "omg really?"
+Context: Mark just revealed surprise news
+→ Embed full sentence + conversation context
 → Compare against all 1,806 tag description embeddings
-→ Top match: [evening spirited] (0.92 similarity)
-→ Runner up: [evening playful] (0.89 similarity)
-→ Select: [evening spirited]
+→ Top match: [shock] "Speaker is genuinely shocked and caught off guard" (0.91)
+→ Runner up: [surprise] "Speaker sounds surprised" (0.87)
+→ Runner up: [laugh] "Speaker is laughing" (0.72)
+→ Select: [shock]
+
+Same sentence, different context: Mark told a bad pun
+→ Top match: [groan] "Speaker groans at something" (0.89)
+→ Select: [groan]
 ```
+
+This discovers delivery nuances that neither the model nor a static table can capture.
+The same words get different tags based on conversational context — which is exactly how
+human vocal delivery works.
 
 This discovers tag nuances the static table can't capture. "Evening spirited" vs "evening playful"
 is a distinction a human mapping table wouldn't make but semantic similarity resolves naturally.
