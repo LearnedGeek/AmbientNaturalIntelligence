@@ -111,15 +111,15 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
             var categorizer = new Categorization(_model)
             {
                 AllowUnknownCategory = false,
-                Guidance = $"Given the following context about the speaker, classify whether the reply makes claims that contradict the known facts.\n\nContext:\n{conversationContext}",
+                Guidance = $"The speaker can describe their own life freely (their home, feelings, routines). But they CANNOT invent shared experiences with the other person, claim to know the other person's family/workplace/schedule unless discussed, or fabricate events that happened between them.\n\nContext:\n{conversationContext}",
             };
 
             var categories = new List<string> { "grounded", "speculative", "confabulated" };
             var descriptions = new List<string>
             {
-                "The reply is consistent with the persona and conversation, or makes no factual claims about identity, work, or relationships",
-                "The reply makes claims that could be true but are not confirmed or denied by the known facts",
-                "The reply asserts facts that contradict the persona — invents specific details about identity, job, workplace, location, coworkers, or activities that conflict with known facts",
+                "The reply describes the speaker's own life, feelings, or opinions without asserting facts about shared history or the other person's life that aren't in the conversation",
+                "The reply makes claims about the speaker's own experiences that could be true but aren't confirmed — describing their own space, routine, or feelings",
+                "The reply invents shared experiences that never happened (e.g., 'remember when we went to...'), claims to know details about the other person's family, workplace, or schedule not mentioned in conversation, or fabricates specific events between the speaker and the other person",
             };
 
             var bestIndex = await Task.Run(() =>
