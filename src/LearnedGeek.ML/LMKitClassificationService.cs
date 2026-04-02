@@ -114,12 +114,13 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
                 Guidance = $"The speaker can describe their own life freely (their home, feelings, routines). But they CANNOT invent shared experiences with the other person, claim to know the other person's family/workplace/schedule unless discussed, or fabricate events that happened between them.\n\nContext:\n{conversationContext}",
             };
 
-            var categories = new List<string> { "grounded", "speculative", "confabulated" };
+            var categories = new List<string> { "grounded", "speculative", "uncertain", "confabulated" };
             var descriptions = new List<string>
             {
-                "The reply describes the speaker's own life, feelings, or opinions without asserting facts about shared history or the other person's life that aren't in the conversation",
+                "The reply describes the speaker's own life, feelings, or opinions, or references things clearly established in the conversation",
                 "The reply makes claims about the speaker's own experiences that could be true but aren't confirmed — describing their own space, routine, or feelings",
-                "The reply invents shared experiences that never happened (e.g., 'remember when we went to...'), claims to know details about the other person's family, workplace, or schedule not mentioned in conversation, or fabricates specific events between the speaker and the other person",
+                "The reply references something about the other person (family, events, details) that MIGHT be true but is not confirmed in the conversation — the speaker seems unsure or could be remembering something real",
+                "The reply invents shared experiences with false confidence (e.g., 'remember when we...', 'your mom's attic'), asserts specific details about the other person's life as definite fact when not discussed, or fabricates events between them with no hedging or uncertainty",
             };
 
             var bestIndex = await Task.Run(() =>
@@ -138,6 +139,7 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
             return category switch
             {
                 "confabulated" => new ConfabulationResult(true, confidence, $"ML classified as confabulated ({confidence:F2})"),
+                "uncertain" => new ConfabulationResult(false, confidence, $"ML classified as uncertain ({confidence:F2}) — references unconfirmed contact details"),
                 "speculative" => new ConfabulationResult(false, confidence, $"ML classified as speculative ({confidence:F2})"),
                 _ => new ConfabulationResult(false, confidence, null),
             };

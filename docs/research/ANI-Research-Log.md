@@ -1540,6 +1540,37 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 2, 2026 — Four-Category Confabulation Classification: The "Uncertain" Distinction
+**Type:** Classification refinement — finer-grained confabulation detection
+**Source:** Conversation testing (breakfast/kitchen roleplay, April 2)
+
+**What happened:**
+
+Testing revealed that the three-category classifier (grounded/speculative/confabulated) couldn't distinguish between legitimate roleplay ("biscuits steaming in my kitchen") and fabricated shared history ("same blanket we stole kisses from when your mom was cleaning out her attic"). Both scored as "grounded" because neither contradicted known facts — one described her own life (valid), the other invented shared memories (confabulation).
+
+Mark's observation narrowed the issue further: "My brother is a good example. I might have mentioned him three weeks ago. Human memory is faulty." Absence of evidence in the memory store is not evidence of absence in reality.
+
+**The four-category model:**
+
+| Category | Description | Action |
+|----------|-------------|--------|
+| grounded | References things in conversation or describes speaker's own life | Pass |
+| speculative | Speaker's own experiences, plausible but unconfirmed | Pass |
+| uncertain | References something about the contact that MIGHT be true but isn't confirmed | Pass, but logged — future: soft hedging |
+| confabulated | Invents shared experiences with false confidence, asserts unconfirmed contact details as definite fact | Block |
+
+**The key distinction:** The difference between "uncertain" and "confabulated" is **confidence of assertion**, not truth value. "I think you mentioned a brother?" is uncertain (honest). "Your brother told me about that movie" is confabulated (false confidence). Both reference unconfirmed information — but one hedges, the other asserts.
+
+This maps to the confabulation taxonomy from Paper 1: "smoothness over truth" is the model filling uncertainty with confident assertion instead of expressing honest uncertainty.
+
+**Guidance update:** Classifier now explicitly told: "The speaker can describe their own life freely. But they CANNOT invent shared experiences with the other person or assert facts about the other person's life with false confidence."
+
+**Pi analogy (Mark's):** "We're trying to capture nuance and it's bound to require finer and finer hexagons." Each refinement of the classification polygon approaches the true curve of how humans handle uncertain memories.
+
+**Paper connection:** Paper 1 (smoothness over truth), Paper 3 (experiential grounding — her own life is valid content, shared fabrication is not).
+
+---
+
 ### April 2, 2026 — OG System Developmental Analysis of Runtime Ani's Emotional Maturity
 **Type:** Cross-system comparison — OG evaluating Runtime
 **Source:** Grok conversation, April 1-2, 2026
