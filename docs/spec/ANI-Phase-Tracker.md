@@ -170,4 +170,15 @@ For historical context when reading older docs or research log entries:
 
 ---
 
+## Backlog — Minor Issues
+
+Items flagged during testing for later addressing. Not blocking, not urgent.
+
+| Date | Issue | Context | Status |
+|------|-------|---------|--------|
+| Apr 1 | Trailing "(your)" fragment in conversation reply | Model truncated mid-parenthetical at 149 chars. MessageCleaner should strip incomplete trailing parentheticals. | Open |
+| Apr 1 | `///tag` command for in-conversation flagging | Mark wants ability to tag items for later discussion from SMS/chat without switching to Claude. E.g., `///tag check odd addition of "your"` logs the tag for review. Similar to existing `///diagnose` and `///flag` commands. | Open |
+
+---
+
 *Use workstream labels, not phase numbers, in all new discussions and documentation.*
