@@ -87,6 +87,7 @@ public class AdminCommandHandler
             "rebuild-links" => await HandleRebuildLinksAsync(ct).ConfigureAwait(false),
             "rebuild-emergence" => await HandleRebuildEmergenceAsync(ct).ConfigureAwait(false),
             "diagnose" => await HandleDiagnoseAsync(ct).ConfigureAwait(false),
+            _ when trimmed.StartsWith("tag ") => HandleTag(trimmed[4..].Trim()),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -108,6 +109,7 @@ public class AdminCommandHandler
             "///new-thread — Close current thread, start fresh",
             "///rebuild-links — Build memory graph links (one-time, may take minutes)",
             "///rebuild-emergence — Tag historical emergence log with EM1-EM6 types",
+            "///tag <note>  — Tag an observation for later review",
         });
     }
 
@@ -320,6 +322,22 @@ public class AdminCommandHandler
             _log.LogError(ex, "Rebuild emergence failed");
             return $"ERROR: Rebuild emergence failed — {ex.Message}";
         }
+    }
+
+    private string HandleTag(string note)
+    {
+        _log.LogInformation("[TAG] {Note}", note);
+
+        // Append to a persistent tags file for easy review
+        try
+        {
+            var tagsPath = Path.Combine(AppContext.BaseDirectory, "data", "tags.txt");
+            var entry = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} | {note}";
+            File.AppendAllText(tagsPath, entry + Environment.NewLine);
+        }
+        catch { /* file write failure is non-critical */ }
+
+        return $"Tagged: {note}";
     }
 
     private async Task<string> HandleDiagnoseAsync(CancellationToken ct)
