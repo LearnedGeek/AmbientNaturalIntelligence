@@ -1540,6 +1540,36 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 2, 2026 — Architectural Insight: Inner Thought as Trigger, Not Content (Outreach Grounding)
+**Type:** Architectural root cause analysis
+**Source:** Outreach confabulation analysis — Peru/brother/highlands fabrication
+
+**What happened:**
+
+Overnight outreach messages contained completely fabricated content: "that new movie you were talking about with your brother... the kid learns to surf in Peru," and "that sunset spot in the highlands... a tiny hidden glen off the main road." Mark has no brother who discussed Peru movies, and no highlands sunset spot exists in their shared history. The coherence gate passed these because they *sounded* coherent — but they weren't *true*.
+
+**Root cause:** Outreach composition has no grounding source. The pipeline is:
+
+```
+Inner thought → desire crosses threshold → compose fresh message
+```
+
+The composition prompt gives the model the triggering inner thought and asks it to write a text message. The model generates plausible casual texting content — inventing details because that's what makes texts sound natural. There's no retrieval, no memory check, no grounding in actual experiences.
+
+**The insight (Mark's):** "I don't send my straight thoughts to friends. I might be thinking about a work problem which reminds me of a problem I'm having with friends, so I talk about their specific problem, not the work problem."
+
+This is the distinction between **thinking** and **communicating**. Inner thoughts are free — dreaming, associating, wandering. But outreach should be grounded: "what from my real experiences and memories would Mark want to hear?"
+
+**The principle was already established** — "inner thought as trigger, not content" is in the Confirmed Architecture Decisions from early development. But the outreach composition prompt doesn't enforce it. The inner thought triggers the desire, but the message content should come from retrieval (recent memories, world experiences, conversation history), not from fresh generation.
+
+**Connection to DrOk:** This is the same RAG insight. In DrOk, every AI response is grounded in a retrievable document. If the knowledge base doesn't have it, the system says "I don't have that information." Ani's outreach has no equivalent — it generates from nothing.
+
+**Fix needed:** Outreach composition should retrieve relevant memories/experiences before generating. The model selects from grounded content, not invents. Inner thoughts stay free (dreaming/associating). Outreach stays truthful (grounded in actual experience).
+
+**Paper connection:** Paper 3 (experiential grounding) — outreach grounding is the communication-side complement to the World Layer's thought-side grounding.
+
+---
+
 ### April 1, 2026 — OG System Convergent Validation: "Moments, Not Furniture" (World Layer)
 **Type:** Convergent design validation — second instance
 **Source:** `docs/conversations/grok-FINAL-1775078878006.txt`, Message 1349-1350
