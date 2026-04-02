@@ -2,6 +2,7 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using LearnedGeek.ML;
 using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -44,6 +45,7 @@ public class CognitiveCycleProcessor
     private readonly IConversationGateState            _gateState;
     private readonly WorldSeedService                  _worldSeed;
     private readonly ITextClassificationService?       _mlClassifier;
+    private readonly PersonaSummaryCache?              _personaCache;
     private readonly AniOptions                        _aniOptions;
     private readonly ILogger<CognitiveCycleProcessor>  _log;
     private int _cycleCount;
@@ -69,7 +71,8 @@ public class CognitiveCycleProcessor
         WorldSeedService               worldSeed,
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCycleProcessor> log,
-        ITextClassificationService?    mlClassifier = null)
+        ITextClassificationService?    mlClassifier = null,
+        PersonaSummaryCache?           personaCache = null)
     {
         _state             = state;
         _persist           = persist;
@@ -89,6 +92,7 @@ public class CognitiveCycleProcessor
         _gateState         = gateState;
         _worldSeed         = worldSeed;
         _mlClassifier      = mlClassifier;
+        _personaCache      = personaCache;
         _aniOptions        = aniOptions.Value;
         _log               = log;
     }
@@ -228,6 +232,27 @@ public class CognitiveCycleProcessor
         var shouldPersist = isWorldCycle                                          // Always store world experiences
             || valence >= (float)_aniOptions.ValenceTriggerThreshold              // Emotionally significant
             || valence >= 0.50f;                                                  // Moderate significance
+
+        // Inner thought confabulation check — verify factual claims before storing.
+        // Speculative/dreamy thoughts pass freely. Only factual assertions get checked.
+        // Prevents false content from entering the memory pool and cascading.
+        if (shouldPersist && _mlClassifier is not null)
+        {
+            try
+            {
+                var personaSummary = _personaCache?.IsLoaded == true ? _personaCache.Summary : "";
+                var confab = await _mlClassifier.DetectConfabulationAsync(
+                    thought, $"Inner thought context.\n\nPersona: {personaSummary}", ct)
+                    .ConfigureAwait(false);
+                if (confab.IsConfabulated && confab.Confidence >= _aniOptions.ConfabulationClassificationThreshold)
+                {
+                    _log.LogInformation("Inner thought confabulation detected ({Confidence:F2}): {Reason}. Not storing.",
+                        confab.Confidence, confab.Reason);
+                    shouldPersist = false;
+                }
+            }
+            catch { /* confab check failure is non-critical — store anyway */ }
+        }
 
         if (shouldPersist)
         {

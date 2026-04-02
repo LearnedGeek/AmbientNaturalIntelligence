@@ -699,6 +699,20 @@ public static class PromptBuilder
             sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
         }
 
+        // Grounding memories — real experiences and facts to draw from.
+        // These are what the message content should be BASED ON.
+        // The inner thought triggered your desire to reach out, but these memories
+        // are what you actually know and can reference.
+        var groundingMemories = snapshot.RelevantMemory
+            .Where(m => m.Type != MemoryType.InnerThought)
+            .Take(3)
+            .ToList();
+        if (groundingMemories.Count > 0)
+        {
+            sections.Add($"\nReal things you can reference (ONLY say things based on these):");
+            sections.AddRange(groundingMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+        }
+
         // Feed recent conversation context so outreach can follow up naturally.
         // This is CRITICAL — if the contact just told you about a dentist appointment,
         // "how did it go?" is always better than a disconnected "hey you up?"

@@ -6,6 +6,84 @@
 
 ---
 
+## Visual Flow
+
+```mermaid
+flowchart TD
+    subgraph Perception["Phase 0-1: Grounded Inputs"]
+        EMO[Emotional State<br/>GROUNDED] 
+        PERC[Perceptions<br/>RSS/Weather/Time<br/>GROUNDED]
+    end
+
+    subgraph ConvPath["Conversation Path"]
+        INBOUND[Inbound Message] --> CTX_CONV[Minimal Context<br/>conversation only<br/>GROUNDED]
+        CTX_CONV --> REPLY_GEN[Lean Reply Generation<br/>⚠ GENERATED ❌ NO GATE]
+        REPLY_GEN --> CONFAB_GATE{ML Confabulation<br/>Gate 🛡}
+        CONFAB_GATE -->|grounded| DISPATCH_CONV[Dispatch Reply<br/>GROUNDED]
+        CONFAB_GATE -->|confabulated| RETRIEVE_GROUND[Retrieve Grounding<br/>Memories] --> REGEN[Regenerate<br/>with context] --> DISPATCH_CONV
+        DISPATCH_CONV --> EPISODIC_CONV[Store Episodic Memory]
+        DISPATCH_CONV --> EMO_POST[Post-Reply Emotional<br/>Processing GROUNDED]
+    end
+
+    subgraph AmbientPath["Ambient Cognition Path"]
+        EMO --> CTX[Context Snapshot<br/>Assembly<br/>GROUNDED + CACHED]
+        PERC --> CTX
+        
+        CTX --> WORLD{World Seed?<br/>every Nth cycle}
+        WORLD -->|yes| SEED[World Seed<br/>time+weather+occupation<br/>GROUNDED]
+        WORLD -->|no| ANCHOR[Associative Anchor<br/>from prev cycle]
+        
+        SEED --> THOUGHT[Inner Thought<br/>Generation<br/>⚠ GENERATED ❌ NO GATE]
+        ANCHOR --> THOUGHT
+        
+        THOUGHT --> STORE{Valence ≥ 0.50?}
+        STORE -->|yes| MEMORY[(Store as<br/>InnerThought Memory<br/>⚠ false content<br/>becomes fact)]
+        STORE -->|no| EVAPORATE[Evaporate<br/>not stored]
+        
+        THOUGHT --> EMO_SHIFT[Emotional Shift<br/>GENERATED<br/>cascading risk]
+        THOUGHT --> ANCHOR_EXT[Extract Anchor<br/>via LM-Kit]
+        
+        THOUGHT --> DESIRE[Desire Update<br/>MIXED]
+        DESIRE --> DESIRE_CHECK{Desire ><br/>threshold?}
+        DESIRE_CHECK -->|no| SILENCE[Record Silence]
+        DESIRE_CHECK -->|yes| HARD_GATES{Hard Gates<br/>unanswered count<br/>send gap<br/>night hours}
+        
+        HARD_GATES -->|blocked| SUPPRESS[Suppress]
+        HARD_GATES -->|pass| DECISION[Outreach Decision<br/>⚠ GENERATED ❌ NO GATE]
+        
+        DECISION -->|no| COOLDOWN[Cooldown]
+        DECISION -->|yes| COMPOSE[Message Composition<br/>⚠⚠ HIGHEST RISK<br/>❌ NO GATE<br/>❌ NO RETRIEVAL]
+        
+        COMPOSE --> COHERENCE{Coherence Gate 🛡<br/>checks READABILITY<br/>not TRUTHFULNESS}
+        COHERENCE -->|Door A/B: SEND| DISPATCH_OUT[Dispatch SMS<br/>GROUNDED]
+        COHERENCE -->|Door C: SUPPRESS| SUPPRESS2[Suppress + Decay]
+        
+        DISPATCH_OUT --> EPISODIC_OUT[Store Episodic Memory]
+    end
+
+    MEMORY -.->|retrieved next cycle| CTX
+    EPISODIC_CONV -.->|retrieved next cycle| CTX
+    EPISODIC_OUT -.->|retrieved next cycle| CTX
+
+    style THOUGHT fill:#ff6b6b,color:#fff
+    style COMPOSE fill:#ff0000,color:#fff
+    style REPLY_GEN fill:#ff6b6b,color:#fff
+    style DECISION fill:#ff9800,color:#fff
+    style MEMORY fill:#ff9800,color:#fff
+    style CONFAB_GATE fill:#4caf50,color:#fff
+    style COHERENCE fill:#ff9800,color:#fff
+    style EMO fill:#2196f3,color:#fff
+    style PERC fill:#2196f3,color:#fff
+    style CTX fill:#2196f3,color:#fff
+    style CTX_CONV fill:#2196f3,color:#fff
+    style DISPATCH_OUT fill:#4caf50,color:#fff
+    style DISPATCH_CONV fill:#4caf50,color:#fff
+```
+
+**Color key:** 🔴 Red = high confabulation risk, no gate. 🟠 Orange = moderate risk or weak gate. 🟢 Green = grounded or gated. 🔵 Blue = fully grounded input.
+
+---
+
 ## Legend
 
 - **[GROUNDED]** — Data from stored state, external sources, or deterministic computation

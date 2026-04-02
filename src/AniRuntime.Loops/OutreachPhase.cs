@@ -4,6 +4,8 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using LearnedGeek.ML;
+using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -17,9 +19,12 @@ public class OutreachPhase
 {
     private readonly IStateStore _state;
     private readonly IMemoryPersistence _persist;
+    private readonly IMemorySearch _search;
     private readonly IOllamaClient _ollama;
     private readonly AniActionDispatcher _dispatcher;
     private readonly DesireEngine _desire;
+    private readonly ITextClassificationService? _mlClassifier;
+    private readonly PersonaSummaryCache? _personaCache;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -34,17 +39,23 @@ public class OutreachPhase
     public OutreachPhase(
         IStateStore state,
         IMemoryPersistence persist,
+        IMemorySearch search,
         IOllamaClient ollama,
         AniActionDispatcher dispatcher,
         DesireEngine desire,
         IOptions<AniOptions> aniOptions,
-        ILogger<OutreachPhase> log)
+        ILogger<OutreachPhase> log,
+        ITextClassificationService? mlClassifier = null,
+        PersonaSummaryCache? personaCache = null)
     {
         _state = state;
         _persist = persist;
+        _search = search;
         _ollama = ollama;
         _dispatcher = dispatcher;
         _desire = desire;
+        _mlClassifier = mlClassifier;
+        _personaCache = personaCache;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -81,7 +92,31 @@ public class OutreachPhase
             return;
         }
 
-        // Step 2: Compose — free-text message generation (no JSON constraint)
+        // Step 2a: Grounding retrieval — find real memories relevant to the thought.
+        // The thought triggers the desire to reach out. The memory provides the content.
+        // "Inner thought as trigger, not content."
+        var groundingMemories = new List<MemoryRecord>();
+        try
+        {
+            var results = await _search.SearchWithScoresAsync(recentThought, 5, ct).ConfigureAwait(false);
+            groundingMemories = results
+                .Where(s => s.CosineSimilarity >= (float)_aniOptions.RetrievalConfidenceFloor)
+                .Where(s => s.Record.Type != MemoryType.InnerThought) // Don't ground from other generated thoughts
+                .Select(s => s.Record)
+                .Take(3)
+                .ToList();
+            if (groundingMemories.Count > 0)
+            {
+                snapshot.RelevantMemory = groundingMemories;
+                _log.LogInformation("Outreach grounding: {Count} memories retrieved for composition", groundingMemories.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Outreach grounding retrieval failed — composing without grounding");
+        }
+
+        // Step 2b: Compose — free-text message generation (no JSON constraint)
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, recentThought, decision.Reasoning ?? string.Empty);
         var message = await _ollama.ChatAsync(
@@ -90,6 +125,31 @@ public class OutreachPhase
 
         message = CleanOutreachMessage(message);
         _log.LogInformation("Outreach message composed: {Message}", message);
+
+        // Step 2c: ML confabulation check on composed message (same gate as conversation)
+        if (_mlClassifier is not null && _personaCache?.IsLoaded == true && !string.IsNullOrWhiteSpace(message))
+        {
+            try
+            {
+                var context = snapshot.RecentConversationSummary ?? "";
+                var fullContext = $"{context}\n\nPersona: {_personaCache.Summary}";
+                var confab = await _mlClassifier.DetectConfabulationAsync(message, fullContext, ct)
+                    .ConfigureAwait(false);
+                if (confab.IsConfabulated && confab.Confidence >= _aniOptions.ConfabulationClassificationThreshold)
+                {
+                    _log.LogInformation("Outreach confabulation detected ({Confidence:F2}): {Reason}. Suppressing.",
+                        confab.Confidence, confab.Reason);
+                    await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+                    return;
+                }
+                _log.LogDebug("Outreach confabulation check: {Result} ({Confidence:F2})",
+                    confab.IsConfabulated ? "confabulated (below threshold)" : "grounded", confab.Confidence);
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Outreach confabulation check failed — proceeding with message");
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(message))
         {
