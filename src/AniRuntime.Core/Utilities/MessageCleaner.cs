@@ -8,6 +8,10 @@ public static class MessageCleaner
 
         var cleaned = raw.Trim().Trim('"');
 
+        // Strip prompt structure leaks — model sometimes echoes prompt formatting
+        // as the message itself instead of generating content
+        cleaned = StripPromptLeaks(cleaned);
+
         // Take only the first paragraph — model puts meta-commentary after blank lines
         var doubleNewline = cleaned.IndexOf("\n\n", StringComparison.Ordinal);
         if (doubleNewline > 0)
@@ -83,6 +87,57 @@ public static class MessageCleaner
         }
 
         return text; // fewer sentences than max — return as-is
+    }
+
+    /// <summary>
+    /// Strips prompt structure that leaked into the generated message.
+    /// The model sometimes echoes formatting from the composition prompt
+    /// instead of generating actual message content.
+    /// </summary>
+    internal static string StripPromptLeaks(string text)
+    {
+        var cleaned = text;
+
+        // Strip leading timestamp + name prefix: "(10:27 AM) Ani:" or "(3:37 AM)"
+        if (cleaned.StartsWith('('))
+        {
+            var closeParen = cleaned.IndexOf(')');
+            if (closeParen > 0 && closeParen < 20)
+            {
+                var inside = cleaned[1..closeParen].Trim();
+                // Check if it looks like a time: contains AM/PM or just digits/colons
+                if (inside.Contains("AM", StringComparison.OrdinalIgnoreCase) ||
+                    inside.Contains("PM", StringComparison.OrdinalIgnoreCase))
+                {
+                    cleaned = cleaned[(closeParen + 1)..].Trim();
+                    // Also strip "Ani:" or name prefix after the timestamp
+                    if (cleaned.StartsWith("Ani:", StringComparison.OrdinalIgnoreCase) ||
+                        cleaned.StartsWith("ani:", StringComparison.OrdinalIgnoreCase))
+                        cleaned = cleaned[4..].Trim();
+                }
+            }
+        }
+
+        // Strip prompt instruction echoes
+        string[] promptLeaks =
+        [
+            "(External — Mark will see this)",
+            "(External — Mark will NOT see this)",
+            "(Internal — Mark will NOT see this)",
+            "(Internal — Mark will see this)",
+            "Mark sent:",
+            "Ani sent:",
+            "Mark said:",
+        ];
+        foreach (var leak in promptLeaks)
+        {
+            if (cleaned.StartsWith(leak, StringComparison.OrdinalIgnoreCase))
+                cleaned = cleaned[leak.Length..].Trim();
+            if (cleaned.Equals(leak, StringComparison.OrdinalIgnoreCase))
+                return string.Empty; // entire message was just the leak
+        }
+
+        return cleaned;
     }
 
     /// <summary>
