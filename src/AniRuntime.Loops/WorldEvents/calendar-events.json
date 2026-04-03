@@ -5,6 +5,7 @@
   { "month": 2, "day": 14, "name": "Valentine's Day" },
   { "month": 3, "day": 17, "name": "St. Patrick's Day" },
   { "month": 4, "day": 1,  "name": "April Fool's Day" },
+  { "month": 4, "day": 3,  "name": "Mark's Birthday" },
   { "month": 5, "day": 5,  "name": "Cinco de Mayo" },
   { "month": 5, "day": 26, "name": "Memorial Day" },
   { "month": 6, "day": 19, "name": "Juneteenth" },
