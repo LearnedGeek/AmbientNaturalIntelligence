@@ -103,7 +103,7 @@ public class AniOptions
     public double WithdrawalDurationMinutes    { get; set; } = 20.0;
 
     // Tier promotion — severity-driven tier escalation
-    public float GlobalPromotionThreshold       { get; set; } = 0.85f;  // severity ≥ this → Global from any tier
+    public float GlobalPromotionThreshold       { get; set; } = 0.98f;  // severity ≥ this → Global from any tier (only real events, not ambient thoughts)
     public float ConversationPromotionThreshold { get; set; } = 0.70f;  // severity ≥ this → Conversation from Ambient
 
     // Homeostatic nudge — counteracts sustained negative drift on a dimension
