@@ -682,14 +682,15 @@ public static class PromptBuilder
             - Must make sense WITHOUT knowing your inner thought.
             - Talk TO {contact}: "you", "your". Never third person.
             - Only reference things from the context below — don't invent shared history.
-            - No poetry, no narration — just a normal text.{moodSection}
+            - No poetry, no narration — just a normal text.
+            - Output ONLY the text message. No timestamps, no labels, no headers, no parenthetical notes.{moodSection}
             """;
 
         var sections = new List<string>
         {
-            $"(Internal — {contact} will NOT see this)",
-            $"You're feeling: {reasoning}",
-            $"This made you want to reach out: {recentThought}",
+            $"Why you want to reach out — use this as motivation, not content:",
+            $"  Feeling: {reasoning}",
+            $"  Trigger: {recentThought}",
         };
 
         // Feature 16: Anchored memories — relationship foundation for grounded outreach
