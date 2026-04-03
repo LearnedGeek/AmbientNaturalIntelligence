@@ -696,8 +696,9 @@ public class EmotionalStateTests
     public void DetermineEffectiveTier_AboveGlobalThreshold_PromotesToGlobal()
     {
         var options = new AniOptions();
+        // Global threshold is 0.98 — only true events (conversations, hurt) reach this
         ImpactCategoryDefaults.DetermineEffectiveTier(
-            ImpactCategory.Ambient, 0.90f, options)
+            ImpactCategory.Ambient, 0.99f, options)
             .Should().Be(ImpactCategory.Global);
     }
 
@@ -706,7 +707,7 @@ public class EmotionalStateTests
     {
         var options = new AniOptions();
         ImpactCategoryDefaults.DetermineEffectiveTier(
-            ImpactCategory.Conversation, 0.90f, options)
+            ImpactCategory.Conversation, 0.99f, options)
             .Should().Be(ImpactCategory.Global);
     }
 

@@ -49,8 +49,9 @@ public class WorldSeedService
 
     public string GenerateSeed(DateTimeOffset now, string? weatherContext, string occupation)
     {
-        var localTime = now.LocalDateTime;
-        var timeSlot = GetTimeSlot(localTime.Hour);
+        // Use the offset-aware hour (not LocalDateTime which converts to machine timezone)
+        // so behavior is consistent regardless of server timezone (CI = UTC, prod = Central).
+        var timeSlot = GetTimeSlot(now.Hour);
         var activity = GetActivityForSlot(timeSlot, occupation);
 
         // Build the base seed
@@ -60,7 +61,7 @@ public class WorldSeedService
             : $"{timePart} {activity}";
 
         // Calendar awareness — check for a known holiday
-        var holiday = GetHoliday(localTime.Month, localTime.Day);
+        var holiday = GetHoliday(now.Month, now.Day);
         if (holiday is not null)
         {
             seed = $"it's {holiday} — {seed}";
