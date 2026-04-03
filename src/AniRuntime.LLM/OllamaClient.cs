@@ -168,6 +168,41 @@ public class OllamaClient : IOllamaClient
         _log.LogInformation("Model {Model} pre-warmed in VRAM (keep_alive=30m)", model);
     }
 
+    public async Task<string> DescribeImageAsync(byte[] imageBytes, string? prompt = null, CancellationToken ct = default)
+    {
+        var base64 = Convert.ToBase64String(imageBytes);
+        var userPrompt = prompt ?? "Describe what you see in this image in 2-3 sentences. Be specific about objects, people, colors, and mood.";
+
+        var request = new
+        {
+            model = "llava",
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = userPrompt,
+                    images = new[] { base64 },
+                }
+            },
+            stream = false,
+            keep_alive = "5m",
+        };
+
+        var response = await _http.PostAsJsonAsync("/api/chat", request, JsonOpts, ct)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOpts, ct)
+            .ConfigureAwait(false);
+
+        var description = body?.Message?.Content?.Trim() ?? "(could not describe image)";
+        _log.LogInformation("LLaVA image description ({Bytes} bytes): {Description}",
+            imageBytes.Length, description.Length > 100 ? description[..100] + "..." : description);
+
+        return description;
+    }
+
     // ── Response shapes ───────────────────────────────────────────────────────
 
     private record ChatResponse(

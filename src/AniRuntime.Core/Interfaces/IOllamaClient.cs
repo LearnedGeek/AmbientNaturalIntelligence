@@ -19,4 +19,10 @@ public interface IOllamaClient
     /// Pre-load a model into VRAM so the first real request doesn't pay cold-start latency.
     /// </summary>
     Task WarmModelAsync(string model, CancellationToken ct = default);
+
+    /// <summary>
+    /// Describe an image using a vision model (LLaVA). Returns a text description
+    /// of the image content. Used to give Ani the ability to "see" images sent via MMS.
+    /// </summary>
+    Task<string> DescribeImageAsync(byte[] imageBytes, string? prompt = null, CancellationToken ct = default);
 }

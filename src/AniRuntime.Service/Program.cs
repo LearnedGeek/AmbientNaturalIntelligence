@@ -306,6 +306,43 @@ try
         var body = form["Body"].ToString();
         var messageSid = form["MessageSid"].ToString();
 
+        // MMS image handling — if Mark sends a photo, describe it with LLaVA
+        var numMedia = int.TryParse(form["NumMedia"].ToString(), out var nm) ? nm : 0;
+        if (numMedia > 0)
+        {
+            try
+            {
+                var mediaUrl = form["MediaUrl0"].ToString();
+                var mediaType = form["MediaContentType0"].ToString();
+                if (!string.IsNullOrWhiteSpace(mediaUrl) && mediaType.StartsWith("image/"))
+                {
+                    Log.Information("Webhook: MMS image received ({Type}), describing with LLaVA...", mediaType);
+                    using var imgClient = new HttpClient();
+                    // Twilio requires auth to download media
+                    var twilioAuth = Convert.ToBase64String(
+                        System.Text.Encoding.ASCII.GetBytes($"{twilioOpts.Value.AccountSid}:{twilioOpts.Value.AuthToken}"));
+                    imgClient.DefaultRequestHeaders.Authorization =
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", twilioAuth);
+                    var imageBytes = await imgClient.GetByteArrayAsync(mediaUrl, ctx.RequestAborted);
+
+                    var ollama = app.Services.GetRequiredService<IOllamaClient>();
+                    var description = await ollama.DescribeImageAsync(imageBytes, ct: ctx.RequestAborted);
+
+                    // Prepend image description to the message body
+                    var imageContext = $"[Mark sent a photo: {description}]";
+                    body = string.IsNullOrWhiteSpace(body)
+                        ? imageContext
+                        : $"{imageContext} {body}";
+                    Log.Information("Webhook: image described — {Description}",
+                        description.Length > 80 ? description[..80] + "..." : description);
+                }
+            }
+            catch (Exception imgEx)
+            {
+                Log.Warning(imgEx, "Webhook: failed to describe MMS image — processing text only");
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(body))
         {
             // Enqueue the message and trigger early wake — the cognitive cycle
