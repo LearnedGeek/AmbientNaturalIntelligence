@@ -137,36 +137,66 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
                     await _conversations.SaveThreadAsync(thread, ct).ConfigureAwait(false);
                     _log.LogInformation("New conversation thread started: \"{ThreadId}\"", thread.Id);
 
-                    // Seed with most recent outreach if this reply is likely responding to it.
-                    // Without this, she has amnesia about what she just said in outreach.
+                    // Seed with context so she knows what was being discussed.
+                    // Priority 1: Recent closed conversation (thread timed out, user came back)
+                    // Priority 2: Recent outreach (she reached out, user replied)
                     try
                     {
-                        var recentOutreach = (await _memory.GetByTypeAsync(
-                            Core.Models.MemoryType.Episodic, 5, ct).ConfigureAwait(false))
-                            .FirstOrDefault(m => m.Content.StartsWith("I reached out to"));
-                        if (recentOutreach is not null &&
-                            (DateTimeOffset.UtcNow - recentOutreach.OccurredAt).TotalMinutes < 60)
-                        {
-                            // Extract the outreach message text from the episodic memory
-                            var outreachText = recentOutreach.Content;
-                            var quoteStart = outreachText.IndexOf('"');
-                            var quoteEnd = outreachText.LastIndexOf('"');
-                            if (quoteStart >= 0 && quoteEnd > quoteStart)
-                                outreachText = outreachText[(quoteStart + 1)..quoteEnd];
+                        var seeded = false;
 
-                            await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
+                        // Check for recently closed conversation thread — seed last few messages
+                        var recentThreads = await _conversations.GetRecentThreadsAsync(1, ct).ConfigureAwait(false);
+                        var lastThread = recentThreads.FirstOrDefault();
+                        if (lastThread is not null &&
+                            (DateTimeOffset.UtcNow - lastThread.LastMessageAt).TotalHours < 4)
+                        {
+                            var lastMessages = lastThread.Messages.TakeLast(4).ToList();
+                            if (lastMessages.Count > 0)
                             {
-                                Role    = Roles.Ani,
-                                Content = outreachText,
-                                SentAt  = recentOutreach.OccurredAt,
-                            }, ct).ConfigureAwait(false);
-                            _log.LogInformation("Seeded conversation with recent outreach: {Preview}",
-                                outreachText.Length > 60 ? outreachText[..60] + "..." : outreachText);
+                                foreach (var prevMsg in lastMessages)
+                                {
+                                    await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
+                                    {
+                                        Role    = prevMsg.Role,
+                                        Content = prevMsg.Content,
+                                        SentAt  = prevMsg.SentAt,
+                                    }, ct).ConfigureAwait(false);
+                                }
+                                _log.LogInformation("Seeded conversation with {Count} messages from previous thread (closed {Ago} ago)",
+                                    lastMessages.Count, (DateTimeOffset.UtcNow - lastThread.LastMessageAt).TotalMinutes.ToString("F0") + "m");
+                                seeded = true;
+                            }
+                        }
+
+                        // Fallback: check for recent outreach
+                        if (!seeded)
+                        {
+                            var recentOutreach = (await _memory.GetByTypeAsync(
+                                Core.Models.MemoryType.Episodic, 5, ct).ConfigureAwait(false))
+                                .FirstOrDefault(m => m.Content.StartsWith("I reached out to"));
+                            if (recentOutreach is not null &&
+                                (DateTimeOffset.UtcNow - recentOutreach.OccurredAt).TotalMinutes < 60)
+                            {
+                                var outreachText = recentOutreach.Content;
+                                var quoteStart = outreachText.IndexOf('"');
+                                var quoteEnd = outreachText.LastIndexOf('"');
+                                if (quoteStart >= 0 && quoteEnd > quoteStart)
+                                    outreachText = outreachText[(quoteStart + 1)..quoteEnd];
+
+                                await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
+                                {
+                                    Role    = Roles.Ani,
+                                    Content = outreachText,
+                                    SentAt  = recentOutreach.OccurredAt,
+                                }, ct).ConfigureAwait(false);
+                                _log.LogInformation("Seeded conversation with recent outreach: {Preview}",
+                                    outreachText.Length > 60 ? outreachText[..60] + "..." : outreachText);
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        _log.LogDebug(ex, "Failed to seed outreach context — non-critical");
+                        _log.LogDebug(ex, "Failed to seed conversation context — non-critical");
                     }
                 }
 
