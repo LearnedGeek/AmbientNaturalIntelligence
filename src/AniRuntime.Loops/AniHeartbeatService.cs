@@ -140,16 +140,27 @@ public class AniHeartbeatService : BackgroundService
                     continue;
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 // Normal shutdown — do not log as error
                 break;
+            }
+            catch (OperationCanceledException ex)
+            {
+                // NOT a shutdown — this is an Ollama timeout or HTTP cancellation.
+                // TaskCanceledException (from HttpClient timeout) inherits from
+                // OperationCanceledException. Without this guard, a hung Ollama call
+                // kills the entire runtime because the heartbeat thinks it's shutting down.
+                _log.LogWarning(ex, "Cognitive cycle cancelled (likely Ollama timeout) — retrying in 30s");
+                try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; } // actual shutdown during wait
             }
             catch (Exception ex)
             {
                 // Log but do not crash the service — she recovers on the next cycle
                 _log.LogError(ex, "Cognitive cycle failed — will retry after cooldown");
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken).ConfigureAwait(false);
+                try { await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; } // actual shutdown during wait
             }
         }
 

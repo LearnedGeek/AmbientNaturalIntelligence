@@ -71,14 +71,34 @@ public class OllamaClient : IOllamaClient
         else
             request = new { model, messages, stream = false, keep_alive = alive };
 
-        // Retry with backoff for transient Ollama failures (500s during model swaps).
-        // One retry after 2 seconds handles most swap-related timeouts without
-        // blocking the cognitive cycle for the full cooldown period.
+        // Retry with backoff for transient Ollama failures (500s during model swaps, VRAM eviction).
+        // Two retries with 3-second backoff handles most model reload scenarios.
+        // Per-request timeout of 90 seconds prevents infinite hangs when VRAM is tight.
         const int maxRetries = 2;
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            var response = await _http.PostAsJsonAsync(
-                "/api/chat", request, JsonOpts, ct).ConfigureAwait(false);
+            using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            requestCts.CancelAfter(TimeSpan.FromSeconds(90));
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _http.PostAsJsonAsync(
+                    "/api/chat", request, JsonOpts, requestCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Per-request timeout (90s) — not app shutdown
+                if (attempt < maxRetries)
+                {
+                    _log.LogWarning("Ollama [{Model}] timed out after 90s — retrying in 3s (attempt {Attempt}/{Max})",
+                        model, attempt, maxRetries);
+                    await Task.Delay(3000, ct).ConfigureAwait(false);
+                    continue;
+                }
+                _log.LogError("Ollama [{Model}] timed out after {MaxRetries} attempts — giving up", model, maxRetries);
+                throw;
+            }
 
             if (!response.IsSuccessStatusCode && attempt < maxRetries)
             {
