@@ -317,8 +317,8 @@ try
             if (!string.IsNullOrWhiteSpace(mediaUrl) && mediaType.StartsWith("image/"))
             {
                 Log.Information("Webhook: MMS image received ({Type}), queuing LLaVA description...", mediaType);
-                var accountSid = twilioOpts.Value.AccountSid;
-                var authToken = twilioOpts.Value.AuthToken;
+                var imgAccountSid = twilioOpts.Value.AccountSid;
+                var imgAuthToken = twilioOpts.Value.AuthToken;
                 var appCt = app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
 
                 // Fire-and-forget: download + describe + enqueue as separate message
@@ -328,7 +328,7 @@ try
                     {
                         using var imgClient = new HttpClient();
                         var twilioAuth = Convert.ToBase64String(
-                            System.Text.Encoding.ASCII.GetBytes($"{accountSid}:{authToken}"));
+                            System.Text.Encoding.ASCII.GetBytes($"{imgAccountSid}:{imgAuthToken}"));
                         imgClient.DefaultRequestHeaders.Authorization =
                             new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", twilioAuth);
                         var imageBytes = await imgClient.GetByteArrayAsync(mediaUrl, appCt);
