@@ -186,7 +186,7 @@ public class OllamaClient : IOllamaClient
                 }
             },
             stream = false,
-            keep_alive = "5m",
+            keep_alive = "0",  // Unload immediately — 6GB VRAM can't hold LLaVA + conversation models
         };
 
         var response = await _http.PostAsJsonAsync("/api/chat", request, JsonOpts, ct)
