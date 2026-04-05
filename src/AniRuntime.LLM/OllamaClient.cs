@@ -191,7 +191,7 @@ public class OllamaClient : IOllamaClient
     public async Task<string> DescribeImageAsync(byte[] imageBytes, string? prompt = null, CancellationToken ct = default)
     {
         var base64 = Convert.ToBase64String(imageBytes);
-        var userPrompt = prompt ?? "Describe what you see in this image in 2-3 sentences. Be specific about objects, people, colors, and mood.";
+        var userPrompt = prompt ?? "Describe what you see in this image in 2-3 sentences. Be specific about objects, people, colors, and mood. If there is any text or writing visible, read it exactly as written.";
 
         // LLaVA needs a dedicated HttpClient with longer timeout — model swap from
         // VRAM (evict conversation model + load 4.7GB LLaVA) can take 3-4 minutes on 6GB VRAM.
