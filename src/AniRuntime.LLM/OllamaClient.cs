@@ -226,7 +226,7 @@ public class OllamaClient : IOllamaClient
 
         var description = body?.Message?.Content?.Trim() ?? "(could not describe image)";
         _log.LogInformation("LLaVA image description ({Bytes} bytes): {Description}",
-            imageBytes.Length, description.Length > 100 ? description[..100] + "..." : description);
+            imageBytes.Length, description);
 
         return description;
     }
