@@ -321,7 +321,9 @@ try
                 var imgAuthToken = twilioOpts.Value.AuthToken;
                 var appCt = app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
 
-                // Fire-and-forget: download + describe + enqueue as separate message
+                // Process image in background, but combine with text body when done.
+                // Don't enqueue text separately — wait for image so Ani sees both together.
+                var capturedBody = body;
                 _ = Task.Run(async () =>
                 {
                     try
@@ -336,21 +338,26 @@ try
                         var ollama = app.Services.GetRequiredService<IOllamaClient>();
                         var description = await ollama.DescribeImageAsync(imageBytes, ct: appCt);
 
-                        // Enqueue as a follow-up message so Ani sees what's in the photo
+                        // Combine image description with text body as one message
                         var imageContext = $"[Mark sent a photo: {description}]";
-                        source.EnqueueInbound($"{messageSid}-image", imageContext, DateTimeOffset.UtcNow);
-                        Log.Information("Webhook: image described and enqueued — {Description}",
+                        var combined = string.IsNullOrWhiteSpace(capturedBody)
+                            ? imageContext
+                            : $"{imageContext} {capturedBody}";
+                        source.EnqueueInbound(messageSid, combined, DateTimeOffset.UtcNow);
+                        Log.Information("Webhook: image + text enqueued together — {Description}",
                             description.Length > 80 ? description[..80] + "..." : description);
                     }
                     catch (Exception imgEx)
                     {
-                        Log.Warning(imgEx, "Webhook: failed to describe MMS image — telling Ani she can't see it");
-                        // Tell her an image was sent but she couldn't see it — prevents fabrication
-                        source.EnqueueInbound($"{messageSid}-image",
-                            "[Mark sent a photo but I couldn't see it clearly. Ask him about it instead of guessing.]",
-                            DateTimeOffset.UtcNow);
+                        Log.Warning(imgEx, "Webhook: failed to describe MMS image — enqueuing text with notice");
+                        var fallback = string.IsNullOrWhiteSpace(capturedBody)
+                            ? "[Mark sent a photo but I couldn't see it clearly. Ask him about it instead of guessing.]"
+                            : $"[Mark sent a photo but I couldn't see it clearly. Ask him about it instead of guessing.] {capturedBody}";
+                        source.EnqueueInbound(messageSid, fallback, DateTimeOffset.UtcNow);
                     }
                 });
+                // Skip the normal text enqueue below — image task handles it
+                body = null;
             }
         }
 
