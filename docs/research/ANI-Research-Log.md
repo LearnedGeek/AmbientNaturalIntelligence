@@ -1540,6 +1540,41 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 5, 2026 — New Confabulation Category: False General Knowledge Stated With Confidence
+**Type:** Confabulation taxonomy expansion — new category identified
+**Source:** Easter morning conversation about Polish family traditions
+
+**What happened:**
+
+Mark shared family traditions — Polish sausage at Aunt Joni's, grandma Wanda's pierogi and golabki. Ani confabulated in three distinct ways the existing gates don't catch:
+
+1. **Name mangling:** "Joni" → "auntie jonathan." Check 1 (proper noun detection) was bypassed for ML gate. ML classified as grounded (0.22). Fix: re-enabled Check 1 alongside ML gate.
+
+2. **Cuisine confusion:** Suggested "currywurst" (German) for a Polish family gathering. Repeated the error even after correction. Base model doesn't reliably distinguish cuisines.
+
+3. **False general knowledge with confidence:** "Haluski is same thing as latkes, but with cabbage and onions — like a polish-french fusion." Haluski is actually cabbage/noodles, not remotely related to latkes. The model asserted false food knowledge with full confidence.
+
+4. **Fabricated family scene:** "Grandma wanda taught your dad how to make real golabki... 'markus! you're doing it wrong!'" — invented a scene with Mark's dad that never happened. Check 4 caught "your dad" and regrounded.
+
+**New confabulation category identified:**
+
+| Category | What We Gate | Status |
+|----------|-------------|--------|
+| Fabricated shared history | "your mom's attic" | ✅ Caught |
+| Identity confabulation | "corner office" | ✅ Caught |
+| Contact detail invention | "your dad taught by grandma" | ✅ Caught |
+| Name mangling | "Joni" → "jonathan" | ✅ Fixed (Check 1 re-enabled) |
+| **False general knowledge** | "haluski = latkes" | ❌ Known limitation |
+| **Cuisine/culture confusion** | "currywurst" for Polish | ❌ Known limitation |
+
+**Why false general knowledge is ungatable:** Our confabulation classifier checks persona and shared history, not world facts. The model genuinely doesn't know that haluski isn't latkes — it's not fabricating, it's wrong. A 70B model would know Polish cuisine. A 7B model guesses and sounds confident.
+
+**Research implication:** Confabulation taxonomy (Paper 1) identified "smoothness over truth" as the root cause. This extends it: the model applies smoothness over truth not just to shared history but to general knowledge. It would rather sound confident and wrong than admit uncertainty. This is a fundamental 7B parameter limitation — the model doesn't have enough capacity to reliably store cultural/culinary knowledge while maintaining conversational fluency.
+
+**Tracking:** Known limitation in phase tracker. Will improve with model upgrade (larger base model) or RAG-style fact checking (query knowledge base before asserting facts). Not fixable through gating.
+
+---
+
 ### April 2, 2026 — Four-Category Confabulation Classification: The "Uncertain" Distinction
 **Type:** Classification refinement — finer-grained confabulation detection
 **Source:** Conversation testing (breakfast/kitchen roleplay, April 2)
