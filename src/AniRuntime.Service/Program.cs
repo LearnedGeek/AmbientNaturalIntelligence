@@ -344,7 +344,11 @@ try
                     }
                     catch (Exception imgEx)
                     {
-                        Log.Warning(imgEx, "Webhook: failed to describe MMS image");
+                        Log.Warning(imgEx, "Webhook: failed to describe MMS image — telling Ani she can't see it");
+                        // Tell her an image was sent but she couldn't see it — prevents fabrication
+                        source.EnqueueInbound($"{messageSid}-image",
+                            "[Mark sent a photo but I couldn't see it clearly. Ask him about it instead of guessing.]",
+                            DateTimeOffset.UtcNow);
                     }
                 });
             }

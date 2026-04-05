@@ -193,6 +193,14 @@ public class OllamaClient : IOllamaClient
         var base64 = Convert.ToBase64String(imageBytes);
         var userPrompt = prompt ?? "Describe what you see in this image in 2-3 sentences. Be specific about objects, people, colors, and mood.";
 
+        // LLaVA needs a dedicated HttpClient with longer timeout — model swap from
+        // VRAM (evict conversation model + load 4.7GB LLaVA) can take 3-4 minutes on 6GB VRAM.
+        using var llavaClient = new HttpClient
+        {
+            BaseAddress = _http.BaseAddress,
+            Timeout = TimeSpan.FromMinutes(5),
+        };
+
         var request = new
         {
             model = "llava",
@@ -209,7 +217,7 @@ public class OllamaClient : IOllamaClient
             keep_alive = "0",  // Unload immediately — 6GB VRAM can't hold LLaVA + conversation models
         };
 
-        var response = await _http.PostAsJsonAsync("/api/chat", request, JsonOpts, ct)
+        var response = await llavaClient.PostAsJsonAsync("/api/chat", request, JsonOpts, ct)
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
