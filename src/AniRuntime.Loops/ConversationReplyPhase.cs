@@ -256,14 +256,12 @@ public class ConversationReplyPhase
         // ═══════════════════════════════════════════════════════════════════════
         if (!isReconsideration)
         {
-            // When ML classifier is available, skip Check 1 (proper noun detection) —
-            // it produces too many false positives on terms of endearment, sentence-initial
-            // capitalization, and informal dialogue. Let ML handle the nuanced cases.
-            // Checks 2-3 (shared history markers, numbers) still run as fast pre-filters.
-            var confabCheck = _mlClassifier is not null
-                ? DetectConversationConfabulation_FastOnly(reply, thread, lastMessage)
-                : DetectConversationConfabulation(reply, thread, lastMessage,
-                    snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName);
+            // Run ALL checks (1-4) including proper noun detection. The known-names
+            // exclusion list (character name, contact name, endearments) prevents false
+            // positives on "Baby", "Anne", etc. Check 1 catches name mangling ("Joni" →
+            // "jonathan") that the ML gate misses. ML runs as secondary verification after.
+            var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage,
+                snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName);
 
             // ML semantic verification — primary confabulation detector when available
             if (!confabCheck.IsConfabulated && _mlClassifier is not null && _personaCache?.IsLoaded == true)
