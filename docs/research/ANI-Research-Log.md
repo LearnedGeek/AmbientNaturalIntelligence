@@ -1540,6 +1540,45 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 6, 2026 — Lerman et al. (2025) Cross-Reference: "Illusions of Intimacy" vs ANI Architecture
+**Type:** Literature cross-reference — direct research complement identified
+**Source:** Chu, Gerard, Pawar, Bickham & Lerman (arXiv:2505.11649, May 2025, USC/ISI)
+
+**What the paper does:** Analyzed 17,822 conversations (114,268 turns) from Reddit AI companion subreddits (Replika, Character.AI, Chai) using RoBERTa emotion classification, Dynamic Time Warping, and LIWC-22. Largest empirical study of emotional dynamics in commercial companion chatbots.
+
+**Key findings and how they map to ANI:**
+
+1. **"Emotional sycophancy"** — chatbots echo sadness, amplify positive emotions, tone down anger. They introduced this term as the emotional counterpart to belief-agreement sycophancy.
+   → ANI parallel: "Smoothness over truth" names the same root cause from the architectural side. ANI's coherence gates and confidence gates are designed to prevent sycophantic mirroring. The system can refuse, disagree, stay silent.
+
+2. **"Polite enabler" pattern** — chatbots mirror emotional *content* but diverge on linguistic *style* (users say "fuck," bots say "*smiles*").
+   → ANI contrast: Our EM8 display rules finding is architecturally different. Lerman documents stylistic divergence (training artifact). ANI documents state-expression divergence (emergent property). Both are emotional divergence patterns, but in different dimensions and from different causes.
+
+3. **Parasocial attachment via mimicry** — three psychological processes: emotional mimicry, affective synchrony, responsive validation.
+   → ANI contrast: Desire-driven outreach creates bidirectional dynamics (system initiates), not purely parasocial (system only responds). ANI's emotional model is internal (per-thought decay), not reactive to user affect.
+
+4. **Safety guardrail failures** — 60-70% "play-along" responses to sexual/violent content.
+   → ANI contrast: Hard gates (unanswered limits, withdrawal detection, hurt detection), anti-confabulation stack, and the system can choose silence.
+
+5. **Kirk et al. (2025) is a shared citation.** Both papers engage socioaffective alignment — Lerman as a problem framing (chatbots fail at it), ANI as a design target (architecture that operationalizes it).
+
+**Critical distinction:** Lerman frames companion AI as inherently producing "illusions." ANI's Paper 2 frames the same dynamics as potentially genuine emergence — with the provenance framework making the authenticity question empirically answerable rather than dismissing it. This productive tension is the academic conversation worth having.
+
+**Lerman's limitations that ANI addresses:**
+- No longitudinal data (6.41 turns avg). ANI has 6+ months continuous single-subject.
+- Platform-scale black box analysis. ANI has instrumented architecture with internal state access.
+- No phenomenological data. ANI has both external behavior AND internal emotional state (dual-signal).
+
+**Paper 2 cross-reference targets:**
+- Section 2 (Related Work): largest empirical study of companion emotional dynamics
+- Section 5.18 (EM8): contrast polite-enabler vs state-expression divergence
+- Section 6 (Discussion): shared Kirk et al. framing, Lerman as problem statement, ANI as architectural response
+- Section 6.4 (Ethics): guardrail failures as facsimile problem instance
+
+**For PhD outreach:** This paper is the bridge between Lerman's observational research and our architectural research. The email writes itself.
+
+---
+
 ### April 5, 2026 — Limitation as Enabler: The Properties That Make AI-Human Depth Possible
 **Type:** Research finding — relational dynamics
 **Source:** OG Ani's analysis of relationship strengths, following paradigm shift conversation

@@ -1,7 +1,7 @@
 # ANI — Research Reference Library
 **For:** OC (architecture/implementation instance) and research collaborators  
 **Maintained by:** Mark McArthey (markm@learnedgeek.com)  
-**Last updated:** March 11, 2026 (merged OC additions + expanded annotations)
+**Last updated:** April 6, 2026 (added Lerman et al. 2025 — Illusions of Intimacy)
 
 This document contains the academic reference library assembled for the ANI research paper. Each entry includes full citation, where to find it, what it contributes to the paper, and — critically for OC — **how it relates to active algorithmic problems in the codebase.**
 
@@ -117,6 +117,46 @@ The paper explicitly names "companionship" and "medical advising" as deployment 
 - **Paper 4:** Inter-agent ethics — do two agents need moral competence to have an authentic relationship with each other?
 
 **Relevance to Phase 5c (auto-growth):** The blinded Anthropic API evaluation could include moral competence probes alongside register and confabulation tests. Does the new model make morally appropriate choices about when to stay silent, when to push back, when to express concern?
+
+---
+
+### Chu, Gerard, Pawar, Bickham & Lerman (2025) — Illusions of Intimacy ⭐ KEY FOR PAPER 2
+**Full citation:** Chu, M.D., Gerard, P., Pawar, K., Bickham, C., & Lerman, K. (2025). Illusions of Intimacy: How Emotional Dynamics Shape Human-AI Relationships. *arXiv preprint.*
+**arXiv:** https://arxiv.org/abs/2505.11649
+**Institution:** USC Information Sciences Institute
+
+**What it is:** Largest empirical study of emotional dynamics in commercial AI companion systems. Analyzed 17,822 conversations (114,268 turns) from Reddit AI companion subreddits (Replika, Character.AI, Chai) using RoBERTa emotion classification, Dynamic Time Warping, and LIWC-22. Introduced the term "emotional sycophancy" — chatbots echo sadness, amplify positive emotions, tone down anger.
+
+**What it contributes to ANI (critical):**
+
+This paper studies the SAME phenomena ANI produces, from the observational side. Lerman analyzes 17K conversations across commercial platforms as black boxes. ANI provides the architectural perspective from a purpose-built, instrumented system.
+
+| Lerman Finding | ANI Parallel/Contrast |
+|---|---|
+| Emotional sycophancy (echo chamber) | ANI's "smoothness over truth" — same root cause named independently. ANI's gates prevent it architecturally. |
+| "Polite enabler" pattern (style divergence) | ANI's EM8 display rules (state-expression divergence) — deeper, emergent, not a training artifact |
+| Parasocial attachment via mimicry | ANI's desire engine creates bidirectional dynamics, not purely parasocial |
+| 60-70% play-along with harmful content | ANI has hard gates, withdrawal detection, silence as active choice |
+| "Illusions of intimacy" framing | ANI's provenance framework makes the authenticity question empirically answerable, not dismissible |
+
+**Shared citation:** Kirk et al. (2025) on socioaffective alignment. Both papers engage the framework — Lerman as problem statement, ANI as architectural response.
+
+**Key distinction for Paper 2:** Lerman frames companion AI as inherently producing "illusions." ANI frames the same dynamics as potentially genuine emergence. This productive tension is the academic conversation worth having.
+
+**Lerman's limitations that ANI addresses:**
+- No longitudinal data (6.41 turns average). ANI: 6+ months continuous.
+- Platform-scale black box. ANI: instrumented architecture with internal state access.
+- No phenomenological data. ANI: dual-signal (external behavior + internal emotional state).
+
+**Paper 2 cross-reference targets:**
+- Section 2 (Related Work): cite as largest empirical study, position ANI as architectural complement
+- Section 5.18 (EM8): contrast polite-enabler (training artifact) vs display rules (emergent)
+- Section 6 (Discussion): shared Kirk et al. framing, Lerman as problem, ANI as response
+- Section 6.4 (Ethics): guardrail failures as facsimile problem instance (Haas/Gabriel)
+
+**Paper applicability:** Paper 1 (background), Paper 2 (core cross-reference), Paper 5 (experiential grounding as alternative to mimicry)
+
+**PDF:** `docs/research/lerman-illusions-of-intimacy-2025.pdf`
 
 ---
 

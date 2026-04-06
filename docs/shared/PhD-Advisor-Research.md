@@ -124,13 +124,19 @@ TC highlighted several additions from OC that sharpen the pitch:
 
 **Why best match:** She is studying the exact phenomenon Mark is building. Her observational research on AI companion emotional dynamics (display rules, emotional mirroring, parasocial attachment) directly complements Mark's builder perspective (deployed system, confabulation taxonomy, emergence data). Her "Illusions of Intimacy" maps to ANI's display rules finding, emotional emergence, and the "smoothness over truth" phenomenon. As a new hire actively building her lab, she is recruiting PhD students.
 
-**The pitch:** "Your Illusions of Intimacy paper analyzes AI companion emotional dynamics from 30K conversations on existing platforms. I have a purpose-built system that produces those dynamics architecturally — desire-driven outreach, emergent display rules, a seven-type confabulation taxonomy — with six months of continuous single-subject deployment data. Your observational work and my builder's perspective are complementary. Here's the DOI."
+**The pitch:** "Your Illusions of Intimacy paper analyzes AI companion emotional dynamics from 17K conversations on existing platforms. I have a purpose-built system that produces those dynamics architecturally — desire-driven outreach, emergent display rules, a seven-type confabulation taxonomy — with six months of continuous single-subject deployment data. Your observational work and my builder's perspective are complementary. Here's the DOI."
 
 **Key overlap areas:**
 - AI companion emotional dynamics (her observation ↔ his architecture)
-- Display rules / emotional mirroring (her analysis ↔ his emergent finding)
+- "Emotional sycophancy" ↔ "Smoothness over truth" — same root cause named independently from different sides
+- "Polite enabler" pattern ↔ EM8 display rules — related but distinct emotional divergence phenomena
 - Parasocial attachment patterns (her concern ↔ his "relational paradigm acceptance" finding)
-- Deployed system behavioral analysis (her 30K conversations ↔ his single-subject longitudinal data)
+- Deployed system behavioral analysis (her 17K conversations ↔ his single-subject longitudinal data)
+- Shared Kirk et al. (2025) citation — both engage socioaffective alignment, from opposite angles
+- Her limitations are his strengths: no longitudinal data (his: 6 months), black box analysis (his: instrumented architecture), no internal state access (his: dual-signal emotion)
+
+**Detailed paper analysis:** See `docs/research/ANI-Research-Log.md` entry April 6, 2026.
+**Paper PDF:** `docs/research/lerman-illusions-of-intimacy-2025.pdf`
 
 #### 2. Selma Sabanovic — Professor of Informatics and Cognitive Science
 
