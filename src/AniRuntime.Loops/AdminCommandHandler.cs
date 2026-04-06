@@ -88,6 +88,7 @@ public class AdminCommandHandler
             "rebuild-emergence" => await HandleRebuildEmergenceAsync(ct).ConfigureAwait(false),
             "diagnose" => await HandleDiagnoseAsync(ct).ConfigureAwait(false),
             _ when trimmed.StartsWith("tag ") => HandleTag(trimmed[4..].Trim()),
+            "audit" => await HandleAuditAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
 
@@ -110,6 +111,7 @@ public class AdminCommandHandler
             "///rebuild-links — Build memory graph links (one-time, may take minutes)",
             "///rebuild-emergence — Tag historical emergence log with EM1-EM6 types",
             "///tag <note>  — Tag an observation for later review",
+            "///audit       — Show last 5 memory changes",
         });
     }
 
@@ -321,6 +323,29 @@ public class AdminCommandHandler
         {
             _log.LogError(ex, "Rebuild emergence failed");
             return $"ERROR: Rebuild emergence failed — {ex.Message}";
+        }
+    }
+
+    private async Task<string> HandleAuditAsync(CancellationToken ct)
+    {
+        try
+        {
+            var recent = await _maintenance.GetRecentAuditEntriesAsync(5, ct).ConfigureAwait(false);
+            if (recent.Count == 0)
+                return "No audit entries yet.";
+
+            var lines = new List<string> { $"=== Last {recent.Count} memory changes ===" };
+            foreach (var entry in recent)
+            {
+                var preview = entry.ContentBefore ?? entry.ContentAfter ?? "(no content)";
+                if (preview.Length > 50) preview = preview[..50] + "...";
+                lines.Add($"{entry.OccurredAt:HH:mm} {entry.Action} ({entry.Source}): {preview}");
+            }
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            return $"Audit query failed: {ex.Message}";
         }
     }
 

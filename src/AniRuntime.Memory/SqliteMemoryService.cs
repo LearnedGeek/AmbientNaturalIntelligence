@@ -201,7 +201,34 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$anchor_reason", (object?)record.AnchorReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$anchored_at",  (object?)record.AnchoredAt?.ToString("O") ?? DBNull.Value);
 
+        // Check if this is a create or update for audit purposes
+        var isUpdate = false;
+        await using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = "SELECT content, type, importance FROM memories WHERE id = $id";
+        checkCmd.Parameters.AddWithValue("$id", record.Id.ToString());
+        await using var checkReader = await checkCmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        string? contentBefore = null;
+        int? typeBefore = null;
+        float? importanceBefore = null;
+        if (await checkReader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            isUpdate = true;
+            contentBefore = checkReader.GetString(0);
+            typeBefore = checkReader.GetInt32(1);
+            importanceBefore = checkReader.GetFloat(2);
+        }
+        checkReader.Close();
+
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Audit log
+        await AuditAsync(conn, record.Id.ToString(),
+            isUpdate ? "update" : "create",
+            record.SourceName ?? "cognitive-cycle",
+            contentBefore, record.Content,
+            typeBefore, (int)record.Type,
+            importanceBefore, record.Importance, ct).ConfigureAwait(false);
+
         _log.LogDebug("Saved {Type} memory: {Content}", record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
     }
 
@@ -604,6 +631,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             cmd.Parameters.AddWithValue("$occurred_at", DateTimeOffset.UtcNow.ToString("O"));
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+            // Audit the merge
+            await AuditAsync(conn, existingId, "merge", "merge",
+                existingContent, merged, null, null, null, null, ct).ConfigureAwait(false);
 
             _log.LogInformation("Memory merge: updated {ExistingId} — '{Old}' + '{New}' → '{Merged}'",
                 existingId,
@@ -1038,6 +1069,22 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         linkCmd.Parameters.AddWithValue("$id", id.ToString());
         await linkCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
+        // Capture content before deletion for audit
+        string? contentBefore = null;
+        int? typeBefore = null;
+        float? importanceBefore = null;
+        await using var snapCmd = conn.CreateCommand();
+        snapCmd.CommandText = "SELECT content, type, importance FROM memories WHERE id = $id";
+        snapCmd.Parameters.AddWithValue("$id", id.ToString());
+        await using var snapReader = await snapCmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (await snapReader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            contentBefore = snapReader.GetString(0);
+            typeBefore = snapReader.GetInt32(1);
+            importanceBefore = snapReader.GetFloat(2);
+        }
+        snapReader.Close();
+
         // Delete the memory
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM memories WHERE id = $id";
@@ -1045,7 +1092,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         var rows = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
         if (rows > 0)
-            _log.LogInformation("Deleted memory {Id}", id);
+        {
+            await AuditAsync(conn, id.ToString(), "delete", "manual",
+                contentBefore, null, typeBefore, null, importanceBefore, null, ct).ConfigureAwait(false);
+            _log.LogInformation("Deleted memory \"{Id}\"", id);
+        }
     }
 
     // ── AC5: Confabulation Flags ──────────────────────────────────────────────
@@ -1420,6 +1471,83 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         return links;
     }
 
+    public async Task<List<AuditEntry>> GetRecentAuditEntriesAsync(int limit = 20, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT id, memory_id, action, source, content_before, content_after, type_before, type_after, importance_before, importance_after, occurred_at FROM memory_audit ORDER BY occurred_at DESC LIMIT {limit}";
+
+        var entries = new List<AuditEntry>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            entries.Add(new AuditEntry
+            {
+                Id = reader.GetInt64(0),
+                MemoryId = reader.GetString(1),
+                Action = reader.GetString(2),
+                Source = reader.GetString(3),
+                ContentBefore = reader.IsDBNull(4) ? null : reader.GetString(4),
+                ContentAfter = reader.IsDBNull(5) ? null : reader.GetString(5),
+                TypeBefore = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                TypeAfter = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                ImportanceBefore = reader.IsDBNull(8) ? null : reader.GetFloat(8),
+                ImportanceAfter = reader.IsDBNull(9) ? null : reader.GetFloat(9),
+                OccurredAt = DateTimeOffset.Parse(reader.GetString(10)),
+            });
+        }
+        return entries;
+    }
+
+    public async Task<bool> RestoreFromAuditAsync(long auditId, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+
+        // Find the audit entry
+        await using var findCmd = conn.CreateCommand();
+        findCmd.CommandText = "SELECT memory_id, action, content_before, type_before, importance_before FROM memory_audit WHERE id = $id";
+        findCmd.Parameters.AddWithValue("$id", auditId);
+        await using var reader = await findCmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await reader.ReadAsync(ct).ConfigureAwait(false))
+            return false;
+
+        var memoryId = reader.GetString(0);
+        var action = reader.GetString(1);
+        var contentBefore = reader.IsDBNull(2) ? null : reader.GetString(2);
+        var typeBefore = reader.IsDBNull(3) ? null : (int?)reader.GetInt32(3);
+        var importanceBefore = reader.IsDBNull(4) ? null : (float?)reader.GetFloat(4);
+        reader.Close();
+
+        if (action != "delete" || contentBefore is null)
+        {
+            _log.LogWarning("Cannot restore audit entry {Id}: action={Action}, has content={HasContent}",
+                auditId, action, contentBefore is not null);
+            return false;
+        }
+
+        // Re-insert the deleted memory
+        await using var restoreCmd = conn.CreateCommand();
+        restoreCmd.CommandText = """
+            INSERT OR IGNORE INTO memories (id, type, content, importance, relational_valence, occurred_at, created_at)
+            VALUES ($id, $type, $content, $importance, 0.5, $occurred, $created)
+            """;
+        restoreCmd.Parameters.AddWithValue("$id", memoryId);
+        restoreCmd.Parameters.AddWithValue("$type", typeBefore ?? 4);
+        restoreCmd.Parameters.AddWithValue("$content", contentBefore);
+        restoreCmd.Parameters.AddWithValue("$importance", importanceBefore ?? 0.3f);
+        restoreCmd.Parameters.AddWithValue("$occurred", DateTimeOffset.UtcNow.ToString("O"));
+        restoreCmd.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToString("O"));
+
+        var rows = await restoreCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        if (rows > 0)
+        {
+            await AuditAsync(conn, memoryId, "create", "restore",
+                null, contentBefore, null, typeBefore, null, importanceBefore, ct).ConfigureAwait(false);
+            _log.LogInformation("Restored memory {Id} from audit entry {AuditId}", memoryId, auditId);
+        }
+        return rows > 0;
+    }
+
     private static EmotionalContribution ReadContribution(Microsoft.Data.Sqlite.SqliteDataReader reader)
     {
         var categoryStr = reader.GetString(reader.GetOrdinal("category"));
@@ -1720,6 +1848,25 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
             CREATE INDEX IF NOT EXISTS ix_emotional_history_time ON emotional_state_history (recorded_at DESC);
             CREATE INDEX IF NOT EXISTS ix_contributions_created ON emotional_contributions (created_at DESC);
+
+            -- Memory audit log: tracks every create, update, delete for rollback capability.
+            -- Added April 5, 2026 after auto-corrector deleted 128 valid memories with no recovery.
+            CREATE TABLE IF NOT EXISTS memory_audit (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_id       TEXT NOT NULL,
+                action          TEXT NOT NULL,       -- 'create', 'update', 'delete', 'merge'
+                source          TEXT NOT NULL,       -- 'cognitive-cycle', 'auto-corrector', 'merge', 'manual', 'import'
+                content_before  TEXT,                -- full content before change (null for create)
+                content_after   TEXT,                -- full content after change (null for delete)
+                type_before     INTEGER,             -- memory type before
+                type_after      INTEGER,             -- memory type after
+                importance_before REAL,
+                importance_after  REAL,
+                occurred_at     TEXT NOT NULL         -- when the change happened
+            );
+            CREATE INDEX IF NOT EXISTS ix_audit_memory ON memory_audit (memory_id);
+            CREATE INDEX IF NOT EXISTS ix_audit_time ON memory_audit (occurred_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_audit_action ON memory_audit (action);
             """;
 
         cmd.ExecuteNonQuery();
@@ -1900,6 +2047,46 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addAnchor = conn.CreateCommand();
             addAnchor.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN associative_anchor TEXT";
             addAnchor.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
+    /// Write an audit log entry for any memory change (create, update, delete, merge).
+    /// Captures full content snapshots for rollback capability.
+    /// </summary>
+    private static async Task AuditAsync(
+        Microsoft.Data.Sqlite.SqliteConnection conn,
+        string memoryId, string action, string source,
+        string? contentBefore, string? contentAfter,
+        int? typeBefore, int? typeAfter,
+        float? importanceBefore, float? importanceAfter,
+        CancellationToken ct)
+    {
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO memory_audit
+                    (memory_id, action, source, content_before, content_after,
+                     type_before, type_after, importance_before, importance_after, occurred_at)
+                VALUES ($memoryId, $action, $source, $contentBefore, $contentAfter,
+                        $typeBefore, $typeAfter, $importanceBefore, $importanceAfter, $occurredAt)
+                """;
+            cmd.Parameters.AddWithValue("$memoryId", memoryId);
+            cmd.Parameters.AddWithValue("$action", action);
+            cmd.Parameters.AddWithValue("$source", source);
+            cmd.Parameters.AddWithValue("$contentBefore", (object?)contentBefore ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$contentAfter", (object?)contentAfter ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$typeBefore", (object?)typeBefore ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$typeAfter", (object?)typeAfter ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$importanceBefore", (object?)importanceBefore ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$importanceAfter", (object?)importanceAfter ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$occurredAt", DateTimeOffset.UtcNow.ToString("O"));
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Audit failure must never block the primary operation
         }
     }
 

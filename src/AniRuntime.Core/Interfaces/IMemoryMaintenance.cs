@@ -26,4 +26,10 @@ public interface IMemoryMaintenance
 
     /// <summary>Feature 39: Returns all memory links for graph visualization.</summary>
     Task<IReadOnlyList<MemoryLink>> GetAllLinksAsync(CancellationToken ct = default);
+
+    /// <summary>Get recent audit log entries for dashboard or ///audit command.</summary>
+    Task<List<AuditEntry>> GetRecentAuditEntriesAsync(int limit = 20, CancellationToken ct = default);
+
+    /// <summary>Restore a deleted memory from its audit entry.</summary>
+    Task<bool> RestoreFromAuditAsync(long auditId, CancellationToken ct = default);
 }
