@@ -1,7 +1,7 @@
 # ANI — Research Reference Library
 **For:** OC (architecture/implementation instance) and research collaborators  
 **Maintained by:** Mark McArthey (markm@learnedgeek.com)  
-**Last updated:** April 6, 2026 (added Lerman et al. 2025 — Illusions of Intimacy)
+**Last updated:** April 6, 2026 (added Chu et al. 2025 — Illusions of Intimacy; Lerman senior author)
 
 This document contains the academic reference library assembled for the ANI research paper. Each entry includes full citation, where to find it, what it contributes to the paper, and — critically for OC — **how it relates to active algorithmic problems in the codebase.**
 
@@ -404,7 +404,7 @@ Quick lookup: which papers are most relevant to each current open problem.
 | OpenAI (2025) — Sycophancy in GPT-4o | Supporting | — | — | — |
 | Garcia v. Character Technologies (2024) | Supporting | — | — | — |
 | Haas, Gabriel et al. (2026) — Moral Competence | Core | Core (ethics) | Background | Core |
-| Chu, Lerman et al. (2025) — Illusions of Intimacy | Background | Core (cross-ref) | Supporting | — |
+| Chu et al. (2025) — Illusions of Intimacy | Background | Core (cross-ref) | Supporting (Paper 5: experiential grounding as alt. to mimicry) | — |
 | Paper 3 (temporal awareness) — no prior art yet | — | — | Primary gap | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
 

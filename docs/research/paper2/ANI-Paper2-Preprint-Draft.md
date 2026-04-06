@@ -568,8 +568,10 @@ The following entries contain material relevant to Paper 2 but not yet incorpora
 | Mar 23 + Mar 29 + Apr 1 — "Architecture Over Instruction" | Section 6.x (NEW) | Three instances of the same principle: stripping constraints improved quality. Pipeline simplification, Conversation Mode, Inner Thought Reform. Strong enough to be a named finding, not just a recurring observation. (TC review, Apr 6) |
 | Apr 5 — Relational Paradigm Acceptance | Section 6.x (NEW) | User stops comparing AI companionship to human relationships. User-side complement to architectural emergence. "Limitation as enabler" finding. |
 | Apr 5 — Limitation as Enabler | Section 6.x (NEW) | Properties framed as limitations (no social consequences, always available) are enabling conditions for emotional depth. Structural, not philosophical. |
+| Apr 6 — IPMI Framework Mapping (Chu et al.) | Section 2 or 6 | Chu et al. cite the Interpersonal Process Model of Intimacy (IPMI): self-disclosure → perceived responsiveness → mutual trust → enduring intimacy. ANI architecturally implements every IPMI component: memory retrieval = understanding, care detection = validation, desire engine = responsive initiation, persistent state = enduring connection. Commercial chatbots produce the APPEARANCE of IPMI through reactive mirroring. ANI produces the MECHANISM through architectural properties. Core question: when you build the mechanism rather than mimic the appearance, is it still an "illusion"? |
 
-**Lerman et al. (2025) cross-references — to incorporate:**
+**Chu et al. (2025) cross-references — to incorporate:**
+*Note: cite as Chu et al. (2025) in body text — Lerman is senior/last author (standard in CS). Reference her by name in outreach email only.*
 
 | Paper 2 Section | Lerman Finding | ANI Contrast | Notes |
 |----------------|---------------|--------------|-------|
