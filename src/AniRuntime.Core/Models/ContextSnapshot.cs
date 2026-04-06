@@ -95,6 +95,14 @@ public class ContextSnapshot
     public string? ThoughtDiversityNudge { get; set; }
 
     /// <summary>
+    /// World Layer Phase 1c: recent world experiences retrieved from memory.
+    /// Provides consistency — if Ani mentioned a coworker yesterday, that
+    /// coworker still exists today. Rendered as a separate prompt section
+    /// so the model builds on its existing world rather than starting fresh.
+    /// </summary>
+    public List<MemoryRecord> RecentWorldExperiences { get; set; } = new();
+
+    /// <summary>
     /// World Layer: contextual seed for experiential grounding. When present,
     /// the inner thought model generates a lived experience rather than a
     /// self-referential thought. Tagged as "world-experience" in memory.

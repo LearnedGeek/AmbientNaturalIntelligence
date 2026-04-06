@@ -205,7 +205,18 @@ public class CognitiveCycleProcessor
             var seed = _worldSeed.GenerateSeed(
                 DateTimeOffset.Now, weatherContext, charState.Occupation);
             snapshot.WorldSeed = seed;
-            _log.LogInformation("World seed (cycle {Cycle}): {Seed}", _cycleCount, seed);
+
+            // Phase 1c: retrieve recent world experiences for consistency.
+            // If Ani mentioned a coworker yesterday, that coworker still exists today.
+            var cutoff = DateTimeOffset.UtcNow.AddHours(-48);
+            var recent = await _persist.GetRecentAsync(limit: 20, ct).ConfigureAwait(false);
+            snapshot.RecentWorldExperiences = recent
+                .Where(m => m.SourceName == SourceNames.WorldExperience && m.OccurredAt >= cutoff)
+                .Take(5)
+                .ToList();
+
+            _log.LogInformation("World seed (cycle {Cycle}, {PriorCount} prior experiences): {Seed}",
+                _cycleCount, snapshot.RecentWorldExperiences.Count, seed);
         }
 
         // Associative anchor: inject the previous thought's anchor as a creative fragment.

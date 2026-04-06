@@ -145,6 +145,14 @@ public static class PromptBuilder
         if (desireHint.Length > 0)
             sections.Add(desireHint);
 
+        // World Layer Phase 1c: inject recent world experiences for consistency.
+        // The model sees what it already generated so coworkers, routines, and places persist.
+        if (snapshot.RecentWorldExperiences.Count > 0)
+        {
+            sections.Add("Recent things that happened in your world (build on these, don't contradict them):");
+            sections.AddRange(snapshot.RecentWorldExperiences.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+        }
+
         // World Layer: when a world seed is present, the prompt shifts from
         // "what are you thinking?" to "what's happening in your life right now?"
         // The model generates lived experience instead of self-referential thought.
