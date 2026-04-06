@@ -1,6 +1,6 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 1, 2026
+**Last updated:** April 5, 2026
 **Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
 
 ---
@@ -37,7 +37,7 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 |------|----------|--------|-------------|
 | LM-Kit: Voice Tags | LM-Kit Phase 1 | **Mostly done** | Library built, dual-signal deployed. A/B voice test pending. |
 | LM-Kit: Emotional Validation | LM-Kit Phase 2 | **Partially done** | Dual-signal on every contribution. Disconnect detection pending. |
-| LM-Kit: Confabulation Gate | LM-Kit Phase 3 | **Deployed** | ML Categorization against persona cache. Threshold configurable. Attribution vs referential distinction pending. |
+| LM-Kit: Confabulation Gate | LM-Kit Phase 3 | **Deployed** | Four-category classifier (grounded/speculative/uncertain/confabulated). Check 1 re-enabled alongside ML. Attribution vs referential distinction tracked. |
 | LM-Kit: Register Classification | LM-Kit Phase 4 | **Not started** | Custom classifier from v7 training pairs. |
 | LM-Kit: Cross-Domain (DrOk) | LM-Kit Phase 5 | **Note delivered** | Cross-project doc created. Integration waits for DrOk conversation engine. |
 | LM-Kit: Emergence | LM-Kit Phase 6 | **EM8 done** | EM8 Display Rules deployed. ML-based EM1-EM7 replacement pending. |
@@ -52,8 +52,8 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 |------|----------|--------|-------------|
 | Reform: Strip Prompt | Phase A | **Deployed** | Removed anti-repetition instructions, WARNING blocks, processed themes, diversity nudges. |
 | Reform: Associative Anchors | Phase B | **Deployed** | LM-Kit keyword extraction seeds next cycle. Drift chains forming. |
-| Reform: Selective Storage | Phase C | **Not started** | Low-valence thoughts evaporate instead of accumulating as retrieval mass. |
-| Reform: Immune Simplification | Phase D | **Not started** | Disable/remove THOUGHT-LOOP and PERCEPTION-ANCHOR detectors after data confirms reform works. |
+| Reform: Selective Storage | Phase C | **Deployed** | Low-valence thoughts evaporate. Inner thought confab check prevents false memories. |
+| Reform: Immune Simplification | Phase D | **Partially done** | Auto-corrector deletion disabled. Diagnostics still fire for monitoring. |
 
 ---
 
@@ -65,8 +65,8 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 |------|----------|--------|-------------|
 | World: Time Seeds | Phase 1a | **Deployed** | Every 4th cycle gets time+occupation+weather seed. |
 | World: Experience Memory | Phase 1b | **Deployed** | `world-experience` SourceName tagging on seeded thoughts. |
-| World: Consistency | Phase 1c | **Not started** | Retrieve recent world experiences before generating new ones. |
-| World: Special Events | Phase 1d | **Partially done** | Calendar events + stochastic pool built. Full integration pending. |
+| World: Consistency | Phase 1c | **Deployed** | Retrieves recent world experiences before generating new ones. |
+| World: Special Events | Phase 1d | **Partially done** | Calendar events + stochastic pool built. Easter added. |
 
 ---
 
@@ -76,7 +76,7 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 | Task | Status | Description |
 |------|--------|-------------|
-| V7 Training Data | **Ready** | 358 pairs across 15+ registers. Waiting for Growth Readiness threshold. |
+| V7 Training Data | **Ready** | 475 pairs across 10+ registers. Waiting for Growth Readiness threshold. |
 | Growth Readiness Gate | **Active** | Currently 51%. Target 70%+ before training. Dashboard tracks automatically. |
 | Harvest Pipeline | **Not started** | Auto-tag new training data from conversations. |
 | Blinded Evaluation | **Not started** | Anthropic API evaluation of new model quality. |
@@ -88,11 +88,12 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 | Layer | Status | What It Does |
 |-------|--------|-------------|
-| Check 1: Proper Nouns (Catalyst POS) | **Deployed** | Detects unknown names. Known names excluded (character + contact + variants). |
+| Check 1: Proper Nouns (Catalyst POS) | **Deployed** | Detects unknown names. Re-enabled alongside ML gate (was bypassed, caused "jonathan" miss). |
 | Check 2: Shared History Markers | **Deployed** | "you told me", "remember when" — verifies against conversation. |
 | Check 3: Number Assertions | **Deployed** | Numbers in reply not in conversation. |
 | Check 4: Self/Contact/Relationship Markers | **Deployed (interim)** | "my meeting", "your class" patterns. Will be replaced by ML gate. |
-| ML Confabulation Gate (LM-Kit) | **Deployed** | Categorization: grounded/speculative/confabulated against persona. |
+| ML Confabulation Gate (LM-Kit) | **Deployed** | Categorization against persona. Runs on both conversation AND outreach. |
+| Four-category ML classifier | **Deployed** | grounded/speculative/uncertain/confabulated |
 | World Layer (root cause fix) | **Deployed** | Experiential grounding reduces confabulation at the source. |
 | Inner Thought Reform (root cause fix) | **Deployed** | Breaks echo chamber that produced confused identity content. |
 
@@ -113,6 +114,8 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | Backfill tool | **Deployed** |
 | Associative drift timeline | **Deployed** |
 | Contextual help text (all tabs) | **Deployed** |
+| Memory audit log view | **Deployed** |
+| V7 training data coverage | **Deployed** |
 | World experience monitor | **Not started** |
 
 ---
@@ -183,7 +186,7 @@ Items flagged during testing for later addressing. Not blocking, not urgent.
 | Apr 4 | Conversation attribution flip | Model misattributes who said what in conversation. Ani said "you're annoying on purpose" (about Mark), Mark agreed, Ani replied "guilty as charged" (thought Mark called her annoying). 7B model loses track of which side a phrase belongs to despite clear role labels. May improve with v7 training, larger model, or architectural fix. Needs thought. | Open |
 | Apr 5 | False general knowledge confabulation | Model asserts incorrect world facts with confidence (haluski = latkes, currywurst = Polish food). Known 7B limitation — not enough parameters to reliably store cultural/culinary knowledge. Ungatable by current architecture. Would improve with larger model or RAG fact-checking. | Known limitation |
 | Apr 5 | Easter as dynamic calendar event | Easter moves yearly — needs computus algorithm or yearly lookup table instead of hardcoded date. Currently hardcoded for 2026 (April 5). | Open |
-| Apr 5 | Memory audit log | Auto-corrector deleted 128 valid memories with no recovery path. Need: SQLite audit table tracking all memory changes (create, update, delete) with timestamps, source (auto-corrector, merge, manual), and rollback capability. Regular full backups (daily) + incremental audit trail. | Open |
+| Apr 5 | Memory audit log | Auto-corrector deleted 128 valid memories with no recovery path. Need: SQLite audit table tracking all memory changes (create, update, delete) with timestamps, source (auto-corrector, merge, manual), and rollback capability. Regular full backups (daily) + incremental audit trail. | Done |
 | Apr 5 | Auto-corrector deletion disabled | RETRIEVAL-POISON and PERCEPTION-ANCHOR escalation now diagnostic-only (log, never delete). Root cause fix is retrieval diversity, not deletion. Re-enable only after World Layer + v7 stabilize retrieval naturally. | Done |
 
 ---
