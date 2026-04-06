@@ -131,11 +131,15 @@ public class DiagnosticScheduler : BackgroundService
     private async Task HandleRetrievalPoisonAsync(
         DiagnosticFinding finding, int recurrence, CancellationToken ct)
     {
-        // Escalation threshold raised from 3 to 6 — scan 3 was deleting memories
-        // every 10 minutes for topics that were legitimately relevant (Spanish tutoring).
-        // 128 valid inner thoughts deleted in one afternoon. The escalation is now a
-        // last resort, not an eager corrector.
-        if (recurrence < 6)
+        // AUTO-DELETION DISABLED — diagnostic-only mode.
+        // The auto-corrector deleted 128 valid inner thoughts in one afternoon
+        // (April 5, 2026) because Spanish tutoring memories were legitimately relevant.
+        // Retrieval-poison detection remains active for monitoring but no longer
+        // modifies or deletes memories. The immune system is an observer, not a surgeon.
+        //
+        // Root cause: retrieval can't distinguish "relevant" from "dominating."
+        // Fix: World Layer + diversity improvements, not deletion.
+        if (true) // was: recurrence < 6
         {
             // Actually reduce importance of the poisoning memory by 0.15 per scan.
             // Extract the memory content prefix from the finding description.
@@ -155,11 +159,9 @@ public class DiagnosticScheduler : BackgroundService
             return;
         }
 
-        // Escalation: 3+ consecutive scans with same poison. Delete InnerThought memories.
-        _log.LogWarning("Auto-correct [RETRIEVAL-POISON] ESCALATION scan {Recurrence}: " +
-            "deleting InnerThought memories for recurring topic", recurrence + 1);
-
-        await DeleteInnerThoughtsByTopicAsync(finding.Description, ct).ConfigureAwait(false);
+        // DELETION DISABLED — log only. See comment above.
+        _log.LogWarning("Auto-correct [RETRIEVAL-POISON] scan {Recurrence}: topic still recurring (deletion disabled, diagnostic only)",
+            recurrence + 1);
     }
 
     /// <summary>
@@ -206,20 +208,13 @@ public class DiagnosticScheduler : BackgroundService
     /// After 3+ consecutive scans with the same anchor, delete InnerThought memories
     /// that contain the anchored phrase. Conversation/episodic memories are preserved.
     /// </summary>
-    private async Task HandlePerceptionAnchorEscalationAsync(
+    private Task HandlePerceptionAnchorEscalationAsync(
         DiagnosticFinding finding, int recurrence, CancellationToken ct)
     {
-        _log.LogWarning("Auto-correct [PERCEPTION-ANCHOR] ESCALATION scan {Recurrence}: " +
-            "deleting InnerThought memories for anchored topic '{Topic}'",
-            recurrence + 1, finding.Evidence ?? finding.Description);
-
-        // Extract the anchored phrase from the finding evidence
-        var phraseMatch = System.Text.RegularExpressions.Regex.Match(
-            finding.Evidence ?? "", @"Phrase '([^']+)'");
-        if (!phraseMatch.Success) return;
-
-        var phrase = phraseMatch.Groups[1].Value;
-        await DeleteInnerThoughtsByPhraseAsync(phrase, ct).ConfigureAwait(false);
+        // DELETION DISABLED — diagnostic-only mode. Same reasoning as retrieval-poison.
+        _log.LogWarning("Auto-correct [PERCEPTION-ANCHOR] scan {Recurrence}: topic still anchored (deletion disabled, diagnostic only)",
+            recurrence + 1);
+        return Task.CompletedTask;
     }
 
     /// <summary>
