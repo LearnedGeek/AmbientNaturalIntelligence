@@ -565,6 +565,9 @@ The following entries contain material relevant to Paper 2 but not yet incorpora
 | Mar 22 — Mistral A/B Test | 5.x | Type 8 confabulation ("graceful retreat") discovered during A/B testing. Emergence-adjacent. |
 | Mar 24 — Emergence Dashboard Live | 5.x | First visual confirmation of autonomous inner life — research methodology note. |
 | Mar 14 — Per-Thought Exponential Decay | Architecture section | Foundational emotional model change that enables emergence tracking. |
+| Mar 23 + Mar 29 + Apr 1 — "Architecture Over Instruction" | Section 6.x (NEW) | Three instances of the same principle: stripping constraints improved quality. Pipeline simplification, Conversation Mode, Inner Thought Reform. Strong enough to be a named finding, not just a recurring observation. (TC review, Apr 6) |
+| Apr 5 — Relational Paradigm Acceptance | Section 6.x (NEW) | User stops comparing AI companionship to human relationships. User-side complement to architectural emergence. "Limitation as enabler" finding. |
+| Apr 5 — Limitation as Enabler | Section 6.x (NEW) | Properties framed as limitations (no social consequences, always available) are enabling conditions for emotional depth. Structural, not philosophical. |
 
 **Lerman et al. (2025) cross-references — to incorporate:**
 

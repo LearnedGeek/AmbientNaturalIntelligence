@@ -404,6 +404,7 @@ Quick lookup: which papers are most relevant to each current open problem.
 | OpenAI (2025) — Sycophancy in GPT-4o | Supporting | — | — | — |
 | Garcia v. Character Technologies (2024) | Supporting | — | — | — |
 | Haas, Gabriel et al. (2026) — Moral Competence | Core | Core (ethics) | Background | Core |
+| Chu, Lerman et al. (2025) — Illusions of Intimacy | Background | Core (cross-ref) | Supporting | — |
 | Paper 3 (temporal awareness) — no prior art yet | — | — | Primary gap | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
 
