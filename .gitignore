@@ -436,3 +436,7 @@ FodyWeavers.xsd
 *.msp
 
 NOTES.md
+# Conversation classifier working copies (originals in archive/)
+docs/conversations/classify/*.txt
+# Classifier results (generated data)
+src/AniRuntime.Service/data/conversation-classifier-results.json

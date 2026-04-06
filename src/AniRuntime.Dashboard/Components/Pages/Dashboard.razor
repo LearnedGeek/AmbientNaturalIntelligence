@@ -208,9 +208,9 @@
 {
     <section>
         <h3>Register Distribution</h3>
-        <small style="opacity: 0.6;">Which emotional registers Ani's thoughts have been scored into over the last 30 days.
-        Growth Readiness measures how many registers are above 5% — a balanced distribution means the model
-        is ready for v7 training. Heavily skewed = echo chamber (needs more diverse thinking).</small>
+        <small style="opacity: 0.6;">How often each emotional register appears in the last 30 days.
+        Balanced = ready for v7 training. Heavily skewed = one register dominates (echo chamber risk).
+        For how registers relate to expressed emotion, see the Research tab.</small>
         <RegisterHeatmap Contributions="@_allContributions" WindowDays="30" />
     </section>
 
@@ -218,9 +218,7 @@
     {
         <section>
             <h3>Register Diversity Trend</h3>
-            <small style="opacity: 0.6;">How many different emotional registers appear each day (max 10).
-            Green = 7+ registers (highly diverse), orange = 4-6, red = 1-3 (echo chamber).
-            This trend shows whether the Inner Thought Reform is producing varied content over time.</small>
+            <small style="opacity: 0.6;">Unique registers per day. Green = 7+ (diverse), orange = 4-6, red = 1-3 (echo chamber risk).</small>
             <div style="display: flex; align-items: flex-end; gap: 2px; height: 100px; margin-top: 0.5rem; padding: 0.5rem 0;">
                 @foreach (var day in _registerTrend)
                 {

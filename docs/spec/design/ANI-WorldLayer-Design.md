@@ -240,31 +240,32 @@ This is both a diagnostic tool (is the world layer working?) and a research inst
 
 ## 9. Task Checklist — Foundation (Phase 1)
 
-### Phase 1a: Time-Contextual Thought Seeding
-- [ ] Define world seed schedule (every Nth cognitive cycle, default every 4th)
-- [ ] Extend TimePerceptionSource with activity context from CharacterStateDoc.Occupation
-- [ ] Integrate weather perception as experience coloring (already flows through cycle)
-- [ ] Create world-aware inner thought prompt variant (one-line context seed)
-- [ ] Configurable seed frequency in AniOptions (WorldSeedFrequency)
-- [ ] Test: inner thoughts reference current activity context
+### Phase 1a: Time-Contextual Thought Seeding — DEPLOYED
+- [x] Define world seed schedule (every Nth cognitive cycle, default every 4th)
+- [x] Extend TimePerceptionSource with activity context from CharacterStateDoc.Occupation
+- [x] Integrate weather perception as experience coloring (already flows through cycle)
+- [x] Create world-aware inner thought prompt variant (one-line context seed)
+- [x] Configurable seed frequency in AniOptions (WorldSeedFrequency)
+- [x] Test: inner thoughts reference current activity context
 
-### Phase 1b: Experience Memory
-- [ ] New SourceName: "world-experience"
-- [ ] Tag world-elaborated thoughts distinctly from standard inner thoughts
-- [ ] Retrieval prioritization for "how was your day?" type queries
+### Phase 1b: Experience Memory — DEPLOYED
+- [x] New SourceName: "world-experience"
+- [x] Tag world-elaborated thoughts distinctly from standard inner thoughts
+- [x] Retrieval prioritization for "how was your day?" type queries
 - [ ] Dashboard: world experience monitor section
 
-### Phase 1c: Consistency
-- [ ] Retrieve recent world experiences before generating new ones
-- [ ] Include as context for consistency (not as instruction)
+### Phase 1c: Consistency — DEPLOYED
+- [x] Retrieve recent world experiences before generating new ones
+- [x] Include as context for consistency (not as instruction)
 - [ ] Test: coworker mentioned on day 1 persists on day 2
 - [ ] Test: no contradictory world experiences within 24h window
 
-### Phase 1d: Special Events
-- [ ] Calendar/date awareness seed source (holidays, seasons)
-- [ ] Stochastic event pool with configurable probability (default 1-2%)
-- [ ] Event pool JSON (extensible, starts small)
+### Phase 1d: Special Events — PARTIALLY DONE
+- [x] Calendar/date awareness seed source (holidays, seasons)
+- [x] Stochastic event pool with configurable probability (default 2%)
+- [x] Event pool JSON (extensible, starts small)
 - [ ] Special event log on dashboard
+- [ ] Easter as dynamic calendar event (currently hardcoded for 2026)
 
 ### Validation
 - [ ] Ask "how was your day?" — response draws from world experiences, not confabulation

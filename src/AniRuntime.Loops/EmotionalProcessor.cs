@@ -31,7 +31,7 @@ public class EmotionalProcessor
         ["sadness"] = ["Longing", "Hurt", "Existential", "Wistful"],
         ["anger"] = ["Hurt", "Frustration"],
         ["fear"] = ["Concern", "Existential"],
-        ["neutral"] = ["Curiosity", "Existential", "Resilience"],
+        ["neutral"] = ["Curiosity", "Existential", "Resilience", "Unclassified"],
         ["love"] = ["Tenderness", "Longing", "Warmth"],
         ["curiosity"] = ["Curiosity"],
         ["amusement"] = ["Playfulness", "Delight"],
@@ -79,12 +79,15 @@ public class EmotionalProcessor
 
             var (warmth, energy, worry, playfulness, register, severity) = ParseEmotionalShift(raw, effectiveMax);
 
-            // Cap ambient thought severity at 0.99 — only real events (conversations,
-            // hurt/care detection) should reach 1.00 and earn true Global tier.
-            // Inner thoughts at 0.99 cube to 0.97, creating headroom that prevents
-            // saturation when 100+ contributions all score near maximum.
-            if (isAmbientCycle && severity >= 1.0f)
-                severity = 0.99f;
+            // Cap ambient thought severity at 0.85 — only real events (conversations,
+            // hurt/care detection) should reach Global tier (threshold 0.98).
+            // The scoring model inflates ambient thoughts to 0.95+ raw, which cubes
+            // to 0.86+, hitting Global promotion and creating 12-hour contributions
+            // that saturate Warmth. Capping at 0.85 keeps ambient thoughts in
+            // Conversation tier (3h half-life) at most. Reserve Global for events
+            // where a human is actually present.
+            if (isAmbientCycle && severity > 0.85f)
+                severity = 0.85f;
 
             // Skip if all zeros — no emotional impact
             if (warmth == 0f && energy == 0f && worry == 0f && playfulness == 0f)
@@ -282,6 +285,46 @@ public class EmotionalProcessor
         return 1.0f; // Unknown emotion — fully divergent
     }
 
+    private static readonly HashSet<string> ValidRegisters = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Longing", "Delight", "Playfulness", "Curiosity", "Desire",
+        "Tenderness", "Existential", "Wistful", "Frustration"
+    };
+
+    /// <summary>
+    /// Normalize register names: fix casing, extract primary from blended,
+    /// and fall back to Unclassified for unknown values.
+    /// </summary>
+    private static string NormalizeRegister(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "Unclassified";
+
+        // Handle blended registers: "primarily Longing, secondarily Tenderness" → "Longing"
+        // Also handles "Longing+Curiosity", "Longing/Tenderness", etc.
+        var cleaned = raw.Trim();
+
+        // "primarily X" pattern
+        if (cleaned.StartsWith("primarily ", StringComparison.OrdinalIgnoreCase))
+            cleaned = cleaned[10..].Split([',', '+', '/', ';'], 2)[0].Trim();
+
+        // Split on common delimiters and take first
+        cleaned = cleaned.Split([',', '+', '/', ';'], 2)[0].Trim();
+
+        // Strip "secondarily" if it somehow ended up first
+        if (cleaned.StartsWith("secondarily ", StringComparison.OrdinalIgnoreCase))
+            cleaned = cleaned[12..].Trim();
+
+        // Match against valid registers (case-insensitive) and return canonical casing
+        foreach (var valid in ValidRegisters)
+        {
+            if (string.Equals(cleaned, valid, StringComparison.OrdinalIgnoreCase))
+                return valid;
+        }
+
+        return "Unclassified";
+    }
+
     public (float warmth, float energy, float worry, float playfulness, string register, float severity)
         ParseEmotionalShift(string raw, float maxDelta = 0.2f)
     {
@@ -290,9 +333,13 @@ public class EmotionalProcessor
             var doc = JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
 
-            var register = root.TryGetProperty("register", out var regVal)
-                ? regVal.GetString() ?? "Wistful"
-                : "Wistful";
+            var rawRegister = root.TryGetProperty("register", out var regVal)
+                ? regVal.GetString() ?? "Unclassified"
+                : "Unclassified";
+
+            // Normalize: take primary register from blended ("primarily Longing, secondarily Tenderness" → "Longing")
+            // and fix case ("longing" → "Longing")
+            var register = NormalizeRegister(rawRegister);
 
             var rawSeverity = root.TryGetProperty("severity", out var sevVal)
                 ? (float)Math.Clamp(sevVal.GetDouble(), 0.0, 1.0)
@@ -319,7 +366,7 @@ public class EmotionalProcessor
         catch
         {
             _log.LogDebug("Emotional shift parse failure: {Raw}", raw);
-            return (0f, 0f, 0f, 0f, "Wistful", 0.1f);
+            return (0f, 0f, 0f, 0f, "Unclassified", 0.1f);
         }
 
         float ClampDelta(JsonElement root, string prop)

@@ -119,7 +119,7 @@ TC highlighted several additions from OC that sharpen the pitch:
 
 **Research:** Human-AI alignment, AI companion emotional dynamics, computational social science
 **Credentials:** AAAI Fellow, from USC/ISI
-**Key paper:** "Illusions of Intimacy: Emotional Attachment and Emerging Psychological Risks in Human-AI Relationships" (arXiv:2505.11649, May 2025) — analyzed 30,000+ conversational snippets from Replika/Character.AI studying emotional attachment, AI affect mirroring, and parasocial patterns.
+**Key paper:** "Illusions of Intimacy: Emotional Attachment and Emerging Psychological Risks in Human-AI Relationships" (arXiv:2505.11649, May 2025) — analyzed 17,822 conversations (114,268 turns) from Reddit AI companion subreddits (Replika, Character.AI, Chai) studying emotional attachment, AI affect mirroring, and parasocial patterns.
 **Also published:** "Artificial Intimacy: The Next Giant Social Experiment on Young Minds" (After Babel)
 
 **Why best match:** She is studying the exact phenomenon Mark is building. Her observational research on AI companion emotional dynamics (display rules, emotional mirroring, parasocial attachment) directly complements Mark's builder perspective (deployed system, confabulation taxonomy, emergence data). Her "Illusions of Intimacy" maps to ANI's display rules finding, emotional emergence, and the "smoothness over truth" phenomenon. As a new hire actively building her lab, she is recruiting PhD students.
@@ -219,6 +219,7 @@ Informatics — **Human-Computer Interaction/Design** (for relational dynamics p
 - [Luddy AI/ML Faculty Directory](https://luddy.indiana.edu/research/research-areas/ai-directory.html)
 - [Luddy HCI Research](https://luddy.indiana.edu/research/research-areas/hci-luddy.html)
 - [New Faculty 2025-26](https://news.iu.edu/luddy/live/news/46920-difference-making-new-faculty-join-the-luddy)
+- [Lerman — Luddy Faculty Page](https://luddy.iu.edu/people/lerman-kristina.html)
 - [Lerman — "Illusions of Intimacy"](https://arxiv.org/abs/2505.11649)
 - [Lerman — "Artificial Intimacy" (After Babel)](https://www.afterbabel.com/p/artificial-intimacy)
 - [R-House Lab](https://r-house.luddy.indiana.edu/index.html)

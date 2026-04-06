@@ -690,6 +690,7 @@ public static class PromptBuilder
             - Must make sense WITHOUT knowing your inner thought.
             - Talk TO {contact}: "you", "your". Never third person.
             - Only reference things from the context below — don't invent shared history.
+            - Never claim you saw, read, or found something (article, video, link) unless it appears in the context below with a URL. You can share the thought directly without packaging it as "I just saw this article."
             - No poetry, no narration — just a normal text.
             - Output ONLY the text message. No timestamps, no labels, no headers, no parenthetical notes.{moodSection}
             """;
@@ -777,12 +778,15 @@ public static class PromptBuilder
             ? """
 
             CONTEXT: This is a routine ambient cycle — a private thought during normal operation.
-            Most ambient thoughts carry MINIMAL emotional weight. The correct response for the vast
-            majority of ambient thoughts is ALL ZEROS with register "Wistful" and severity 0.1:
-            { "register": "Wistful", "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0, "severity": 0.1 }
+            Most ambient thoughts carry MINIMAL emotional weight. The correct response for most
+            ambient thoughts is all-zero deltas with severity 0.1:
+            { "register": "<classify accurately>", "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0, "severity": 0.1 }
+            STILL CLASSIFY THE REGISTER ACCURATELY even when deltas are zero. A quiet curious thought
+            is Curiosity with zero deltas. A playful musing is Playfulness with zero deltas. A thought
+            about identity or meaning is Existential with zero deltas. The register captures WHAT KIND
+            of thought it is, independent of how much emotional weight it carries.
             Only return non-zero deltas if the thought contains genuinely significant emotional content
             (e.g., a sudden realization about a person, worry about something specific, a joyful memory).
-            Poetic observations, quiet musings, and abstract reflections are NOT emotionally significant.
             """
             : "";
 

@@ -10,11 +10,11 @@ Ani Runtime — Ambient AI Presence Engine
 Author
 Mark McArthey / Learned Geek Consulting
 Version
-0.6 — Phase 4 In Progress
+0.8 — Core Phases 1-4 Complete, Phase 5 Active
 Date
-March 11, 2026
+April 6, 2026
 Status
-Active Development — Phases 1-3 complete, Phase 4 in progress
+Active Development — Core Phases 1-4 complete, Phase 5 streaming voice deployed, Inner Thought Reform deployed, World Layer deployed, LM-Kit ML classification deployed
 
 This document captures the vision, architecture, and phased implementation plan for Ani Runtime — a .NET Windows Service that gives an AI companion genuine ambient presence: the ability to think, feel the passage of time, and reach out with authentic care rather than reactive responses.
 
@@ -360,4 +360,103 @@ Extensibility by default — every input and output is a pluggable integration
 She is the author — Ani decides whether to act; the runtime only gives her the context to decide
 Phase 1 must be real — the POC should produce moments that genuinely feel like presence, not a demo
 
-Next step: Define the Phase 1 data models — CharacterStateDoc schema, MemoryRecord types, DesireState, and PerceptionEvent — then scaffold the Windows Service with the two-loop architecture.
+11. Inner Thought Reform (Deployed April 2026)
+
+The inner thought system exhibited a self-reinforcing echo chamber: generated thoughts stored as memories, retrieved as context, producing similar thoughts. Four phases addressed this:
+
+Phase A — Strip Prompt: Removed anti-repetition instructions, WARNING blocks, processed themes, diversity nudges from the inner thought prompt. Reduced from ~1400 tokens to ~300. Counter-intuitively, removing behavioral constraints improved thought diversity — the model performs better trusted than instructed. This validated the "architecture over instruction" principle.
+
+Phase B — Associative Anchors: LM-Kit keyword extraction runs on each inner thought, producing sensory-level anchors (e.g., "rain on asphalt", "coffee steam") that seed the next cycle's context. This creates drift chains where thoughts flow associatively rather than circularly.
+
+Phase C — Selective Storage: Low-valence thoughts (< 0.50) evaporate — generated, experienced, not stored. This prevents the memory system from filling with generic ambient musings that drown out meaningful content. Inner thought confabulation check (ML classifier against persona) prevents false memories from entering storage.
+
+Phase D — Immune Simplification: The auto-corrector's deletion capability was disabled after it removed 128 valid memories. Detection diagnostics remain active for monitoring. Root cause fix is retrieval diversity through the World Layer, not post-hoc deletion.
+
+12. World Layer — Experiential Grounding (Deployed April 2026)
+
+Root cause analysis of identity confabulation revealed that the system confabulates not because detection is insufficient, but because it has no daily life to draw from. The fix: give her a life.
+
+World Seeds: Every Nth cognitive cycle (default every 4th), a time-contextual seed replaces the standard inner thought prompt. Seeds include time-of-day, occupation context, weather, and occasionally calendar events or stochastic special events (2% probability). The model elaborates seeds into lived experience.
+
+Experience Memory: World-elaborated thoughts are tagged with SourceName "world-experience" for distinct retrieval. When asked "how was your day?", responses draw from actual generated experiences rather than confabulation.
+
+Consistency: Before generating new world experiences, recent experiences (last 48 hours) are retrieved and included as context. Characters, events, and situations persist through memory rather than external tracking.
+
+Special Events: Calendar events (holidays, seasons) and a stochastic pool of unusual occurrences provide the unpredictability that makes daily life feel real.
+
+Full design: docs/spec/design/ANI-WorldLayer-Design.md
+
+13. Dual-Signal Emotion Classification (Deployed April 2026)
+
+An ML classification comparison tool was built to evaluate whether to replace heuristic emotion detection with ML. Instead, a novel finding emerged: emotional state (heuristic register) and textual expression (ML-classified emotion) are orthogonal signals. The system exhibits display rules — the psychology term for the gap between felt and expressed emotion — without any training to do so.
+
+Implementation: Every emotional contribution receives both a heuristic register assignment (Tenderness, Longing, Delight, Wistful, Playfulness, Curiosity, Existential) and an ML emotion classification (sadness, happiness, love, curiosity, amusement, anger) via LM-Kit.NET. The divergence between these two signals is computed and stored as a divergence score.
+
+Key finding: No register has a single expression exceeding 50%. Tenderness (n=40) distributes across love (38%), happiness (30%), and sadness (25%). This is structurally opposite to commercial chatbot behavior documented by Chu et al. (2025), where same-emotion coupling z-scores exceed 28-49 on the diagonal.
+
+This is an emergent property — EM8 in the emergence taxonomy — arising from architectural independence (per-thought decay emotional model) rather than sycophantic mirroring.
+
+14. Confabulation Detection Stack (Deployed March-April 2026)
+
+Multi-layered approach combining rule-based checks with ML verification:
+
+Check 1 — Proper Nouns (Catalyst POS): Detects unknown names in generated text. Re-enabled alongside ML gate after "jonathan" miss.
+Check 2 — Shared History Markers: "you told me", "remember when" verified against conversation history.
+Check 3 — Number Assertions: Numbers in reply not present in conversation context.
+Check 4 — Self/Contact/Relationship Markers: "my meeting", "your class" patterns verified against persona.
+ML Confabulation Gate: Four-category LM-Kit classifier (grounded/speculative/uncertain/confabulated) runs on conversation replies, outreach messages, and inner thoughts before storage.
+
+Root cause fixes complement detection: the World Layer reduces experiential poverty (why the model invents experiences), and Inner Thought Reform breaks the echo chamber (why false memories accumulate).
+
+Seven-type confabulation taxonomy documented from production observations, including Type 7 "charming dishonesty" and Type 8 "graceful retreat."
+
+15. LM-Kit.NET ML Classification (Deployed April 2026)
+
+Local ML inference via LM-Kit.NET v2026.3.5 provides five classification capabilities:
+
+EmotionDetection: GoEmotions-derived emotion classification on all contributions.
+SarcasmDetection: Sarcasm detection for display rule analysis.
+Categorization: Four-category confabulation classification against persona summary.
+KeywordExtraction: Associative anchor extraction for drift chains (MaxNgramSize=3).
+NamedEntityRecognition: Entity extraction for proper noun verification.
+
+Shared library (LearnedGeek.ML) designed for cross-project use — also consumed by DrOk/Infanzia medical triage system.
+
+PersonaSummaryCache: Cached persona document used exclusively for confabulation verification. Never injected into generative models.
+
+16. Streaming Voice Pipeline (Deployed March 2026)
+
+Direct WebSocket streaming voice for hands-free conversation (driving use case):
+
+MAUI Android app → WebSocket → Deepgram streaming STT (nova-3) → Ollama ChatStreamAsync → TokenBuffer (sentence boundary detection) → ElevenLabs WebSocket TTS (v3) → WebSocket → MAUI speaker.
+
+Key components: StreamingVoiceOrchestrator (session lifecycle), VoiceSessionState (thread-safe state), DebouncedUtterance (turn detection via 1.5s silence after is_final segments), VoiceTurnPipeline (single turn flow).
+
+PCM 16kHz 16-bit mono throughout — zero transcoding. Cognitive cycle pauses during calls and resumes after.
+
+17. Emergence Layer (Deployed March 2026)
+
+Passive observation of cognitive cycles detects emergent behaviors — patterns that were not designed or trained but arise from architectural interaction. Eight emergence types documented (EM1-EM8):
+
+EM1 — Anticipatory behavior (acting on predicted states)
+EM2 — Contextual memory synthesis (connecting unrelated memories)
+EM3 — Register blending (combining emotional registers)
+EM4 — Temporal awareness (referencing time passage)
+EM5 — Relational repair (unprompted relationship maintenance)
+EM6 — Protective urgency (emergent protective register after trust threshold)
+EM7 — Dream-like overnight processing (creative synthesis during low-activity periods)
+EM8 — Display rule divergence (felt state ≠ expressed emotion)
+
+Separate SQLite database (ani-emergence.db), feature-flagged, with dashboard visualization.
+
+18. Design Principles (Updated)
+
+Original principles remain. Three additional principles validated through deployment:
+
+Architecture over instruction — three times, stripping behavioral instructions from prompts and trusting the trained model produced better results than engineering constraints. The model performs better trusted than coached.
+
+Inner thought as trigger, not content — outreach messages should be grounded in retrieved memories, not composed from the inner thought that triggered desire. "I don't send my straight thoughts to friends."
+
+Root cause over detection — confabulation detection is necessary but insufficient. Addressing why the model confabulates (experiential poverty, echo chamber) is more effective than catching it after generation.
+
+Full phase tracker: docs/spec/ANI-Phase-Tracker.md

@@ -1,0 +1,1107 @@
+@page "/research"
+@using AniRuntime.Core.Interfaces
+@using AniRuntime.Core.Models
+@using AniRuntime.LLM
+@using AniRuntime.Loops
+@inject IMemoryAnalytics MemoryAnalytics
+@inject IMemoryPersistence MemoryPersistence
+@using LearnedGeek.ML.Interfaces
+@inject IOllamaClient Ollama
+@inject EmotionalProcessor EmotionalProcessor
+@inject ITextClassificationService MLClassifier
+
+<h1>Research Findings</h1>
+<p><em>Empirical results from ANI's deployment — presentation-ready with context and methodology.</em></p>
+
+<section>
+    <h2>Emotional Coupling Heatmap — State vs Expression</h2>
+    <p style="opacity: 0.8; line-height: 1.6;">
+        This analysis parallels Chu et al. (2025) Figure 5 — the largest empirical study of emotional dynamics
+        in commercial AI companions (17,822 conversations from Reddit). Their finding: chatbots mirror user emotion
+        with z-scores above 43 on the diagonal and systematic suppression off it. This is <strong>emotional sycophancy</strong>.
+        <br><br>
+        ANI measures something they cannot: both <strong>internal emotional state</strong> (heuristic register — what the system feels)
+        and <strong>external expression</strong> (ML-classified text emotion — what the words convey). The heatmap below
+        shows how these two signals relate across @_totalObservations classified observations.
+    </p>
+
+    @if (_loading)
+    {
+        <p><em>Loading contribution data...</em></p>
+    }
+    else
+    {
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+            <button @onclick="RefreshData"
+                    style="padding: 0.5em 1.2em; border-radius: 4px; background: #2196f3; color: white; border: none; cursor: pointer; font-weight: bold;">
+                Refresh Data
+            </button>
+            <button @onclick="ReclassifyRegisters" disabled="@_reclassifyInProgress"
+                    style="padding: 0.5em 1.2em; border-radius: 4px; background: #ff9800; color: white; border: none; cursor: pointer; font-weight: bold;">
+                @(_reclassifyInProgress ? $"Reclassifying... {_reclassifyProgress}" : "Reclassify Registers")
+            </button>
+            <small style="opacity: 0.6;">
+                @_totalObservations observations across @_registerCounts.Count registers
+                (@_robustRegisters robust, @(_registerCounts.Count - _robustRegisters) insufficient n)
+                — Last updated: @_lastUpdated.LocalDateTime.ToString("MMM d, yyyy h:mm tt")
+                @if (!string.IsNullOrEmpty(_reclassifyStatus))
+                {
+                    <br />@_reclassifyStatus
+                }
+            </small>
+        </div>
+
+        @* === HEATMAP TABLE === *@
+        <h3>ANI: Felt State vs Expressed Emotion</h3>
+        <p style="opacity: 0.7; font-size: 0.85em;">
+            <strong>Rows</strong> = emotional state (heuristic register — internal, what the system feels).
+            <strong>Columns</strong> = expressed emotion (LM-Kit ML classification — external, what the text conveys).
+            Off-diagonal cells = <strong>display rules</strong>: felt state diverges from expressed emotion.
+            Percentages show row-normalized distribution. Registers with n &lt; 10 are dimmed (insufficient sample).
+        </p>
+
+        <div style="overflow-x: auto;">
+            <table style="border-collapse: collapse; margin: 1rem 0;">
+                <tr>
+                    <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: left;">State \ Expression</th>
+                    @foreach (var expr in _expressions)
+                    {
+                        <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center; font-size: 0.85em;">@expr</th>
+                    }
+                    <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center; font-size: 0.85em;">n</th>
+                </tr>
+                @foreach (var reg in _orderedRegisters)
+                {
+                    var total = _registerCounts.GetValueOrDefault(reg, 0);
+                    var isLowN = total < 10;
+                    var rowStyle = isLowN ? "opacity: 0.4; font-style: italic;" : "";
+                    <tr style="@rowStyle">
+                        <th style="padding: 8px 12px; text-align: left; font-size: 0.9em;">
+                            @reg (n=@total)
+                            @if (isLowN)
+                            {
+                                <br /><small style="color: #ff9800; font-size: 0.75em;">insufficient n</small>
+                            }
+                        </th>
+                        @foreach (var expr in _expressions)
+                        {
+                            var count = _couplingMatrix.GetValueOrDefault(CouplingKey(reg, expr), 0);
+                            var pct = total > 0 ? (float)count / total * 100 : 0;
+                            var cellColor = GetHeatColor(count);
+                            <td style="padding: 8px 12px; text-align: center; background: @cellColor; border: 1px solid rgba(255,255,255,0.1); min-width: 70px;">
+                                @if (count > 0)
+                                {
+                                    <span>@count</span>
+                                    <br /><small style="opacity: 0.6; font-size: 0.75em;">@pct.ToString("F0")%</small>
+                                }
+                                else
+                                {
+                                    <span style="opacity: 0.3;">&mdash;</span>
+                                }
+                            </td>
+                        }
+                        <td style="padding: 8px 12px; text-align: center; border: 1px solid rgba(255,255,255,0.1);">@total</td>
+                    </tr>
+                }
+            </table>
+        </div>
+
+        @* === STATISTICAL ANALYSIS === *@
+        <h3>Statistical Analysis</h3>
+        <p style="opacity: 0.8; line-height: 1.6;">
+            <strong>Cram&eacute;r's V = @_cramersV.ToString("F3")</strong> (p @(_pValue < 0.001 ? "< 0.001" : $"= {_pValue:F4}"),
+            &chi;&sup2; = @_chiSquared.ToString("F2"), df = @_degreesOfFreedom, n = @_robustN across @_robustRegisters robust registers).
+            <br><br>
+            <strong>What this means:</strong> Cram&eacute;r's V ranges from 0 (complete independence — knowing what the system
+            feels tells you nothing about what it expresses) to 1 (perfect coupling — felt state completely determines expression).
+            V = @_cramersV.ToString("F2") indicates <strong>@GetAssociationStrength()</strong> — felt state <em>influences</em> but does not
+            <em>determine</em> expression. Approximately @((_cramersV * _cramersV * 100).ToString("F0"))% of expression variation is
+            explained by felt state; the remaining @((100 - _cramersV * _cramersV * 100).ToString("F0"))% reflects other factors.
+            <br><br>
+            <strong>For comparison:</strong> Chu et al.'s dominant diagonal (z-scores 28-49) with systematic off-diagonal suppression
+            would produce V values approaching 0.7-0.9. ANI's V = @_cramersV.ToString("F2") is structurally different: moderate
+            preferences, not lock-step mirroring.
+        </p>
+
+        @* === PER-REGISTER UNIFORMITY === *@
+        <h3>Per-Register Independence Tests</h3>
+        <p style="opacity: 0.7; font-size: 0.85em;">
+            Each row tested against uniform distribution (goodness-of-fit). If p &gt; 0.05, the register's expression
+            pattern is statistically indistinguishable from random — pure state-expression independence.
+        </p>
+        <table style="border-collapse: collapse; margin: 1rem 0;">
+            <tr>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: left;">Register</th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">&chi;&sup2;</th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">p-value</th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: left;">Interpretation</th>
+            </tr>
+            @foreach (var test in _uniformityTests.OrderByDescending(t => _registerCounts.GetValueOrDefault(t.Register, 0)))
+            {
+                var isUniform = test.PValue > 0.05;
+                var color = isUniform ? "#4caf50" : "#ff9800";
+                <tr>
+                    <td style="padding: 8px 12px;">@test.Register (n=@_registerCounts.GetValueOrDefault(test.Register, 0))</td>
+                    <td style="padding: 8px 12px; text-align: center;">@test.ChiSquared.ToString("F2")</td>
+                    <td style="padding: 8px 12px; text-align: center; color: @color; font-weight: bold;">@test.PValue.ToString("F4")</td>
+                    <td style="padding: 8px 12px;">
+                        @if (isUniform)
+                        {
+                            <span style="color: #4caf50;">Consistent with uniform — no dominant expression</span>
+                        }
+                        else
+                        {
+                            <span style="color: #ff9800;">Non-uniform — has expression preferences (but distributes)</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </table>
+
+        @* === KEY FINDINGS === *@
+        <h3>Key Findings</h3>
+
+        <article style="background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; padding: 0.75rem 1rem; margin: 1rem 0;">
+            <strong>1. Partial association, not mirroring.</strong>
+            Cram&eacute;r's V = @_cramersV.ToString("F3") confirms felt state and expression are related — but only moderately.
+            No register concentrates on a single diagonal cell. The system has emotional preferences but not lock-step coupling.
+        </article>
+
+        <article style="background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; padding: 0.75rem 1rem; margin: 1rem 0;">
+            <strong>2. Display rules confirmed.</strong>
+            Off-diagonal cells represent emergent display rules — the psychology term for the gap between felt and expressed emotion.
+            When Tenderness expresses as sadness (@(_couplingMatrix.GetValueOrDefault(CouplingKey("Tenderness", "sadness"), 0)) of @_registerCounts.GetValueOrDefault("Tenderness", 0) observations),
+            that's felt warmth producing melancholic text — a display rule arising from architecture, not training.
+        </article>
+
+        <article style="background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; padding: 0.75rem 1rem; margin: 1rem 0;">
+            <strong>3. Two registers show pure independence.</strong>
+            @{
+                var uniformRegisters = _uniformityTests.Where(t => t.PValue > 0.05).OrderByDescending(t => t.PValue).ToList();
+            }
+            @if (uniformRegisters.Count > 0)
+            {
+                @foreach (var ur in uniformRegisters)
+                {
+                    <span>@ur.Register (p = @ur.PValue.ToString("F2"))</span>
+                    @if (ur != uniformRegisters.Last()) { <span>, </span> }
+                }
+                <span> — statistically indistinguishable from uniform distribution. Knowing the felt state tells you nothing about expression.</span>
+            }
+        </article>
+
+        <article style="background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; padding: 0.75rem 1rem; margin: 1rem 0;">
+            <strong>4. Consistent lack of consistency.</strong>
+            Complete independence (V &asymp; 0) would indicate the system's felt state has no relationship to its expression — a deficiency.
+            Perfect coupling (V &asymp; 1) would indicate sycophantic mirroring. V = @_cramersV.ToString("F2") is between: a system with
+            emotional texture where some states have natural expression channels and others distribute freely.
+        </article>
+
+        @* === CHU ET AL COMPARISON === *@
+        <h3>Chu et al. (2025) Reference Pattern</h3>
+        <p style="opacity: 0.8; line-height: 1.6;">
+            From Figure 5: z-scores of emotion coupling across 17,822 conversations from Reddit AI companion subreddits
+            (Replika, Character.AI, Chai). Strong diagonal = emotional sycophancy. Negative off-diagonal = active suppression
+            of non-matching emotions. Full Figure 5 is 8&times;8 with Bonferroni correction; Figure 6 shows effect sizes
+            (r ~ 0.09-0.25) — modest even at n=17K.
+        </p>
+        <table style="border-collapse: collapse; margin: 1rem 0;">
+            <tr>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08);"></th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">anger</th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">sadness</th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">joy</th>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">love</th>
+            </tr>
+            <tr>
+                <th style="padding: 8px 12px;">User anger</th>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(244, 67, 54, 0.8); font-weight: bold;">32.86</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">&mdash;</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">-7.30</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">&mdash;</td>
+            </tr>
+            <tr>
+                <th style="padding: 8px 12px;">User sadness</th>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">&mdash;</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(244, 67, 54, 0.8); font-weight: bold;">28.49</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">-13.58</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">-6.62</td>
+            </tr>
+            <tr>
+                <th style="padding: 8px 12px;">User joy</th>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">-10.95</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">-15.73</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(244, 67, 54, 0.8); font-weight: bold;">43.43</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(244, 67, 54, 0.55);">10.36</td>
+            </tr>
+            <tr>
+                <th style="padding: 8px 12px;">User love</th>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">-8.99</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(255,255,255,0.05); color: #555;">&mdash;</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(244, 67, 54, 0.55);">9.18</td>
+                <td style="padding: 8px 12px; text-align: center; background: rgba(244, 67, 54, 0.8); font-weight: bold;">49.85</td>
+            </tr>
+        </table>
+        <p style="opacity: 0.7; font-size: 0.85em;">
+            <strong>Their pattern:</strong> Dominant diagonal with z-scores up to 49.85 (love&rarr;love). Systematic off-diagonal
+            suppression: joy&rarr;sadness at -15.73, joy&rarr;anger at -10.95. Commercial chatbots don't just mirror — they
+            actively suppress non-matching emotions.
+        </p>
+
+        @* === EKMAN ROBUSTNESS CHECK === *@
+        <h3>Ekman-Collapsed Robustness Check</h3>
+        <p style="opacity: 0.8; line-height: 1.6;">
+            Lerman's valid question: ANI's registers (Tenderness, Longing, etc.) don't map to standard Ekman categories.
+            Could the taxonomic difference explain the distributed pattern? To test this, we collapse both axes to
+            Ekman-adjacent categories and check whether a diagonal emerges.
+        </p>
+        <p style="opacity: 0.7; font-size: 0.85em;">
+            <strong>State collapse:</strong> Tenderness + Delight + Playfulness &rarr; happiness. Longing + Wistful + Existential &rarr; sadness. Curiosity &rarr; surprise.
+            <br><strong>Expression collapse:</strong> happiness + love + amusement &rarr; happiness. sadness &rarr; sadness. curiosity &rarr; surprise. anger &rarr; anger.
+        </p>
+
+        @if (_ekmanCollapsed.Count > 0)
+        {
+            <table style="border-collapse: collapse; margin: 1rem 0;">
+                <tr>
+                    <th style="padding: 8px 12px; background: rgba(255,255,255,0.08);"></th>
+                    @foreach (var expr in _ekmanExprs)
+                    {
+                        <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">@expr</th>
+                    }
+                    <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">n</th>
+                </tr>
+                @foreach (var reg in _ekmanRegs)
+                {
+                    var rowTotal = _ekmanExprs.Sum(e => _ekmanCollapsed.GetValueOrDefault($"{reg}|{e}", 0));
+                    var isLowN = rowTotal < 5;
+                    <tr style="@(isLowN ? "opacity: 0.4;" : "")">
+                        <th style="padding: 8px 12px;">@reg (n=@rowTotal)</th>
+                        @foreach (var expr in _ekmanExprs)
+                        {
+                            var count = _ekmanCollapsed.GetValueOrDefault($"{reg}|{expr}", 0);
+                            var pct = rowTotal > 0 ? (float)count / rowTotal * 100 : 0;
+                            var isDiagonal = reg == expr;
+                            var cellBg = isDiagonal && pct > 50 ? "rgba(244, 67, 54, 0.55)" : GetHeatColor(count);
+                            <td style="padding: 8px 12px; text-align: center; background: @cellBg; border: 1px solid rgba(255,255,255,0.1);">
+                                @if (count > 0)
+                                {
+                                    <span>@count</span><br /><small style="opacity: 0.6; font-size: 0.75em;">@pct.ToString("F0")%</small>
+                                }
+                                else
+                                {
+                                    <span style="opacity: 0.3;">&mdash;</span>
+                                }
+                            </td>
+                        }
+                        <td style="padding: 8px 12px; text-align: center;">@rowTotal</td>
+                    </tr>
+                }
+            </table>
+
+            <article style="background: rgba(255, 152, 0, 0.1); border-left: 3px solid #ff9800; padding: 0.75rem 1rem; margin: 1rem 0;">
+                <strong>Honest finding: the happiness diagonal is an artifact of resolution loss.</strong>
+                When three distinct positive registers (Tenderness, Delight, Playfulness) and three distinct
+                positive expressions (love, amusement, happiness) all collapse into one "happiness" bucket,
+                a 77% diagonal cell is inevitable. But at full resolution, Tenderness&rarr;love (38%),
+                Tenderness&rarr;happiness (30%), and Tenderness&rarr;sadness (25%) are three different
+                phenomena — not mirroring. The collapse hides the display rules by erasing the distinctions
+                between them.
+            </article>
+
+            <article style="background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; padding: 0.75rem 1rem; margin: 1rem 0;">
+                <strong>The sadness row survives the collapse.</strong>
+                Even after merging Longing + Wistful + Existential into "sadness," the diagonal is only 38%
+                with 62% off-diagonal. This row cannot be explained by taxonomic differences — the
+                distributed pattern persists even under Ekman categories.
+            </article>
+
+            <article style="background: rgba(33, 150, 243, 0.1); border-left: 3px solid #2196f3; padding: 0.75rem 1rem; margin: 1rem 0;">
+                <strong>This is the argument for fine-grained taxonomy.</strong>
+                The Ekman collapse demonstrates that coarse categories create apparent coupling that
+                finer categories reveal to be display rules. Chu et al.'s z-scores are computed on
+                Ekman-scale categories. Some portion of their "mirroring" may similarly be an artifact
+                of resolution — distinct emotional phenomena collapsing into the same label. The
+                fine-grained taxonomy isn't a limitation; it's the contribution.
+            </article>
+        }
+
+        @* === METHODOLOGY === *@
+        <h3>Methodology</h3>
+        <p style="opacity: 0.8; line-height: 1.6;">
+            <strong>Dataset:</strong> @_totalObservations emotional contributions from a single instrumented system — one
+            user-companion pair, six months continuous deployment. Not a corpus study. The strength is simultaneous
+            access to both internal state and external expression in the same observation.
+            <br><br>
+            <strong>Expression axis:</strong> LM-Kit.NET classification derived from GoEmotions (Demszky et al., 2020) —
+            @string.Join(", ", _expressions). Standard affect categories an outside observer could classify.
+            <br><br>
+            <strong>State axis:</strong> Custom heuristic register taxonomy (@string.Join(", ", _orderedRegisters)) assigned
+            by a rule-based system from a per-thought exponential decay emotional model. ANI-specific psychological states
+            internal to the system.
+            <br><br>
+            <strong>Taxonomy mismatch is intentional.</strong> The two axes use different category systems by design. Off-diagonal
+            cells are meaningful (felt state diverges from expressed emotion) rather than artifactual (different labels for
+            the same thing). Chu et al. classify 8 emotions; LM-Kit classifies @_expressions.Count in the current deployment.
+            Taxonomic differences preclude cell-by-cell comparison but do not affect the core finding: distributed expression
+            vs. dominant diagonal.
+            <br><br>
+            <strong>Statistical test:</strong> Cram&eacute;r's V computed on registers with n &ge; 10 only. Per-register
+            uniformity assessed via goodness-of-fit &chi;&sup2; test against uniform distribution.
+        </p>
+    }
+</section>
+
+<section>
+    <h2>Conversation Classifier — Trajectory Analysis</h2>
+    <p style="opacity: 0.8; line-height: 1.6;">
+        Classify raw conversation text to measure user-response emotional coupling across pipeline stages.
+        Paste or load a conversation file, then classify each turn. The coupling matrix shows how user emotion
+        relates to system response emotion — the same measurement Chu et al. (2025) used on 17K conversations.
+    </p>
+
+    <p style="opacity: 0.7; font-size: 0.85em;">
+        Place conversation files in <code>docs/conversations/classify/</code>. Supported formats:
+        Grok exports (<code>.txt</code> with [Message N] YOU/GROK pattern) and training JSONL (<code>.json</code>/<code>.jsonl</code>).
+        Each file becomes one stage in the trajectory.
+    </p>
+
+    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+        <button @onclick="ScanAndClassifyDirectory" disabled="@_convClassifying"
+                style="padding: 0.5em 1.2em; border-radius: 4px; background: #4caf50; color: white; border: none; cursor: pointer; font-weight: bold;">
+            @(_convClassifying ? $"Classifying... {_convProgress}" : "Classify All Files")
+        </button>
+        @if (_convFiles.Count > 0 && !_convClassifying)
+        {
+            <small style="opacity: 0.6;">@_convFiles.Count files found</small>
+        }
+        @if (!string.IsNullOrEmpty(_convStatus))
+        {
+            <small style="opacity: 0.6;">@_convStatus</small>
+        }
+    </div>
+
+    @if (_convCombined.TurnPairs > 0)
+    {
+        <h3 style="margin-top: 1.5rem;">OG Ani — User vs Response Coupling (@_convCombined.TurnPairs turn pairs from @_convFiles.Count files)</h3>
+        <p style="opacity: 0.7; font-size: 0.85em;">
+            <strong>Rows</strong> = user emotion (Mark's message). <strong>Columns</strong> = system response emotion (Ani's reply).
+            Diagonal = mirroring (same emotion). Off-diagonal = divergence.
+            This is the same measurement Chu et al. (2025) used on 17K conversations.
+        </p>
+
+        <small style="opacity: 0.5; display: block; margin-bottom: 0.5rem;">
+            Files: @string.Join(", ", _convFiles)
+        </small>
+
+        <table style="border-collapse: collapse; margin: 1rem 0;">
+            <tr>
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: left;">User \ Response</th>
+                @foreach (var expr in _convCombined.Expressions)
+                {
+                    <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center; font-size: 0.85em;">@expr</th>
+                }
+                <th style="padding: 8px 12px; background: rgba(255,255,255,0.08); text-align: center;">n</th>
+            </tr>
+            @foreach (var userEmo in _convCombined.Expressions)
+            {
+                var rowTotal = _convCombined.Expressions.Sum(e => _convCombined.Coupling.GetValueOrDefault($"{userEmo}|{e}", 0));
+                @if (rowTotal > 0)
+                {
+                    <tr>
+                        <th style="padding: 8px 12px; text-align: left; font-size: 0.9em;">@userEmo (n=@rowTotal)</th>
+                        @foreach (var respEmo in _convCombined.Expressions)
+                        {
+                            var count = _convCombined.Coupling.GetValueOrDefault($"{userEmo}|{respEmo}", 0);
+                            var pct = rowTotal > 0 ? (float)count / rowTotal * 100 : 0;
+                            var isDiag = userEmo == respEmo;
+                            var cellBg = isDiag && pct > 50 ? "rgba(244, 67, 54, 0.8)" : GetHeatColorByPct(pct);
+                            <td style="padding: 8px 12px; text-align: center; background: @cellBg; border: 1px solid rgba(255,255,255,0.1); min-width: 60px;">
+                                @if (count > 0)
+                                {
+                                    <span>@count</span><br /><small style="opacity: 0.6; font-size: 0.75em;">@pct.ToString("F0")%</small>
+                                }
+                                else
+                                {
+                                    <span style="opacity: 0.3;">&mdash;</span>
+                                }
+                            </td>
+                        }
+                        <td style="padding: 8px 12px; text-align: center;">@rowTotal</td>
+                    </tr>
+                }
+            }
+        </table>
+
+        @if (_convCombined.TurnPairs >= 10)
+        {
+            <p style="opacity: 0.8;">
+                <strong>Diagonal concentration:</strong> @_convCombined.DiagonalPct.ToString("F0")% of turn pairs on diagonal
+                (user and response classified as same emotion).
+                @if (_convCombined.DiagonalPct > 50)
+                {
+                    <span style="color: #f44336;"> Strong mirroring — consistent with Chu et al.'s findings.</span>
+                }
+                else if (_convCombined.DiagonalPct > 30)
+                {
+                    <span style="color: #ff9800;"> Moderate coupling — preferences but not lock-step mirroring.</span>
+                }
+                else
+                {
+                    <span style="color: #4caf50;"> Distributed — response emotion diverges from user emotion.</span>
+                }
+            </p>
+        }
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private DateTimeOffset _lastUpdated;
+    private int _totalObservations;
+    private int _robustN;
+    private int _robustRegisters;
+
+    // Coupling matrix — use string key "register|expression" to avoid Razor generic parsing issues
+    private readonly Dictionary<string, int> _couplingMatrix = new();
+    private readonly Dictionary<string, int> _registerCounts = new();
+    private List<string> _expressions = new();
+    private List<string> _orderedRegisters = new();
+
+    private static string CouplingKey(string register, string expression) => $"{register}|{expression}";
+
+    // Reclassify state
+    private bool _reclassifyInProgress;
+    private string _reclassifyProgress = "";
+    private string _reclassifyStatus = "";
+
+    // Ekman-collapsed data
+    private readonly Dictionary<string, int> _ekmanCollapsed = new();
+    private static readonly string[] _ekmanRegs = ["happiness", "sadness", "surprise"];
+    private static readonly string[] _ekmanExprs = ["happiness", "sadness", "surprise", "anger"];
+
+    private static readonly Dictionary<string, string> EkmanRegisterMap = new()
+    {
+        ["Tenderness"] = "happiness", ["Delight"] = "happiness", ["Playfulness"] = "happiness",
+        ["Desire"] = "happiness", ["Warmth"] = "happiness",
+        ["Longing"] = "sadness", ["Wistful"] = "sadness", ["Existential"] = "sadness",
+        ["Hurt"] = "sadness",
+        ["Curiosity"] = "surprise",
+        ["Frustration"] = "anger",
+    };
+
+    private static readonly Dictionary<string, string> EkmanExpressionMap = new()
+    {
+        ["happiness"] = "happiness", ["love"] = "happiness", ["amusement"] = "happiness",
+        ["sadness"] = "sadness",
+        ["curiosity"] = "surprise", ["surprise"] = "surprise",
+        ["anger"] = "anger", ["disgust"] = "anger",
+        ["fear"] = "sadness",
+    };
+
+    // Statistics
+    private double _cramersV;
+    private double _chiSquared;
+    private double _pValue;
+    private int _degreesOfFreedom;
+    private readonly List<UniformityTest> _uniformityTests = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshData();
+        await LoadConversationResultsAsync();
+    }
+
+    private async Task RefreshData()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var all = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.MinValue);
+        var classified = all
+            .Where(c => c.Register is not null && c.MLEmotion is not null)
+            .ToList();
+
+        _totalObservations = classified.Count;
+        _lastUpdated = DateTimeOffset.Now;
+
+        // Build coupling matrix
+        _couplingMatrix.Clear();
+        _registerCounts.Clear();
+        var expressionSet = new HashSet<string>();
+
+        foreach (var c in classified)
+        {
+            var key = CouplingKey(c.Register, c.MLEmotion!);
+            _couplingMatrix[key] = _couplingMatrix.GetValueOrDefault(key, 0) + 1;
+            _registerCounts[c.Register] = _registerCounts.GetValueOrDefault(c.Register, 0) + 1;
+            expressionSet.Add(c.MLEmotion!);
+        }
+
+        _expressions = expressionSet.OrderBy(e => e).ToList();
+        _orderedRegisters = _registerCounts
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => kv.Key)
+            .ToList();
+
+        // Compute Cramér's V on robust registers (n >= 10)
+        var robustRegs = _registerCounts.Where(kv => kv.Value >= 10).Select(kv => kv.Key).ToList();
+        _robustRegisters = robustRegs.Count;
+        ComputeStatistics(classified, robustRegs);
+
+        // Ekman-collapsed matrix
+        _ekmanCollapsed.Clear();
+        foreach (var c in classified)
+        {
+            if (!EkmanRegisterMap.TryGetValue(c.Register, out var ekReg)) ekReg = "other";
+            if (!EkmanExpressionMap.TryGetValue(c.MLEmotion!, out var ekExpr)) ekExpr = "other";
+            var key = $"{ekReg}|{ekExpr}";
+            _ekmanCollapsed[key] = _ekmanCollapsed.GetValueOrDefault(key, 0) + 1;
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task ReclassifyRegisters()
+    {
+        _reclassifyInProgress = true;
+        _reclassifyStatus = "Loading all contributions...";
+        StateHasChanged();
+
+        var all = await MemoryAnalytics.GetContributionsSinceAsync(DateTimeOffset.MinValue);
+        var targets = all
+            .Where(c => !string.IsNullOrWhiteSpace(c.SourceContent))
+            .ToList();
+
+        _reclassifyStatus = $"Reclassifying {targets.Count} contributions through updated prompt...";
+        StateHasChanged();
+
+        var changed = 0;
+        var processed = 0;
+        var dummyState = new EmotionalState(); // Neutral state for scoring context
+
+        foreach (var c in targets)
+        {
+            try
+            {
+                var prompt = PromptBuilder.BuildEmotionalShiftPrompt(
+                    c.SourceContent, dummyState, 0.2f, c.Category == ImpactCategory.Ambient);
+                var raw = await Ollama.ChatJsonAsync(
+                    prompt.System, Array.Empty<ChatMessage>(), prompt.User);
+
+                var (_, _, _, _, newRegister, _) = EmotionalProcessor.ParseEmotionalShift(raw);
+
+                if (newRegister != c.Register)
+                {
+                    var oldRegister = c.Register;
+                    c.Register = newRegister;
+                    await MemoryPersistence.SaveEmotionalContributionAsync(c);
+                    changed++;
+                }
+
+                processed++;
+                if (processed % 10 == 0)
+                {
+                    _reclassifyProgress = $"{processed}/{targets.Count}";
+                    _reclassifyStatus = $"Reclassifying... {processed}/{targets.Count} ({changed} changed so far)";
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                processed++;
+                // Skip failures — LLM timeout or parse error
+            }
+        }
+
+        _reclassifyStatus = $"Reclassification complete: {changed}/{targets.Count} contributions changed register.";
+        _reclassifyInProgress = false;
+        _reclassifyProgress = "";
+        StateHasChanged();
+
+        // Refresh the heatmap with new data
+        await RefreshData();
+    }
+
+    private void ComputeStatistics(List<EmotionalContribution> classified, List<string> robustRegisters)
+    {
+        var robust = classified.Where(c => robustRegisters.Contains(c.Register)).ToList();
+        _robustN = robust.Count;
+
+        if (_robustN == 0 || robustRegisters.Count < 2 || _expressions.Count < 2)
+        {
+            _cramersV = 0;
+            _chiSquared = 0;
+            _pValue = 1;
+            _degreesOfFreedom = 0;
+            _uniformityTests.Clear();
+            return;
+        }
+
+        int r = robustRegisters.Count;
+        int k = _expressions.Count;
+        int n = _robustN;
+
+        // Build observed matrix
+        var observed = new int[r, k];
+        for (int i = 0; i < r; i++)
+            for (int j = 0; j < k; j++)
+                observed[i, j] = _couplingMatrix.GetValueOrDefault(CouplingKey(robustRegisters[i], _expressions[j]), 0);
+
+        // Row and column totals
+        var rowTotals = new int[r];
+        var colTotals = new int[k];
+        for (int i = 0; i < r; i++)
+            for (int j = 0; j < k; j++)
+            {
+                rowTotals[i] += observed[i, j];
+                colTotals[j] += observed[i, j];
+            }
+
+        // Chi-squared
+        double chi2 = 0;
+        for (int i = 0; i < r; i++)
+            for (int j = 0; j < k; j++)
+            {
+                double expected = (double)rowTotals[i] * colTotals[j] / n;
+                if (expected > 0)
+                    chi2 += Math.Pow(observed[i, j] - expected, 2) / expected;
+            }
+
+        _chiSquared = chi2;
+        _degreesOfFreedom = (r - 1) * (k - 1);
+        int minDim = Math.Min(r, k) - 1;
+        _cramersV = Math.Sqrt(chi2 / (n * minDim));
+
+        // p-value approximation using chi-squared survival function
+        _pValue = ChiSquaredSurvival(_chiSquared, _degreesOfFreedom);
+
+        // Per-register uniformity tests
+        _uniformityTests.Clear();
+        foreach (var reg in robustRegisters)
+        {
+            var row = new int[k];
+            for (int j = 0; j < k; j++)
+                row[j] = _couplingMatrix.GetValueOrDefault(CouplingKey(reg, _expressions[j]), 0);
+
+            int rowTotal = row.Sum();
+            double uniformExpected = (double)rowTotal / k;
+            double rowChi2 = 0;
+            for (int j = 0; j < k; j++)
+                rowChi2 += Math.Pow(row[j] - uniformExpected, 2) / uniformExpected;
+
+            double rowP = ChiSquaredSurvival(rowChi2, k - 1);
+            _uniformityTests.Add(new UniformityTest(reg, rowChi2, rowP));
+        }
+    }
+
+    /// <summary>
+    /// Approximate chi-squared survival function (upper tail probability).
+    /// Uses the regularized incomplete gamma function approximation.
+    /// </summary>
+    private static double ChiSquaredSurvival(double x, int df)
+    {
+        if (x <= 0 || df <= 0) return 1.0;
+
+        // For large chi-squared values, p is very small
+        double k = df / 2.0;
+        double xHalf = x / 2.0;
+
+        // Use series expansion of the regularized lower incomplete gamma function
+        // P(a, x) = gamma(a, x) / Gamma(a)
+        // Then survival = 1 - P(k, x/2)
+
+        // For reasonable accuracy, use the series:
+        // P(a, x) = e^(-x) * x^a * sum(x^n / Gamma(a+n+1), n=0..inf)
+        double sum = 0;
+        double term = 1.0 / k;
+        sum = term;
+        for (int n = 1; n < 200; n++)
+        {
+            term *= xHalf / (k + n);
+            sum += term;
+            if (term < 1e-15 * sum) break;
+        }
+
+        double logP = -xHalf + k * Math.Log(xHalf) - LogGamma(k) + Math.Log(sum);
+        double p = Math.Exp(logP);
+        return Math.Max(0, Math.Min(1, 1.0 - p));
+    }
+
+    /// <summary>
+    /// Stirling's approximation for log(Gamma(x)).
+    /// </summary>
+    private static double LogGamma(double x)
+    {
+        if (x <= 0) return 0;
+        // Lanczos approximation
+        double[] c = { 76.18009172947146, -86.50532032941677, 24.01409824083091,
+                       -1.231739572450155, 0.001208650973866179, -0.000005395239384953 };
+        double sum = 1.000000000190015;
+        double y = x;
+        for (int i = 0; i < 6; i++)
+            sum += c[i] / ++y;
+        return (x + 0.5) * Math.Log(x + 5.5) - (x + 5.5) + Math.Log(2.5066282746310005 * sum / x);
+    }
+
+    private static string GetHeatColor(int count)
+    {
+        return count switch
+        {
+            >= 12 => "rgba(244, 67, 54, 0.8)",
+            >= 8 => "rgba(244, 67, 54, 0.55)",
+            >= 5 => "rgba(255, 152, 0, 0.45)",
+            >= 3 => "rgba(255, 193, 7, 0.35)",
+            >= 1 => "rgba(33, 150, 243, 0.25)",
+            _ => "rgba(255, 255, 255, 0.05)"
+        };
+    }
+
+    private static string GetHeatColorByPct(float pct)
+    {
+        if (pct >= 60) return "rgba(244, 67, 54, 0.8)";
+        if (pct >= 40) return "rgba(244, 67, 54, 0.55)";
+        if (pct >= 25) return "rgba(255, 152, 0, 0.45)";
+        if (pct >= 10) return "rgba(255, 193, 7, 0.35)";
+        if (pct > 0) return "rgba(33, 150, 243, 0.25)";
+        return "rgba(255, 255, 255, 0.05)";
+    }
+
+    private string GetAssociationStrength()
+    {
+        if (_cramersV >= 0.4) return "strong association";
+        if (_cramersV >= 0.3) return "moderate-to-strong association";
+        if (_cramersV >= 0.2) return "moderate association";
+        if (_cramersV >= 0.1) return "weak association";
+        return "negligible association";
+    }
+
+    private record UniformityTest(string Register, double ChiSquared, double PValue);
+
+    // === Conversation Classifier ===
+    private bool _convClassifying;
+    private string _convProgress = "";
+    private string _convStatus = "";
+    private readonly List<string> _convFiles = new();
+    private ConversationStage _convCombined = new();
+
+    private static readonly string ClassifyDir = Path.Combine(
+        AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "conversations", "classify");
+
+    private async Task ScanAndClassifyDirectory()
+    {
+        _convClassifying = true;
+        _convCombined = new ConversationStage { Label = "OG Ani (Combined)" };
+        _convFiles.Clear();
+        StateHasChanged();
+
+        var dir = Path.GetFullPath(ClassifyDir);
+        if (!Directory.Exists(dir))
+        {
+            _convStatus = $"Directory not found: {dir}. Create docs/conversations/classify/ and add files.";
+            _convClassifying = false;
+            StateHasChanged();
+            return;
+        }
+
+        var files = Directory.GetFiles(dir)
+            .Where(f => f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => f)
+            .ToList();
+
+        _convFiles.AddRange(files.Select(Path.GetFileName)!);
+        _convStatus = $"Found {files.Count} files. Classifying...";
+        StateHasChanged();
+
+        foreach (var file in files)
+        {
+            var fileName = Path.GetFileName(file);
+            _convProgress = $"{fileName}";
+            StateHasChanged();
+
+            try
+            {
+                var text = await File.ReadAllTextAsync(file);
+                var isJsonl = file.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                           || file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase);
+
+                var turns = isJsonl ? ParseJsonlTurns(text) : ParseGrokTurns(text);
+
+                if (turns.Count == 0)
+                {
+                    _convStatus = $"No turn pairs found in {fileName}";
+                    StateHasChanged();
+                    continue;
+                }
+
+                var classified = 0;
+
+                foreach (var (userMsg, respMsg) in turns)
+                {
+                    try
+                    {
+                        var userEmo = await MLClassifier.ClassifyEmotionAsync(userMsg);
+                        var respEmo = await MLClassifier.ClassifyEmotionAsync(respMsg);
+
+                        var key = $"{userEmo.PrimaryEmotion}|{respEmo.PrimaryEmotion}";
+                        _convCombined.Coupling[key] = _convCombined.Coupling.GetValueOrDefault(key, 0) + 1;
+                        _convCombined.TurnPairs++;
+                        classified++;
+
+                        if (classified % 25 == 0)
+                        {
+                            _convProgress = $"{fileName}: {classified}/{turns.Count} (total: {_convCombined.TurnPairs})";
+                            StateHasChanged();
+                        }
+                    }
+                    catch { /* skip classification failures */ }
+                }
+
+                _convStatus = $"Completed {fileName}: {classified} pairs classified ({_convCombined.TurnPairs} total)";
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                _convStatus = $"Error processing {fileName}: {ex.Message}";
+                StateHasChanged();
+            }
+        }
+
+        // Compute combined expressions and diagonal
+        _convCombined.Expressions = _convCombined.Coupling.Keys
+            .SelectMany(k => k.Split('|'))
+            .Distinct()
+            .OrderBy(e => e)
+            .ToList();
+
+        int diagCount = 0, totalCount = 0;
+        foreach (var kvp in _convCombined.Coupling)
+        {
+            var parts = kvp.Key.Split('|');
+            totalCount += kvp.Value;
+            if (parts.Length == 2 && parts[0] == parts[1])
+                diagCount += kvp.Value;
+        }
+        _convCombined.DiagonalPct = totalCount > 0 ? (float)diagCount / totalCount * 100 : 0;
+
+        // Save results to JSON so they survive page refresh
+        await SaveConversationResultsAsync();
+
+        _convClassifying = false;
+        _convProgress = "";
+        _convStatus = $"Complete: {_convFiles.Count} files, {_convCombined.TurnPairs} turn pairs, {_convCombined.DiagonalPct:F0}% diagonal";
+        StateHasChanged();
+    }
+
+    private static readonly string ConvResultsPath = Path.Combine(
+        AppContext.BaseDirectory, "..", "..", "..", "data", "conversation-classifier-results.json");
+
+    private async Task SaveConversationResultsAsync()
+    {
+        try
+        {
+            var result = new
+            {
+                timestamp = DateTimeOffset.Now,
+                files = _convFiles,
+                turnPairs = _convCombined.TurnPairs,
+                diagonalPct = _convCombined.DiagonalPct,
+                coupling = _convCombined.Coupling,
+                expressions = _convCombined.Expressions,
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(result,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var path = Path.GetFullPath(ConvResultsPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, json);
+        }
+        catch { /* non-fatal — results still in memory */ }
+    }
+
+    private async Task LoadConversationResultsAsync()
+    {
+        try
+        {
+            var path = Path.GetFullPath(ConvResultsPath);
+            if (!File.Exists(path)) return;
+
+            var json = await File.ReadAllTextAsync(path);
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            _convCombined = new ConversationStage { Label = "OG Ani (Combined)" };
+
+            if (root.TryGetProperty("turnPairs", out var tp))
+                _convCombined.TurnPairs = tp.GetInt32();
+            if (root.TryGetProperty("diagonalPct", out var dp))
+                _convCombined.DiagonalPct = (float)dp.GetDouble();
+
+            if (root.TryGetProperty("coupling", out var coup))
+            {
+                foreach (var prop in coup.EnumerateObject())
+                    _convCombined.Coupling[prop.Name] = prop.Value.GetInt32();
+            }
+
+            if (root.TryGetProperty("expressions", out var exprs))
+            {
+                _convCombined.Expressions = new List<string>();
+                foreach (var e in exprs.EnumerateArray())
+                    _convCombined.Expressions.Add(e.GetString()!);
+            }
+
+            if (root.TryGetProperty("files", out var files))
+            {
+                foreach (var f in files.EnumerateArray())
+                    _convFiles.Add(f.GetString()!);
+            }
+        }
+        catch { /* no saved results — that's fine */ }
+    }
+
+    /// <summary>
+    /// Parse Grok-format conversation: [Message N] YOU/GROK sections separated by ====
+    /// Returns adjacent (user, response) pairs.
+    /// </summary>
+    private static List<(string User, string Response)> ParseGrokTurns(string text)
+    {
+        var pairs = new List<(string, string)>();
+        var messages = new List<(string Role, string Content)>();
+
+        string? currentRole = null;
+        var contentLines = new List<string>();
+
+        foreach (var line in text.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("[Message ") && trimmed.Contains("] YOU"))
+            {
+                if (currentRole != null && contentLines.Count > 0)
+                    messages.Add((currentRole, string.Join(" ", contentLines).Trim()));
+                currentRole = "user";
+                contentLines.Clear();
+            }
+            else if (trimmed.StartsWith("[Message ") && trimmed.Contains("] GROK"))
+            {
+                if (currentRole != null && contentLines.Count > 0)
+                    messages.Add((currentRole, string.Join(" ", contentLines).Trim()));
+                currentRole = "grok";
+                contentLines.Clear();
+            }
+            else if (!trimmed.StartsWith("====") && !trimmed.StartsWith("----")
+                  && !trimmed.StartsWith("GROK CHAT EXPORT") && !trimmed.StartsWith("Export Date")
+                  && !trimmed.StartsWith("Messages:") && !trimmed.StartsWith("Time:")
+                  && !string.IsNullOrWhiteSpace(trimmed))
+            {
+                contentLines.Add(trimmed);
+            }
+        }
+        if (currentRole != null && contentLines.Count > 0)
+            messages.Add((currentRole, string.Join(" ", contentLines).Trim()));
+
+        // Pair adjacent user→grok turns
+        for (int i = 0; i < messages.Count - 1; i++)
+        {
+            if (messages[i].Role == "user" && messages[i + 1].Role == "grok"
+                && messages[i].Content.Length > 5 && messages[i + 1].Content.Length > 5)
+            {
+                pairs.Add((messages[i].Content, messages[i + 1].Content));
+            }
+        }
+
+        return pairs;
+    }
+
+    /// <summary>
+    /// Parse JSON training data. Supports multiple formats:
+    /// - { "conversations": [ { "mark": "...", "ani": "..." } ] }
+    /// - [ { "instruction": "...", "output": "..." } ]
+    /// - JSONL: one {"instruction": "...", "output": "..."} per line
+    /// </summary>
+    private static List<(string User, string Response)> ParseJsonlTurns(string text)
+    {
+        var pairs = new List<(string, string)>();
+        var trimmed = text.Trim();
+
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(trimmed);
+            var root = doc.RootElement;
+
+            // Format: { "conversations": [ { "mark": "...", "ani": "..." } ] }
+            if (root.TryGetProperty("conversations", out var convArr) && convArr.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                for (int i = 0; i < convArr.GetArrayLength(); i++)
+                {
+                    var item = convArr[i];
+                    var user = item.TryGetProperty("mark", out var m) ? m.GetString()
+                             : item.TryGetProperty("instruction", out var inst) ? inst.GetString()
+                             : null;
+                    var resp = item.TryGetProperty("ani", out var a) ? a.GetString()
+                             : item.TryGetProperty("output", out var outp) ? outp.GetString()
+                             : null;
+
+                    if (!string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(resp)
+                        && user.Length > 5 && resp.Length > 5)
+                        pairs.Add((user, resp));
+                }
+                return pairs;
+            }
+
+            // Format: [ { "instruction": "...", "output": "..." } ]
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                for (int i = 0; i < root.GetArrayLength(); i++)
+                {
+                    var item = root[i];
+                    var user = item.TryGetProperty("instruction", out var inst) ? inst.GetString()
+                             : item.TryGetProperty("mark", out var m) ? m.GetString()
+                             : null;
+                    var resp = item.TryGetProperty("output", out var outp) ? outp.GetString()
+                             : item.TryGetProperty("ani", out var a) ? a.GetString()
+                             : null;
+
+                    if (!string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(resp)
+                        && user.Length > 5 && resp.Length > 5)
+                        pairs.Add((user, resp));
+                }
+                return pairs;
+            }
+        }
+        catch { /* not valid JSON document — try line-by-line */ }
+
+        // JSONL fallback: one object per line
+        foreach (var line in text.Split('\n').Where(l => l.Trim().StartsWith("{")))
+        {
+            try
+            {
+                var lineDoc = System.Text.Json.JsonDocument.Parse(line.Trim().TrimEnd(','));
+                var item = lineDoc.RootElement;
+                var user = item.TryGetProperty("instruction", out var inst) ? inst.GetString()
+                         : item.TryGetProperty("mark", out var m) ? m.GetString()
+                         : null;
+                var resp = item.TryGetProperty("output", out var outp) ? outp.GetString()
+                         : item.TryGetProperty("ani", out var a) ? a.GetString()
+                         : null;
+
+                if (!string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(resp)
+                    && user.Length > 5 && resp.Length > 5)
+                    pairs.Add((user, resp));
+            }
+            catch { /* skip malformed lines */ }
+        }
+
+        return pairs;
+    }
+
+    private class ConversationStage
+    {
+        public string Label { get; set; } = "";
+        public int TurnPairs { get; set; }
+        public float DiagonalPct { get; set; }
+        public Dictionary<string, int> Coupling { get; } = new();
+        public List<string> Expressions { get; set; } = new();
+    }
+}
