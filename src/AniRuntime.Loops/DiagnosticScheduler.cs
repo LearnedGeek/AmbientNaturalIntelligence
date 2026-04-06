@@ -131,7 +131,11 @@ public class DiagnosticScheduler : BackgroundService
     private async Task HandleRetrievalPoisonAsync(
         DiagnosticFinding finding, int recurrence, CancellationToken ct)
     {
-        if (recurrence < 3)
+        // Escalation threshold raised from 3 to 6 — scan 3 was deleting memories
+        // every 10 minutes for topics that were legitimately relevant (Spanish tutoring).
+        // 128 valid inner thoughts deleted in one afternoon. The escalation is now a
+        // last resort, not an eager corrector.
+        if (recurrence < 6)
         {
             // Actually reduce importance of the poisoning memory by 0.15 per scan.
             // Extract the memory content prefix from the finding description.

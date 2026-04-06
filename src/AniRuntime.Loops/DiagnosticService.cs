@@ -120,7 +120,12 @@ public class DiagnosticService : IDiagnosticService
             }
         }
 
-        var poisoned = snippetCounts.Where(kv => kv.Value >= 3).ToList();
+        // Threshold: a memory must appear in >50% of retrievals to be considered poisoning.
+        // Previous threshold of 3 was too aggressive — 3/12 (25%) is normal relevance,
+        // not poisoning. The real poisoning (duplicates, flat importance) has been fixed.
+        // This threshold is now a safety net, not a primary defense.
+        var minCount = Math.Max(4, rerankLines.Count / 2);
+        var poisoned = snippetCounts.Where(kv => kv.Value >= minCount).ToList();
         if (poisoned.Count == 0) return [];
 
         return poisoned.Select(kv => new DiagnosticFinding
