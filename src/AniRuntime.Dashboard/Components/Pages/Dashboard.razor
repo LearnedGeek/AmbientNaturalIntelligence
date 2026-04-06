@@ -347,6 +347,62 @@
     </section>
 }
 
+@if (_auditEntries.Count > 0)
+{
+    <section>
+        <h3>Memory Audit Log</h3>
+        <small style="opacity: 0.6;">Recent memory changes — tracks creates, updates, deletes, and merges for data integrity.</small>
+        <div style="max-height: 300px; overflow-y: auto; margin-top: 0.5rem;">
+            @foreach (var entry in _auditEntries)
+            {
+                var actionColor = entry.Action switch
+                {
+                    "create" => "#4caf50",
+                    "update" => "#2196f3",
+                    "delete" => "#f44336",
+                    "merge" => "#ff9800",
+                    "restore" => "#9c27b0",
+                    _ => "#607d8b",
+                };
+                var preview = entry.Action == "delete"
+                    ? entry.ContentBefore
+                    : entry.ContentAfter ?? entry.ContentBefore;
+                if (preview is not null && preview.Length > 80) preview = preview[..80] + "...";
+                <div style="border-left: 3px solid @actionColor; padding: 0.3em 0.6em; margin-bottom: 0.3rem; background: rgba(255,255,255,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                        <span>
+                            <span style="color: @actionColor; font-weight: bold; font-size: 0.85em;">@entry.Action</span>
+                            <small style="opacity: 0.5; margin-left: 0.3em;">(@entry.Source)</small>
+                        </span>
+                        <small style="opacity: 0.4;">@entry.OccurredAt.LocalDateTime.ToString("h:mm tt")</small>
+                    </div>
+                    <div style="font-size: 0.8em; opacity: 0.7; margin-top: 0.2em;">@(preview ?? "(no content)")</div>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@if (_trainingCoverage.Count > 0)
+{
+    <section>
+        <h3>V7 Training Data Coverage</h3>
+        <small style="opacity: 0.6;">Training pairs ready for v7 by register. Target: balanced coverage across all registers for Growth Readiness.</small>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;">
+            @foreach (var reg in _trainingCoverage.OrderByDescending(r => r.Value))
+            {
+                var barWidth = _maxTrainingCount > 0 ? Math.Max(5, (int)(reg.Value * 100.0 / _maxTrainingCount)) : 5;
+                var color = reg.Value >= 20 ? "#4caf50" : reg.Value >= 10 ? "#ff9800" : "#f44336";
+                <div style="min-width: 140px; padding: 0.4em 0.6em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid @color;">
+                    <strong style="font-size: 0.8em;">@reg.Key</strong>
+                    <div style="font-size: 1.2em; font-weight: bold; color: @color;">@reg.Value</div>
+                </div>
+            }
+        </div>
+        <small style="opacity: 0.5; display: block; margin-top: 0.3rem;">Total: @_trainingCoverage.Values.Sum() pairs | Green = 20+, Orange = 10-19, Red = &lt;10</small>
+    </section>
+}
+
 @code {
     private CharacterStateDoc? _charState;
     private EmotionalState? _emotional;
@@ -361,6 +417,9 @@
     private HashSet<Guid> _expandedContributions = new();
     private HashSet<Guid> _expandedDrift = new();
     private List<(DateOnly Date, int UniqueRegisters, int Total)> _registerTrend = new();
+    private List<AuditEntry> _auditEntries = new();
+    private Dictionary<string, int> _trainingCoverage = new();
+    private int _maxTrainingCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -381,6 +440,9 @@
             .OrderBy(d => d.Date)
             .TakeLast(14)
             .ToList();
+
+        try { _auditEntries = await MemoryMaintenance.GetRecentAuditEntriesAsync(15); } catch { }
+        LoadTrainingCoverage();
 
         try { _diagnosticReport = await DiagnosticService.RunDiagnosticAsync(); }
         catch { _diagnosticReport = null; }
@@ -412,6 +474,53 @@
         state.ComputeFromContributions(_contributions);
         await MemoryPersist.SaveEmotionalStateAsync(state);
         _emotional = state;
+    }
+
+    private void LoadTrainingCoverage()
+    {
+        try
+        {
+            var v7Dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "training", "v7");
+            if (!Directory.Exists(v7Dir))
+            {
+                // Try relative to solution root
+                v7Dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "docs", "training", "v7");
+            }
+            if (!Directory.Exists(v7Dir)) return;
+
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.GetFiles(v7Dir, "v7-*.json"))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                // Extract register from filename patterns:
+                // v7-mined-grok-XXXXXXXXXX-registername.json → registername
+                // v7-curated-registername.json → registername
+                var register = name;
+                var lastDash = name.LastIndexOf('-');
+                if (lastDash > 0)
+                {
+                    var candidate = name[(lastDash + 1)..];
+                    // Check if it's a register name (not a number/part suffix)
+                    if (!long.TryParse(candidate, out _) && candidate.Length > 2)
+                        register = candidate;
+                }
+
+                // Clean up common prefixes
+                register = register.Replace("v7-curated-", "").Replace("v7-mined-grok-aprilfools-", "");
+
+                try
+                {
+                    var content = File.ReadAllText(file);
+                    var pairCount = System.Text.RegularExpressions.Regex.Matches(content, "\"from\":\\s*\"human\"").Count;
+                    counts[register] = counts.GetValueOrDefault(register) + pairCount;
+                }
+                catch { }
+            }
+
+            _trainingCoverage = counts;
+            _maxTrainingCount = counts.Values.DefaultIfEmpty(0).Max();
+        }
+        catch { }
     }
 
     private void ToggleDrift(Guid id)
