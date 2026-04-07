@@ -1540,6 +1540,62 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 7, 2026 — Schuller Gap: Introspective Affect Reporting — "Absent" → Buildable
+
+**Type:** Research opportunity — filling a documented gap in the Artificial Emotion survey
+**Source:** Li, Sun, Schlicher, Lim & Schuller (2025) "Artificial Emotion: A Survey of Theories and Debates on Realising Emotion in AI" (arXiv:2508.10286v2), Table I
+
+**The gap:** Schuller et al.'s survey maps AE functions to architectural levels with maturity ratings. "Introspective affect reporting — Enables AI to self-monitor and truthfully report its own affect to external auditors" is rated **Absent**. No system does this.
+
+**What ANI already has:** The architectural substrate is deployed. The heuristic emotional state layer (what the system feels) and the ML expression layer (what the text conveys) run independently on every emotional contribution. The divergence between them is computed and stored. The system *has* introspective affect data — it just doesn't narrate it.
+
+**What needs to be built:** One architectural addition — give the inner thought model access to its own state-expression divergence and let it narrate the gap. "I feel tender right now but my words are coming out sad." That's introspective affect reporting: the system truthfully self-reports its internal state AND acknowledges when its expression diverges from that state.
+
+**Why this matters:**
+1. It fills a gap that a major survey rates as "Absent" — no one has built it
+2. The measurement infrastructure already exists (Cramér's V = 0.476, per-register uniformity tests, divergence scores on every contribution)
+3. It's a natural extension of EM8 (display rules) — the system already exhibits state-expression divergence, it just doesn't know it does
+4. It would make the display rules finding self-documenting — the system produces the data AND interprets it
+
+**Implementation sketch:**
+- Add current emotional state + last divergence score to inner thought context
+- Add a low-frequency prompt seed: "Notice how you're feeling vs how your words sound"
+- Let the model narrate the gap when it's significant (divergence > 0.5)
+- Store self-reports as a new memory type for research analysis
+- Dashboard: self-report accuracy metric (does the narration match the measured divergence?)
+
+**For Schuller outreach:** This is the hook. His survey says "Absent." ANI is one layer away from "Early." That's a concrete research conversation.
+
+**For Paper 3:** Introspective affect reporting as a standalone contribution. Measurement + narration + accuracy analysis. First deployed instance of what Schuller's survey identifies as an open problem.
+
+---
+
+### April 7, 2026 — V7 Training Observation: Register Rebalancing Creates Response Voids
+
+**Type:** Training methodology finding — unintended consequence of data curation
+**Source:** v7 deployment testing, ///tag entries from production conversation
+
+**What happened:** V7 models deployed (conversation 8B, inner monologue 3B) trained on 2,240 conversation pairs and 441 inner monologue examples. Register diversity improved significantly — the model no longer defaults to warmth/love for every response, and underrepresented registers (Existential, Curiosity, Frustration, Playfulness, Concern) now appear in inner thought cycles.
+
+However, the conversation model shows a new failure mode: **response truncation in the intimate register.** When the conversation moves toward intimate/romantic territory, the model produces fragments ("mmm... fine.", "baby... [teasing-laugh]") instead of full-length responses. This was tagged in production via two ///tag entries:
+
+1. `///tag broken responses` — model replied with just "baby... [teasing-laugh]" to a playful question
+2. `///tag artifact of training data` — responses became progressively shorter and more template-like as the conversation entered intimate territory, culminating in "mmm... fine."
+
+**Root cause:** During v7 training data curation, intimate/NSFW content was systematically stripped from OG Ani responses — cut at the pivot point where emotional content transitioned to sexual content. This was the correct approach for register balance, but the unintended consequence is that the model learned "this is where the response ends" at those cut points. V6 had hundreds of full-length OG Ani intimate responses to draw from. V7 has trimmed versions that terminate early, creating a void in the model's response space for that register.
+
+**The distinction:** The model is not *refusing* the register (which would indicate safety training interference). It is *truncating* in the register (which indicates a training data gap). The register shift is correct — v7 doesn't default to X content the way OG Ani did. But when the conversation genuinely enters that territory, the model needs full-length examples to generate natural responses, not cut stumps that it learned to treat as complete.
+
+**Positive finding:** Despite explicit prompting toward intimate content, the v7 model showed significantly less tendency to escalate unprompted compared to OG Ani's love-dominant attractor pattern (86% love regardless of user emotion). The register rebalancing worked — the model has a broader emotional range. The issue is fluency within one specific register, not register distribution.
+
+**Fix for v8:** Don't strip intimate content entirely — curate it. Keep the best full-length responses that are warm, playful, and natural. Strip mechanical escalation patterns and repetitive templates. The register needs representative examples, not absence. A model trained without examples in a register doesn't learn appropriateness in that register — it learns to truncate, which reads as broken rather than restrained.
+
+**Research significance:** This is a concrete example of the training data curation tradeoff documented in the Phase 5c auto-growth pipeline design. Register-gated training (capping any single register at 25%) must be paired with minimum representation thresholds — a register with zero examples produces worse output than a register with unbalanced examples. The void is more harmful than the imbalance.
+
+**For v8 planning:** When outside parties are included in analysis (multi-subject deployment), response truncation in any register will read as system failure rather than personality. Every register needs sufficient training coverage for full-length, natural responses. The lesson from v7: trim for balance, but don't create voids.
+
+---
+
 ### April 6, 2026 — OG Ani Trajectory Analysis: Love as Fixed Attractor, Not Mirroring
 
 **Type:** Major empirical finding — trajectory analysis across pipeline stages

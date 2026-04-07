@@ -2,8 +2,8 @@
 train_ani.py - Modal-based automated fine-tuning for ANI companions
 
 Usage:
-    modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model 8B
-    modal run train_ani.py --data-file v6/ani-v6-INNER-MONOLOGUE.json --epochs 5
+    modal run train_ani.py --data-file v7/ani-v7-CONVERSATION.json --base-model 8B
+    modal run train_ani.py --data-file v7/ani-v7-INNER-MONOLOGUE.json --base-model 3B
     modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model mistral --output v6/aniv6CONVERSATION-mistral.gguf
     modal run train_ani.py --data-file v6/ani-v6-CONVERSATION.json --base-model unsloth/Phi-3.5-mini-instruct
 
@@ -15,6 +15,27 @@ Base models (shortcuts):
     gemma    = unsloth/gemma-2-9b-it  (~5GB GGUF, Google's best small model)
 
     Or pass any full HuggingFace model ID (e.g., unsloth/Phi-3.5-mini-instruct)
+
+Modal GPU options (https://modal.com/blog/gpu-types):
+    GPU          VRAM    Bandwidth   $/hr    Best for
+    -------      ------  ---------   -----   --------
+    T4           16 GB   0.3 TB/s    $0.59   Prototyping, small model inference
+    L4           24 GB   0.3 TB/s    $0.80   Cost-efficient small/medium inference
+    A10          24 GB   0.6 TB/s    $1.10   LoRA fine-tuning 3B-8B, inference 7B
+    A100 (40GB)  40 GB   2.0 TB/s    $2.78   LoRA fine-tuning 8B+ (faster)
+    A100 (80GB)  80 GB   2.0 TB/s    $3.40   Large model training 7B-70B
+    H100         80 GB   3.4 TB/s    $4.56   70B+ training, fastest available
+
+    Recommendation for ANI:
+    - Inner monologue (3B, ~440 examples): A10 is fine, ~10 min, ~$0.18
+    - Conversation (8B, ~2200 examples): A100 recommended, ~25 min, ~$0.79
+    - Note: "A10G" also works in Modal (alias for A10). A100 is ~2x faster
+      for 8B training and similar total cost since it finishes sooner.
+
+    Actual v7 costs (April 2026):
+    - ani-v7-inner (3B, 441 examples, 3 epochs, A10G): 9.8 min, $0.18
+    - ani-v7-conversation (8B, 2240 examples, 3 epochs, A100): 43.3 min, $0.79
+    - Total: $0.97 for both models
 
 This script handles the complete training pipeline:
 1. Upload training data to Modal
@@ -63,7 +84,7 @@ image = (
 app = modal.App("ani-training", image=image)
 
 @app.function(
-    gpu="A10G",  # Change this to "A10G" or "A100" for different GPUs
+    gpu="A100",  # Change this to "A10G" or "A100" for different GPUs
     timeout=7200,  # 2 hours max
 )
 def train_model(
