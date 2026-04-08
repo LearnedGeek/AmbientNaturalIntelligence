@@ -1,6 +1,6 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 5, 2026
+**Last updated:** April 8, 2026
 **Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
 
 ---
@@ -76,7 +76,9 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 | Task | Status | Description |
 |------|--------|-------------|
-| V7 Training Data | **Ready** | 475 pairs across 10+ registers. Waiting for Growth Readiness threshold. |
+| V7 Training Data | **Deployed** | 2240 conversation pairs + 441 inner monologue examples. V7 models live since Apr 7. |
+| V8 Training Data Audit | **Not started** | Review all training source files for stage directions ([teasing-laugh]), parenthetical meta-commentary, and OG Ani artifacts that should be stripped at the source rather than caught by MessageCleaner regex post-hoc. Fix the training data, not the pipeline. |
+| MessageCleaner Regex Audit | **Not started** | Review accumulated regex fixes for fragility. Many are after-the-fact patches for training data quality issues. Catalog which patterns are model artifacts (fix in training) vs runtime necessities (keep in cleaner). |
 | Growth Readiness Gate | **Active** | Currently 51%. Target 70%+ before training. Dashboard tracks automatically. |
 | Harvest Pipeline | **Not started** | Auto-tag new training data from conversations. |
 | Blinded Evaluation | **Not started** | Anthropic API evaluation of new model quality. |
@@ -125,7 +127,7 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | Paper | Status | Key Dependency |
 |-------|--------|---------------|
 | Paper 1: Ambient Presence + Confabulation | **Published** (DOI: 10.5281/zenodo.19342190) | — |
-| Paper 2: Emergence + Display Rules | **Draft v0.26 (~85%)** | Sections 5.19-5.21 to draft |
+| Paper 2: Emergence + Display Rules | **Draft v0.29 (~95%)** | Full read-through needed before submission |
 | Paper 3: Experiential Grounding | **Stub (~40%)** | 2-4 weeks of post-reform data |
 | Paper 4: Temporal Awareness | **Stub (~25%)** | 30+ days of EM7 data |
 | Paper 5: Inter-Agent Emergence | **Stub (~10%)** | Second ANI deployment |
