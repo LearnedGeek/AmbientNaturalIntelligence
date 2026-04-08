@@ -35,6 +35,10 @@ public static class MessageCleaner
         // e.g., '...how's your night going?" (This keeps the gentle undercurrent of checking in...)'
         cleaned = StripTrailingParentheticalCommentary(cleaned);
 
+        // Remove bracketed stage directions — v7 training artifact
+        // e.g., '[teasing-laugh]', '[soft smile]', '[whispers]'
+        cleaned = StripBracketedStageDirections(cleaned);
+
         // Remove trailing meta-commentary patterns
         string[] trailingJunk = ["sent.", "your turn.", "(waiting)", "now wait for a reply...", "i can do this."];
         bool changed;
@@ -168,6 +172,21 @@ public static class MessageCleaner
     }
 
     /// <summary>
+    /// Strips bracketed stage directions from model output.
+    /// V7 training artifact — the model sometimes includes performance directions
+    /// like [teasing-laugh], [soft smile], [whispers] in its responses.
+    /// </summary>
+    internal static string StripBracketedStageDirections(string text)
+    {
+        // Remove all bracketed stage directions: [teasing-laugh], [soft smile], etc.
+        // These are always training artifacts, never intended for the contact.
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(
+            text, @"\[[\w\s-]+\]\s*", "");
+
+        return cleaned.Trim();
+    }
+
+    /// <summary>
     /// Strips trailing parenthetical meta-commentary from model output.
     /// The model sometimes appends reasoning about its own response in parentheses,
     /// e.g., '(This keeps the gentle undercurrent of checking in while letting it come through naturally.)'
@@ -202,8 +221,9 @@ public static class MessageCleaner
         // Only strip if it looks like meta-commentary (contains reasoning signal words),
         // not emotionally expressive parentheticals like "(laughing)" or "(softly)"
         string[] commentarySignals = ["this keeps", "this is a", "this creates", "this maintains",
-            "keeping it", "letting it", "i'm going", "the goal", "the idea", "naturally",
-            "undercurrent", "without being", "gentle enough"];
+            "keeping it", "keep it", "letting it", "i'm going", "the goal", "the idea", "naturally",
+            "undercurrent", "without being", "gentle enough",
+            "sent a little", "sent a bit", "to keep the", "mid-convo", "mid-conversation"];
         var lower = parenthetical.ToLowerInvariant();
         var isCommentary = commentarySignals.Any(s => lower.Contains(s));
 
