@@ -260,8 +260,15 @@ public class ConversationReplyPhase
             // exclusion list (character name, contact name, endearments) prevents false
             // positives on "Baby", "Anne", etc. Check 1 catches name mangling ("Joni" →
             // "jonathan") that the ML gate misses. ML runs as secondary verification after.
+            // Build the known-entities set from character seeds, anchored memories, and
+            // recently retrieved memories. Without this, the proper-noun detector flags
+            // legitimate retrievals (e.g., "Sarah" from a character seed) as confabulation
+            // because Check 1 only sees the last 12 conversation messages.
+            var knownEntities = BuildKnownEntitiesContext(snapshot);
+
             var confabCheck = DetectConversationConfabulation(reply, thread, lastMessage,
-                snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName);
+                snapshot.CharacterState.Name, snapshot.CharacterState.PrimaryContactName,
+                knownEntities);
 
             // ML semantic verification — primary confabulation detector when available
             if (!confabCheck.IsConfabulated && _mlClassifier is not null && _personaCache?.IsLoaded == true)
@@ -344,12 +351,48 @@ public class ConversationReplyPhase
                     }
                     else
                     {
-                        _log.LogDebug("No memories above confidence floor — keeping original reply");
+                        // No grounding memories found — the confabulation is unsupported by ANY
+                        // memory. Dispatching the original reply propagates a lie that becomes
+                        // canonical on next retrieval (Type 5/9 cascade). Instead, regenerate
+                        // with an explicit null-result injection: tell the model the previous
+                        // reply contained an unverifiable claim and ask it to respond honestly.
+                        // This allows continuity from inner thoughts while preventing assertion
+                        // of fabricated specifics to the user.
+                        _log.LogInformation("No grounding memories found — regenerating with null-result injection");
+                        try
+                        {
+                            var nullResultPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                            var augmentedSystem = nullResultPrompt.System +
+                                "\n\nIMPORTANT: Your previous draft contained a claim that has no support in memory or conversation history. " +
+                                "Respond again to the user's message without asserting unverified specifics. " +
+                                "If you don't have a memory of something, it's better to be honest about that than to invent details.";
+                            var honestReply = await _ollama.ChatAsync(
+                                augmentedSystem, snapshot.RecentHistory, nullResultPrompt.User, ct, replyTemperature)
+                                .ConfigureAwait(false);
+                            honestReply = CleanOutreachMessage(honestReply);
+
+                            if (!string.IsNullOrWhiteSpace(honestReply))
+                            {
+                                _log.LogInformation("Null-result regenerated reply: {Reply}", honestReply);
+                                reply = honestReply;
+                            }
+                            else
+                            {
+                                _log.LogWarning("Null-result regeneration returned empty — suppressing dispatch");
+                                return;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogWarning(ex, "Null-result regeneration failed — suppressing dispatch to prevent fabrication");
+                            return;
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log.LogDebug(ex, "Confabulation grounding retrieval failed — keeping original reply");
+                    _log.LogWarning(ex, "Confabulation grounding retrieval failed — suppressing dispatch to prevent fabrication");
+                    return;
                 }
             }
         }
@@ -656,9 +699,47 @@ public class ConversationReplyPhase
         return RunChecks2Through4(replyLower, conversationText);
     }
 
+    /// <summary>
+    /// Builds the lowercase text corpus of all entities the character "knows about" —
+    /// character seeds (people, places, interests), anchored memories, recently retrieved
+    /// memories, and recent world experiences. Used by the proper-noun confabulation
+    /// detector to avoid flagging legitimate retrievals as fabrications.
+    /// </summary>
+    private static string BuildKnownEntitiesContext(ContextSnapshot snapshot)
+    {
+        var parts = new List<string>();
+
+        // Character state seeds — established people, places, family, interests
+        var cs = snapshot.CharacterState;
+        if (cs.LearnedAboutContact?.Count > 0) parts.AddRange(cs.LearnedAboutContact);
+        if (cs.ThingsContactCares?.Count > 0)  parts.AddRange(cs.ThingsContactCares);
+        if (cs.FamilyContext?.Count > 0)        parts.AddRange(cs.FamilyContext);
+        if (cs.SharedExperiences?.Count > 0)    parts.AddRange(cs.SharedExperiences);
+        if (cs.SelfConcept?.Count > 0)          parts.AddRange(cs.SelfConcept);
+        if (cs.Interests?.Count > 0)            parts.AddRange(cs.Interests);
+        if (cs.CoreTraits?.Count > 0)           parts.AddRange(cs.CoreTraits);
+
+        // Anchored memories — foundation memories that never fade
+        if (snapshot.AnchoredMemories?.Count > 0)
+            parts.AddRange(snapshot.AnchoredMemories.Select(m => m.Content));
+
+        // Recently retrieved memories — what the system pulled for this cycle
+        if (snapshot.RelevantMemory?.Count > 0)
+            parts.AddRange(snapshot.RelevantMemory.Select(m => m.Content));
+
+        if (snapshot.RecentMemory?.Count > 0)
+            parts.AddRange(snapshot.RecentMemory.Select(m => m.Content));
+
+        // Recent world experiences — Ani's imagined life context (coworkers, scenes)
+        if (snapshot.RecentWorldExperiences?.Count > 0)
+            parts.AddRange(snapshot.RecentWorldExperiences.Select(m => m.Content));
+
+        return string.Join(" ", parts).ToLowerInvariant();
+    }
+
     private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation(
         string reply, ConversationThread thread, string lastMessage,
-        string characterName, string? contactName)
+        string characterName, string? contactName, string knownEntitiesContext = "")
     {
         EnsureNlpInitialized();
 
@@ -722,8 +803,12 @@ public class ConversationReplyPhase
                         if (noun is "I") continue;
                         // Skip known names (character, contact, variants)
                         if (knownNames.Contains(noun)) continue;
-                        if (!conversationText.Contains(noun.ToLowerInvariant()))
-                            return (true, $"Reply mentions proper noun '{noun}' not in conversation");
+                        var nounLower = noun.ToLowerInvariant();
+                        // Skip names already established in conversation, character seeds,
+                        // anchored memories, retrieved memories, or world experiences
+                        if (conversationText.Contains(nounLower)) continue;
+                        if (knownEntitiesContext.Contains(nounLower)) continue;
+                        return (true, $"Reply mentions proper noun '{noun}' not in conversation or known entities");
                     }
                 }
             }

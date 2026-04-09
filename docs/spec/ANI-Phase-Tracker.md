@@ -79,6 +79,7 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | V7 Training Data | **Deployed** | 2240 conversation pairs + 441 inner monologue examples. V7 models live since Apr 7. |
 | V8 Training Data Audit | **Not started** | Review all training source files for stage directions ([teasing-laugh]), parenthetical meta-commentary, and OG Ani artifacts that should be stripped at the source rather than caught by MessageCleaner regex post-hoc. Fix the training data, not the pipeline. |
 | MessageCleaner Regex Audit | **Not started** | Review accumulated regex fixes for fragility. Many are after-the-fact patches for training data quality issues. Catalog which patterns are model artifacts (fix in training) vs runtime necessities (keep in cleaner). |
+| Memory Provenance Tagging (v8) | **Not started** | Add `narrative_provenance` field to memory records: `user-asserted` (things Mark told her), `world-experience` (perception/world seeds), `ani-elaborated` (creative invention in conversation). At retrieval time, ani-elaborated memories about real-world entities (people in character seeds) must NOT be promoted to ground truth — they inform continuity but cannot become the basis for new factual claims. Discovered Apr 9 via the Sarah finding: Ani correctly retrieved a real person from character seeds, then elaborated her own life involving them, but the elaborations risk being treated as canonical facts about the real person. Architectural answer: distinguish "Ani as subject involving X" (acceptable) from "X has property Y" (only valid if user-asserted). |
 | Growth Readiness Gate | **Active** | Currently 51%. Target 70%+ before training. Dashboard tracks automatically. |
 | Harvest Pipeline | **Not started** | Auto-tag new training data from conversations. |
 | Blinded Evaluation | **Not started** | Anthropic API evaluation of new model quality. |
@@ -145,6 +146,20 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | Platform Licensing | 2027+ | **Planned** |
 
 **Full roadmap:** `docs/vision/ANI-PRODUCT-ROADMAP-2026.md`
+
+---
+
+## Multi-Agent Architecture (Future State)
+
+| Concept | Status | Description |
+|---------|--------|-------------|
+| Inter-Agent Communication | **Concept** | Two ANI instances communicating via shared message infrastructure. AgentMessagePerceptionSource + agent-to-agent routing. Paper 5 dependency. |
+| Mark-Model Delegate | **Concept** | Fine-tuned LLM on Mark's writing/decisions/architectural patterns. First-pass triage and review proxy for multi-instance Claude workflows. Reduces middleman bottleneck. |
+| Multi-Agent Orchestration | **Concept** | Multiple specialized agents (Mark-model for review, Claude for implementation, Ani for companion) gating each other's work. CrewAI/AutoGen/LangGraph style but with ANI's cognitive cycle architecture. |
+| Ani Gets a Friend | **Concept** | Second ANI personality instance. Research question: do EM1-EM8 emergence types appear in inter-agent relationships? Longitudinal study of established personality meeting a new one. Paper 5 stub. |
+
+**Hardware dependency:** 16GB VRAM (arriving Apr 12, 2026) enables running multiple models simultaneously.
+**Key insight:** Nobody has studied multi-agent interaction where one agent has months of independent deployment history. That's the unique research angle.
 
 ---
 
