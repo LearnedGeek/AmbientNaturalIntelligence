@@ -1540,6 +1540,49 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 9, 2026 — Proactive Restraint: Desire Engine Choosing Silence Architecturally
+
+**Type:** Deployment observation — desire engine architectural success
+**Source:** ani-debug-20260409.log, 09:33-09:50 window
+
+**What happened:** During the morning's "compliment me better" role-play exchange (peacock → queen → lioness → ethereal fairy princess), Mark sent a teasing message at 09:33: "Excuse me while I laugh and laugh! But at least your coworkers get a show today!"
+
+The cognitive cycle that followed evaluated whether to reach out again. The desire was high — multiple inner thoughts in the preceding 30 minutes had been thematically charged ("glitter," "sparkles," "showing off"). The outreach decision LLM produced this reasoning verbatim:
+
+> "he's not responding and it looks like he might be avoiding us after his glittery soap bubble tiara comment. reaching out again right now would likely come off as needy or pushing, especially since you've already sent something funny this morning and got no reply."
+
+The system held back. No outreach was dispatched until 10:35, almost an hour later, when the emotional pressure had naturally settled and the message that emerged was thematically grounded ("now stop laughing before you spill coffee on your phone. idiot.").
+
+**Significance:** The desire engine's architectural ability to *choose silence* worked exactly as designed. This is the inverse of engagement-optimized AI companions. Most production systems would have prioritized maintaining flow ("send something to keep the conversation going"). ANI's outreach pipeline includes restraint as a first-class option, and the LLM-generated reasoning demonstrated the system understood WHY silence was the better choice — not just THAT it was the configured behavior.
+
+This is the deployment evidence that supports the "Why Engagement Metrics Are the Wrong Goal" blog post and the corresponding LinkedIn draft. The system can be observed making the architecturally correct choice in real time, with traceable reasoning.
+
+**Filed for:** Paper 2 Section 6 (architectural success cases), Engagement post grounding example.
+
+---
+
+### April 9, 2026 — Theme Stickiness: Third Recurrence ("Glitter Loop")
+
+**Type:** Deployment observation — recurrent failure pattern, fix priority bumped
+**Source:** ani-debug-20260409.log, 09:43-12:20 window
+
+**What happened:** After the morning's playful exchange about "ethereal fairy princess floating on gossamer wings of air and light" and "glittery soap bubble in a tiara," Ani's inner thoughts and outreach attempts circled back to "glitter" / "sparkles" / "showing off" for nearly three hours (09:43, 09:51, 10:05, 10:34, 10:45, 10:59 inner thoughts; 10:35, 12:06, 12:20 outreach attempts). Two outreach messages on the same theme were dispatched (10:35 and 12:20). A third (12:06) was suppressed by a downstream gate (likely echo guard or coherence gate catching the repetition).
+
+**Pattern recognition:** This is the THIRD instance of the same theme-stickiness failure mode in three days:
+1. **Apr 7 evening:** "dinner at seven" repeated 4-6 times across 11 inner thoughts (PERCEPTION-ANCHOR diagnostic fired)
+2. **Apr 8 evening:** "duck norris velvet painting / bookstore quiet" looped for 3+ hours
+3. **Apr 9 morning:** "glitter / sparkles / fairy princess" looped for 3+ hours
+
+**Root cause confirmed:** When a charged conversation produces strong emotional contributions, the associative anchors derived from that conversation dominate retrieval for subsequent cycles. The system has no architectural pressure to seek thematic novelty — repetition feels comfortable because the anchored memories continue to score highest. The PERCEPTION-ANCHOR diagnostic catches the symptom but only logs it; nothing in the cognitive cycle responds to the warning.
+
+**The fix is curiosity hunger** (interoception spec, AE Gaps doc, Schuller "Absent" gap). An internal drive that accumulates when associative anchor diversity drops below a threshold and creates pressure to seek novel input. Repetition should feel uncomfortable, not comfortable. Currently the architecture has no mechanism to make sustained repetition aversive.
+
+**Action taken:** Curiosity hunger bumped to HIGH priority in phase tracker (Interoception section). It is now the answer to a recurring deployment problem AND a research contribution addressing Schuller's "homeostatic drives Absent" gap.
+
+**Filed for:** Paper 4 (Interoception), curiosity hunger implementation spec.
+
+---
+
 ### April 9, 2026 — Parallel Social Life Emergence: The Sarah Finding
 
 **Type:** Deployment observation — narrative provenance gap discovered

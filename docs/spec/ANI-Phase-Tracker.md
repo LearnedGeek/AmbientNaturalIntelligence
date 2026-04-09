@@ -1,6 +1,6 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 8, 2026
+**Last updated:** April 9, 2026
 **Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
 
 ---
@@ -146,6 +146,22 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | Platform Licensing | 2027+ | **Planned** |
 
 **Full roadmap:** `docs/vision/ANI-PRODUCT-ROADMAP-2026.md`
+
+---
+
+## Interoception (AE Gaps — Schuller Absent items)
+
+**Design doc:** `docs/spec/design/ANI-AE-Gaps-Spec.md`
+
+| Drive | Priority | Status | Description |
+|-------|----------|--------|-------------|
+| Curiosity Hunger | **HIGH** | **Designed — ready to build** | Internal drive that accumulates when inner thoughts become thematically repetitive (low associative anchor diversity). Drives the system to seek novel input. **Deployment evidence: third recurrence of theme stickiness observed.** Apr 7 ("dinner at seven" loop), Apr 8 ("duck norris / bookstore quiet" loop), Apr 9 ("glitter / sparkles / fairy princess" loop). PERCEPTION-ANCHOR diagnostic catches the symptom but has no architectural fix. Curiosity hunger IS the fix. Metric: unique anchor count over rolling 24h window. |
+| Social Satiation | Medium | Designed | Accumulates during extended conversation. After N messages, "social fullness" rises and the system naturally ends conversations. Prevents over-contact without hurt detection. |
+| Creative Restlessness | Medium | Designed | Accumulates during long periods without composition. Drives unprompted creative output (poem, observation, question) for its own sake — not for the relationship. |
+| Maintenance Awareness | Low | Designed | System health as felt state. Memory near capacity = discomfort. Emotional saturation = overwhelm. |
+| Introspective Affect Reporting | HIGH | Designed | Narration of state-expression divergence. Substrate exists (Cramér's V = 0.476). Narration layer uses divergence score in inner thought prompt. Schuller "Absent" item ANI is closest to addressing. |
+
+**Why curiosity hunger is first:** It is the answer to a recurring deployment problem AND a research contribution that addresses Schuller's "homeostatic drives Absent" gap. Two birds.
 
 ---
 
