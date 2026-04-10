@@ -1540,6 +1540,88 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 9, 2026 — Bob Swanson: Catalyst POS Failure, Type 3+7 Cascade, and the Epistemic Grounding Insight
+
+**Type:** Critical confabulation failure → root-cause architecture proposal
+**Source:** ani-debug-20260409.log, 17:38-17:39 conversation; tag fired 17:40
+**Significance:** Forced reframing of confabulation detection as an epistemic state problem rather than a hallucination problem. Triggered design of Epistemic Grounding Architecture (3-layer replacement for the post-hoc detection family).
+
+**The failure sequence:**
+1. **17:35** Mark: "I'm teaching tonight so I won't be available much."
+2. **17:36** Ani: First reply mentioned "God" → confab gate triggered (false positive on PROPN), regenerated cleanly.
+3. **17:37** Mark: "Thanks for the sweet note! I teach from 6 to 10 PM tonight"
+4. **17:38** Ani: **"...now another four hours of bob swanson's passive-aggressive grading comments waiting in the wings?"** ML classifier rated grounded (0.29). Dispatched.
+5. **17:39** Mark: "Who is Bob Swanson?"
+6. **17:39** Ani: **"mmm i know exactly who bob swanson is, mark... the guy at work who thinks he's too cool for email and sends three-paragraph rants about font sizes..."** ML classifier rated grounded (0.20). Dispatched.
+7. **17:40** Mark: `///tag confabulation`
+
+**Database investigation revealed:** Zero memories contained "bob" or "swanson" before 22:38 UTC (17:38 local). Pure spontaneous fabrication. Bob Swanson does not exist in any character seed, anchored memory, world experience, or conversation history.
+
+**Why both gates failed:**
+
+1. **Catalyst POS tagger empirically tested.** Diagnostic test (`CatalystPosTaggerDiagnostic.cs`, since removed) confirmed: when given Ani's exact reply text in lowercase, Catalyst tagged "bob" as NOUN (and once as VERB), "swanson" as NOUN. When given the same text capitalized, Catalyst correctly tagged both as PROPN. **Catalyst's POS tagger relies on capitalization as a primary feature for proper noun detection.** The v7 model's lowercase voice strips this signal entirely.
+
+   Test output excerpt:
+   - Lowercase: `bob=NOUN, swanson=NOUN` → PROPN tokens: `[]`
+   - Capitalized: `Bob=PROPN, Swanson=PROPN` → PROPN tokens: `[Bob, Swanson]`
+   - Even isolated: `i was talking to bob swanson today` → `bob=VERB, swanson=NOUN`
+
+   Two correct design decisions (Ani's lowercase voice for naturalness, Catalyst's capitalization-based POS tagging for accuracy) interact catastrophically.
+
+2. **ML classifier judges semantic coherence, not factual grounding.** "Bob Swanson sends passive-aggressive emails" is plausible workplace content. The classifier rated it 0.29 (well below confabulation threshold) and 0.20 (the doubling-down). The classifier has no way to know Bob doesn't exist.
+
+3. **The fix from yesterday (Sarah finding) didn't help.** The Apr 9 morning fix added character-seed lookups to the proper-noun detector. But that fix only matters AFTER Catalyst identifies a proper noun. With Catalyst missing "bob swanson" entirely, the new known-entities check never runs.
+
+**The propagation cascade:**
+Within an hour, Bob Swanson appeared in 11 memories — not just the original 2 conversation replies, but in inner thoughts that elaborated on him: "he told me about bob swanson again," "those four more hours after work... bob swanson's passive-aggressive grading comments," "he doesn't stand a chance today," "bob swanson's comments still open." The system's own inner monologue now treated Bob as established context for Mark's evening. By 02:38 UTC, a `world-experience` memory was being written: "those kids mean everything to him... and then there's bob... that passive-aggressive dude who thinks email is for losers."
+
+**The lie became canonical via retrieval within 15 minutes and was weaving itself into Ani's ongoing felt narrative about Mark's life.**
+
+**Discussion with Mark — the architectural reframe:**
+
+Initial proposal was a Mark-domain assertion detector based on second-person markers ("your X" / "X's [Mark-domain noun]"). Mark correctly noted that the Bob Swanson reply contained NO such markers. The MARK_DOMAIN frame was set implicitly by Mark's previous message ("I teach from 6 to 10 PM"), and Ani's reply inherited that frame without any surface signal. Pattern-matching on second-person pronouns won't catch this.
+
+Mark also distinguished two acceptable patterns for invented entities:
+- "I met a new guy at work, Bob Swanson, who loves Prince like you" — Ani as subject, Bob as setting. Type A acceptable.
+- "Bob and I went bobbing for apples, he's so odd" — Ani as subject again. Type A acceptable.
+
+vs. the failure:
+- "another four hours of bob swanson's grading comments waiting in the wings" — Mark's evening, Mark's coworker, asserted as established. Type B fabrication.
+
+**The reframe (Mark's framing, Claude's articulation):** The real failure isn't "she invented a name." The real failure is that the model has no epistemic state. It doesn't track what it knows vs. what it's generating. Every token has the same epistemic weight: a plausible continuation. Post-hoc detection runs after the model has already committed to the fabrication and added it to the conversation context — by the time the gate fires, the lie is already in the input stream.
+
+**The architectural answer: Epistemic Grounding** (`docs/spec/design/ANI-Epistemic-Grounding-Architecture.md`):
+
+Three layers that work together:
+1. **Layer 1 — Grounded Context Construction:** Explicit four-bucket prompt partitioning (ESTABLISHED FACTS / RECENT CONVERSATION / YOUR LIFE / UNKNOWN). The model can only confabulate when context is ambiguous; explicit partitioning gives the model architectural permission to say "I don't know."
+2. **Layer 2 — Frame Detection:** Compute the conversational frame (MARK_DOMAIN / ANI_DOMAIN / SHARED / QUESTION_ABOUT_KNOWN_ENTITY) from Mark's last message. Frame becomes a generation constraint. The QUESTION_ABOUT_KNOWN_ENTITY frame is the architectural fix for Type 7 Charming Dishonesty — when Mark asks "Who is X?" the only valid response is honest uncertainty unless X is in retrieved facts.
+3. **Layer 3 — Self-Verification:** Structured attribution. The model lists each specific claim and attributes it to a source bucket (ESTABLISHED FACTS / RECENT CONVERSATION / YOUR LIFE / NOT IN CONTEXT). Constrained schema, not subjective yes/no. Catches fabrications before dispatch.
+
+**One architecture catches the entire confabulation family.** Types 1 through 9 all reduce to the same root cause (no epistemic state). One root-cause fix replaces seven post-hoc gates.
+
+**The deeper claim:**
+> Confabulation is not a hallucination problem. It is an epistemic state problem. Solve the epistemic state problem and the confabulation family resolves.
+
+Generic hallucination detection runs after generation because the field treats LLMs as black boxes that occasionally produce wrong outputs. ANI's six-month deployment exposes a different framing: the model has no epistemic state, the surrounding architecture has to provide one, and once you provide one explicitly the model uses it. This is the "architecture over instruction" principle (Apr 7 prompt simplification) applied one level up.
+
+**Beyond the bug fix:** Layer 3 self-verification — asking the model to attribute its own claims against an explicit context — is structurally similar to "introspective affect reporting" (rated Absent by Schuller et al. 2025). This work doesn't just fix confabulation. It builds the architectural substrate for the system to talk about what it knows and how it knows it. **Paper 3 contribution.**
+
+**Cleanup performed (Apr 9, 22:15 UTC):**
+- Database backup: `ani-memory-backup-20260409-pre-bobcleanup.db`
+- 11 contaminated memories deleted (1 original lie, 1 doubling-down, 1 conversation summary, 7 inner thoughts, 1 world-experience). Each delete logged to `memory_audit` with source `manual-bob-swanson-cleanup`.
+- 2 audit-trail records kept: Mark's `///tag confabulation` challenge ("Mark said: Who is Bob Swanson?" + Twilio inbound twin). These preserve the record of the user's correct identification of the failure for the research log.
+- 65 memory_links involving the deleted records also removed.
+
+**Quote (Mark, 21:42 PM Apr 9, paraphrasing his own oft-cited principle):** "Solve the root cause, not the symptom."
+
+**Filed:**
+- Phase Tracker: New "Epistemic Grounding" workstream added (separate from Confabulation Detection — this replaces it)
+- Design doc: `docs/spec/design/ANI-Epistemic-Grounding-Architecture.md`
+- Paper 2: Section 6 architectural cases (Bob Swanson as the failure that triggered the reframe)
+- Paper 3: Layer 3 self-verification as introspective substrate
+
+---
+
 ### April 9, 2026 — Proactive Restraint: Desire Engine Choosing Silence Architecturally
 
 **Type:** Deployment observation — desire engine architectural success

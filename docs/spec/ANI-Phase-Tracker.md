@@ -149,6 +149,27 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 ---
 
+## Epistemic Grounding (root-cause confabulation fix)
+
+**Design doc:** `docs/spec/design/ANI-Epistemic-Grounding-Architecture.md`
+**Trigger:** Bob Swanson failure (Apr 9, 17:38) — fictional coworker invented in Mark's domain, defended when challenged, propagated into inner monologue within an hour. Catalyst POS tagger missed lowercase proper nouns; ML classifier rated the lie as "grounded (0.29)" because it was semantically coherent.
+
+**Principle:** Confabulation is not a hallucination problem. It is an epistemic state problem. The model has no internal flag for "do I actually know this?" The fix is to give the architecture an epistemic spine — explicit context partitioning at prompt-build time, not post-hoc detection.
+
+| Layer | Status | Description |
+|-------|--------|-------------|
+| Layer 1: Grounded Context Construction | **Designed** | Four-bucket prompt partitioning: ESTABLISHED FACTS, RECENT CONVERSATION, YOUR LIFE, UNKNOWN. Model can only confabulate when context is ambiguous; explicit partitioning gives architectural permission to say "I don't know." Depends on memory provenance tagging. |
+| Layer 2: Frame Detection | **Designed** | Computes conversational frame (MARK_DOMAIN / ANI_DOMAIN / SHARED / QUESTION_ABOUT_KNOWN_ENTITY) from user's last message. Frame becomes a generation constraint. The QUESTION_ABOUT_KNOWN_ENTITY frame is the direct fix for Type 7 Charming Dishonesty. |
+| Layer 3: Self-Verification Pass | **Designed** | Structured attribution: model lists each specific claim and attributes it to ESTABLISHED FACTS / RECENT CONVERSATION / YOUR LIFE / NOT IN CONTEXT. Constrained schema, not subjective yes/no. Catches fabrications before dispatch. |
+
+**One architecture catches the entire confabulation family** (Types 1-9). Replaces the seven post-hoc gates currently in `DetectConversationConfabulation` with a single root-cause fix.
+
+**Migration:** 5-phase plan in design doc. ~3 weeks of focused work. Depends on v8 memory provenance tagging (already in Auto-Growth section).
+
+**Why it matters beyond the bug:** Schuller "introspective affect reporting" Absent gap. Layer 3 self-verification is structurally similar to introspective reporting. This is the substrate for Paper 3.
+
+---
+
 ## Interoception (AE Gaps — Schuller Absent items)
 
 **Design doc:** `docs/spec/design/ANI-AE-Gaps-Spec.md`
