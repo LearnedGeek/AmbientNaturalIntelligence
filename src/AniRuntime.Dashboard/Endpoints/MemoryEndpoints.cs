@@ -96,6 +96,9 @@ public static class MemoryEndpoints
                 content = r.Content.Length > 150 ? r.Content[..150] + "..." : r.Content,
                 importance = r.Importance,
                 isAnchored = r.AnchoredAt.HasValue,
+                // Epistemic Grounding (Apr 10): surface tier so the graph can color
+                // nodes by Facts / Episodic / Interior and make the separation visible
+                provenance = r.Provenance.ToString(),
                 createdAt = r.CreatedAt,
             }).ToList();
 
@@ -121,6 +124,7 @@ public static class MemoryEndpoints
         RelationalValence = r.RelationalValence,
         SourceName = r.SourceName,
         IsAnchored = r.AnchoredAt.HasValue,
+        Provenance = r.Provenance.ToString(),
         CreatedAt = r.CreatedAt,
         OccurredAt = r.OccurredAt,
     };
