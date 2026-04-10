@@ -291,6 +291,62 @@ This is the "architecture over instruction" principle (Apr 7 prompt simplificati
 
 ---
 
+## Implementation Notes (Apr 10, 2026)
+
+### Naming Conventions
+
+Two distinct "tier" concepts coexist in the codebase:
+
+1. **`DecayTier` enum** (`Standard`, `Anchored`) — controls memory decay behavior. Anchored memories never fade. This is Feature 16 from the existing codebase, previously named `MemoryTier`. Renamed to `DecayTier` for clarity now that a second tier concept exists.
+2. **`EpistemicTier` enum** (`Facts`, `Episodic`, `Interior`) — controls retrieval pool and prompt section. This is the new tier separation for epistemic grounding.
+
+Both properties are orthogonal. A memory can be `Anchored + Facts` (a foundation character fact), `Standard + Facts` (a one-off user assertion), `Standard + Interior` (a casual inner thought), etc. Most common combinations:
+
+| Memory kind | DecayTier | EpistemicTier |
+|---|---|---|
+| Character seed | Anchored | Facts |
+| User-asserted fact (twilio-inbound) | Standard | Facts |
+| Weather/RSS perception | Standard | Facts |
+| Conversation reply (Ani) | Standard | Episodic |
+| Conversation message (Mark) | Standard | Episodic |
+| Inner thought (Ani) | Standard | Interior |
+| World-experience reflection | Standard | Interior |
+| Foundation memory (relationship anchor) | Anchored | Facts |
+
+### World-Experience Routing
+
+World-experience records (~107 as of Apr 10) are routed to **Interior** tier without content splitting. Empirical investigation of the records shows they contain two kinds of content that might appear to be "facts":
+
+1. **References to existing Facts** — e.g., "protein shake not coffee" references Mark's character-seed routine. These are not new facts; they are Ani reflecting on facts that already exist in the Facts tier via their original perception/character-seed sources.
+2. **Quoted utterances** — e.g., "he said: 'Hahahaha even worse I'm at school!'" references a Mark utterance that already exists in the Episodic tier via the original conversation record.
+
+World-experience records **never originate facts**. They are Ani's reflective elaborations on facts that already exist elsewhere. Splitting them via LLM extraction would create duplicate Facts rows (the facts are already in other tiers) AND introduce LLM extraction as a new source of confabulation. The simpler and more correct routing is: world-experience → Interior, with the understanding that Interior content can *reference* Facts without claiming to *be* Facts.
+
+### Write-Path Migration Strategy
+
+Gradual migration — we don't touch every memory write path in Day 1. Instead:
+
+1. **Day 1**: Schema + backfill + a default `EpistemicTier.Episodic` value on `MemoryRecord.Provenance`. Existing code compiles without changes. All existing memories get backfilled based on `source_name` heuristics.
+2. **Day 2**: Explicit tier assignment on critical write paths (InnerThoughtPhase, ConversationReplyPhase, perception sources, character seed loading). Update INSERT statements and callers.
+3. **Day 3**: Tier-aware retrieval methods (`SearchFacts`, `SearchEpisodic`, `SearchInterior`). Prompt builder updates.
+4. **Day 4+**: Shadow mode comparison, then switch to primary path.
+
+Each migrated write path explicitly sets `Provenance` at the call site. Un-migrated paths fall back to the default. This allows incremental rollout without breaking anything. The backfill heuristic and the explicit write-path assignment should eventually agree; when they do, the default can be removed and `Provenance` can become a required parameter.
+
+### Future State: Database Architecture
+
+At current growth (~4,300 memories in ~6 months), the single-table SQLite store is manageable but is starting to feel the strain of its own success. Retrieval, migration, and embedding storage all benefit from the single-pool simplicity but will eventually hit scaling limits.
+
+**Flagged for future consideration (not Day 1):** Consider a multi-store architecture where each epistemic tier lives in an appropriately-shaped store:
+
+- **Facts** — structured store (columnar or relational), smaller row count, high trust, high access frequency. Possibly a separate SQLite database or a graph store if Mem0/A-MEM linking is deployed.
+- **Episodic** — time-series optimized store. Conversation history is naturally chronological. Could benefit from time-partitioned storage with retention policies.
+- **Interior** — document-style store. Inner thoughts are unstructured reflective text. This is where the bulk of memory growth happens and where embedding storage matters most.
+
+The "data lake" framing (Mark, Apr 10) captures the intuition: treat Ani's memory as a multi-modal lake with specialized stores for each kind of content rather than forcing everything through a single relational shape. Implementation is not part of the Epistemic Grounding rollout — this note exists so the decision point is documented when memory growth forces it.
+
+---
+
 ## Migration Path
 
 ### Week 1: Foundation

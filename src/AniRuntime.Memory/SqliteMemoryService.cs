@@ -178,11 +178,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             INSERT OR REPLACE INTO memories
                 (id, type, content, raw_json, importance, relational_valence, embedding,
                  is_resolved, source_name, occurred_at, created_at, resolved_at,
-                 tier, anchor_reason, anchored_at)
+                 tier, anchor_reason, anchored_at, provenance)
             VALUES
                 ($id, $type, $content, $raw_json, $importance, $relational_valence, $embedding,
                  $is_resolved, $source_name, $occurred_at, $created_at, $resolved_at,
-                 $tier, $anchor_reason, $anchored_at)
+                 $tier, $anchor_reason, $anchored_at, $provenance)
             """;
 
         cmd.Parameters.AddWithValue("$id",           record.Id.ToString());
@@ -197,9 +197,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         cmd.Parameters.AddWithValue("$occurred_at",  record.OccurredAt.ToString("O"));
         cmd.Parameters.AddWithValue("$created_at",   record.CreatedAt.ToString("O"));
         cmd.Parameters.AddWithValue("$resolved_at",  (object?)record.ResolvedAt?.ToString("O") ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$tier",         record.Tier.ToString());
+        cmd.Parameters.AddWithValue("$tier",         record.DecayTier.ToString());
         cmd.Parameters.AddWithValue("$anchor_reason", (object?)record.AnchorReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$anchored_at",  (object?)record.AnchoredAt?.ToString("O") ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$provenance",   record.Provenance.ToString());
 
         // Check if this is a create or update for audit purposes
         var isUpdate = false;
@@ -490,7 +491,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         // Feature 16: Anchored memories are decay-exempt — recency always 1.0
         float recency;
-        if (record.Tier == MemoryTier.Anchored)
+        if (record.DecayTier == DecayTier.Anchored)
         {
             recency = 1.0f;
         }
@@ -1923,6 +1924,37 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             addAt.ExecuteNonQuery();
         }
 
+        // Migration: Epistemic Grounding (Apr 10, 2026) — add provenance column for tier separation.
+        // Default 'Episodic' is the safest default for un-backfilled rows; BackfillProvenanceAsync
+        // sets the correct tier based on source_name heuristics.
+        // See docs/spec/design/ANI-Epistemic-Grounding-Architecture.md
+        using var pragmaProv = conn.CreateCommand();
+        pragmaProv.CommandText = "PRAGMA table_info(memories)";
+        using var readerProv = pragmaProv.ExecuteReader();
+        var hasProvenanceColumn = false;
+        while (readerProv.Read())
+        {
+            if (readerProv.GetString(1) == "provenance")
+            {
+                hasProvenanceColumn = true;
+                break;
+            }
+        }
+        readerProv.Close();
+
+        if (!hasProvenanceColumn)
+        {
+            using var addProv = conn.CreateCommand();
+            addProv.CommandText = "ALTER TABLE memories ADD COLUMN provenance TEXT NOT NULL DEFAULT 'Episodic'";
+            addProv.ExecuteNonQuery();
+
+            // Backfill provenance for existing rows using the heuristic. We do this inline
+            // on the migration path so pre-existing memories get their correct tier the
+            // moment the column is added, rather than waiting for a separate backfill pass.
+            // The heuristic is deterministic and idempotent, so re-running it is safe.
+            BackfillProvenance(conn);
+        }
+
         // Migration: Feature 17 — add contact_gap_tension column to emotional_state_history
         using var pragmaCmd3 = conn.CreateCommand();
         pragmaCmd3.CommandText = "PRAGMA table_info(emotional_state_history)";
@@ -2051,6 +2083,56 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     }
 
     /// <summary>
+    /// Epistemic Grounding (Apr 10, 2026): Backfills the provenance column for all
+    /// existing memory records based on source_name and type heuristics. Called once
+    /// as part of the migration that adds the provenance column. Deterministic and
+    /// idempotent — re-running is safe.
+    ///
+    /// Heuristic is encapsulated in <see cref="ProvenanceBackfill"/>.
+    /// </summary>
+    private static void BackfillProvenance(Microsoft.Data.Sqlite.SqliteConnection conn)
+    {
+        var idsByTier = new Dictionary<EpistemicTier, List<string>>
+        {
+            [EpistemicTier.Facts]    = new(),
+            [EpistemicTier.Episodic] = new(),
+            [EpistemicTier.Interior] = new(),
+        };
+
+        using (var selectCmd = conn.CreateCommand())
+        {
+            selectCmd.CommandText = "SELECT id, source_name, type FROM memories";
+            using var reader = selectCmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetString(0);
+                var sourceName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var type = (MemoryType)reader.GetInt32(2);
+                var tier = ProvenanceBackfill.ClassifyProvenance(sourceName, type);
+                idsByTier[tier].Add(id);
+            }
+        }
+
+        // One prepared UPDATE per tier, rebinding just the id between calls.
+        foreach (var (tier, ids) in idsByTier)
+        {
+            if (ids.Count == 0) continue;
+
+            using var updateCmd = conn.CreateCommand();
+            updateCmd.CommandText = "UPDATE memories SET provenance = $tier WHERE id = $id";
+            var tierParam = updateCmd.Parameters.Add("$tier", Microsoft.Data.Sqlite.SqliteType.Text);
+            var idParam = updateCmd.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Text);
+            tierParam.Value = tier.ToString();
+
+            foreach (var id in ids)
+            {
+                idParam.Value = id;
+                updateCmd.ExecuteNonQuery();
+            }
+        }
+    }
+
+    /// <summary>
     /// Write an audit log entry for any memory change (create, update, delete, merge).
     /// Captures full content snapshots for rollback capability.
     /// </summary>
@@ -2099,9 +2181,18 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
         {
             var tierOrdinal = reader.GetOrdinal("tier");
-            var tier = reader.IsDBNull(tierOrdinal) ? MemoryTier.Standard
-                : Enum.TryParse<MemoryTier>(reader.GetString(tierOrdinal), out var parsed) ? parsed
-                : MemoryTier.Standard;
+            var decayTier = reader.IsDBNull(tierOrdinal) ? DecayTier.Standard
+                : Enum.TryParse<DecayTier>(reader.GetString(tierOrdinal), out var parsedDecay) ? parsedDecay
+                : DecayTier.Standard;
+
+            // Epistemic Grounding: provenance column added Apr 10, 2026.
+            // Default to Episodic for pre-migration rows read before backfill runs.
+            var provenanceOrdinal = HasColumn(reader, "provenance") ? reader.GetOrdinal("provenance") : -1;
+            var provenance = provenanceOrdinal < 0 || reader.IsDBNull(provenanceOrdinal)
+                ? EpistemicTier.Episodic
+                : Enum.TryParse<EpistemicTier>(reader.GetString(provenanceOrdinal), out var parsedProv)
+                    ? parsedProv
+                    : EpistemicTier.Episodic;
 
             results.Add(new MemoryRecord
             {
@@ -2117,13 +2208,29 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 OccurredAt  = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("occurred_at"))),
                 CreatedAt   = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
                 ResolvedAt  = reader.IsDBNull(reader.GetOrdinal("resolved_at"))  ? null : DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("resolved_at"))),
-                Tier        = tier,
+                DecayTier   = decayTier,
+                Provenance  = provenance,
                 AnchorReason = reader.IsDBNull(reader.GetOrdinal("anchor_reason")) ? null : reader.GetString(reader.GetOrdinal("anchor_reason")),
                 AnchoredAt  = reader.IsDBNull(reader.GetOrdinal("anchored_at"))  ? null : DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("anchored_at"))),
             });
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Checks if a column exists in the current reader's result schema.
+    /// Used for backward-compatible reads against pre-migration rows — e.g., reading
+    /// a memory row from a database that hasn't yet run the provenance migration.
+    /// </summary>
+    private static bool HasColumn(System.Data.Common.DbDataReader reader, string columnName)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (reader.GetName(i).Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     public async Task<List<MemoryContradiction>> GetFlaggedContradictionsAsync(

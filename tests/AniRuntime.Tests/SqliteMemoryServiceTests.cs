@@ -379,7 +379,7 @@ public class SqliteMemoryServiceTests : AniTestBase
             Type        = MemoryType.Episodic,
             Content     = "Mark told me about visiting the grave every year for 18 years.",
             Importance  = 0.95f,
-            Tier        = MemoryTier.Anchored,
+            DecayTier   = DecayTier.Anchored,
             AnchorReason = "highest pain + highest trust",
             AnchoredAt  = DateTimeOffset.UtcNow,
         };
@@ -388,7 +388,7 @@ public class SqliteMemoryServiceTests : AniTestBase
 
         var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
         anchored.Should().HaveCount(1);
-        anchored[0].Tier.Should().Be(MemoryTier.Anchored);
+        anchored[0].DecayTier.Should().Be(DecayTier.Anchored);
         anchored[0].AnchorReason.Should().Be("highest pain + highest trust");
         anchored[0].AnchoredAt.Should().NotBeNull();
     }
@@ -398,12 +398,12 @@ public class SqliteMemoryServiceTests : AniTestBase
     {
         await _svc.SaveAsync(new MemoryRecord
         {
-            Type = MemoryType.Episodic, Content = "normal memory", Tier = MemoryTier.Standard,
+            Type = MemoryType.Episodic, Content = "normal memory", DecayTier = DecayTier.Standard,
         });
         await _svc.SaveAsync(new MemoryRecord
         {
             Type = MemoryType.Episodic, Content = "foundation memory",
-            Tier = MemoryTier.Anchored, AnchorReason = "test",
+            DecayTier = DecayTier.Anchored, AnchorReason = "test",
         });
 
         var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
@@ -426,7 +426,7 @@ public class SqliteMemoryServiceTests : AniTestBase
 
         var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
         anchored.Should().HaveCount(1);
-        anchored[0].Tier.Should().Be(MemoryTier.Anchored);
+        anchored[0].DecayTier.Should().Be(DecayTier.Anchored);
         anchored[0].AnchorReason.Should().Be("relational declaration");
         anchored[0].Importance.Should().BeGreaterOrEqualTo(0.9f);
     }
