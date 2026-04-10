@@ -86,6 +86,65 @@ public class ContextBuilder
             }
         }
 
+        // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
+        // Tier-scoped retrieval — populate Facts / Episodic / Interior pools.
+        // The PromptBuilder will render each into its own prompt section.
+        //
+        // Design principle: each tier has a different retrieval role.
+        //   - Facts pool: grounds factual assertions about Mark's world. Query
+        //     by current perceptions to find relevant facts, fall back to
+        //     recent facts if no perceptions. Anchored memories are always
+        //     included as the foundation layer.
+        //   - Episodic pool: conversation continuity. The recent verbatim
+        //     conversation messages (populated during reply generation, not
+        //     here — reply path injects them directly from the thread).
+        //   - Interior pool: voice, mood, self-model. Retrieved by recent
+        //     thoughts/reactions so the model's output matches its ongoing
+        //     felt state.
+        var groundedFacts = new List<MemoryRecord>();
+        var interiorContext = new List<MemoryRecord>();
+        try
+        {
+            if (perceptions.Count > 0)
+            {
+                var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
+
+                // Facts: tier-scoped semantic search for grounded claims
+                var factResults = await _search.SearchByTierAsync(
+                    searchQuery, EpistemicTier.Facts, 5, ct).ConfigureAwait(false);
+                groundedFacts = factResults.Select(s => s.Record).ToList();
+
+                // Interior: tier-scoped semantic search for voice/mood continuity
+                var interiorResults = await _search.SearchByTierAsync(
+                    searchQuery, EpistemicTier.Interior, 5, ct).ConfigureAwait(false);
+                interiorContext = interiorResults.Select(s => s.Record).ToList();
+            }
+            else
+            {
+                // No perceptions — fall back to recent memories from each pool
+                groundedFacts = (await _search.GetByTierAsync(
+                    EpistemicTier.Facts, 8, ct).ConfigureAwait(false)).ToList();
+                interiorContext = (await _search.GetByTierAsync(
+                    EpistemicTier.Interior, 5, ct).ConfigureAwait(false)).ToList();
+            }
+
+            // Anchored memories are always facts — ensure they're in the Facts pool
+            // even when semantic search didn't surface them. Dedup by id.
+            var anchoredIds = anchoredMemories.Select(m => m.Id).ToHashSet();
+            var missingAnchors = anchoredMemories
+                .Where(m => !groundedFacts.Any(g => g.Id == m.Id));
+            groundedFacts.InsertRange(0, missingAnchors);
+
+            _log.LogDebug(
+                "Tier retrieval: {Facts} facts, {Interior} interior (from {Source})",
+                groundedFacts.Count, interiorContext.Count,
+                perceptions.Count > 0 ? "perception query" : "recent fallback");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Tier-scoped retrieval failed — continuing with empty pools");
+        }
+
         // Extract recent conversation summary — the most important context for what's
         // happening in the contact's life right now. This feeds into inner thoughts,
         // outreach decisions, and outreach messages.
@@ -226,6 +285,11 @@ public class ContextBuilder
             PatternAwareness         = patternAwareness,
             ProcessedThemes          = processedThemes,
             ThoughtDiversityNudge    = BuildThoughtDiversityNudge(),
+            // Epistemic Grounding (Apr 10, 2026): tier-partitioned pools
+            GroundedFacts            = groundedFacts,
+            InteriorContext          = interiorContext,
+            // RecentExchanges is populated by the reply path from the active
+            // conversation thread, not here — ambient cycles leave it empty.
         };
     }
 

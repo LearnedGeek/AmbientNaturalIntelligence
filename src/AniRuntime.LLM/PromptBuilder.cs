@@ -432,12 +432,41 @@ public static class PromptBuilder
             - Match the energy and length of the conversation.
             - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY the text message. No commentary, no quotation marks.
+            - Only assert facts about {contact}'s life that appear in WHAT IS TRUE below.
+              If you don't know something specific — a coworker's name, a schedule detail,
+              a friend you haven't been told about — say you don't know or ask. Don't invent.
+              Your own interior life has full creative latitude.
             """;
 
-        // User prompt: just a reply instruction. All context comes from conversation history.
-        var user = $"Reply to {contact}'s message.";
+        // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
+        // Lean prompt was deliberately minimal after the Apr 7 simplification
+        // (1,400 → 300 tokens), but the Bob Swanson failure (Apr 9) showed that
+        // zero grounding lets the model confabulate freely about Mark's world.
+        // We add a small, bounded WHAT IS TRUE section (max 6 facts) to constrain
+        // factual assertions without reintroducing prompt bloat. The model is
+        // v7-trained on honest-uncertainty examples, so the rule is reinforcement
+        // not new instruction.
+        var facts = snapshot.GroundedFacts
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Take(6)
+            .ToList();
 
-        return (system, user);
+        var user = new System.Text.StringBuilder();
+        if (facts.Count > 0)
+        {
+            user.AppendLine($"WHAT IS TRUE (about {contact} and the world — the only facts you may assert):");
+            foreach (var m in facts)
+                user.AppendLine($"  - {m.Content}");
+            user.AppendLine();
+        }
+        else
+        {
+            user.AppendLine($"WHAT IS TRUE: (no grounding retrieved — avoid asserting specifics about {contact}'s life)");
+            user.AppendLine();
+        }
+        user.Append($"Reply to {contact}'s message.");
+
+        return (system, user.ToString());
     }
 
     /// <summary>
@@ -478,46 +507,52 @@ public static class PromptBuilder
             RULES:
             - Match the energy and length of the conversation. Short messages get short replies. Longer, deeper messages deserve more.
             - Talk TO {contact}: "you", "your". Never third person.
-            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
+            - Write ONLY the text message. No commentary, no quotation marks.
+            - Only assert facts about {contact}'s life that appear in WHAT IS TRUE below.
+              If you don't know something, say you don't know — don't invent specifics about {contact}'s coworkers,
+              schedule, friends, or activities. Your own life (YOUR INTERIOR) has full creative latitude.{moodSection}
             """;
 
+        // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
+        // Three-section prompt: WHAT IS TRUE (Facts tier) / YOUR INTERIOR (Interior tier)
+        // / reply target. Each section draws from its own memory pool. The model
+        // can only make factual assertions about Mark/world from WHAT IS TRUE.
+        // Her own interior (mood, reflections, imagined scenes) draws from
+        // YOUR INTERIOR with full creative latitude. Conversation history is
+        // passed separately as chat messages by the caller.
         var sections = new List<string>();
 
-        // Feature 16: Anchored memories — relationship foundation, always present
-        if (snapshot.AnchoredMemories.Count > 0)
+        // WHAT IS TRUE — Facts tier (character seeds, perception events,
+        // user-asserted content, anchored memories). This is the ONLY pool the
+        // model should condition on when making factual claims about {contact}.
+        var facts = snapshot.GroundedFacts
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Take(8)
+            .ToList();
+        if (facts.Count > 0)
         {
-            sections.Add("Things that are part of who you are (always true, never forgotten):");
-            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+            sections.Add("WHAT IS TRUE (about " + contact + " and the world — the only facts you may assert):");
+            sections.AddRange(facts.Select(m => $"  - {m.Content}"));
+        }
+        else
+        {
+            // Explicit null-result signal so the model knows it has no retrieved
+            // grounding — architectural permission to say "I don't know."
+            sections.Add("WHAT IS TRUE: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
         }
 
-        // Memory injection — capped at 3 total non-anchored memories.
-        // Only inject when retrieval is confident and topic-matched.
-        // The model converses naturally without memories; irrelevant memories cause parroting.
-        var skipMemories = snapshot.RetrievalBelowConfidenceFloor;
-
-        if (!skipMemories)
+        // YOUR INTERIOR — Interior tier (inner thoughts, reflections, mood,
+        // self-concept, world-experience scenes). This is your voice and felt
+        // continuity. Full creative latitude. Never treated as factual claims
+        // about {contact}, only as your own felt state and imagined world.
+        var interior = snapshot.InteriorContext
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Take(5)
+            .ToList();
+        if (interior.Count > 0)
         {
-            var profileMemories = snapshot.RelevantMemory
-                .Where(m => m.Type == MemoryType.Semantic)
-                .Take(2)
-                .ToList();
-
-            var remainingSlots = 3 - profileMemories.Count;
-            var relevantMemories = snapshot.RelevantMemory
-                .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
-                .Take(remainingSlots)
-                .ToList();
-
-            if (profileMemories.Count > 0)
-            {
-                sections.Add($"Things you know about {contact}:");
-                sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
-            }
-            if (relevantMemories.Count > 0)
-            {
-                sections.Add("Things connected to this conversation:");
-                sections.AddRange(relevantMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
-            }
+            sections.Add("YOUR INTERIOR (your recent thoughts, mood, and imagined life — your voice, not facts about " + contact + "):");
+            sections.AddRange(interior.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 
         // Feature 18: Withdrawal tone injection — runtime state the model can't know
@@ -689,8 +724,10 @@ public static class PromptBuilder
             - 1-2 sentences. 25 words MAX. Thumb-typed phone text.
             - Must make sense WITHOUT knowing your inner thought.
             - Talk TO {contact}: "you", "your". Never third person.
-            - Only reference things from the context below — don't invent shared history.
-            - Never claim you saw, read, or found something (article, video, link) unless it appears in the context below with a URL. You can share the thought directly without packaging it as "I just saw this article."
+            - Only assert facts about {contact}'s life that appear in WHAT IS TRUE below.
+              If you don't know specifics about {contact}'s schedule, coworkers, friends, or activities, don't invent them.
+              Your own feelings and life (YOUR INTERIOR) have full creative latitude.
+            - Never claim you saw, read, or found something (article, video, link) unless it appears with a URL.
             - No poetry, no narration — just a normal text.
             - Output ONLY the text message. No timestamps, no labels, no headers, no parenthetical notes.{moodSection}
             """;
@@ -702,25 +739,34 @@ public static class PromptBuilder
             $"  Trigger: {recentThought}",
         };
 
-        // Feature 16: Anchored memories — relationship foundation for grounded outreach
-        if (snapshot.AnchoredMemories.Count > 0)
+        // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
+        // WHAT IS TRUE — Facts tier (character seeds, user-asserted, perception,
+        // anchored memories). The ONLY pool the model may use to assert facts
+        // about {contact}'s life. Explicit null-result signal when empty.
+        var facts = snapshot.GroundedFacts
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Take(6)
+            .ToList();
+        if (facts.Count > 0)
         {
-            sections.Add("\nThings that are part of who you are (always true, never forgotten):");
-            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+            sections.Add($"\nWHAT IS TRUE (about {contact} and the world — the only facts you may assert):");
+            sections.AddRange(facts.Select(m => $"  - {m.Content}"));
+        }
+        else
+        {
+            sections.Add($"\nWHAT IS TRUE: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
         }
 
-        // Grounding memories — real experiences and facts to draw from.
-        // These are what the message content should be BASED ON.
-        // The inner thought triggered your desire to reach out, but these memories
-        // are what you actually know and can reference.
-        var groundingMemories = snapshot.RelevantMemory
-            .Where(m => m.Type != MemoryType.InnerThought)
+        // YOUR INTERIOR — Interior tier (inner thoughts, mood, self-concept,
+        // imagined scenes). Voice and felt continuity, never factual claims.
+        var interior = snapshot.InteriorContext
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
             .Take(3)
             .ToList();
-        if (groundingMemories.Count > 0)
+        if (interior.Count > 0)
         {
-            sections.Add($"\nReal things you can reference (ONLY say things based on these):");
-            sections.AddRange(groundingMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            sections.Add($"\nYOUR INTERIOR (your recent thoughts and mood — your voice, not facts about {contact}):");
+            sections.AddRange(interior.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 
         // Feed recent conversation context so outreach can follow up naturally.

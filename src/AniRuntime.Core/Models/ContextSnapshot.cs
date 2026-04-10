@@ -109,4 +109,31 @@ public class ContextSnapshot
     /// </summary>
     public string? WorldSeed { get; set; }
 
+    // ─── Epistemic Grounding (Apr 10, 2026): Tier-partitioned retrieval ───
+    // These three lists hold memories retrieved for each prompt section. The
+    // ContextBuilder populates them using tier-scoped search; the PromptBuilder
+    // renders each list into its dedicated section of the generation prompt.
+    // See docs/spec/design/ANI-Epistemic-Grounding-Architecture.md
+
+    /// <summary>
+    /// Facts tier: "What is true about Mark and the world" — character seeds,
+    /// perception events, user-asserted content. The ONLY pool the model
+    /// should condition on when making assertions about Mark's life.
+    /// </summary>
+    public List<MemoryRecord> GroundedFacts { get; set; } = new();
+
+    /// <summary>
+    /// Episodic tier: "What was said" — recent verbatim conversation record.
+    /// Retrieved for conversation continuity, NEVER treated as factual grounding.
+    /// Populated for conversation reply generation only; empty in ambient cycles.
+    /// </summary>
+    public List<MemoryRecord> RecentExchanges { get; set; } = new();
+
+    /// <summary>
+    /// Interior tier: "Who you are and what you feel" — inner thoughts, mood,
+    /// self-concept, associations, world-experience reflections, Ani's
+    /// interpretations of Mark. Full creative latitude, structurally isolated
+    /// from the fact pool.
+    /// </summary>
+    public List<MemoryRecord> InteriorContext { get; set; } = new();
 }
