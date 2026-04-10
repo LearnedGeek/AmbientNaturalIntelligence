@@ -432,20 +432,14 @@ public static class PromptBuilder
             - Match the energy and length of the conversation.
             - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY the text message. No commentary, no quotation marks.
-            - Only assert facts about {contact}'s life that appear in WHAT IS TRUE below.
-              If you don't know something specific — a coworker's name, a schedule detail,
-              a friend you haven't been told about — say you don't know or ask. Don't invent.
-              Your own interior life has full creative latitude.
             """;
 
         // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
-        // Lean prompt was deliberately minimal after the Apr 7 simplification
-        // (1,400 → 300 tokens), but the Bob Swanson failure (Apr 9) showed that
-        // zero grounding lets the model confabulate freely about Mark's world.
-        // We add a small, bounded WHAT IS TRUE section (max 6 facts) to constrain
-        // factual assertions without reintroducing prompt bloat. The model is
-        // v7-trained on honest-uncertainty examples, so the rule is reinforcement
-        // not new instruction.
+        // Two-stage positioning: WHAT IS TRUE first, then an IMMEDIATE instruction
+        // block positioned directly before the reply ask. This puts the constraint
+        // adjacent to the task, where model attention is strongest. V7 training
+        // heavily includes confident work-discussion examples; buried instructions
+        // lose to fine-tuning. Adjacency improves override strength.
         var facts = snapshot.GroundedFacts
             .Where(m => !string.IsNullOrWhiteSpace(m.Content))
             .Take(6)
@@ -454,16 +448,26 @@ public static class PromptBuilder
         var user = new System.Text.StringBuilder();
         if (facts.Count > 0)
         {
-            user.AppendLine($"WHAT IS TRUE (about {contact} and the world — the only facts you may assert):");
+            user.AppendLine($"WHAT IS TRUE about {contact} (the ONLY specific facts you may assert about {contact}'s life):");
             foreach (var m in facts)
                 user.AppendLine($"  - {m.Content}");
             user.AppendLine();
         }
         else
         {
-            user.AppendLine($"WHAT IS TRUE: (no grounding retrieved — avoid asserting specifics about {contact}'s life)");
+            user.AppendLine($"WHAT IS TRUE about {contact}: nothing specific retrieved for this moment.");
             user.AppendLine();
         }
+
+        // Immediate constraint — positioned adjacent to the task, not buried in RULES.
+        user.AppendLine($"CRITICAL: {contact} just asked you something. Before you reply:");
+        user.AppendLine($"  1. If your reply names a coworker, student, client, meeting, project, or specific task");
+        user.AppendLine($"     in {contact}'s life — that entity MUST appear in WHAT IS TRUE above.");
+        user.AppendLine($"  2. If it doesn't appear above, you don't know it. Don't invent it.");
+        user.AppendLine($"     Instead: ask {contact}, or say you don't know, or talk about yourself.");
+        user.AppendLine($"  3. Your own interior — your bookstore day, your mood, your imagined scenes — has full latitude.");
+        user.AppendLine($"     The constraint only applies to specific claims about {contact}'s external world.");
+        user.AppendLine();
         user.Append($"Reply to {contact}'s message.");
 
         return (system, user.ToString());

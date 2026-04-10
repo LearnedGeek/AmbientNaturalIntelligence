@@ -76,22 +76,28 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
 
+        // Post-Apr-10 hardening: "nothing specific retrieved" replaces the old wording.
+        // The test verifies the null-result signal is present regardless of exact phrasing.
         user.Should().Contain("WHAT IS TRUE");
-        user.Should().Contain("no grounding retrieved");
-        user.Should().Contain("avoid asserting specifics");
+        user.Should().Contain("nothing specific retrieved");
     }
 
     [Fact]
-    public void LeanConversation_SystemRule_ConstrainsFactualAssertions()
+    public void LeanConversation_InstructionAdjacentToReplyAsk()
     {
+        // Apr 10 hardening: the constraint must be positioned IN the user message,
+        // adjacent to the reply ask, not buried at the bottom of system rules.
+        // Model attention decays with distance — adjacency is what makes the
+        // constraint stick.
         var snapshot = BuildSnapshot();
         var thread = new ConversationThread();
 
-        var (system, _) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
 
-        system.Should().Contain("Only assert facts about Mark's life");
-        system.Should().Contain("WHAT IS TRUE");
-        system.Should().Contain("Don't invent");
+        user.Should().Contain("CRITICAL");
+        user.Should().Contain("coworker, student, client, meeting, project");
+        user.Should().Contain("Don't invent");
+        user.Should().Contain("full latitude");
     }
 
     [Fact]
