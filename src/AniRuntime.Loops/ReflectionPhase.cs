@@ -133,6 +133,10 @@ public class ReflectionPhase
                 Importance = 0.8f,
                 RelationalValence = 0.5f,
                 SourceName = "reflection",
+                // Epistemic Grounding (Apr 10): Reflections are syntheses of prior
+                // memory into higher-level self-observations — Interior tier. These
+                // inform Ani's self-model but are not factual assertions about Mark's world.
+                Provenance = EpistemicTier.Interior,
             };
 
             await _persist.SaveAsync(record, ct).ConfigureAwait(false);

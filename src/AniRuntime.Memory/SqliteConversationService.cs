@@ -194,6 +194,12 @@ public class SqliteConversationService : IConversationService, IDisposable
                 RelationalValence = message.Role == Roles.Mark ? 0.7f : 0.5f,
                 SourceName     = "conversation",
                 OccurredAt     = message.SentAt,
+                // Epistemic Grounding (Apr 10): Verbatim conversation messages
+                // (both sides) are Episodic tier — "what was said," retrieved
+                // for continuity, never treated as factual grounding.
+                // Mark's assertions ALSO flow into Facts tier via the separate
+                // twilio-inbound perception source path.
+                Provenance     = EpistemicTier.Episodic,
             }, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -229,6 +235,9 @@ public class SqliteConversationService : IConversationService, IDisposable
                 Importance = 0.8f,
                 SourceName = "conversation",
                 OccurredAt = messages[^1].SentAt,
+                // Epistemic Grounding (Apr 10): Thread summaries are compressed
+                // verbatim conversation records — Episodic tier.
+                Provenance = EpistemicTier.Episodic,
             }, ct).ConfigureAwait(false);
 
             _log.LogInformation(

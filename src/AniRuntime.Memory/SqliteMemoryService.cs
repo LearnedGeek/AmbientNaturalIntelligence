@@ -1034,6 +1034,88 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     }
 
     /// <summary>
+    /// Epistemic Grounding (Apr 10, 2026): Tier-scoped semantic search. Returns only
+    /// memories whose provenance matches the requested tier. Used by prompt builders
+    /// to populate the Facts / Episodic / Interior sections from their correct pools.
+    /// </summary>
+    public async Task<IEnumerable<ScoredMemory>> SearchByTierAsync(
+        string query, EpistemicTier tier, int topK = 5, CancellationToken ct = default)
+    {
+        if (_ollama is null)
+        {
+            _log.LogDebug("Tier search unavailable (no embedding client) — returning empty");
+            return Enumerable.Empty<ScoredMemory>();
+        }
+
+        float[] queryEmbedding;
+        try
+        {
+            queryEmbedding = await _ollama.EmbedAsync(query, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to embed tier-search query — returning empty");
+            return Enumerable.Empty<ScoredMemory>();
+        }
+
+        if (queryEmbedding.Length == 0)
+            return Enumerable.Empty<ScoredMemory>();
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        // Filter at the SQL level — only load candidate rows matching the requested tier.
+        // This is more efficient than loading everything and filtering in memory.
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND provenance = $tier";
+        cmd.Parameters.AddWithValue("$tier", tier.ToString());
+
+        var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+
+        var ranked = candidates
+            .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
+            .Select(r =>
+            {
+                var cosine = CosineSimilarity(queryEmbedding, r.Embedding!);
+                var composite = ComputeRetrievalScore(queryEmbedding, r);
+                return new ScoredMemory(r, composite, cosine);
+            })
+            .OrderByDescending(x => x.CompositeScore)
+            .Take(topK)
+            .ToList();
+
+        _log.LogDebug(
+            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}",
+            tier, candidates.Count, ranked.Count,
+            ranked.Count > 0 ? ranked[0].CompositeScore : 0f);
+
+        return ranked;
+    }
+
+    /// <summary>
+    /// Epistemic Grounding (Apr 10, 2026): Non-scored tier retrieval. Returns the N
+    /// most recent memories of the requested tier without semantic ranking. Useful
+    /// when callers want "the N most recent Interior memories" as voice/mood context
+    /// regardless of any specific query.
+    /// </summary>
+    public async Task<IEnumerable<MemoryRecord>> GetByTierAsync(
+        EpistemicTier tier, int limit = 20, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        cmd.CommandText = """
+            SELECT * FROM memories
+            WHERE provenance = $tier
+            ORDER BY occurred_at DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$tier", tier.ToString());
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        return await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Feature 16: Promote an existing memory to the Anchored tier.
     /// Anchored memories are decay-exempt and always surface in context.
     /// </summary>

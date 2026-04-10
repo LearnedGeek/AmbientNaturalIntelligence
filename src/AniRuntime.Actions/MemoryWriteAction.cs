@@ -31,6 +31,10 @@ public class MemoryWriteAction : IAniAction
             Content    = decision.Message,
             Importance = decision.Confidence,
             OccurredAt = DateTimeOffset.UtcNow,
+            // Epistemic Grounding (Apr 10): MemoryWriteAction is used when Ani
+            // chooses to note something internally rather than send a message.
+            // Always Interior tier — this is her self-model being updated.
+            Provenance = EpistemicTier.Interior,
         }, ct).ConfigureAwait(false);
 
         _log.LogDebug("MemoryWriteAction saved: {Content}", decision.Message[..Math.Min(80, decision.Message.Length)]);

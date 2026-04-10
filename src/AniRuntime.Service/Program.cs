@@ -537,6 +537,11 @@ try
                     RelationalValence = relationalValence,
                     SourceName     = SourceNames.CharacterSeed,
                     OccurredAt     = DateTimeOffset.UtcNow,
+                    // Epistemic Grounding (Apr 10): Character seeds are the
+                    // highest-trust factual substrate about Mark and Ani's world.
+                    // Always Facts tier — this is where Mark-about-himself and
+                    // foundational relationship facts live.
+                    Provenance     = EpistemicTier.Facts,
                 });
             }
             Log.Information("Backstory seeding complete");

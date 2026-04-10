@@ -198,6 +198,10 @@ public class OutreachPhase
             Content    = MemoryPrefixes.FormatOutreach(cs.PrimaryContactName ?? "Mark", decision.Message),
             Importance = 0.7f,
             OccurredAt = DateTimeOffset.UtcNow,
+            // Epistemic Grounding (Apr 10): Dispatched outreach is a verbatim
+            // record of what Ani sent — Episodic tier. Conversation continuity,
+            // not factual grounding about Mark's world.
+            Provenance = EpistemicTier.Episodic,
         }, ct).ConfigureAwait(false);
     }
 
@@ -287,6 +291,9 @@ public class OutreachPhase
             Content    = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})",
             Importance = 0.5f,
             OccurredAt = DateTimeOffset.UtcNow,
+            // Epistemic Grounding (Apr 10): Reactive shares are dispatched
+            // outreach — Episodic tier (verbatim record of what Ani sent).
+            Provenance = EpistemicTier.Episodic,
         }, ct).ConfigureAwait(false);
 
         return true;
@@ -314,6 +321,10 @@ public class OutreachPhase
             Content    = narrative,
             Importance = 0.4f,
             SourceName = "silence-choice",
+            // Epistemic Grounding (Apr 10): Silence-choice narratives are Ani's
+            // reflection on her own restraint — Interior tier. Self-model content
+            // about why she chose not to reach out.
+            Provenance = EpistemicTier.Interior,
         }, ct).ConfigureAwait(false);
 
         _log.LogInformation("Silence recorded (desire={Desire:F2}): chose not to reach out",

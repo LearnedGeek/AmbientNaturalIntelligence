@@ -275,6 +275,10 @@ public class CognitiveCycleProcessor
                 Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
                 SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
                 OccurredAt  = DateTimeOffset.UtcNow,
+                // Epistemic Grounding (Apr 10): Inner thoughts and world-experience
+                // reflections are always Interior tier — they are Ani's self-model
+                // content and never grounded facts about Mark's world.
+                Provenance  = EpistemicTier.Interior,
             }, ct).ConfigureAwait(false);
         }
 

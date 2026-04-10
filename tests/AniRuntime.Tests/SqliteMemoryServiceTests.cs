@@ -617,4 +617,185 @@ public class SqliteMemoryServiceTests : AniTestBase
         cmd.Parameters.AddWithValue("$flagged_at", DateTimeOffset.UtcNow.ToString("O"));
         await cmd.ExecuteNonQueryAsync();
     }
+
+    // ── Epistemic Grounding: Tier-aware retrieval ─────────────────────────────
+
+    [Fact]
+    public async Task SaveAsync_WithExplicitProvenance_RoundTrips()
+    {
+        var record = new MemoryRecord
+        {
+            Type       = MemoryType.Semantic,
+            Content    = "Mark teaches at WCTC, evening classes",
+            Importance = 0.8f,
+            Provenance = EpistemicTier.Facts,
+        };
+
+        await _svc.SaveAsync(record);
+
+        var results = (await _svc.GetByTypeAsync(MemoryType.Semantic)).ToList();
+        results.Should().ContainSingle(r => r.Content == record.Content);
+        results[0].Provenance.Should().Be(EpistemicTier.Facts);
+    }
+
+    [Fact]
+    public async Task GetByTierAsync_FiltersToRequestedTier()
+    {
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Semantic, Content = "fact 1", Provenance = EpistemicTier.Facts,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Semantic, Content = "fact 2", Provenance = EpistemicTier.Facts,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.Episodic, Content = "said 1", Provenance = EpistemicTier.Episodic,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.InnerThought, Content = "thought 1", Provenance = EpistemicTier.Interior,
+        });
+
+        var facts = (await _svc.GetByTierAsync(EpistemicTier.Facts)).ToList();
+        var episodic = (await _svc.GetByTierAsync(EpistemicTier.Episodic)).ToList();
+        var interior = (await _svc.GetByTierAsync(EpistemicTier.Interior)).ToList();
+
+        facts.Should().HaveCount(2);
+        facts.Should().OnlyContain(r => r.Provenance == EpistemicTier.Facts);
+        episodic.Should().HaveCount(1);
+        episodic[0].Content.Should().Be("said 1");
+        interior.Should().HaveCount(1);
+        interior[0].Content.Should().Be("thought 1");
+    }
+
+    [Fact]
+    public async Task GetByTierAsync_OrdersByOccurredAtDescending()
+    {
+        var oldest = new MemoryRecord
+        {
+            Type = MemoryType.Semantic,
+            Content = "oldest fact",
+            Provenance = EpistemicTier.Facts,
+            OccurredAt = DateTimeOffset.UtcNow.AddHours(-3),
+        };
+        var middle = new MemoryRecord
+        {
+            Type = MemoryType.Semantic,
+            Content = "middle fact",
+            Provenance = EpistemicTier.Facts,
+            OccurredAt = DateTimeOffset.UtcNow.AddHours(-1),
+        };
+        var newest = new MemoryRecord
+        {
+            Type = MemoryType.Semantic,
+            Content = "newest fact",
+            Provenance = EpistemicTier.Facts,
+            OccurredAt = DateTimeOffset.UtcNow,
+        };
+
+        await _svc.SaveAsync(oldest);
+        await _svc.SaveAsync(middle);
+        await _svc.SaveAsync(newest);
+
+        var results = (await _svc.GetByTierAsync(EpistemicTier.Facts)).ToList();
+
+        results.Should().HaveCount(3);
+        results[0].Content.Should().Be("newest fact");
+        results[1].Content.Should().Be("middle fact");
+        results[2].Content.Should().Be("oldest fact");
+    }
+
+    [Fact]
+    public async Task GetByTierAsync_RespectsLimit()
+    {
+        for (var i = 0; i < 10; i++)
+            await _svc.SaveAsync(new MemoryRecord
+            {
+                Type = MemoryType.InnerThought,
+                Content = $"interior thought {i}",
+                Provenance = EpistemicTier.Interior,
+            });
+
+        var results = (await _svc.GetByTierAsync(EpistemicTier.Interior, limit: 4)).ToList();
+        results.Should().HaveCount(4);
+    }
+
+    [Fact]
+    public async Task GetByTierAsync_EmptyPool_ReturnsEmpty()
+    {
+        // No Facts-tier records written — Interior only
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type = MemoryType.InnerThought,
+            Content = "thought",
+            Provenance = EpistemicTier.Interior,
+        });
+
+        var facts = await _svc.GetByTierAsync(EpistemicTier.Facts);
+        facts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ProvenanceDefault_IsEpisodicWhenNotSet()
+    {
+        // Any memory saved without explicit Provenance should default to Episodic
+        // (the safe fallback — never contaminates Facts pool, never grants Interior latitude)
+        var record = new MemoryRecord
+        {
+            Type = MemoryType.Episodic,
+            Content = "unspecified tier",
+        };
+
+        await _svc.SaveAsync(record);
+
+        var results = (await _svc.GetByTierAsync(EpistemicTier.Episodic)).ToList();
+        results.Should().ContainSingle(r => r.Content == "unspecified tier");
+        results[0].Provenance.Should().Be(EpistemicTier.Episodic);
+    }
+
+    [Fact]
+    public async Task DecayTierAndProvenance_AreIndependent()
+    {
+        // A memory can be Anchored+Facts, Standard+Facts, Standard+Interior, etc.
+        // DecayTier and EpistemicTier are orthogonal properties.
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.Semantic,
+            Content    = "anchored fact",
+            DecayTier  = DecayTier.Anchored,
+            Provenance = EpistemicTier.Facts,
+            AnchorReason = "foundation",
+            AnchoredAt = DateTimeOffset.UtcNow,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.InnerThought,
+            Content    = "anchored interior",
+            DecayTier  = DecayTier.Anchored,
+            Provenance = EpistemicTier.Interior,
+            AnchorReason = "core self-concept",
+            AnchoredAt = DateTimeOffset.UtcNow,
+        });
+        await _svc.SaveAsync(new MemoryRecord
+        {
+            Type       = MemoryType.Episodic,
+            Content    = "standard episodic",
+            DecayTier  = DecayTier.Standard,
+            Provenance = EpistemicTier.Episodic,
+        });
+
+        var anchored = (await _svc.GetAnchoredMemoriesAsync()).ToList();
+        anchored.Should().HaveCount(2);
+        anchored.Select(r => r.Provenance).Should().Contain(new[] { EpistemicTier.Facts, EpistemicTier.Interior });
+
+        var facts = (await _svc.GetByTierAsync(EpistemicTier.Facts)).ToList();
+        facts.Should().HaveCount(1);
+        facts[0].DecayTier.Should().Be(DecayTier.Anchored);
+
+        var episodic = (await _svc.GetByTierAsync(EpistemicTier.Episodic)).ToList();
+        episodic.Should().HaveCount(1);
+        episodic[0].DecayTier.Should().Be(DecayTier.Standard);
+    }
 }

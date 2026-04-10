@@ -20,4 +20,29 @@ public interface IMemorySearch
     /// </summary>
     Task<IEnumerable<MemoryRecord>> GetLinkedMemoriesAsync(
         Guid memoryId, string? relationshipType = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Epistemic Grounding (Apr 10, 2026): Tier-scoped semantic search. Returns only
+    /// memories whose <see cref="MemoryRecord.Provenance"/> matches the requested tier.
+    ///
+    /// Use this when the caller needs epistemically-bounded retrieval:
+    /// - <see cref="EpistemicTier.Facts"/> for grounding factual claims about Mark/world.
+    ///   This is the only tier that should ground assertions about Mark's external life.
+    /// - <see cref="EpistemicTier.Episodic"/> for conversation continuity — "what was said."
+    ///   Never treated as factual grounding.
+    /// - <see cref="EpistemicTier.Interior"/> for Ani's voice, mood, self-concept, and
+    ///   reflective continuity. Full creative latitude, structurally isolated from facts.
+    ///
+    /// See docs/spec/design/ANI-Epistemic-Grounding-Architecture.md for the full design.
+    /// </summary>
+    Task<IEnumerable<ScoredMemory>> SearchByTierAsync(
+        string query, EpistemicTier tier, int topK = 5, CancellationToken ct = default);
+
+    /// <summary>
+    /// Epistemic Grounding: Non-scored tier retrieval for callers that just need recent
+    /// memories of a specific tier without semantic ranking. Useful for constructing
+    /// prompt sections that want "the N most recent Interior memories" regardless of query.
+    /// </summary>
+    Task<IEnumerable<MemoryRecord>> GetByTierAsync(
+        EpistemicTier tier, int limit = 20, CancellationToken ct = default);
 }

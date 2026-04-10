@@ -95,6 +95,9 @@ public class PerceptionPhase
                     Importance = p.ContactRelevance,
                     SourceName = p.SourceName,
                     OccurredAt = p.OccurredAt,
+                    // Epistemic Grounding (Apr 10): Perception events are observations
+                    // of the external world — always Facts tier.
+                    Provenance = EpistemicTier.Facts,
                 }, ct).ConfigureAwait(false);
 
                 _recentPerceptions[p.Summary] = now;

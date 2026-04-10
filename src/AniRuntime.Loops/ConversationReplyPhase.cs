@@ -599,6 +599,9 @@ public class ConversationReplyPhase
                 Type       = MemoryType.InnerThought,
                 Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
                 Importance = 0.6f,
+                // Epistemic Grounding (Apr 10): Hurt acknowledgment is a self-model
+                // update — Ani observing her own emotional state. Interior tier.
+                Provenance = EpistemicTier.Interior,
             }, ct).ConfigureAwait(false);
         }
     }
