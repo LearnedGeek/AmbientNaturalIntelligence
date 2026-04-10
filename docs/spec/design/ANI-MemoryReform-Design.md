@@ -1,9 +1,30 @@
 # Phase 6 Design: Memory Reform — From Flat Store to Living Memory
 
-**Date:** March 23, 2026
-**Status:** Design Complete, Awaiting Implementation
+**Date:** March 23, 2026 (v1), April 10, 2026 (v1.1 — complementary note added)
+**Status:** Design Complete, Awaiting Implementation. **Relationship to Epistemic Grounding Architecture (Apr 10):** complementary, not competing. See note below.
 **Authors:** Mark McArthey, Claude (pair design session)
 **Dependencies:** Phase 4 Feature 20 (three-way retrieval scoring), SqliteMemoryService (current dedup + embedding pipeline), IOllamaClient (LLM merge/synthesis calls)
+
+---
+
+## Relationship to Epistemic Grounding Architecture (Added Apr 10, 2026)
+
+This Phase 6 Memory Reform design addresses **memory quality** — deduplication, merging, linked retrieval, periodic reflection synthesis. It answers the question: *how do we keep the memory store clean, connected, and insightful as it grows?*
+
+The Apr 10 Epistemic Grounding Architecture (`docs/spec/design/ANI-Epistemic-Grounding-Architecture.md`) addresses **memory structure** — three-tier separation (Facts / Episodic / Interior) that prevents generated content from contaminating the factual substrate. It answers the question: *how do we prevent confabulations from entering the fact pool via retrieval?*
+
+**These are orthogonal axes and complementary fixes.** Phase 6 Memory Reform operates *within* each tier (merging duplicates, linking related memories, synthesizing reflections). Epistemic Grounding operates *between* tiers (preventing cross-contamination, routing content to the correct pool based on provenance). Both can and should be implemented.
+
+**Implementation ordering:** Epistemic Grounding (tier separation) should be implemented first because it defines the pools that Phase 6 Memory Reform operates within. Once tiers are established, Mem0-style merging, A-MEM linking, and Park et al. reflection synthesis can be applied per-tier with tier-appropriate semantics (e.g., reflection synthesis runs on the Interior tier to produce self-insights, not on the Facts tier where user-asserted content should not be modified by the system).
+
+**Quick mapping:**
+- Feature 30 (Mem0 merging) — applies primarily to the Facts tier for user-asserted content updates and to the Episodic tier for conversation summary merging
+- Feature 31 (A-MEM linking) — applies within each tier; cross-tier links may exist but follow different semantics
+- Feature 32 (Park et al. reflection synthesis) — applies primarily to the Interior tier, producing self-reflective syntheses that are themselves Interior content
+
+The two designs will be reconciled during implementation. This note exists to prevent confusion about which document is authoritative for what.
+
+---
 
 ---
 
