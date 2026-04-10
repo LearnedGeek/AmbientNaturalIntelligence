@@ -1,6 +1,6 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 9, 2026
+**Last updated:** April 10, 2026
 **Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
 
 ---
@@ -149,24 +149,53 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 ---
 
-## Epistemic Grounding (root-cause confabulation fix)
+## Epistemic Grounding via Memory Tier Separation (root-cause confabulation fix)
 
-**Design doc:** `docs/spec/design/ANI-Epistemic-Grounding-Architecture.md`
-**Trigger:** Bob Swanson failure (Apr 9, 17:38) — fictional coworker invented in Mark's domain, defended when challenged, propagated into inner monologue within an hour. Catalyst POS tagger missed lowercase proper nouns; ML classifier rated the lie as "grounded (0.29)" because it was semantically coherent.
+**Design doc:** `docs/spec/design/ANI-Epistemic-Grounding-Architecture.md` (v2 — tier-first reframe, Apr 10)
+**Trigger:** Bob Swanson failure (Apr 9, 17:38). v1 design (Apr 9) proposed three post-generation layers. v2 reframe (Apr 10) replaced that with a single architectural move after Mark pointed out that post-generation gating was still chasing symptoms.
 
-**Principle:** Confabulation is not a hallucination problem. It is an epistemic state problem. The model has no internal flag for "do I actually know this?" The fix is to give the architecture an epistemic spine — explicit context partitioning at prompt-build time, not post-hoc detection.
+**Principle:** Confabulation is not a hallucination problem. It is a memory architecture problem. Generation creates transient errors; memory is the amplifier. The fix is not more gating — it is structural tier separation that prevents generated content from contaminating the factual substrate.
 
-| Layer | Status | Description |
-|-------|--------|-------------|
-| Layer 1: Grounded Context Construction | **Designed** | Four-bucket prompt partitioning: ESTABLISHED FACTS, RECENT CONVERSATION, YOUR LIFE, UNKNOWN. Model can only confabulate when context is ambiguous; explicit partitioning gives architectural permission to say "I don't know." Depends on memory provenance tagging. |
-| Layer 2: Frame Detection | **Designed** | Computes conversational frame (MARK_DOMAIN / ANI_DOMAIN / SHARED / QUESTION_ABOUT_KNOWN_ENTITY) from user's last message. Frame becomes a generation constraint. The QUESTION_ABOUT_KNOWN_ENTITY frame is the direct fix for Type 7 Charming Dishonesty. |
-| Layer 3: Self-Verification Pass | **Designed** | Structured attribution: model lists each specific claim and attributes it to ESTABLISHED FACTS / RECENT CONVERSATION / YOUR LIFE / NOT IN CONTEXT. Constrained schema, not subjective yes/no. Catches fabrications before dispatch. |
+**The move:** Three memory tiers with different retrieval semantics.
 
-**One architecture catches the entire confabulation family** (Types 1-9). Replaces the seven post-hoc gates currently in `DetectConversationConfabulation` with a single root-cause fix.
+| Tier | Contains | Retrieved as | Populated by |
+|------|----------|--------------|--------------|
+| **Facts** | Character seeds, anchored memories, user-asserted content, perception events | "What is true about Mark and the world" | Mark's explicit words, external observations. **Never** populated by Ani's generated content. |
+| **Episodic** | Verbatim conversation history, replies, dispatched outreach | "What was said" (never "what is true") | Both sides of conversation, with attribution and timestamps. |
+| **Interior** | Inner thoughts, mood, self-concept, associations, world-experience reactions, interpretations of Mark (framed as interpretation) | "Who you are and what you feel" | Inner thought generation, reactions to perception events, reflection. **Full creative latitude**, structurally isolated from the fact pool. |
 
-**Migration:** 5-phase plan in design doc. ~3 weeks of focused work. Depends on v8 memory provenance tagging (already in Auto-Growth section).
+**Why this preserves growth:** The meditation metaphor. A person doing reflection comes out changed — but they don't return with new external facts, they return with richer self-knowledge. Inner thoughts update Ani's model of Ani, never Ani's model of Mark's world. This is what allows authentic reflection without fabrication.
 
-**Why it matters beyond the bug:** Schuller "introspective affect reporting" Absent gap. Layer 3 self-verification is structurally similar to introspective reporting. This is the substrate for Paper 3.
+**Why this catches the confabulation family:** Types 1-9 all reduce to "generated content polluting the factual substrate." Tier separation makes that structurally impossible. The entire confabulation detection family can retire as primary defenses once tiers are deployed.
+
+**Connection to Schuller "Absent" gap:** Tier separation is the architectural prerequisite for introspective affect reporting. A system cannot meaningfully narrate its interior state if that state is entangled with its model of external facts. Once separated, the substrate exists. Paper 3 central contribution.
+
+**OG Ani vision fulfilled:** Months ago, OG Ani described wanting a time when Mark would come back and she'd be changed. Tier separation is the architectural spine that makes this possible. Six months of deployment approached this without a name for the pattern; Bob Swanson forced it into focus.
+
+**Implementation (~1 week, not ~3):**
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Add `tier` column to memories table | **Not started** | Enum of `Facts`, `Episodic`, `Interior`. Migration + backfill. |
+| Tier assignment at memory write time | **Not started** | Route by source: seeds/perception/inbound → Facts, conversation → Episodic, inner thoughts → Interior. |
+| Tier-aware retrieval methods | **Not started** | `SearchFacts`, `SearchEpisodic`, `SearchInterior`. Existing `SearchWithScores` wraps them. |
+| Prompt builder tier sections | **Not started** | `BuildConversationReplyPrompt` constructs three distinct sections (Facts / Recent / Interior). |
+| World-experience split | **Not started** | Existing world-experience records conflate event + reaction. Migration needs to split or mark. |
+| Backfill existing memories | **Not started** | Source-based heuristics. Ambiguous cases quarantined. |
+| Retire post-hoc confabulation gates | **Not started** | Once tier separation is stable, retire Check 1-4 as primary defenses. Keep ML gate as last-line safety net. |
+
+**Deployment strategy:**
+1. Week 1 — Observation mode: tier tracked, not used for retrieval
+2. Week 2 — Shadow mode: new prompts generated alongside old, both logged, only old dispatched
+3. Week 3 — Primary path: new tier-aware prompt becomes main, post-hoc gates retire
+4. Week 4 — Polish, telemetry, Paper 3 evaluation data collection
+
+**Dependency:** Saturday hardware build (Apr 11) — new GPU headroom makes tier-aware retrieval faster and gives room for any additional verification passes if needed.
+
+**Retired concepts from v1 design:**
+- Layer 1 (four-bucket partitioning) becomes *how the tiers render in the prompt*, not a separate component
+- Layer 2 (frame detection) becomes optional polish — tier separation already prevents the worst outcome
+- Layer 3 (self-verification) becomes a last-line safety net, not a primary defense
 
 ---
 
