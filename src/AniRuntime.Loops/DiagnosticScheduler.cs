@@ -180,20 +180,50 @@ public class DiagnosticScheduler : BackgroundService
     /// <summary>
     /// Reduce importance of memories matching a content prefix by the specified amount.
     /// Minimum importance is 0.1 — never fully zero out a memory.
+    ///
+    /// Apr 11 fix: previously this used semantic search (embedding similarity) to find
+    /// the memory, then a StartsWith filter to confirm. The embedding path doesn't
+    /// reliably surface prefix-matched memories — it surfaces SEMANTICALLY similar ones.
+    /// The Apr 11 ani-debug log showed four consecutive scans of the same "not teaching"
+    /// memory, all reporting found=false, because the embedding search wasn't returning
+    /// the exact record whose content starts with the logged prefix. Fix: scan broader
+    /// candidate sets (by type and by content prefix) until we find the actual record.
     /// </summary>
     private async Task<bool> ReduceMemoryImportanceAsync(string contentPrefix, float reduction, CancellationToken ct)
     {
         try
         {
-            var memories = await _search.SearchWithScoresAsync(contentPrefix, 5, ct).ConfigureAwait(false);
-            var match = memories.FirstOrDefault(m =>
-                m.Record.Content.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase));
+            // First, try semantic search (works for topically-similar memories).
+            var memories = await _search.SearchWithScoresAsync(contentPrefix, 10, ct).ConfigureAwait(false);
+            var match = memories
+                .Select(m => m.Record)
+                .FirstOrDefault(r => r.Content.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase));
+
+            // Fallback: scan the most common memory types and do a direct prefix check.
+            // This catches cases where semantic search didn't rank the target in the top-10
+            // (e.g., a Mark-quote memory whose embedding isn't closest to the prefix text).
+            if (match is null)
+            {
+                var candidateTypes = new[]
+                {
+                    Core.Models.MemoryType.Episodic,
+                    Core.Models.MemoryType.Perception,
+                    Core.Models.MemoryType.Semantic,
+                    Core.Models.MemoryType.InnerThought,
+                };
+                foreach (var type in candidateTypes)
+                {
+                    var typeRecords = await _search.GetByTypeAsync(type, 500, ct).ConfigureAwait(false);
+                    match = typeRecords.FirstOrDefault(r =>
+                        r.Content.StartsWith(contentPrefix, StringComparison.OrdinalIgnoreCase));
+                    if (match is not null) break;
+                }
+            }
 
             if (match is null) return false;
 
-            var record = match.Record;
-            record.Importance = Math.Max(0.1f, record.Importance - reduction);
-            await _persist.SaveAsync(record, ct).ConfigureAwait(false);
+            match.Importance = Math.Max(0.1f, match.Importance - reduction);
+            await _persist.SaveAsync(match, ct).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex)
