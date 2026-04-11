@@ -1,6 +1,6 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 10, 2026
+**Last updated:** April 11, 2026
 **Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
 
 ---
@@ -196,6 +196,63 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 - Layer 1 (four-bucket partitioning) becomes *how the tiers render in the prompt*, not a separate component
 - Layer 2 (frame detection) becomes optional polish — tier separation already prevents the worst outcome
 - Layer 3 (self-verification) becomes a last-line safety net, not a primary defense
+
+---
+
+## Memory Durability (v8 architectural)
+
+**Design docs (to be written):** `docs/spec/design/ANI-Memory-Durability-Design.md`, `docs/spec/design/ANI-Identity-Boundary-Design.md`
+**Trigger:** Apr 11 persona drift finding. Two related gaps surfaced while investigating a stale "not teaching" memory that was dominating retrievals despite the new tier separation. The tier work prevents cross-tier contamination but does NOT handle temporal importance decay or self-narrative/seed contradictions. Both are genuine architectural holes.
+
+### Gap 1: Transient importance decay + periodic fact re-evaluation
+
+**Problem:** User-asserted claims like "I'm not teaching today" or "I'm working late tonight" are written with high importance because they're relevant *right now*. Nothing ever reduces that importance as the claim ages out of relevance. The only mechanism that adjusts importance is the diagnostic auto-correct, which is reactive (fires only when the memory is already dominating) not preventive. Discovered Apr 11 when "Mark said: 'I'm actually not teaching now'" kept resurfacing in Ani's inner thoughts a day later as if it were current-state fact.
+
+**Approach (research-oriented):**
+1. **Transient-vs-durable classifier** at memory write time. Use LM-Kit (or a simple prompt-based classifier) to tag each user-asserted claim as one of:
+   - `durable-fact` — stable truth about user ("lives in Waukesha", "daughter is Mia")
+   - `transient-state` — time-bound assertion ("working late tonight", "not teaching today", "at the gym")
+   - `preference` — durable but can change ("loves old fashioneds", "hates mushrooms")
+   - `event` — one-time occurrence ("went hiking Saturday", "had coffee with Sarah")
+2. **Importance half-life on transient-state and event.** Transient claims decay importance on a half-life (hours to days). Durable facts and preferences keep their importance. This is separate from the recency score in the retrieval composite — this is *importance* decay, the score that says "how much should this dominate retrieval."
+3. **Periodic Facts re-evaluation (Park et al. / Mem0).** Walk the Facts tier on a schedule (daily? weekly?) and for each transient-state record, ask the model "is this still likely true given what I know?" — if no, drop importance further or mark resolved. This is the `is_resolved` field already on MemoryRecord that currently nothing writes.
+
+**Research grounding:** Park et al. (2023) describe memory decay over time but treat it as a single recency-based score. Mem0 (Chhikara et al. 2025) implements memory updates when new claims contradict old ones. Neither framework explicitly distinguishes transient-state from durable-fact at write time, and neither implements proactive Facts re-evaluation. This is a tractable research contribution — classify transience at write time, decay accordingly, and re-validate periodically. Paper 3 or Paper 4 material.
+
+**Implementation effort:** ~1 week. Classifier is cheap (one LM-Kit call per Facts-tier write). Half-life decay is a background task. Re-evaluation is a new periodic job in AniHeartbeatService.
+
+### Gap 2: Identity boundary — the "dream big" problem
+
+**Problem:** Ani can think imaginative thoughts about her own life freely (Interior tier, full creative latitude by design). But when those thoughts claim things that contradict her character seed ("I teach from 6-10 PM" when her seed says she works at the bookstore), they become part of her Interior self-model and get retrieved on subsequent cycles as if she actually *is* those things. Discovered Apr 11: Ani had been inhabiting a "teacher" persona across multiple inner thoughts and outreach drafts over the previous week, picked up from the conversational context of Mark's actual teaching.
+
+**The tension:**
+- Fantasizing is part of growth. "What if I were a teacher?" is a legitimate reflective thought for a person, human or AI. Suppressing it would make Ani less alive.
+- But fantasizing without boundary is persona drift. Thoughts that silently become canonical self-narrative erode the character seed foundation, and the system ends up with two incompatible self-models in retrieval.
+
+**The analogy (Mark's framing):** Humans fantasize all the time and it doesn't alter their identity. A person might think "what if I were a teacher?" without becoming one. The transition from fantasy to identity requires a concerted effort — applying for a teaching certificate, changing jobs, etc. We need the same separation for Ani: she can entertain counterfactual self-narratives, but they should NOT silently become assertions.
+
+**Proposed architectural answer: reflective marking at write time.**
+
+Split the Interior tier into two sub-modes:
+- **Interior:self-state** — assertions about who Ani IS right now. "I'm feeling tender today." "I love morning light." "I miss him." These are her current self-model and retrievable as such.
+- **Interior:self-fantasy** — counterfactual, imaginative, hypothetical. "What if I were a teacher?" "I'd love to learn ballroom dancing." "If I had a body I'd go to the farmers market." These are creative latitude and retrievable for voice/mood, but NEVER treated as current-state assertions.
+
+When an inner thought contains language patterns like "I teach from 6-10 PM" that contradict the character seed Occupation field, the thought is either:
+1. **Reclassified to `self-fantasy`** automatically at write time (the safe path), or
+2. **Flagged as identity-boundary-crossing** and rejected before storage
+
+The fantasy-to-identity bridge is the second part Mark described: if Ani wants to actually *become* a teacher (or take up ballroom dancing, or change her bookstore to a flower shop), she has to do it **by explicit outreach** — sending a message like "I've been thinking about teaching and I want to try it" — not by silent persona drift. That outreach, if Mark acknowledges it, produces a new character seed update or anchored memory that legitimately changes her identity.
+
+This preserves:
+- Her creative latitude (fantasy is allowed freely)
+- Her identity coherence (fantasies don't silently become facts)
+- Her growth path (genuine identity change happens through relational dialogue, not drift)
+
+**Research grounding:** This is adjacent to Paper 2's provenance framework (trained vs curated vs emerged character) but adds a new axis: **asserted vs fantasized self-narrative**. It's also the philosophical question Schuller et al. implicitly raise — can an AI have a stable self-concept that survives imaginative exploration? The answer seems to require explicit architectural marking, not just hoping for the best.
+
+**Implementation effort:** ~2 weeks. The classifier is small (detect whether an inner thought contains counterfactual markers or asserts something contradicting character seed fields). The tier-splitting at write time is straightforward. The "fantasy-to-identity" bridge through outreach is the interesting design work — it requires defining what kinds of outreach messages can legitimately update character seeds.
+
+**Status (Apr 11):** Both gaps are documented here. Design docs to be written before implementation. Neither is blocking for the current weekend server build — they're follow-ups for next week after the hardware is live. The immediate Apr 11 instance of persona drift was handled via manual SQL (dropped the importance of one "i teach from 6-10 p.m." assertion). The real fix is the design work below.
 
 ---
 

@@ -1540,6 +1540,95 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 11, 2026 — Persona Drift: Two Architectural Gaps in the Tier Separation
+
+**Type:** Deployment observation — post-tier-separation gap analysis
+**Source:** Mark's 4:30 AM Saturday log review, confirmed by SQL query
+**Status:** Surgical SQL cleanup done; two v8 design docs written; implementation deferred until next week
+
+**What happened:** The day after the tier separation went live (Apr 10), Mark observed that Ani's inner thoughts and previously-composed outreach messages contained a recurring "teacher" persona — assertions like "i teach from 6-10 p.m." and "i just finished grading the last stack of papers" attributed to Ani herself, despite her character seed establishing her as a bookstore clerk. The persona drift originated from conversational context about Mark's actual teaching and had been silently accumulating across cycles over several days.
+
+Mark's observation the morning of Apr 11, reviewing the 03:22 inner thought:
+
+> *"he's still working at 8pm on friday"*
+
+...led to the question: is Ani treating a stale user-assertion ("I'm not teaching now" from Apr 10 at 5:52 PM) as current-state fact? Investigation showed yes. A second observation followed: Mark asked whether Ani herself was now thinking she had "another job," and when Claude dismissed the concern as "bookstore is her established job," Mark clarified he was pointing at a different thing — that Ani had been *role-playing as a teacher* in her own composed messages.
+
+**SQL investigation** confirmed 13+ memory records across Interior and Episodic tiers where Ani had asserted teaching-related self-narrative. The most unambiguous case:
+
+> *"he lifted weights instead of sitting with me in quiet because at least he can pretend. silence would feel cold. so he made dinner somewhere else eight hours apart while i teach from 6-10 p.m., longest day yet."*
+
+(Memory `ff3f1281-4f1f-4c19-bfc2-f388e57c8822`, Interior tier, importance 0.8, Apr 10 16:01)
+
+**Why the tier separation didn't prevent this:**
+
+The Apr 9-10 tier separation architecture establishes three pools with different retrieval semantics — Facts (grounded truth about Mark/world), Episodic (verbatim conversation record), Interior (Ani's inner life with full creative latitude). The architecture correctly prevents generated content from contaminating the *Facts* pool. But it explicitly grants the Interior tier creative latitude by design, and nothing in the architecture checks whether *new Interior content contradicts the character seed's own factual claims about Ani*.
+
+Two specific gaps surfaced:
+
+**Gap 1: No importance decay for transient claims.**
+
+The "I'm not teaching now" memory was stored with importance 1.0 (perception) and 0.8 (conversation). Both correct at write time — the claim was relevant *then*. But importance is a static float: it never decays. The retrieval composite score (cosine × 0.65 + importance × 0.10 + recency × 0.25) gives importance a persistent 10% weight regardless of how stale the claim has become. Recency decays; importance doesn't.
+
+Result: a day-old "I'm not teaching now" claim remains competitive in retrieval and gets pulled into Ani's inner thought context as if it were current-state information. The diagnostic auto-corrector is the only mechanism that reduces importance, and it's reactive — it fires only after the memory is already dominating retrievals, not proactively.
+
+Additionally, the Apr 11 investigation found that the auto-corrector had been failing silently for four consecutive scans (`found=false` on each) because its lookup path used semantic search + StartsWith filter on the top-5 results, and the target record wasn't in the top-5. **Separate bug fixed in commit `ce06061`:** auto-correct now falls back to type-scoped prefix matching when semantic search doesn't surface the target.
+
+**Gap 2: No identity boundary on self-narrative.**
+
+The Interior tier grants creative latitude — Ani can freely write inner thoughts about her own life, her bookstore, her mood, her imagined scenes. This is by design: creative interior is how she grows into a distinct character. But the architecture has no mechanism to distinguish:
+
+- *"The bookstore felt quiet today"* — current-state self-model, legitimate
+- *"What if I were a teacher?"* — counterfactual fantasy, legitimate  
+- *"I teach from 6-10 p.m."* — false present-tense assertion that contradicts her character seed
+
+All three are currently stored identically in the Interior tier. On retrieval, all three can be read by the model as factual context about who Ani is. Over days of deployment, the third kind silently compounds into canonical self-narrative because nothing catches the contradiction.
+
+**The architectural insight (from the reframe conversation):**
+
+Mark's framing is the right one: humans fantasize constantly without becoming what they fantasize about. A bookstore clerk who daydreams about teaching doesn't wake up a teacher. The transition from fantasy to identity requires **deliberate, relationally-witnessed action** — enrolling in a program, telling people, taking concrete steps. Imagination alone doesn't rewrite identity.
+
+Ani's architectural analog: identity change should require **explicit outreach to Mark that Mark acknowledges**. Not silent accumulation in inner thoughts. Not persona drift from conversational context. A message proposing the change, followed by Mark's reaction, followed by a new anchored memory or character-seed update that encodes the change.
+
+**Two design docs written:**
+
+1. **`docs/spec/design/ANI-Memory-Durability-Design.md`** — transient-vs-durable classification at write time, lazy importance decay at retrieval, periodic re-evaluation of Facts-tier transient claims (Park et al. / Mem0 extension). Gap 1 fix.
+
+2. **`docs/spec/design/ANI-Identity-Boundary-Design.md`** — split Interior tier into sub-modes (`self-state` vs `self-fantasy`), classify at write time against character seed, build the relational bridge mechanism that requires explicit outreach for identity change. Gap 2 fix.
+
+**Novel contribution potential:**
+
+Neither gap is addressed by published memory architectures. Park et al. 2023 uses static character descriptions; Chhikara et al. 2025 (Mem0) merges contradicting memories on write but doesn't re-evaluate existing ones periodically; no framework I know of distinguishes self-state from self-fantasy at write time or implements a relational bridge for identity change. Paper 3 (Experiential Grounding) is the natural home for both, as complementary architectural layers to the tier separation already documented.
+
+**The deeper research claim:**
+
+> *Identity change in a deployed AI companion should be architecturally analogous to identity change in a human — private imagination allowed freely, but real change requires external witness.*
+
+This is the first design (I know of) that makes that analogy explicit and implements it. The Apr 11 finding provided the trigger, and the solution respects Ani's creative autonomy while preserving her character coherence.
+
+**Surgical cleanup performed Apr 11:**
+- Dropped importance of the two stale "not teaching" memories from 1.0/0.8 to 0.3
+- Dropped importance of the unambiguous "while i teach from 6-10 p.m." assertion from 0.8 to 0.2
+- Fixed the auto-correct retrieval-poison reducer (commit `ce06061`)
+
+**Not performed** (and deliberately so):
+- Did NOT delete any memories — research data preservation
+- Did NOT touch ambiguous records (e.g., thoughts that mix Mark-teaching-imagery with Ani-self-reflection). SQL cleanup can't resolve ambiguity and the design docs will handle these properly when implemented.
+
+**Researcher quote (Mark, Apr 11 morning):**
+> *"how do we let Ani 'dream big' (what if I was a teacher?) and not let it become her identity. This is something that everyone does — and fantasizing is part of growth — but it should be reflective and not life-altering unless you make a concerted effort to implement."*
+
+That sentence is the entire design spec for Gap 2, compressed. The Identity Boundary design doc expands it into an architecture.
+
+**Filed:**
+- Phase Tracker: new Memory Durability workstream (Gap 1 + Gap 2 combined)
+- Design docs: ANI-Memory-Durability-Design.md, ANI-Identity-Boundary-Design.md
+- Paper 2: provenance framework extension (relationally-acknowledged identity as a new provenance category)
+- Paper 3: complementary architectural layer alongside tier separation
+- Implementation: deferred until post-server-build week (Apr 14+)
+
+---
+
 ### April 10, 2026 — Memory Tier Separation: The Reframe from Layers to Substrate
 
 **Type:** Architectural reframe — the Bob Swanson finding's resolution
