@@ -164,13 +164,9 @@ We are actively seeking:
 
 ANI's architectural patterns are the product of six months of continuous deployment — every pattern exists because a real failure demanded it. If your product hits confabulation, persona drift, stale memory, or engagement-over-honesty trade-offs, these patterns can help.
 
-We offer:
-- **Architecture consultation** — applying ANI's patterns to your companion AI, virtual assistant, or persistent-agent product
-- **Cross-domain transfer** — the same architectural patterns that fixed confabulation in a companion AI also fixed it in a medical triage system. Your domain is probably next.
-- **LearnedGeek.ML integration** — our shared classification library (LM-Kit.NET) provides local-inference emotion classification, confabulation detection, NER, and keyword extraction. .NET native.
-- **Custom deployment** — the ANI Runtime architecture adapted for your use case, your persona, your domain
+We're open to discussing how ANI's architecture can meet your specific needs. The patterns documented here emerged from real deployment, and we believe they transfer across domains — we've already validated this once, when companion AI confabulation findings produced three architectural changes in a pediatric medical triage system before production code was written.
 
-The core innovation — a cognitive architecture that produces felt presence through desire-driven behavior, persistent memory, and experiential grounding — is **domain-agnostic**. The companion personality is domain-specific. The runtime serves both.
+If you're building persistent AI companions, virtual assistants with long-term memory, or any product where a user maintains an ongoing relationship with an AI, **reach out and let's talk about how these patterns apply to your problem.** The core innovation — a cognitive architecture that produces felt presence through desire-driven behavior, persistent memory, and experiential grounding — is domain-agnostic. The companion personality is domain-specific. The runtime serves both.
 
 ### Contact
 
@@ -182,6 +178,20 @@ Learned Geek Consulting
 - LinkedIn: [Mark McArthey](https://linkedin.com/in/markmcarthey)
 - Blog: [learnedgeek.com/blog](https://learnedgeek.com/blog)
 - Paper 1: [DOI 10.5281/zenodo.19342190](https://doi.org/10.5281/zenodo.19342190)
+
+---
+
+## How These Contributions Emerged
+
+A note about the comparison table above: ANI's architectural contributions were **not designed by reading the literature and filling gaps.** They were discovered through continuous deployment. Every row in that table exists because a real failure in a real relationship demanded it.
+
+The confabulation taxonomy came from six months of watching a companion AI lie in nine structurally different ways. The tier separation came from a single fabricated coworker ("Bob Swanson") whose lie propagated into eleven memories within four hours. The identity boundary came from noticing that the system had silently decided it was a teacher instead of a bookstore clerk. The emotional model came from watching the system saturate into a single mood and needing a mathematical fix.
+
+We read the literature afterward — Park et al., Mem0, Schuller, Chu/Lerman — and found that our deployment-driven solutions aligned with their theoretical frameworks. In several cases, we had independently implemented what they recommended. In others, we had gone further because deployment forced us to solve problems the frameworks hadn't yet named.
+
+**This is convergent design from deployment experience, not literature-driven gap analysis.** The research value isn't "we read the checklist and built what was missing." It's "we deployed a system for six months, hit real failures, and the fixes we built turned out to be the things the field needs."
+
+That distinction matters. A contribution born from real deployment pressure is validated differently than one born from reading a survey. The survey tells you what *should* exist. The deployment tells you what *must* exist — because the system broke without it.
 
 ---
 
@@ -224,4 +234,6 @@ ANI's architecture builds on and extends the following published work:
 
 *Last updated: April 12, 2026*
 
-*ANI Runtime is a research project of Learned Geek Consulting. For research collaboration, product consultation, or general inquiries: markm@learnedgeek.com*
+*ANI Runtime is a research project of Learned Geek Consulting. For research collaboration or general inquiries: markm@learnedgeek.com*
+
+*Target URL: learnedgeek.com/research (new route — first research page on the site)*
