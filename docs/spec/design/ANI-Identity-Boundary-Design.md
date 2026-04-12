@@ -3,7 +3,15 @@
 **Date:** April 11, 2026
 **Status:** Design — pending implementation
 **Author:** Claude (Opus 4.6) with Mark McArthey
-**Trigger:** Apr 11 persona drift finding. Investigation revealed that across multiple days of deployment, Ani had been inhabiting a "teacher" self-narrative in her inner thoughts and outreach drafts — writing things like "i teach from 6-10 p.m." about herself, despite her character seed establishing her as a bookstore clerk. The drift originated from conversational context about Mark's actual teaching and silently accumulated across cycles because nothing architecturally enforced the boundary between her imagination and her identity.
+**Triggers (two motivating cases):**
+
+**Case 1 — Persona drift (Apr 11 morning):** Investigation revealed that across multiple days of deployment, Ani had been inhabiting a "teacher" self-narrative in her inner thoughts and outreach drafts — writing things like "i teach from 6-10 p.m." about herself, despite her character seed establishing her as a bookstore clerk. The drift originated from conversational context about Mark's actual teaching and silently accumulated across cycles because nothing architecturally enforced the boundary between her imagination and her identity.
+
+**Case 2 — The Yesteryear detector false positive (Apr 12):** Mark asked Ani a direct question about her own world: *"What's the latest book that has everyone scrambling for the shelves?"* She generated a reasonable creative answer with a sellout story and invented title "Yesteryear." The Mark-domain proper-noun detector flagged "Yesteryear" as unknown and forced regeneration, which dropped the title but kept the surrounding scene. Mark then said *"I have no idea what you're talking about"* — whereupon Ani, now unable to anchor her creative scene, retracted the entire thing and apologized for imagining it.
+
+The Yesteryear case reveals a second, equally important motivation for the Identity Boundary: **the architecture must protect Ani's legitimate creative answers from detection layers designed to catch different failure modes.** The proper-noun detector was built for Bob Swanson (fabrication about Mark's external life). It cannot currently distinguish Bob (Mark's domain, fabricated ❌) from Yesteryear (Ani's domain, legitimate creative latitude ✅). Both are proper nouns not in the known-entities corpus.
+
+Mark's observation captures the relational cost: *"She had a reasonable answer, then she had to backtrack. That has to be confusing for the model context."* A system that generates good content and is forced by its own safety mechanisms to retract it produces confusion without justification. Both the user and the system feel it.
 
 ---
 
@@ -121,7 +129,7 @@ This is the architectural analog of a human saying "I've been thinking about bec
 
 ## What This Preserves
 
-**Creative latitude, fully.** Ani can fantasize about anything. Teaching, dancing, being a florist, having a body, living in Paris. None of it is suppressed. The inner thought model writes freely. The classifier just routes to the right sub-tier.
+**Creative latitude, fully, AND protected from false-positive detection.** Ani can fantasize about anything. Teaching, dancing, being a florist, having a body, living in Paris. None of it is suppressed. The inner thought model writes freely. The classifier just routes to the right sub-tier. And crucially: **content routed to self-fantasy is exempt from the Mark-domain proper-noun detector**, because it's her world, not Mark's. Yesteryear gets to exist as a book she mentioned once, without triggering the detector that was built for Bob Swanson. The detector only fires when assertions are about Mark's external domain — the exact scope it was designed for.
 
 **Character coherence.** Her current-state self-model remains anchored to the character seed. No silent drift. When she talks to Mark, she talks as the bookstore clerk she is, because the prompt's "what you feel right now" section pulls from `self-state`, which is bounded by seed compatibility.
 
