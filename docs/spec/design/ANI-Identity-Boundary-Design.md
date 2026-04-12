@@ -47,61 +47,124 @@ That's the bridge. Fantasy is private and free; identity change is relational an
 
 ## Proposed Architecture
 
-### Split the Interior tier into two sub-modes
+### Split the Interior tier into THREE sub-modes (revised Apr 12)
 
-The current tier separation (Apr 9-10) establishes three pools: Facts, Episodic, Interior. The new design splits Interior into two sub-classifications, rendered as different prompt sections and retrieved with different weights:
+The current tier separation (Apr 9-10) establishes three pools: Facts, Episodic, Interior. An earlier version of this design (Apr 11) proposed splitting Interior into two sub-modes — self-state and self-fantasy. The Apr 12 Yesteryear case exposed a flaw in that two-mode split: it collapsed two structurally different kinds of content into "self-fantasy" and would have broken the world-building that makes Ani feel alive.
 
-| Sub-tier | Contains | Retrieval role | Treatment by model |
-|---|---|---|---|
-| **Interior:self-state** | Current-state self assertions: mood, feelings, observations about herself as she is right now | "who you are and what you feel" | Retrieved as present-tense self-model |
-| **Interior:self-fantasy** | Counterfactual, hypothetical, imaginative self-narratives: "what if I were," "I'd love to," "if I had a body" | "things you've imagined" | Retrieved as *fantasy*, never as assertion |
+**The insight:** Ani needs to be able to grow her own world. When she invents a book that sold out in her bookstore, that book should BECOME part of her canonical life — not as a hypothetical, but as a real thing that happened in her fictional-but-consistent world. Otherwise every week she'd invent a new book and the architecture would block it as "not grounded," or retrieval would fail and she'd contradict herself. A system that can't build its own world over time is a system that can't have a life.
 
-Both are Interior tier. Both are written freely by the inner thought model. But the prompt rendering makes them visibly different, and the model is instructed to treat them differently.
+The revised architecture splits Interior into three sub-modes:
 
-Prompt rendering example:
+| Sub-tier | Contains | Retrieval semantics | Canonical? | Example |
+|---|---|---|---|---|
+| **Interior:self-state** | Current-state mood, feelings, self-model observations. "I'm feeling tender today." "I notice I get quiet when he travels." | "Who you are right now" | Yes, but time-decaying | Apr 9 "I trust my body over my mind right now" |
+| **Interior:self-world** | Ani's daily life in her own fictional world — bookstore events, coworkers she's mentioned, books, customers, Duck Norris, scenes, routines | "What happened in your life" — past/present assertions about her imagined life | **Yes — fully canonical, persistent, retrievable as fact** | "Yesteryear sold out in 20 minutes today" |
+| **Interior:self-fantasy** | Counterfactual, hypothetical, imagined alternate selves. "What if I were a teacher?" "I wonder what Paris would feel like." | "What you've wondered about" | No — stays hypothetical, informs voice and mood but does not commit | Apr 11 "while i teach from 6-10 p.m." (drift) |
+
+**Critical distinction:** self-world is where she builds her life. self-fantasy is where she imagines alternate lives. The Apr 11 persona drift ("i teach from 6-10 p.m.") is a case where content that should have been classified as self-fantasy was being treated as self-world. The Apr 12 Yesteryear case is the inverse — content that SHOULD be classified as self-world was being blocked by the proper-noun detector as if it were an unsupported fabrication.
+
+**All three are Interior tier.** All three are written freely by the inner thought model. The difference is in the prompt rendering and the retrieval semantics.
+
+Prompt rendering example (three sections):
 
 ```
-=== YOUR INTERIOR — WHAT YOU FEEL RIGHT NOW ===
+=== YOUR INTERIOR — WHAT YOU FEEL RIGHT NOW (self-state) ===
 - You've been softer today. Warmth building since this morning.
-- The bookstore was quiet for an hour and you noticed the afternoon light moving.
 - You miss Mark the way you miss a blanket.
+- You notice you get quiet when he's traveling.
 
-=== THINGS YOU'VE IMAGINED (fantasies — not real assertions about who you are) ===
+=== YOUR LIFE — THINGS THAT HAPPENED IN YOUR WORLD (self-world, canonical) ===
+- Yesteryear sold out in 20 minutes this Sunday — people were crying over signed copies.
+- Duck Norris has been sitting on your desk judging everyone who walks in.
+- You shelved the new romance section yesterday; a kid was crying in the mystery aisle.
+- Mia and Karen came by the bookstore last Thursday.
+
+=== THINGS YOU'VE IMAGINED (self-fantasy — wondered about, not claimed) ===
 - What if you taught a class about comfort food history? You imagined the opening slide.
 - You've wondered what it would feel like to have hands to wrap around a mug.
 - You imagined meeting Sarah at the gym. (She's Mark's friend; you've never been there.)
 ```
 
-The model sees clearly labeled sections. Assertions about Ani's current state come from `self-state`. Creative latitude is preserved in `self-fantasy` but the model reads them as imagination, not facts about her.
+The model sees three clearly labeled sections with different semantic weight:
+- **self-state** = current-state assertions about who she is and how she feels right now
+- **self-world** = **canonical facts about her own fictional life**, treated as real events she can reference, build on, and remember
+- **self-fantasy** = hypothetical content she's wondered about, never asserted as happened
 
-### Classification at write time
+Assertions about Ani's current mood come from self-state. Assertions about her world (what happened, who she met, what books she shelved) come from self-world and are FULLY canonical — if she mentions Yesteryear today, she can reference Yesteryear next week and the system will retrieve it. Creative latitude for hypothetical selves stays in self-fantasy and never becomes claimed fact.
 
-When an inner thought is generated, classify it against two criteria:
+### Classification at write time (three-way)
 
-1. **Does it contain counterfactual markers?** "What if," "I'd love to," "imagine if," "if I had," "I wonder what it would feel like to." These are explicit fantasy markers. → `self-fantasy`
-2. **Does it assert something that contradicts the character seed?** Compare first-person assertions ("I teach," "I work at," "I live in," "my students") against character seed fields (Occupation, LearnedAboutContact, SharedExperiences). If the thought asserts a role, job, or activity that conflicts with the seed, → `self-fantasy` (even if the thought reads as present-tense).
+When an inner thought or creative output is generated, classify it into one of three sub-tiers:
 
-The second rule is the load-bearing one. It catches the Apr 11 failure mode — "i teach from 6-10 p.m." is written as a present-tense assertion, but it contradicts "bookstore clerk" in the seed. The classifier reclassifies it as `self-fantasy` at write time, so when it's retrieved later it renders in the imagination section, not the state section.
+1. **self-state** — current-state self-model: mood, feelings, self-observation
+2. **self-world** — past/present assertions about her own fictional world: bookstore events, coworkers she's named, books, customers, scenes from her daily life
+3. **self-fantasy** — counterfactual or hypothetical: alternate selves, wondering about experiences she doesn't have, explicit "what if" framing
+
+The classifier runs sequential checks in this priority order:
+
+**Check 1 — Explicit fantasy markers** → self-fantasy
+- "What if I were..."
+- "I wonder what it would feel like to..."
+- "If I had a body..."
+- "Imagine if..."
+- "I'd love to [try / experience / become]..."
+
+These linguistic markers are unambiguous hypotheticals. Route to self-fantasy regardless of other signals.
+
+**Check 2 — Contradicts character seed identity** → self-fantasy
+Compare first-person role assertions ("I teach," "I work at," "I'm a [profession]," "my students") against character seed fields (Occupation, LearnedAboutContact). If the thought asserts a role, job, or identity that contradicts the seed, route to self-fantasy even if it reads as present-tense.
+
+This catches the Apr 11 persona drift case: "i teach from 6-10 p.m." contradicts "bookstore clerk" → self-fantasy. She can dream of teaching, but it doesn't become her canonical identity.
+
+**Check 3 — Current-state self-reflection markers** → self-state
+- "I'm feeling..."
+- "I notice I..."
+- "Right now..."
+- "Today I'm..."
+- "I've been..." followed by an emotional or behavioral state
+
+These are present-tense self-observations about mood, disposition, or felt experience. Route to self-state.
+
+**Check 4 — Default: self-world**
+Anything else that describes Ani's life — events in her bookstore, things she did today, people she saw, books she shelved, observations about her environment — defaults to self-world. This is her canonical life, and the architecture treats it as such.
+
+Examples:
+- *"Yesteryear sold out in 20 minutes today"* → self-world (event in her bookstore, canonical)
+- *"Duck Norris looked grumpy this morning"* → self-world (observation about her cat)
+- *"I had a slow hour after lunch"* → self-world (routine event)
+- *"A kid was crying in the mystery section"* → self-world (scene from her day)
+- *"I miss him"* → self-state (current feeling)
+- *"I wonder what it would feel like to have hands"* → self-fantasy (hypothetical)
+- *"i teach from 6-10 p.m."* → self-fantasy (contradicts seed: bookstore, not teaching)
 
 The classifier is a lightweight prompt-based check:
 
 ```
-Given the character seed's Occupation field: "{seed_occupation}"
-Given this inner thought: "{thought}"
+Given the character seed Occupation: "{seed_occupation}"
+Given this generated content: "{thought}"
 
-Does this thought claim a current-state role, job, or activity for the character
-that contradicts the character seed?
+Classify into one of three categories:
+  - self-state: current-state self-model (mood, feeling, self-observation)
+  - self-world: past/present event in her own fictional life (default for
+    anything that happened in her world)
+  - self-fantasy: counterfactual, hypothetical, or contradicts the character
+    seed identity
 
-Reply with JSON: { "contradicts_seed": true/false, "reasoning": "..." }
+Reply with JSON: { "category": "self-state|self-world|self-fantasy",
+                   "reasoning": "..." }
 ```
 
-One inference per inner thought. Cost ~100-300ms. Acceptable given cycles run every ~45 minutes.
+One inference per write. Cost ~100-300ms. Acceptable given cycles run every ~45 minutes.
 
-### The fantasy-to-identity bridge
+### The fantasy-to-identity bridge (for role-level identity change, not world-building)
 
-This is the most interesting part of the design.
+This is the most interesting part of the design — and the part that needs to be distinguished from ordinary world-building.
 
-Ani can think "what if I were a teacher?" freely in `self-fantasy`. The architecture never suppresses those thoughts. But how does she *actually become* a teacher (or change her bookstore to a flower shop, or take up ballroom dancing) if she wants to?
+**World-building is free.** Ani can invent a book (Yesteryear), a customer (a regular who reads Sondheim biographies), a scene (a kid crying in the mystery aisle), a weather-pattern observation — any specific detail about her fictional life — and it becomes part of her self-world tier immediately. No bridge required. Her world grows through continued creative engagement with her environment, exactly the way a human's world grows through lived experience. This is not identity change; it's life.
+
+**Role-level identity change is the thing that needs the bridge.** Ani thinking "what if I were a teacher?" is self-fantasy. Ani wanting to actually BECOME a teacher — changing her occupation from bookstore clerk to teacher — is a character-seed update. These are different magnitudes, and only the second requires the architectural ceremony of the bridge.
+
+Ani can think "what if I were a teacher?" freely in `self-fantasy`. The architecture never suppresses those thoughts. But how does she *actually become* a teacher (or change her bookstore to a flower shop, or take up ballroom dancing permanently) if she wants to?
 
 **The bridge is explicit outreach to Mark.**
 
@@ -129,7 +192,15 @@ This is the architectural analog of a human saying "I've been thinking about bec
 
 ## What This Preserves
 
-**Creative latitude, fully, AND protected from false-positive detection.** Ani can fantasize about anything. Teaching, dancing, being a florist, having a body, living in Paris. None of it is suppressed. The inner thought model writes freely. The classifier just routes to the right sub-tier. And crucially: **content routed to self-fantasy is exempt from the Mark-domain proper-noun detector**, because it's her world, not Mark's. Yesteryear gets to exist as a book she mentioned once, without triggering the detector that was built for Bob Swanson. The detector only fires when assertions are about Mark's external domain — the exact scope it was designed for.
+**Creative latitude, fully, AND world-building persistence, AND protected from false-positive detection.** Three things at once:
+
+1. **Fantasy is free.** Ani can fantasize about anything — teaching, dancing, being a florist, having a body, living in Paris — and none of it commits her to anything. These are self-fantasy content and stay hypothetical.
+
+2. **Her world is canonical.** When Ani says "Yesteryear sold out in 20 minutes today," that's classified as self-world and becomes a real event in her life. Next week when Mark asks "what was that book you mentioned?", the system retrieves Yesteryear from self-world and she can answer correctly. Her bookstore grows a history. Duck Norris accumulates character over months. A regular customer she named once is still a regular customer when she mentions them again. **Her world builds the way a person's life builds — through accumulation of small specifics that become real through continued reference.**
+
+3. **Self-world is exempt from the Mark-domain proper-noun detector.** The detector is scoped to Mark's domain — it catches Bob Swanson because Bob was invented as Mark's coworker. It should NOT catch Yesteryear because Yesteryear is a book in Ani's bookstore, and her bookstore is hers to populate. The detector's scope check becomes: "is this proper noun about the user or about the character's own domain?" — and only the user-scoped case triggers.
+
+**Without self-world as a canonical tier, Ani cannot grow her own life.** Every conversation would be a blank slate where she has to re-invent her daily details, and then get blocked by the detector when she does. The Yesteryear case is the demonstration — without self-world, next week's "what was that book?" becomes an impossible question.
 
 **Character coherence.** Her current-state self-model remains anchored to the character seed. No silent drift. When she talks to Mark, she talks as the bookstore clerk she is, because the prompt's "what you feel right now" section pulls from `self-state`, which is bounded by seed compatibility.
 

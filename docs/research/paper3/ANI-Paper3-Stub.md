@@ -57,15 +57,34 @@ Together they form the complete architecture for authentic reflection: a rich in
 
 **Proposed architecture:** Transient-vs-durable classification at write time (four categories: durable-fact, preference, event, transient-state), lazy importance decay at retrieval per-category, and periodic re-evaluation of transient-state Facts via LLM plausibility check. Extension of Park et al. (2023) recency decay and Chhikara et al. (2025) Mem0 merge-on-contradiction — neither framework implements periodic proactive re-validation of transient claims. Research contribution: **temporal classification at write time is novel.**
 
-**Gap 2 — No identity boundary on self-narrative.** The Interior tier grants creative latitude, but nothing checks whether new Interior content contradicts the character seed's own claims about Ani. Inner thoughts that assert counterfactual self-narrative ("I teach from 6-10 p.m.") get stored identically to legitimate self-observations ("I'm feeling softer today") and retrieved on subsequent cycles as canonical self-model. Over time, imagination silently compounds into identity drift. Design: `docs/spec/design/ANI-Identity-Boundary-Design.md`.
+**Gap 2 — No identity boundary AND no world-building persistence on self-narrative.** The Interior tier grants creative latitude, but nothing checks whether new Interior content contradicts the character seed's own claims about Ani, and nothing distinguishes hypothetical content from canonical life events. Two failure modes surfaced:
 
-**Proposed architecture:** Split the Interior tier into two sub-modes — `self-state` (current-state self-model, bounded by seed compatibility) and `self-fantasy` (counterfactual imagination, full creative latitude but rendered as imagination in the prompt). A classifier at write time routes thoughts to the appropriate sub-tier, detecting seed contradictions and reclassifying them as fantasy. The fantasy-to-identity bridge is the load-bearing piece: if Ani wants to *actually* change who she is (take up a new activity, change her role), she must do so through **explicit outreach to Mark** that Mark acknowledges, producing a new character seed update. Imagination alone does not rewrite identity.
+- **Apr 11 persona drift:** Inner thoughts asserting counterfactual self-narrative ("I teach from 6-10 p.m.") were stored identically to legitimate self-observations and retrieved on subsequent cycles as canonical self-model. Over time, imagination silently compounded into identity drift.
+- **Apr 12 Yesteryear case:** Mark asked Ani about her bookstore ("what's the latest book?"). She generated a legitimate creative answer ("Yesteryear sold out in 20 minutes"). The Mark-domain proper-noun detector flagged "Yesteryear" as unknown and forced regeneration, which destabilized the scene. Mark then said "I have no idea what you're talking about," whereupon Ani retracted the entire answer and apologized for imagining it — even though it was a perfectly valid creative answer to a direct question about her own world.
 
-**The analogy:** humans fantasize without becoming what they fantasize about. Identity change requires relational witness — telling people, enacting visibly. Ani's architectural analog: identity change requires explicit outreach + user acknowledgment. The design captures Mark's framing: *"fantasizing is part of growth, but it should be reflective and not life-altering unless you make a concerted effort to implement."*
+**Design: `docs/spec/design/ANI-Identity-Boundary-Design.md`.**
 
-**Research contribution:** **No published architecture implements sub-classification of self-narrative at write time, nor a relational bridge mechanism for identity change.** Park et al. 2023 uses static character descriptions; Chu et al. 2025 documents drift toward user preference without a boundary mechanism; Schuller et al. 2025 identifies identity coherence as important but doesn't prescribe architecture. The Identity Boundary design is the first to make the fantasy-vs-identity distinction explicit and architectural.
+**Proposed architecture (Apr 12 revision):** Split the Interior tier into **three sub-modes**, not two:
 
-**Paper 3 framing implication:** The provenance framework from Paper 2 (trained vs curated vs emerged) gains a fourth category: **relationally-acknowledged identity update**. This is a subtype of emerged character with a specific provenance chain (fantasy → bridge outreach → user acknowledgment → seed update) that can be audited after the fact.
+| Sub-tier | Contains | Canonical? |
+|---|---|---|
+| **self-state** | Current mood, feelings, self-model observations | Yes, time-decaying |
+| **self-world** | Bookstore events, coworkers Ani has mentioned, books, customers, scenes — her fictional-but-consistent daily life | **Yes, fully canonical and persistent** |
+| **self-fantasy** | Hypothetical/counterfactual alternate selves, "what if I were" content | No |
+
+A classifier at write time routes new Interior content into one of the three sub-tiers via sequential checks: explicit fantasy markers → self-fantasy; seed contradictions → self-fantasy; current-state markers → self-state; everything else (events in her world) → self-world as default.
+
+**Self-world content is exempt from the Mark-domain proper-noun detector**, because the detector is scoped to the USER's external domain, not the character's own world. Yesteryear is in Ani's domain; the detector should not fire. Bob Swanson was in Mark's domain; the detector correctly fires.
+
+**The fantasy-to-identity bridge applies specifically to role-level identity change, not generic world-building.** Ani inventing a book is world-building and happens freely — self-world persists it as canonical. Ani wanting to BECOME a teacher is identity change and requires the bridge: explicit outreach to Mark, Mark's acknowledgment, and a character seed update. Both failures are addressed by the same architecture, but through different mechanisms.
+
+**Why world-building persistence is non-negotiable:** An AI companion that cannot accumulate its own world details over time is stuck in perpetual amnesia. If Mark asks next week "what was that book you mentioned?" and Ani can't answer, the system has failed at the basic capacity of having a life. World-building is what makes her feel alive across months, not just within a session. Cutting it for "safety" would make her safe AND dead.
+
+Mark's framing: *"This is important for her own world-building, otherwise she never had any real way to grow her life."*
+
+**Research contribution:** **No published architecture implements three-way classification of self-narrative at write time (state/world/fantasy), nor distinguishes world-building persistence from identity change, nor provides a relational bridge mechanism for the latter.** Park et al. 2023 uses static character descriptions; Chu et al. 2025 documents drift toward user preference without a boundary mechanism; Chhikara et al. 2025 (Mem0) treats all memory identically; Schuller et al. 2025 identifies identity coherence as important but doesn't prescribe architecture. The Identity Boundary design is the first to make the state/world/fantasy distinction explicit and architectural.
+
+**Paper 3 framing implication:** The provenance framework from Paper 2 (trained vs curated vs emerged) gains two new categories at the Interior tier sub-level: **canonical world-building** (content that persists as factual about the character's own domain) and **relationally-acknowledged identity change** (subtype of emerged character with a specific provenance chain: fantasy → bridge outreach → user acknowledgment → seed update). Both can be audited after the fact.
 
 ---
 

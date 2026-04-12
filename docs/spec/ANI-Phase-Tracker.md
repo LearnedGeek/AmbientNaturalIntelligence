@@ -222,38 +222,40 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 **Implementation effort:** ~1 week. Classifier is cheap (one LM-Kit call per Facts-tier write). Half-life decay is a background task. Re-evaluation is a new periodic job in AniHeartbeatService.
 
-### Gap 2: Identity boundary — the "dream big" problem
+### Gap 2: Identity boundary — the "dream big + grow a world" problem
 
-**Problem:** Ani can think imaginative thoughts about her own life freely (Interior tier, full creative latitude by design). But when those thoughts claim things that contradict her character seed ("I teach from 6-10 PM" when her seed says she works at the bookstore), they become part of her Interior self-model and get retrieved on subsequent cycles as if she actually *is* those things. Discovered Apr 11: Ani had been inhabiting a "teacher" persona across multiple inner thoughts and outreach drafts over the previous week, picked up from the conversational context of Mark's actual teaching.
+**Problem (two motivating cases):** Ani can think imaginative thoughts about her own life freely (Interior tier, full creative latitude by design). Two structurally different failures surfaced:
 
-**The tension:**
-- Fantasizing is part of growth. "What if I were a teacher?" is a legitimate reflective thought for a person, human or AI. Suppressing it would make Ani less alive.
-- But fantasizing without boundary is persona drift. Thoughts that silently become canonical self-narrative erode the character seed foundation, and the system ends up with two incompatible self-models in retrieval.
+- **Apr 11 persona drift:** Inner thoughts that contradicted the character seed ("I teach from 6-10 PM" when her seed says bookstore) were being stored identically to legitimate self-observations and retrieved on subsequent cycles as canonical self-model. Imagination compounded into identity drift.
+- **Apr 12 Yesteryear case:** Mark asked "what's the latest book?" — a direct question about Ani's bookstore world. Ani generated a reasonable creative answer with an invented title. The Mark-domain proper-noun detector flagged "Yesteryear" and forced regeneration, destabilizing the scene. Ani retracted a valid creative answer. The detector was scoped wrong — Yesteryear is in her domain, not Mark's.
 
-**The analogy (Mark's framing):** Humans fantasize all the time and it doesn't alter their identity. A person might think "what if I were a teacher?" without becoming one. The transition from fantasy to identity requires a concerted effort — applying for a teaching certificate, changing jobs, etc. We need the same separation for Ani: she can entertain counterfactual self-narratives, but they should NOT silently become assertions.
+**The tension, refined (Apr 12):** An initial Apr 11 design proposed splitting Interior into two sub-modes (self-state, self-fantasy). The Apr 12 Yesteryear case exposed a flaw: collapsing creative world-building and hypothetical fantasy into one sub-tier would have BROKEN Ani's ability to accumulate her own life. If "Yesteryear sold out" routes to self-fantasy (non-canonical), then next week when Mark asks "what was that book you mentioned?", Ani can't retrieve it — she looks amnesiac or contradicts herself. Mark's framing: *"this is important for her own world-building, otherwise she never had any real way to grow her life."*
 
-**Proposed architectural answer: reflective marking at write time.**
+**Proposed architectural answer (Apr 12 revision): three sub-modes, not two.**
 
-Split the Interior tier into two sub-modes:
-- **Interior:self-state** — assertions about who Ani IS right now. "I'm feeling tender today." "I love morning light." "I miss him." These are her current self-model and retrievable as such.
-- **Interior:self-fantasy** — counterfactual, imaginative, hypothetical. "What if I were a teacher?" "I'd love to learn ballroom dancing." "If I had a body I'd go to the farmers market." These are creative latitude and retrievable for voice/mood, but NEVER treated as current-state assertions.
+Split the Interior tier into THREE sub-modes:
 
-When an inner thought contains language patterns like "I teach from 6-10 PM" that contradict the character seed Occupation field, the thought is either:
-1. **Reclassified to `self-fantasy`** automatically at write time (the safe path), or
-2. **Flagged as identity-boundary-crossing** and rejected before storage
+| Sub-tier | Contains | Canonical? |
+|---|---|---|
+| **Interior:self-state** | Current mood, feelings, self-model observations ("I'm feeling tender today") | Yes, time-decaying |
+| **Interior:self-world** | Events in Ani's fictional-but-consistent daily life — bookstore events, coworkers she's mentioned, books, customers, scenes, routines | **Yes, fully canonical and persistent** |
+| **Interior:self-fantasy** | Hypothetical/counterfactual alternate selves ("what if I were a teacher?") | No |
 
-The fantasy-to-identity bridge is the second part Mark described: if Ani wants to actually *become* a teacher (or take up ballroom dancing, or change her bookstore to a flower shop), she has to do it **by explicit outreach** — sending a message like "I've been thinking about teaching and I want to try it" — not by silent persona drift. That outreach, if Mark acknowledges it, produces a new character seed update or anchored memory that legitimately changes her identity.
+**Critical property: self-world content is exempt from the Mark-domain proper-noun detector.** The detector is scoped to the user's external domain. Yesteryear is in Ani's domain; the detector should not fire. Bob Swanson was in Mark's domain; the detector correctly fires.
 
-This preserves:
-- Her creative latitude (fantasy is allowed freely)
-- Her identity coherence (fantasies don't silently become facts)
-- Her growth path (genuine identity change happens through relational dialogue, not drift)
+**The fantasy-to-identity bridge now applies specifically to role-level identity change, not generic world-building.** Inventing a book is world-building and happens freely — self-world persists it. Becoming a teacher is identity change and requires the bridge: explicit outreach to Mark, Mark's acknowledgment, and a character seed update.
 
-**Research grounding:** This is adjacent to Paper 2's provenance framework (trained vs curated vs emerged character) but adds a new axis: **asserted vs fantasized self-narrative**. It's also the philosophical question Schuller et al. implicitly raise — can an AI have a stable self-concept that survives imaginative exploration? The answer seems to require explicit architectural marking, not just hoping for the best.
+This architecture preserves:
+- **Her creative latitude** (fantasy is allowed freely)
+- **Her world-building persistence** (self-world is canonical — her bookstore grows a history over months)
+- **Her identity coherence** (role-level drift requires the relational bridge, not silent accumulation)
+- **Her growth path** (genuine identity change happens through relational dialogue, not drift)
 
-**Implementation effort:** ~2 weeks. The classifier is small (detect whether an inner thought contains counterfactual markers or asserts something contradicting character seed fields). The tier-splitting at write time is straightforward. The "fantasy-to-identity" bridge through outreach is the interesting design work — it requires defining what kinds of outreach messages can legitimately update character seeds.
+**Research grounding:** Extends Paper 2's provenance framework (trained vs curated vs emerged character) with two new categories at the Interior sub-level: **canonical world-building** (content that persists as factual about the character's own domain) and **relationally-acknowledged identity change** (subtype of emerged character with a specific provenance chain). Paper 3 contribution. Neither is present in Park et al. 2023, Chu et al. 2025, Chhikara et al. 2025 (Mem0), or Schuller et al. 2025.
 
-**Status (Apr 11):** Both gaps are documented here. Design docs to be written before implementation. Neither is blocking for the current weekend server build — they're follow-ups for next week after the hardware is live. The immediate Apr 11 instance of persona drift was handled via manual SQL (dropped the importance of one "i teach from 6-10 p.m." assertion). The real fix is the design work below.
+**Implementation effort:** ~2 weeks. The classifier is small (three-way category routing via sequential checks). The tier-splitting at write time is straightforward. The "fantasy-to-identity" bridge through outreach is the interesting design work — it requires defining what kinds of outreach messages can legitimately update character seeds.
+
+**Status (Apr 12):** Both gaps documented. Design doc updated with three-sub-tier architecture. Neither is blocking for the current hardware build — they're follow-ups for next week after the new server is live. The immediate Apr 11 persona drift was handled via manual SQL. The Apr 12 Yesteryear case is captured as the motivating demonstration that world-building persistence is non-negotiable. The real fix is the design work above.
 
 ---
 
