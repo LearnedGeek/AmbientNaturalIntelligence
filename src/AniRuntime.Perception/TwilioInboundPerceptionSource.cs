@@ -200,18 +200,38 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
                     }
                 }
 
+                var body = msg.Body ?? string.Empty;
+
                 await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
                 {
                     Role    = Roles.Mark,
-                    Content = msg.Body,
+                    Content = body,
                     SentAt  = msg.DateSent,
                 }, ct).ConfigureAwait(false);
+
+                // Admin command short-circuit (Apr 12): commands starting with "///"
+                // are processed via the conversation thread path (CognitiveCycleProcessor
+                // reads the last thread message and dispatches to AdminCommandHandler).
+                // We deliberately do NOT emit a PerceptionEvent for admin commands —
+                // the perception path would store them as Facts-tier memories via
+                // PerceptionPhase, polluting semantic retrieval with command text.
+                //
+                // The thread message (via AddMessageAsync above) is REQUIRED for the
+                // admin handler to see the command. The perception event is NOT.
+                // Database review on Apr 11 found 27+ polluted "Mark texted: '///...'"
+                // Facts-tier records; manual cleanup was performed.
+                if (body.TrimStart().StartsWith("///"))
+                {
+                    _log.LogDebug("Admin command detected in inbound — skipping PerceptionEvent emission: {Preview}",
+                        body.Length > 60 ? body[..60] : body);
+                    continue;
+                }
 
                 events.Add(new PerceptionEvent
                 {
                     SourceName    = SourceName,
                     Category      = Category,
-                    Summary       = MemoryPrefixes.FormatContactPerception(contactName, msg.Body),
+                    Summary       = MemoryPrefixes.FormatContactPerception(contactName, body),
                     ContactRelevance = 0.95f,
                     OccurredAt    = msg.DateSent,
                     OriginChannelId = msg.Sid.StartsWith("DASHBOARD-") ? "dashboard" : "sms",

@@ -177,6 +177,24 @@ public class SqliteConversationService : IConversationService, IDisposable
 
         await updateCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
+        // Admin command short-circuit (Apr 12): commands starting with "///" are
+        // processed by AdminCommandHandler via the conversation thread (CognitiveCycleProcessor
+        // reads the last thread message and dispatches). The conversation_messages table
+        // record above is REQUIRED so the admin handler can see the command. But the
+        // Episodic memory save below is NOT — it just pollutes semantic retrieval with
+        // command text that Ani shouldn't ever retrieve as "something Mark said."
+        //
+        // Database review on Apr 11 found 27+ polluted records from "Mark said: '///tag ...'"
+        // entries plus 2 inner thoughts that misread admin commands as emotional content.
+        // Manual cleanup was performed; this guard prevents recurrence.
+        var content = message.Content ?? string.Empty;
+        if (content.TrimStart().StartsWith("///"))
+        {
+            _log.LogDebug("Admin command detected in AddMessageAsync — thread record written, skipping memory save: {Preview}",
+                content.Length > 60 ? content[..60] : content);
+            return;
+        }
+
         // Save each message as episodic memory with auto-embedding so it survives
         // thread expiration and is findable via semantic search. Fixes BUG-010:
         // without this, expired conversation context is lost and re-engagement
@@ -189,7 +207,7 @@ public class SqliteConversationService : IConversationService, IDisposable
             await _memory.SaveAsync(new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
-                Content        = MemoryPrefixes.FormatSpeaker(message.Role, character.Name, contactName, message.Content),
+                Content        = MemoryPrefixes.FormatSpeaker(message.Role, character.Name, contactName, content),
                 Importance     = 0.6f,
                 RelationalValence = message.Role == Roles.Mark ? 0.7f : 0.5f,
                 SourceName     = "conversation",
