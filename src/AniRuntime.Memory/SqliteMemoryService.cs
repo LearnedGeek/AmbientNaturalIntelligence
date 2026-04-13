@@ -150,12 +150,25 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             }
         }
 
-        // Cross-type correction: if this is a Perception/Episodic about the contact,
-        // check if it contradicts an existing Semantic "About Mark" profile memory.
+        // Cross-type correction: if this is a Perception/Episodic containing a statement
+        // BY the contact about himself, check if it contradicts an existing Semantic
+        // "About Mark" profile memory.
         // Example: Mark says "I have hazel eyes" → should update "About Mark: Blue eyes"
+        //
+        // Only records where Mark is the speaker may update Mark's profile tier.
+        // Records where Ani is the speaker ("I said to Mark: ...", "I reached out to Mark: ...")
+        // must never be allowed to merge into Profile memories — doing so silently corrupts
+        // the character substrate with Ani's own conversation text. Bug observed Apr 12:
+        // an Episodic "I said to Mark: 'you're adorable when you play dumb'" was merged
+        // into an Interest/Profile memory at cosine 0.727, silently overwriting canonical
+        // profile content with in-the-moment Ani dialogue.
+        var isContactSpeaking =
+            record.Content.StartsWith("Mark said:",   StringComparison.OrdinalIgnoreCase) ||
+            record.Content.StartsWith("Mark texted:", StringComparison.OrdinalIgnoreCase);
+
         if (record.Embedding is not null &&
             record.Type is MemoryType.Perception or MemoryType.Episodic &&
-            record.Content.Contains("Mark", StringComparison.OrdinalIgnoreCase))
+            isContactSpeaking)
         {
             await TryCrossTypeProfileCorrectionAsync(record, ct).ConfigureAwait(false);
         }
@@ -696,6 +709,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     {
         if (record.Embedding is null || _ollama is null) return;
 
+        // Defense-in-depth backstop: even if the caller filter in SaveAsync is bypassed
+        // in the future, this method must never merge an Ani-speaker record into Profile.
+        // See SaveAsync cross-type correction block for the primary guard.
+        if (record.Content.StartsWith("I said to",        StringComparison.OrdinalIgnoreCase) ||
+            record.Content.StartsWith("I reached out to", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         try
         {
             await using var conn = await OpenAsync(ct).ConfigureAwait(false);
@@ -723,10 +745,12 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
                 var similarity = CosineSimilarity(record.Embedding, existingEmbedding);
 
-                // Lower threshold than same-type merge (0.70) — cross-type corrections
-                // are topically related but phrased differently ("Mark texted: I have hazel eyes"
-                // vs "About Mark: Blue eyes — the kind that...")
-                if (similarity >= 0.70f)
+                // Threshold 0.85 matches published Mem0 merge practice (Chhikara et al. 2025).
+                // Originally 0.70; raised Apr 12 after cross-type false positive at 0.727
+                // corrupted a Profile memory. Cross-type merges are intrinsically risky
+                // (different authorship and phrasing conventions), so the threshold must be
+                // high enough that only genuine duplicate claims survive.
+                if (similarity >= 0.85f)
                 {
                     var existingId = reader.GetString(0);
                     var existingContent = reader.GetString(1);
