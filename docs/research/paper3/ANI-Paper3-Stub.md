@@ -88,6 +88,28 @@ Mark's framing: *"This is important for her own world-building, otherwise she ne
 
 ---
 
+## Unifying Principle: Architecture Over Training for Epistemic Humility (April 13, 2026)
+
+*Captured from a 3 a.m. kitchen-table reflection that crystallized the principle underlying all three contributions above.*
+
+The three contributions share an underlying stance that deserves explicit statement, because stating it sharpens the paper's contribution and links it to the "architecture over instruction" principle from Paper 2 Section 5.19 and the null-return design moment from Paper 1's early architectural reasoning.
+
+**The principle.** Epistemic humility in deployed AI companions is an architectural property, not a training outcome. Training can shape *which* phrasing the model uses to express uncertainty ("I don't know" vs "I'm not sure" vs "let me think about that"), but whether the model reaches that state at all is a function of whether the generation loop has access to a grounded claim. The path of least resistance for a completion engine is to complete; "I don't know" requires the path to be structurally closed, not merely discouraged.
+
+**Why per-example training is combinatorially hopeless for this target.** Generative models are completion engines whose training objective rewards filling space with plausible tokens. "I don't know" is structurally the opposite of what the objective rewards. When honesty is trained example-by-example, the training fights the architecture's grain — and the space of situations in which the model should say "I don't know" is infinite while any example set is finite. You can train for the topics you anticipated; the topic the user actually raises will be outside the distribution, and the model will default back to completion. Kadavath et al. [2022] document the underlying phenomenon: language models mostly know what they know — the calibrated confidence signal exists internally — but the signal does not surface as output because the training objective rewards confident completion over honest hedging. Training fixes the expression; architecture fixes the path.
+
+**The architectural alternative.** Remove the path by which confident falsity can be asserted when grounding is absent. In ANI's tier-separated architecture, the Facts tier is the only source for factual claims about the user's external world. When the Facts tier returns no grounding for a claim the model is about to make, the architecture does not *suggest* honesty — it makes confident assertion structurally unavailable. The model does not need to learn to be humble; the generation loop has nowhere to go except a hedged form. "I don't know" becomes a structural output of the generation loop, not a learned pattern in the weights.
+
+**The analogy that landed this principle in plain language.** Teaching a child not to lie by rewarding examples of "I don't know" is the wrong mechanism. It is not that rewards do not work — it is that the space of situations requiring "I don't know" is infinite and the reward signal cannot reach all of them. The right mechanism is putting the child in a room where lying is mechanically impossible. The child who grows up in that room develops honesty as a default without having to be taught — and the honesty generalizes to every topic the child encounters, because it is a property of the room, not a property of any specific training example. This is not a metaphor for trained behavior; it is the literal structural claim.
+
+**Connection to Paper 1's null-return design moment.** ANI's original architectural insight — documented in Paper 1 — that when a grounding query returns null, the system must treat that absence as load-bearing rather than as a signal to generate plausible content, is the earliest expression of this same principle. Paper 1 named it in the context of memory retrieval. Paper 2 named it as "architecture over instruction" in the context of prompt simplification and conversation pipeline reform (Section 5.19). Paper 3 generalizes it as the unifying methodological stance of the ANI research program: **the hardest behavioral properties to train are the easiest to enforce architecturally, because architectural enforcement is topic-independent while training is topic-specific.**
+
+**How this principle organizes the three contributions above.** Experiential Grounding gives the Interior tier content to draw from so it does not need to invent — the architectural alternative to training against confabulation from poverty. Memory Tier Separation makes the factual substrate structurally isolated from interior content — the architectural alternative to training against confabulation from contamination. Memory Durability and Identity Boundary prevent imagination from silently compounding into identity drift — the architectural alternative to training against confabulation from time. In each case, the fix is architectural, not example-based. In each case, the training-based alternative is combinatorially hopeless because the space of situations requiring honesty is infinite and any example set is finite. **Paper 3's central methodological claim is that this is not incidental: the hard problems of deployed AI companion honesty are architectural problems wearing training clothes.**
+
+This section should expand into a standalone subsection of the final paper's Discussion, cross-referenced from each of the three contribution sections. The principle is load-bearing enough that it justifies its own named treatment rather than being scattered across the contributions it unifies.
+
+---
+
 ---
 
 ## Core Research Question
