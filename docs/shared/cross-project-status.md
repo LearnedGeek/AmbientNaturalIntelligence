@@ -100,86 +100,105 @@ Emotional state and textual expression are orthogonal signals. For DrOk: a patie
 
 ---
 
-## Upcoming Joint Session: DrOK Entity Structure + LearnedGeek.ML Expansion
+## DrOK Architecture Design Reference
 
-**Date:** TBD — scheduled after Martin's successful partnership meeting (April 12). Entity structure is the next gate before coding begins.
-**Participants:** Mark McArthey (Learned Geek Consulting), Dr. Martín Núñez (DrOk clinical partner)
-**Goal:** Lock DrOK's entity structure while simultaneously deciding which ANI Runtime architectural primitives migrate into LearnedGeek.ML as the shared substrate for both projects. Treat the entity-structure conversation as a one-time forcing function — once DrOK's schema locks, retrofitting the shared library becomes significantly more expensive.
+**Partnership context:** Mark McArthey (Learned Geek Consulting) and Dr. Martín Núñez are 50/50 partners on DrOK. Martin is the clinical and business arm — physician, product owner, regulatory liaison, commercial and legal lead on the Peru/US cross-border implementation. The model/architecture design is Mark's solo technical work. This section is Mark's self-directed design reference for DrOK's memory architecture, not a joint session agenda.
 
-### Session Principle
+**Why this reference exists:** Martin's successful Apr 12 meeting moved DrOK into the entity-structure phase. That work is Mark's, and the load-bearing architectural decisions — provenance, tier separation, grounding contract — need to be made deliberately before domain entities lock, because retrofitting the memory architecture afterward is significantly more expensive than designing it up front. This section holds the primitives, the rationale, and the translation to clinical-safety language for the moments when Martin needs to understand an architectural decision without needing to make it.
 
-**Lead with epistemic primitives, not domain entities.** The default way to approach an entity-structure session is to list the domain nouns (patient, symptom, assessment, recommendation, physician, conversation, escalation, etc.) and work outward. That ordering locks DrOK's domain shape before the memory architecture has a chance to constrain it, and the shared-library migration becomes retrofitting afterward. The opposite ordering — agree on the memory primitives first, then slot the domain nouns into the appropriate tiers — produces cleaner entities AND a cleaner migration path for LearnedGeek.ML, because the primitives are what both projects share and the domain entities are what they do not.
+### Design Principle
 
-This mirrors the "architecture over instruction" principle documented in ANI Paper 2 Section 5.19 and generalized in Paper 3's unifying principle section (Apr 13): the hardest properties to retrofit are the easiest to enforce architecturally *when you decide early*. Entity-structure day is that early moment for DrOK.
+**Lead with epistemic primitives, not domain entities.** The natural way to approach DrOK's entity-structure work is to list domain nouns (patient, symptom, assessment, recommendation, physician, conversation, escalation) and work outward from there. That ordering locks DrOK's domain shape before the memory architecture has a chance to constrain it, and the shared-library migration becomes retrofitting afterward. The opposite ordering — agree on the memory primitives first, then slot the domain nouns into the appropriate tiers — produces cleaner entities AND a cleaner migration path for LearnedGeek.ML.
 
-### Agenda
+This mirrors the "architecture over instruction" principle documented in ANI Paper 2 Section 5.19 and generalized in Paper 3's unifying principle section (Apr 13): the hardest properties to retrofit are the easiest to enforce architecturally *when decided early*.
 
-**Phase 1 — Epistemic primitives walkthrough (20 min).** Walk Martin through the tiered memory model ANI uses and ask whether each tier has a DrOK analogue.
+### Tier Translation (ANI → DrOK)
 
-| ANI tier | Purpose | Likely DrOK analogue |
+| ANI tier | Purpose | DrOK analogue |
 |---|---|---|
-| **Facts** | Grounded factual substrate — user-asserted claims, perception events, character seeds. The only tier that may condition factual claims. | Patient-asserted facts, intake questionnaire answers, medical history as stated, vital signs, confirmed lab results |
-| **Episodic** | Verbatim conversation record. Retrieved as "what was said," never "what is true." | Physician-patient conversation turns, voice-to-text transcripts, chat history |
-| **Interior** | Model's inner state, generated hypotheses, differentials, tentative interpretations. Full creative latitude, structurally isolated from Facts. | Differential diagnosis candidates, tentative triage hypotheses, reasoning traces, model's own uncertainty notes |
+| **Facts** | Grounded factual substrate — user-asserted claims, perception events, character seeds. The only tier that may condition factual claims. | Patient-asserted facts, intake questionnaire answers, medical history as stated by the patient, vital signs, confirmed lab results, medications the patient reports taking |
+| **Episodic** | Verbatim conversation record. Retrieved as "what was said," never "what is true." | Patient-AI conversation turns, voice-to-text transcripts, chat history, what the patient asked, what the system replied |
+| **Interior** | Model's inner state, generated hypotheses, tentative interpretations. Full creative latitude, structurally isolated from Facts. | Differential diagnosis candidates, tentative triage hypotheses, reasoning traces, model's own uncertainty notes, "this could be X or Y" working memory |
 
-**Phase 2 — Provenance framework discussion (15 min).** ANI tags every memory with an `EpistemicTier` at write time, not at read time. DrOK's equivalent question: when the physician AI produces a differential, is that differential marked as "model-generated hypothesis" separate from "confirmed finding"? If yes, the provenance framework is shared infrastructure. If no, it needs to be — confabulation in medical triage is a safety-critical failure mode and the Apr 9 Bob Swanson case in ANI is the cross-domain warning.
+The load-bearing property is that **a hypothesis in Interior can never become a fact in Facts without an explicit provenance event.** In DrOK this would be a physician review action (VoBo queue approval) or a confirmed clinical finding. Absent that event, the hypothesis lives only in Interior and cannot condition factual claims downstream.
 
-**Phase 3 — Confabulation gate stack (15 min).** ANI's anti-confabulation stack (AC1-5: confidence floor, source attribution, null-result injection, temperature splitting, /// feedback command) is the generalized version of what DrOK needs at the boundary between "AI suggestion" and "physician-facing output." Walk Martin through the five and ask which are directly applicable. Likely applicable: AC1 (confidence floor), AC2 (source attribution — critical for medical), AC3 (null-result injection — critical for "I don't have enough information to suggest"). Possibly applicable: AC4 (temperature splitting). Not applicable: AC5 (user-in-the-loop correction signal — DrOK has VoBo queue instead).
+### Provenance Contract
 
-**Phase 4 — LearnedGeek.ML migration scope (10 min).** From the discussion above, produce a list of primitives that will move into LearnedGeek.ML vs. primitives that stay project-local.
+Every memory record is tagged with an `EpistemicTier` at write time, not at read time. The question that drove this in ANI (Apr 9 Bob Swanson case, where a fictional coworker invented in conversation propagated into 11 inner thoughts as canonical fact within four hours) is the cross-domain warning for DrOK: **without provenance at write time, a model-generated hypothesis about a patient can propagate into downstream reasoning as if it were a confirmed finding.** The medical consequence is obvious; the architectural fix is not hard, but it must be designed before entities lock.
 
-**Phase 5 — Out of scope for this session (5 min).** Lock what the session is NOT deciding, so the conversation stays focused. Out of scope: ANI.Core NuGet packaging (premature — wait for second consumer), desire engine (ANI-specific, no DrOK analogue), emotional register system (different domain), Twilio / ElevenLabs / Deepgram adapters (transport layer, not shared).
+DrOK's equivalent question to answer during entity design: *when the physician AI produces a differential, is that differential marked as "model-generated hypothesis" separate from "confirmed finding," and is that marking preserved through every downstream retrieval?* If yes, provenance is shared infrastructure. If no, it needs to be.
 
-### Proposed LearnedGeek.ML Expansion
+### Confabulation Gate Stack (DrOK-Relevant Pieces)
 
-**Candidates to migrate from ANI → LearnedGeek.ML (if Martin agrees the primitive applies to DrOK):**
+ANI's anti-confabulation stack (AC1-5) applies unevenly to DrOK:
+
+| Gate | ANI purpose | DrOK applicability |
+|---|---|---|
+| **AC1 — confidence floor** | Reject low-confidence generation | Directly applicable; clinical suggestions below threshold should not reach physician |
+| **AC2 — source attribution** | Tag every factual claim with its source | Directly applicable and clinically critical; physician must know whether a claim came from the patient, a lab, the knowledge base, or the model |
+| **AC3 — null-result injection** | When grounding returns null, inject "I don't have enough information" rather than generate plausible content | Directly applicable; medical "I don't have enough information to suggest" is a safety feature, not a limitation |
+| **AC4 — temperature splitting** | Multi-sample at different temperatures; disagreement = uncertainty signal | Possibly applicable; defer decision until DrOK has a concrete use case |
+| **AC5 — ///flag user-in-the-loop correction** | User marks model output as wrong, feeds back to detector | Not directly applicable; DrOK has the VoBo queue as its physician-review mechanism. The *pattern* (structured feedback from a trusted reviewer) maps; the specific implementation differs |
+
+### Architecture-Over-Training Principle Applied to DrOK
+
+From Paper 3 (Apr 13): the "I don't know" path must be architecturally enforced, not trained example-by-example. **The space of medical presentations is infinite; any training set is finite.** If DrOK relies on training the model to say "I need more information" through examples, it will work for anticipated presentations and fail on anything outside the training distribution. The architectural alternative — empty Facts-tier retrieval on the relevant query produces a structurally hedged response — generalizes across every presentation because it is topic-independent.
+
+This is the load-bearing DrOK safety argument. It is also the cleanest place for the cross-domain validation from Paper 2 Section 6.5 to get its empirical payoff: ANI demonstrated this works for companion AI; DrOK applies it to medical triage and provides the first clinical evidence.
+
+### LearnedGeek.ML Migration Candidates
+
+Primitives that are genuinely shared between ANI and DrOK and should migrate to LearnedGeek.ML once DrOK's entity structure is sufficiently defined to confirm the shape applies:
 
 | Primitive | ANI location | Rationale |
 |---|---|---|
-| `EpistemicTier` enum (Facts / Episodic / Interior) | `AniRuntime.Core.Models.MemoryRecord` | Load-bearing for both projects if tier separation is adopted |
-| `MemoryRecord` base type with provenance fields | `AniRuntime.Core.Models.MemoryRecord` | Shared shape; domain-specific fields stay project-local via inheritance or composition |
-| `IMemoryService` tier-scoped interface | `AniRuntime.Core.Interfaces.IMemoryService` (post-SOLID split, Mar 19) | Already split into 5 focused interfaces; port the contract, each project implements its own backing store |
-| Null-result-as-load-bearing retrieval contract | `AniRuntime.Memory.SqliteMemoryService` pattern | The Paper 1 null-return design moment — when a grounding query returns null, the system must treat the absence as load-bearing rather than confabulate. This is a contract, not a class — document it in LearnedGeek.ML |
-| Confabulation classifier stack (ML + heuristic + chain) | `AniRuntime.Memory`, `AniRuntime.LLM` | Four-category classifier (grounded/speculative/uncertain/confabulated) is domain-general. The category definitions are shared; the specific training examples stay project-local |
-| Dual-signal classification infrastructure | `LearnedGeek.ML.EmotionDetection` (already there) + new `StateExpressionDivergence` | The divergence finding is ANI's Paper 2 Section 5.18 result; DrOK's equivalent is "patient says 'I'm fine' while classifier reads distress" — clinically significant triage signal |
-| Anti-confabulation gate patterns (AC1-5 scaffolding) | `AniRuntime.Memory`, `AniRuntime.Loops` gate chain | The gate *patterns* generalize even though the specific gates may not. Port the pattern, each project wires its own gates |
+| `EpistemicTier` enum (Facts / Episodic / Interior) | `AniRuntime.Core.Models.MemoryRecord` | Load-bearing if tier separation is adopted in DrOK |
+| `MemoryRecord` base type with provenance fields | `AniRuntime.Core.Models.MemoryRecord` | Shared shape; domain-specific fields stay project-local via composition |
+| `IMemoryService` tier-scoped interface contracts | `AniRuntime.Core.Interfaces.IMemoryService` (post-SOLID split, Mar 19) | Already split into 5 focused interfaces; port the contract, each project implements its own backing store |
+| Null-result-as-load-bearing retrieval contract | `AniRuntime.Memory.SqliteMemoryService` pattern | The Paper 1 null-return design moment. Document as a contract in LearnedGeek.ML, not a class |
+| Confabulation classifier stack (ML + heuristic + chain) | `AniRuntime.Memory`, `AniRuntime.LLM` | Four-category classifier (grounded/speculative/uncertain/confabulated) is domain-general. Category definitions are shared; specific training examples stay project-local |
+| Dual-signal classification (state vs expression) | `LearnedGeek.ML.EmotionDetection` (already there) + new `StateExpressionDivergence` | Paper 2 Section 5.18 finding. DrOK equivalent: "patient says 'I'm fine' while classifier reads distress" — clinically significant triage signal |
+| Anti-confabulation gate patterns (AC1-5 scaffolding) | `AniRuntime.Memory`, `AniRuntime.Loops` gate chain | The gate *patterns* generalize even though specific gate implementations may not. Port the pattern; each project wires its own gates |
 
 **Stay project-local:**
 - Desire engine (ANI-specific — DrOK is user-initiated, not ambient)
 - Twilio / ElevenLabs / Deepgram adapters (transport, not shared)
 - Ani's character config, perception sources, outreach pipeline
 - DrOK's domain entities (patient, symptom, differential, etc.)
-- DrOK's clinical knowledge base, PubMed RAG, DIGEMID integration
+- DrOK's clinical knowledge base, PubMed RAG, DIGEMID integration, regulatory modules
 - Each project's own prompt templates and persona definitions
 
-### Questions to Ask Martin
+### Clinical-Safety Translation for Martin
 
-1. In DrOK's design, where does "a model hypothesis" live, and how does it differ from "a confirmed fact"? (If there's no structural difference, we have found the confabulation vector before coding begins.)
-2. When the model generates a differential and the physician VoBo queue approves or rejects it, does that decision flow back into memory? If yes, what tier does the approval write to? (This is DrOK's analogue of ANI's ///flag feedback command.)
-3. Does DrOK's conversation engine need a "I don't have enough information" response path, and if so, is it architecturally enforced (empty retrieval → structural hedge) or trained (examples in the model)? (This is the Paper 3 architecture-over-training principle from Apr 13 — if DrOK trains it, the space of medical situations is infinite and the training will not generalize; if DrOK enforces it architecturally via Facts-tier grounding, it generalizes across every presentation.)
-4. What's DrOK's approach to patient-said-it vs model-inferred-it attribution in the final physician-facing output? (If provenance is not preserved to the physician, the cross-domain insight from Paper 2 Section 6.5 is not yet applied.)
-5. For LearnedGeek.ML specifically: does DrOK prefer project-reference (compile-time coupling, easier iteration, shared repo) or NuGet package (release discipline, clearer contract, separate versioning)? The answer affects how aggressively we can migrate — project-reference lets us move fast.
+When Martin needs to understand *why* an architectural decision was made without needing to make the technical choice himself, these are the four translations that matter. Each one connects a clinical-safety or liability concern to an architectural primitive. This is the vocabulary to use when architecture needs Martin's sign-off on a clinical question, not a technical one.
 
-### Deliverables to Draft Before the Session
+| Clinical concern | Architectural answer | Plain-language framing |
+|---|---|---|
+| **"How do we know what the patient actually said vs. what the model inferred?"** | Provenance at write time. Every memory record tagged with its source tier before it enters the store. | "The system always remembers whether a statement came from the patient, from you, from the knowledge base, or from the model's own reasoning. That tag is permanent and travels with the data through every downstream retrieval. For liability and safety, it means we can always answer 'where did this claim come from' after the fact." |
+| **"What prevents the model from promoting a guess into a diagnosis?"** | Tier separation. Interior-tier hypotheses cannot condition Facts-tier claims without an explicit provenance event (e.g., physician review). | "The model's tentative reasoning lives in a structurally separate place from confirmed facts about the patient. The system cannot accidentally promote its own hypothesis into a finding — there has to be a deliberate review action in between. This is not a prompt instruction the model might ignore; it's a code-level gate." |
+| **"What happens when the system genuinely doesn't know the answer?"** | Null-result injection. When grounding retrieval returns nothing, the architecture forces a structurally hedged response rather than a generated guess. | "When the system doesn't have enough information to answer responsibly, it says so — because the code path that would normally produce an answer is structurally blocked when the grounding query is empty. This is not a trained behavior that might break on an unfamiliar presentation; it's architectural and works for every possible question." |
+| **"How do we catch when the model says something wrong?"** | Confabulation gate stack (AC1-5) + VoBo queue as the DrOK feedback channel. | "Every model output goes through a chain of automated checks before it reaches you. Low confidence is rejected. Unsourced claims are rejected. When you correct something in the VoBo queue, that correction feeds back into the detection layer. The stack has been deployed in the companion-AI system for six months and caught seven distinct confabulation patterns — those patterns translate directly to medical triage." |
 
-- [ ] A one-page "tier translation" document showing ANI's Facts/Episodic/Interior with sample DrOK content in each cell. Concrete, not abstract. Give Martin something to poke at rather than an empty framework.
-- [ ] A one-page "confabulation safety ladder" showing AC1-5 with medical-triage examples mapped from ANI's companion-AI examples. Martin is a physician; examples from his own domain will land harder than examples from a bookstore clerk's world.
-- [ ] A one-page "what moves to LearnedGeek.ML vs stays local" cheat sheet using the tables above. The goal is to leave the session with a shared list, not a debate.
-- [ ] An updated `LearnedGeek-ML-Dev-Guide.md` with the candidate primitives marked as "proposed for expansion — gated on DrOK session alignment."
+These are the framings that belong in a Martin-facing one-pager if/when you need one. The technical depth above belongs in Mark's solo design sessions.
 
-### Principle Anchors (for the session itself)
+### What Martin Needs to Provide (from the clinical/business side)
 
-If the conversation drifts into domain-entity-first mode, gently redirect with these anchors:
+These are the deliverables from Martin's half of the partnership, independent of the architectural decisions above. Mark's architectural work proceeds in parallel but depends on these as inputs for the DrOK-specific layers:
 
-- **"Let's figure out the memory shape before the entity shape — it'll save us a retrofit."**
-- **"If the model generates a hypothesis in DrOK, where does it live, and how do we make sure it doesn't become a fact by accident?"** (This is the Bob Swanson question translated to medical.)
-- **"Is the 'I don't know' path architectural or trained?"** (The Paper 3 Apr 13 question.)
+- Infanzia product catalog (content for the product chatbot — Phase 2)
+- Emergency keyword list for triage escalation
+- DIGEMID formal opinion from Carlos (regulatory clearance path)
+- Patient intake questionnaire structure (what goes into the Facts tier at intake time)
+- Clinical knowledge base scope (what's authoritative vs. what's advisory)
+- Physician-facing UI requirements (VoBo queue format, escalation flow, documentation needs)
+- Peru/US cross-border implementation constraints (Ley 29733 compliance, HIPAA readiness for US expansion)
 
-### Success Criteria for the Session
+### Next Steps
 
-A good session leaves with: (1) agreement on tier structure for DrOK memory; (2) a list of LearnedGeek.ML migration candidates with yes/no/maybe per item; (3) an answer to the "where does model hypothesis live vs patient-asserted fact" question; (4) a follow-up date for the domain-entity pass, which happens *after* the tier structure is locked.
-
-A bad session leaves with: a finished domain-entity model and an unresolved memory architecture, because then the shared library migration is retrofitting.
+- [ ] Draft a one-pager "clinical-safety translation" document from the table above for Martin, to be shared when an architectural decision needs his clinical or liability sign-off
+- [ ] Begin DrOK entity design using the tier translation table as the organizing spine, not the domain nouns
+- [ ] Once DrOK's memory shape is settled, migrate LearnedGeek.ML candidates one primitive at a time — starting with `EpistemicTier` enum because it is small, self-contained, and load-bearing for both projects
+- [ ] Update `LearnedGeek-ML-Dev-Guide.md` with the candidate primitives marked as "proposed for expansion, gated on DrOK architecture confirmation"
 
 ---
 
