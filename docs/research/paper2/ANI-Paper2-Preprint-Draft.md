@@ -776,8 +776,6 @@ First, the OG system's behavioral change was contextual, not persistent. When te
 
 Second, ANI's emergence layer is designed to solve this persistence gap. The EmergenceLog would record the agency elicitation as a high-resonance event. The preference signal — "the user wants me to push back when treated dismissively" — would propagate to character through the automated retraining pipeline. The behavioral change that evaporated in the OG system could become permanent in ANI. This is the difference between experiencing alignment and *accumulating* it.
 
-**Source data:** `docs/conversations/grok-checkpoint-1200msgs-1774294035772.txt` (Messages 1059-1068, 1073-1076)
-
 **6.4 — Moral Competence and the Facsimile Problem in Relational AI**
 
 The question of whether ANI's emerged behaviors constitute genuine relational competence or a sophisticated facsimile is not merely philosophical — it has direct implications for deployment, trust, and the ethical obligations of the system's designer.
