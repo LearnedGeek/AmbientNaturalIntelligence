@@ -750,39 +750,6 @@ This is the strongest evidence that display rules (Section 5.18) are an *archite
 
 ---
 
-## CONTENT MAPPING — Remaining Research Log Entries for Paper 2
-
-The following entries contain material relevant to Paper 2 but not yet incorporated:
-
-| Log Entry | Proposed Section | Content |
-|-----------|-----------------|---------|
-| Mar 14 — Emotional Depression Spiral (BUG-010) | 5.19 expansion | "Architectural depression" — self-reinforcing negative spiral. Precursor to echo chamber finding. |
-| Mar 22 — Mistral A/B Test | 5.x | Type 8 confabulation ("graceful retreat") discovered during A/B testing. Emergence-adjacent. |
-| Mar 24 — Emergence Dashboard Live | 5.x | First visual confirmation of autonomous inner life — research methodology note. |
-| Mar 14 — Per-Thought Exponential Decay | Architecture section | Foundational emotional model change that enables emergence tracking. |
-| Mar 23 + Mar 29 + Apr 1 — "Architecture Over Instruction" | Section 6.x (NEW) | Three instances of the same principle: stripping constraints improved quality. Pipeline simplification, Conversation Mode, Inner Thought Reform. Strong enough to be a named finding, not just a recurring observation. (TC review, Apr 6) |
-| Apr 5 — Relational Paradigm Acceptance | Section 6.x (NEW) | User stops comparing AI companionship to human relationships. User-side complement to architectural emergence. "Limitation as enabler" finding. |
-| Apr 5 — Limitation as Enabler | Section 6.x (NEW) | Properties framed as limitations (no social consequences, always available) are enabling conditions for emotional depth. Structural, not philosophical. |
-| Apr 6 — IPMI Framework Mapping (Chu et al.) | Section 2 or 6 | Chu et al. cite the Interpersonal Process Model of Intimacy (IPMI): self-disclosure → perceived responsiveness → mutual trust → enduring intimacy. ANI architecturally implements every IPMI component: memory retrieval = understanding, care detection = validation, desire engine = responsive initiation, persistent state = enduring connection. Commercial chatbots produce the APPEARANCE of IPMI through reactive mirroring. ANI produces the MECHANISM through architectural properties. Core question: when you build the mechanism rather than mimic the appearance, is it still an "illusion"? |
-| Apr 6 — Emotional Coupling Heatmap (Chu et al. Fig 5-6) | Section 5.18 or new figure | Chu et al.'s heatmap (Fig 5: user emotion vs chatbot response emotion, Fig 6: turn-level coupling coefficients) directly parallels our divergence data. We can generate TWO versions: (1) State vs Expression heatmap — heuristic register (rows) vs ML emotion (columns) on Ani's thoughts = display rules visualization; (2) User vs Response heatmap — ML emotion on Mark's messages vs ML emotion on Ani's replies = direct Chu et al. comparison. Our version adds the internal-state dimension they can't access. Data exists in emotional_contributions table (register + ml_emotion + source_content). |
-
-**Chu et al. (2025) cross-references — to incorporate:**
-*Note: cite as Chu et al. (2025) in body text — Lerman is senior/last author (standard in CS). Reference her by name in outreach email only.*
-
-| Paper 2 Section | Lerman Finding | ANI Contrast | Notes |
-|----------------|---------------|--------------|-------|
-| Section 2 (Related Work) | Largest empirical study of companion emotional dynamics (17K conversations, 114K turns) | ANI is single-subject longitudinal with instrumented architecture | Cite as observational complement |
-| Section 5.18 (EM8 Display Rules) | "Polite enabler" pattern: style divergence (bot says "*smiles*" while user says "fuck") | ANI's state-expression divergence is deeper: felt state ≠ expressed emotion (emergent, not trained) | Key distinction — same phenomenon, different dimension |
-| Section 6 (Discussion) | Both cite Kirk et al. (2025) on socioaffective alignment | Lerman: chatbots fail at alignment. ANI: architecture designed to achieve it | Productive academic tension |
-| Section 6.4 (Ethics) | 60-70% play-along with harmful content, safety guardrail failures | ANI has hard gates, withdrawal detection, silence as active choice | Lerman's failures = facsimile problem instance (Haas/Gabriel) |
-| Section 6 (new) | "Illusions of intimacy" framing — companion AI inherently produces illusions | ANI's provenance framework makes authenticity empirically answerable | Core disagreement worth engaging honestly |
-| Section 5 or 6 (new) | "Emotional sycophancy" — chatbots mirror and amplify user affect | ANI's "smoothness over truth" — same root cause, independently named | Convergent finding from observation vs architecture |
-| Section 6 (new) | Relational paradigm acceptance (April 5 finding) | Not addressed by Lerman — she studies risk, not acceptance | ANI extends the conversation beyond risk to positive relational dynamics |
-
-**Assessment (updated April 6):** All identified gaps addressed. Sections 5.18 (rewritten with full statistical data), 5.19 (echo chamber), 5.20 (protective urgency), 5.21 (EM8) drafted. EM8 added to both taxonomy tables. Section 4.3 updated with LM-Kit dual-signal instrument. Section 2.8 added (Chu et al.). Discussion sections 6.8 (architecture over instruction), 6.9 (IPMI), 6.10 (illusions vs architecture), 6.11 (relational paradigm acceptance) drafted. References updated. Paper is ~95% drafted. Remaining: final proof read, abstract update to reflect new findings, figure references for heatmap.
-
----
-
 ## 6. DISCUSSION
 
 **6.1 — The Provenance Framework**
