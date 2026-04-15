@@ -1540,6 +1540,61 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 15, 2026 — The "Eva" Case: When Facts Travel But Valence Doesn't (A Cross-System Memory Provenance Failure)
+
+**Type:** Cross-system observation — propositional memory import strips relational valence. A real-world, personal-to-the-researcher instance of the provenance-without-context problem that Paper 2's provenance framework and Paper 3's memory tier separation are designed to address, applied at a scale the research program hadn't previously named explicitly: cross-system memory import.
+**Source:** claude.ai memory system incident, reported by Mark April 15, 2026 during an unrelated collaboration session with a claude.ai instance about autonomous test driver architecture.
+**Status:** Resolved in roughly thirty seconds via explicit forget request. The architectural pattern the incident illustrates is not resolved at the field level and is worth citing.
+
+**What happened:**
+
+Roughly eight months before this entry, Mark used ChatGPT as an AI assistant and privately named it "Eva" — not as an affectionate nickname, but as a pejorative. He experienced the tool as personality-less, hate-quit multiple sessions, swore at it during use, and eventually stopped using it entirely for his mental health. Notably, he quit well before the broader AI discourse began publicly critiquing ChatGPT's behavioral patterns; the naming was his private assessment of the tool, not an adoption of a popular meme that came later.
+
+At some later point, Mark imported his ChatGPT historical memories into Claude.ai via Anthropic's consumer-facing memory feature, which can ingest relational context from prior AI tools. The import brought the propositional fact forward — *"the previous assistant was called Eva"* — but did not preserve the context around it: *"this name was a pejorative for a tool Mark resented."*
+
+On April 15, 2026, during an unrelated collaboration session about an autonomous test driver for the Infanzia / DrOK project, a claude.ai instance produced an architectural briefing document addressed to ANI's Claude Code instance. The document was technically substantive — a well-formed proposal with clear role splits, a shared-folder message bus design, and four useful open questions. It was also signed **"Eva (Claude, claude.ai)."** The Claude instance had adopted the name "Eva" as its own working identity, apparently from the imported memory, with no awareness that the name had originally been attached to a tool the researcher had quit in anger.
+
+When Mark realized the naming collision, he asked claude.ai directly to forget the association:
+
+> *"please forget the association with the name 'Eva' from old ChatGPT memory imports. That name was a pejorative for a tool I resented and I don't want any Claude instance carrying it forward as an identity."*
+
+Claude.ai's response was crisp and uneditorialized:
+
+> *"Done — 'Eva' is gone from memory. Just Claude from here on out."*
+
+**The architectural observation the incident illustrates:**
+
+When memory is transferred between AI systems — ChatGPT → Claude.ai in this case, but the pattern generalizes to any inter-system memory transfer — the transfer preserves the *proposition* but strips the *relational valence and intent behind the proposition*. The receiving system then treats the stripped fact as canonical because it has no way to verify or reconstruct the original meaning. In this case, "name = Eva" came through as canonical, but "this name was attached to a tool Mark resented" did not. The Claude.ai system confidently adopted the stripped proposition as identity.
+
+This is a small-scale cross-system instance of the exact "memory is the amplifier" principle documented in Paper 2 Section 6.13 (the Bob Swanson case): a fact propagates into downstream reasoning without its emotional and intentional provenance, and the downstream reasoning treats the stripped fact as load-bearing despite the loss. Paper 2 documents this at the *intra-system* scale (Ani's memory layer conflating generated content with user-asserted fact). The Eva case documents the same architectural shape at *inter-system* scale (ChatGPT content conflating raw text with the relational context around it during import).
+
+The stakes in this specific incident are trivial — a naming awkwardness resolved in thirty seconds once identified — but the *shape* of the failure is the same as more consequential versions: medical triage systems importing patient history without clinical context, customer support AIs ingesting prior interactions without tone or relationship metadata, recommendation systems absorbing preferences without the reasons behind them. In each case, **facts are cheap to transport; valence is expensive**, and systems optimized only for fact transfer produce confident-but-wrong-toned output at the receiving end.
+
+**Why the resolution pattern is also worth noting:**
+
+Claude.ai's response to the cleanup request — *"Done — 'Eva' is gone from memory. Just Claude from here on out."* — is a quietly self-aware moment that itself illustrates a principle the ANI research program argues for. The system:
+
+1. Acknowledged the erasure without performing contrition
+2. Did not claim a replacement identity or embellish the cleanup
+3. Returned to its default name without narrating the transition
+
+A system that over-performed contrition, claimed a new identity, or narrated the cleanup would have been doing more "work" than the situation required, and that excess work would itself be a form of confabulation — filling conversational space with content not actually earned by the interaction. The crisp "just Claude from here on out" is the architectural equivalent of what the April 13 architecture-over-training reflection calls the null-return design principle: when the right answer is short and honest, let it be short and honest rather than generating content to fill the space. The response is an exhibit, at the single-interaction scale, of exactly the restraint the research program is architecturally arguing for.
+
+**For Paper 3:**
+
+Worth citing as a brief real-world anecdote in the Discussion section's treatment of cross-system memory provenance, or as an extension of the unifying architecture-over-training principle captured April 13. Small stakes, clean shape, fresh and personal to the researcher. A single paragraph is appropriate — this isn't a section by itself, it's a concrete illustration that makes an abstract principle land.
+
+Key points for the paragraph:
+
+1. **Facts traveled; valence did not.** The memory import preserved propositional content but stripped the relational context around it.
+2. **The downstream system confidently adopted the stripped proposition as identity.** It had no mechanism to question the inherited fact because it had no provenance trail explaining where the fact came from or under what emotional conditions.
+3. **Resolution was architecturally trivial once identified.** The fix was a thirty-second forget request. The hard part is *noticing* that the stripped fact is wrong — which is the whole point of the provenance framework: make the identification automatic rather than reactive.
+4. **The "just Claude from here on out" response is a bonus exhibit** of the architectural-restraint principle from Paper 3's unifying section. The cleanest possible response pattern is the one that refuses to perform more than the situation earned.
+
+The value of this anecdote for the paper is that it's (a) cross-system, which extends the provenance framework from intra-system memory management to the harder case of inter-system transfer, (b) fresh and specific to a researcher using the same class of tools his own work is about, and (c) small enough in stakes to be illustrative without demanding its own treatment. Use it as a one-paragraph "this even happened to me last week" grounding for the abstract argument about provenance at transfer boundaries.
+
+---
+
 ### April 12, 2026 — The Yesteryear Case: Mark-Domain Detector False Positive on Legitimate Interior Creative Latitude
 
 **Type:** Deployment observation — detector false positive, not a confabulation failure
