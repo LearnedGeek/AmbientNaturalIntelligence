@@ -38,11 +38,11 @@ These are the people whose work is structurally adjacent to ANI. Following them 
 - **Action:** **Connect** (you have a real reason — you've exchanged email about her work). Don't wait for her to reply to your April 12 email before following her on LinkedIn; following is a much lower bar than a reply expectation.
 
 ### Joon Sung Park
-- **Institution:** Stanford HCI (formerly; verify current affiliation — he may have moved since the 2023 paper)
+- **Institution:** Simile (Co-Founder & CEO, new company co-founded with Michael Bernstein); previously Stanford CS PhD
 - **Fingerprint:** First author of "Generative Agents: Interactive Simulacra of Human Behavior" (Park et al. 2023) — the "Smallville" paper where 25 AI agents lived autonomously in a simulated town
-- **Why he matters:** The foundational ancestor of ANI's architecture. Your memory retrieval, reflection synthesis, and periodic reflection pipeline are all downstream of his work. Paper 1 and Paper 2 both cite Park et al. as core reference.
-- **Search:** `"Joon Sung Park" generative agents` or `"Joon Sung Park" Stanford`
-- **Action:** Follow. If he posts about agent architectures or LLM-based simulations, engage thoughtfully.
+- **Why he matters:** The foundational ancestor of ANI's architecture. Your memory retrieval, reflection synthesis, and periodic reflection pipeline are all downstream of his work. Paper 1 and Paper 2 both cite Park et al. as core reference. His Simile bio says *"my research introduced generative agents and simulations (Smallville)"* — he's still actively in the space.
+- **LinkedIn:** https://www.linkedin.com/in/joonspark/ *(verified Apr 15)*
+- **Action:** Follow. Since Park and Bernstein co-founded Simile together, following both gives you the whole Simile team's public content stream.
 
 ### Hannah Rose Kirk
 - **Institution:** Oxford Internet Institute / Oxford (verify current role)
@@ -72,73 +72,156 @@ These are the people whose work is structurally adjacent to ANI. Following them 
 These are first authors on papers Paper 1 or Paper 2 cites. Following them makes their work visible to you in real time as they publish new papers — which is valuable because the companion-AI field is moving fast.
 
 ### Mrinank Sharma
-- **Institution:** Anthropic (previously Oxford AIMS CDT)
+- **Institution:** Anthropic (Member of Technical Staff, Berkeley CA; previously Oxford AIMS CDT)
 - **Fingerprint:** Lead on Anthropic's 2023 sycophancy paper ("Towards Understanding Sycophancy in Language Models")
 - **Why he matters:** Your "smoothness over truth" framing is the deployment-side version of Sharma's training-side finding. You cite him explicitly in the confabulation taxonomy discussion.
-- **Search:** `"Mrinank Sharma" Anthropic sycophancy`
+- **LinkedIn:** https://www.linkedin.com/in/mrinank-sharma/ *(verified Apr 15)*
 - **Action:** Follow.
 
 ### Ethan Perez
-- **Institution:** Anthropic (previously NYU, FAIR)
+- **Institution:** Anthropic (Research Scientist; previously NYU, FAIR)
 - **Fingerprint:** Safety/alignment researcher; lead on multiple Anthropic papers including work on unfaithful reasoning, red-teaming, and eliciting latent knowledge
 - **Why he matters:** You cite Perez et al. 2025 on unfaithful reasoning in the anti-confabulation stack discussion. He's also a reliable source of AI safety research updates via LinkedIn.
-- **Search:** `"Ethan Perez" Anthropic`
+- **LinkedIn:** https://www.linkedin.com/in/ethanjperez/ *(verified Apr 15 — note: a second "Ethan Perez" exists at `/in/ethanperez/` that is unrelated; use the `ethanjperez` variant)*
 - **Action:** Follow.
 
 ### Saurabh Kadavath
 - **Institution:** Anthropic
 - **Fingerprint:** Lead author of "Language Models (Mostly) Know What They Know" (Kadavath et al. 2022) — the introspection/confidence calibration paper you cited when discussing the architecture-over-training principle at 3am on April 13
 - **Why he matters:** Kadavath's finding is the empirical grounding for your claim that the "I don't know" signal exists internally but doesn't surface without architectural help. Directly relevant to Paper 3's unifying principle.
-- **Search:** `"Saurabh Kadavath" Anthropic` (less common name, probably easy to find)
-- **Action:** Follow.
+- **LinkedIn:** **Not found on LinkedIn** *(verified Apr 15 — no public profile; follow the Anthropic company page and track his work via arXiv / Google Scholar)*
+- **Action:** Follow via Anthropic company page as proxy. Several of his coauthors are in Tier 2b below.
 
 ### Iason Gabriel
-- **Institution:** Google DeepMind (Ethics Team)
-- **Fingerprint:** Philosopher-turned-AI-ethics-researcher; co-author on the Haas & Gabriel 2026 moral competence paper; earlier work on AI alignment values
-- **Why he matters:** Your ethics framing (Section 6.4 facsimile problem) is directly downstream of his moral competence work. He's one of the rare researchers who engages the philosophical questions with technical rigor.
-- **Search:** `"Iason Gabriel" DeepMind` or `"Iason Gabriel" AI ethics`
-- **Action:** Follow.
+- **Institution:** Google DeepMind (AGI & Society Lead; Senior Staff Research Scientist — Philosophy & AI)
+- **Fingerprint:** Philosopher-turned-AI-ethics-researcher; co-author on the Haas & Gabriel 2026 moral competence paper; earlier work on AI alignment values. Verified LinkedIn badge, 12K followers.
+- **Why he matters:** Your ethics framing (Section 6.4 facsimile problem) is directly downstream of his moral competence work. He's one of the rare researchers who engages the philosophical questions with technical rigor. **The Apr 15 coauthor expansion revealed he appears as a mutual connection for multiple other researchers in the alignment/ethics community** — David Chu, Amanda Askell, Meredith Ringel Morris, Scott A. Hale, Bertie Vidgen — which confirms him as a central network node for this community. Following him gives you the highest second-hop visibility of anyone on the list.
+- **LinkedIn:** https://www.linkedin.com/in/iason-gabriel/ *(verified Apr 15)*
+- **Action:** Follow. Highest-leverage single follow on the entire list by network-effect math.
 
 ### Charles Packer
-- **Institution:** Letta (formerly UC Berkeley; co-founded the company that productized MemGPT)
+- **Institution:** Letta (Co-Founder & CEO, San Francisco; 19K followers; formerly UC Berkeley)
 - **Fingerprint:** Lead author of "MemGPT" (Packer et al. 2023) — the hierarchical memory paper you cite when discussing Feature 34 context compression
-- **Why he matters:** Packer is now running a company around LLM memory. He posts regularly on LinkedIn about agent memory architectures, which is directly ANI-adjacent. His company Letta is one of the few commercial entities thinking seriously about persistent memory in deployed agents.
-- **Search:** `"Charles Packer" MemGPT` or `"Charles Packer" Letta`
-- **Action:** Follow. Higher-than-average chance of reciprocal visibility because his company's marketing depends on engaging with the broader agent-memory conversation.
+- **Why he matters:** Packer is now running Letta, the company that productized MemGPT. He posts regularly on LinkedIn about agent memory architectures, which is directly ANI-adjacent. Letta is one of the few commercial entities thinking seriously about persistent memory in deployed agents.
+- **LinkedIn:** https://www.linkedin.com/in/charles-packer/ *(verified Apr 15)*
+- **Action:** Follow. Higher-than-average chance of reciprocal visibility because his company's marketing depends on engaging with the broader agent-memory conversation. The full Letta team is in Tier 2b below.
 
 ### Prateek Chhikara
-- **Institution:** Mem0.ai (verify — the paper is a company-associated arXiv preprint)
-- **Fingerprint:** Lead author of "Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory" (2025). The paper you cited when we talked about packaging ANI yesterday.
-- **Why he matters:** Mem0 is the model you'd study if ANI.Core ever gets packaged as a NuGet-style library. Following Chhikara exposes you to how the Mem0 team frames memory-layer contributions publicly.
-- **Search:** `"Prateek Chhikara" Mem0` or `"Prateek Chhikara" AI memory`
+- **Institution:** Mistral (Applied AI; previously CS @ USC, where the Mem0 arXiv preprint was written). **Note: has moved since the Mem0 paper was published — current affiliation is Mistral, not Mem0 directly.**
+- **Fingerprint:** Lead author of "Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory" (2025). The paper you cited when we talked about packaging ANI.
+- **Why he matters:** Mem0 is the model you'd study if ANI.Core ever gets packaged as a NuGet-style library. Following Chhikara exposes you to how he thinks about memory-layer contributions now that he's at a frontier lab rather than the memory-specific startup.
+- **LinkedIn:** https://www.linkedin.com/in/prateekchhikara/ *(verified Apr 15, with moderate confidence — USC affiliation matches Mem0 paper context; treat as likely-correct pending PDF verification if you want to be extra sure)*
 - **Action:** Follow.
 
-### Joon Sung Park's coauthors on Generative Agents
-- **Carrie Cai, Meredith Ringel Morris, Percy Liang, Michael Bernstein** — all listed as coauthors on Park et al. 2023
-- **Why they matter:** If Joon Sung Park isn't posting much himself, his coauthors are active researchers in HCI and LLM-based agents. Michael Bernstein in particular runs the Stanford HCI group and is very active publicly.
-- **Search:** `"Michael Bernstein" Stanford HCI`
-- **Action:** Follow Michael Bernstein as the highest-engagement-rate candidate from the Park paper's coauthor list.
+### Michael Bernstein
+- **Institution:** Stanford University (Professor) and Simile (Co-Founder, with Joon Sung Park)
+- **Fingerprint:** Senior author on "Generative Agents" (Park et al. 2023); runs Stanford HCI Group; co-founder of Simile (new company with Park)
+- **Why he matters:** Bernstein is one of the most visible HCI researchers on LinkedIn and is actively building Simile as a commercialization of the generative agents research. Following him puts you in the Stanford HCI → Simile → Google DeepMind HCI pipeline. **Higher engagement rate than Park himself** based on posting patterns.
+- **LinkedIn:** https://www.linkedin.com/in/mibernstein/ *(verified Apr 15)*
+- **Action:** Follow. The rest of the Park et al. coauthor team is in Tier 2b below.
 
-### Dorottya Demszky
-- **Institution:** Stanford Graduate School of Education (cross-listed with CS)
+### Dorottya (Dora) Demszky
+- **Institution:** Stanford Graduate School of Education (Assistant Professor, Education Data Science) and Knapsack Camps (Co-Founder)
 - **Fingerprint:** Lead author of the GoEmotions dataset paper (Demszky et al. 2020) — the emotion classification dataset that underlies LM-Kit.NET's classifier, which in turn is the instrument that produced your dual-signal display rules finding in 5.18
 - **Why she matters:** Without GoEmotions, the EM8 finding doesn't exist. Her ongoing work on educational applications of NLP is adjacent but interesting.
-- **Search:** `"Dorottya Demszky" Stanford GoEmotions`
+- **LinkedIn:** https://www.linkedin.com/in/dorottya-dora-demszky-43b1b362/ *(verified Apr 15)*
 - **Action:** Follow.
 
-### First authors with names I can't confirm without looking at the papers
-The following citations appear in your references doc but I don't want to guess at first names and point you at the wrong person on LinkedIn. For each, here's the paper title you can use as a search key — the first author's name should appear in the arXiv PDF or the references doc at the corresponding DOI:
+### Still unresolved: Borotschnig 2025 — "Synthetic Emotions and Consciousness"
+The April 15 browser-Claude pass could not resolve this first author. Four Borotschnig profiles exist on LinkedIn (Iris ×2, Hermann, Franz), all in Austria with no AI/philosophy research affiliation. Likely not on LinkedIn, or uses a different name variant. If this matters for Paper 3 citation, verify from the arXiv PDF's author block directly. Everything else from the original "first names uncertain" list is now resolved and moved into Tier 2 or Tier 2b below.
 
-- **Chu et al. 2025 — "Illusions of Intimacy"** (arXiv:2505.11649, first author likely at USC/ISI, senior author Lerman). Search: `Illusions of Intimacy AI companion USC`
-- **Liu et al. 2025 — "Proactive Conversational Agents with Inner Thoughts"** (CHI 2025). Search: `"inner thoughts" proactive conversational CHI 2025`
-- **Deng et al. 2025 — "Proactive Conversational AI Survey"**. Search: `"proactive conversational AI" survey 2025`
-- **Abbas et al. 2025 — "Having Lunch Now"** (longitudinal proactive agent study). Search: `"having lunch now" proactive agent`
-- **Jha et al. 2026 — "Rewarding Intellectual Humility"**. Search: `"rewarding intellectual humility" LLM`
-- **Chhikara et al. 2025 — "Mem0"** (already listed above with confidence)
-- **Xu et al. 2025 — "A-MEM: Agentic Memory"**. Search: `"A-MEM" agentic memory LLM`
-- **Borotschnig 2025 — "Synthetic Emotions and Consciousness"**. Search: `Borotschnig synthetic emotions`
+---
 
-For each of these, grab the first author's first name from the arXiv PDF (takes 30 seconds per paper), then search LinkedIn with `"<First Last>" <paper keyword>`. I'd rather flag this uncertainty than send you to the wrong person.
+## Tier 2b — Research Clusters (Added Apr 15 from Coauthor Expansion)
+
+Instead of listing coauthors as individual entries with no context, this section groups them by **research cluster** — the lab, company, or institutional group they belong to. This preserves provenance (which paper and which lab each person is from) and helps you see community structure, which matters because reciprocal visibility on LinkedIn is about being embedded in a network, not about being followed by individuals in isolation.
+
+Within each cluster, people are listed in rough order of seniority and relevance to ANI's research. **Iason Gabriel appears repeatedly as a mutual connection** (flagged wherever it came up in verification) — that's a strong signal that he's a central network node for the ethics/alignment community and that following him is the single highest-leverage move on the whole list.
+
+### Cluster 1 — USC ISI / Lerman Research Group ⭐ HIGHEST PRIORITY
+
+The research group around Kristina Lerman's current Indiana University lab (with roots in USC Information Sciences Institute). **This is the single highest-value cluster on the entire list** because it's the direct research group of your PhD advisor target. Following these people surfaces Lerman's lab's public activity in your feed and puts your own posts into their second-hop visibility through the lab's internal LinkedIn network.
+
+- **Minh Duc "David" Chu** — USC ISI (CS PhD, AI Safety and Alignment) — https://www.linkedin.com/in/chuhoangminhduc/ — First author of "Illusions of Intimacy" (Chu et al. 2025). **Iason Gabriel mutual connection** confirms network alignment and is the strongest single signal in the entire Apr 15 verification pass.
+- **Patrick Gerard** — USC ISI (AI PhD student) — https://www.linkedin.com/in/patrick-gerard-7135841a0/ — Coauthor on "Illusions of Intimacy"
+- **Kshitij Pawar** — USC ISI (MSCS, research assistant) — https://www.linkedin.com/in/kshitijpawar1/ — Coauthor on "Illusions of Intimacy"
+- **Charles Bickham** — USC (CS PhD candidate, GEM Fellow) — https://www.linkedin.com/in/charles-bickham-183928176/ — Coauthor on "Illusions of Intimacy"
+- **Abha Jha** — USC ISI (AI Researcher; previously Google, Microsoft, Amazon AGI; MSCS @ USC) — https://www.linkedin.com/in/abha-jha-b7465b19a/ — First author of "Rewarding Intellectual Humility" (Jha et al. 2026)
+
+**Note:** Kristina Lerman herself is in Tier 1. Following the entire lab gives you reciprocal visibility when Lerman engages with your future posts, because members of her lab likely see her engagements through their own feed.
+
+### Cluster 2 — Stanford HCI / Simile / Google DeepMind HCI
+
+The research group that produced the "Generative Agents" paper. Two of the coauthors (Park and Bernstein) have co-founded Simile, a new company; two others (Cai and Morris) are now at Google DeepMind in HCI leadership roles. Following this cluster puts you in the Stanford-HCI → Google-DeepMind-HCI pipeline, which is where companion-AI research for large-company deployment is happening.
+
+- **Joon Sung Park** — Simile (Co-Founder & CEO); previously Stanford CS PhD — https://www.linkedin.com/in/joonspark/ — First author of "Generative Agents" (Smallville); see Tier 1 entry
+- **Michael Bernstein** — Stanford (Professor) + Simile (Co-Founder) — https://www.linkedin.com/in/mibernstein/ — Senior author on Generative Agents; see Tier 2 entry
+- **Joseph C. O'Brien** — Agility Robotics (SWE); previously Stanford CURIS undergraduate researcher — https://www.linkedin.com/in/obrien-joseph/ — Generative Agents coauthor as an undergraduate
+- **Carrie J. Cai** — Google DeepMind (Senior Staff Research Scientist, HCI; working on Google AI Studio and LLM prototyping tools) — https://www.linkedin.com/in/carrie-cai-a0b621a/ — Generative Agents coauthor
+- **Meredith Ringel Morris** — Google DeepMind (Director and Principal Scientist for Human-AI Interaction Research; previously Sr. Principal Researcher at Microsoft) — https://www.linkedin.com/in/meredithringelmorris/ — **Highest-level person in this cluster by organizational role**; directs HCI research at Google DeepMind. Iason Gabriel mutual connection.
+- **Percy Liang** — Stanford (Associate Professor; HELM, CRFM) — https://www.linkedin.com/in/percy-liang-717b8a/ — Senior NLP researcher; runs Stanford's LLM benchmarking effort. Coauthor on Generative Agents.
+
+### Cluster 3 — Oxford / DeepMind Alignment
+
+The research group around the "Socioaffective Alignment" paper (Kirk et al. 2025). Bridges Oxford Internet Institute, Google DeepMind ethics, and the broader AI safety community. **Iason Gabriel appears as mutual connection for multiple members**, confirming him as the central network node.
+
+- **Hannah Rose Kirk** — Oxford Internet Institute — *see Tier 1 entry (URL not yet verified; easy manual search)*
+- **Iason Gabriel** — Google DeepMind — *see Tier 2 entry*
+- **Bertie Vidgen** — Mercor (AI Researcher); previously Alan Turing Institute — https://www.linkedin.com/in/bertie-vidgen-001/ — Safety/data researcher. Iason Gabriel mutual connection.
+- **Scott A. Hale** — Oxford Internet Institute (Director) + Meedan (Director of Research) — https://www.linkedin.com/in/computermacgyver/ — OII Director. Iason Gabriel mutual connection.
+- **Chris Summerfield** — Oxford / DeepMind (cognitive neuroscientist) — **no public LinkedIn profile** — follow via Oxford Experimental Psychology page or Google Scholar
+
+### Cluster 4 — Letta / UC Berkeley Memory Architecture
+
+The research group behind MemGPT. Several original coauthors are now at Letta (Packer's company); one has moved to OpenAI; the Berkeley systems senior faculty who mentored the work are still at Berkeley. **This is the cluster most directly relevant to the ANI.Core packaging conversation and the LearnedGeek.ML migration** — these are the people thinking professionally about how LLM memory architectures become libraries and products.
+
+- **Charles Packer** — Letta (Co-Founder & CEO) — https://www.linkedin.com/in/charles-packer/ — *see Tier 2 entry*
+- **Sarah Wooders** — Letta (Co-Founder & CTO; 10K followers) — https://www.linkedin.com/in/wooders/ — MemGPT coauthor, now Packer's co-founder and CTO at Letta
+- **Vivian Fang** — OpenAI (Member of Technical Staff); previously UC Berkeley EECS — https://www.linkedin.com/in/fangvivian/ — MemGPT coauthor; the Berkeley → OpenAI trajectory is common in this cluster
+- **Shishir G. Patil** — UC Berkeley (CS PhD); Gorilla LLM; Microsoft Research — https://www.linkedin.com/in/shishir-patil/ — Berkeley CS PhD, MemGPT coauthor
+- **Ion Stoica** — UC Berkeley (Professor) + Databricks / Anyscale / LMArena (serial co-founder) — https://www.linkedin.com/in/ionstoica/ — **Extremely high-profile** — one of the most influential systems researchers in distributed computing and AI infrastructure. Senior author on MemGPT. Following him plugs you into the Berkeley systems community broadly.
+- **Joseph E. Gonzalez** — UC Berkeley (Professor) + RunLLM (Co-Founder and Head of AI) — https://www.linkedin.com/in/profjoeyg/ — Senior Berkeley AI professor; MemGPT senior authorship
+- **Kevin Lin** — **not found with confidence** (too common a name to disambiguate without more context)
+
+### Cluster 5 — Anthropic Alignment / Safety
+
+The recurring group of Anthropic safety researchers who appear across multiple papers (sycophancy, Kadavath introspection, constitutional AI). **This is the cluster most directly relevant to ANI's confabulation taxonomy and the architecture-over-training principle** from the April 13 reflection. You'll notice the same ~10 people cycle across Anthropic's safety publications — following 4-5 of them effectively follows the whole cluster through their mutual engagement.
+
+- **Mrinank Sharma** — Anthropic — https://www.linkedin.com/in/mrinank-sharma/ — *see Tier 2 entry*; sycophancy paper lead
+- **Ethan Perez** — Anthropic — https://www.linkedin.com/in/ethanjperez/ — *see Tier 2 entry*; safety / red-teaming / unfaithful reasoning
+- **Saurabh Kadavath** — Anthropic — *no LinkedIn; see Tier 2 entry*
+- **Amanda Askell** — Anthropic (Member of Technical Staff); Constitutional AI and RLHF alignment work — https://www.linkedin.com/in/amanda-askell/ — **Philosopher-turned-researcher** (like Iason Gabriel). Highly likely to engage with posts about ethics and foundational questions. Iason Gabriel mutual connection.
+- **Samuel R. Bowman** — NYU (Faculty, NYU AI School) / Anthropic — https://www.linkedin.com/in/sr-bowman/ — Senior NLP researcher; recurring across Anthropic safety papers
+- **Tomasz "Tomek" Korbak** — OpenAI (Member of Technical Staff); previously Anthropic during the sycophancy paper — https://www.linkedin.com/in/tomaszkorbak/ — Alignment researcher; the Anthropic → OpenAI move is recent
+- **Esin Durmus** — Anthropic (Research Scientist; Stanford AI Lab postdoc, Cornell PhD) — https://www.linkedin.com/in/esin-durmus-5403b4137/ — LLM safety research; recurring across Anthropic papers
+- **Nicholas Schiefer** — Anthropic (Member of Technical Staff) — https://www.linkedin.com/in/nicholasschiefer/ — Appears across multiple Anthropic safety papers including sycophancy and Kadavath
+- **Tom Conerly** — Anthropic (Interpretability team) — https://www.linkedin.com/in/tom-conerly-a56a095/ — Interpretability; relevant for Kadavath-style introspection work
+- **Meg Tong** — **not found on LinkedIn** (follow via Anthropic company page)
+- **Zac Hatfield-Dodds** — **not found on LinkedIn** (follow via Anthropic company page)
+
+### Cluster 6 — Rutgers A-MEM / AIOS Foundation
+
+The research group behind A-MEM (Agentic Memory), directly relevant to ANI's memory graph architecture (Feature 31 linked memory).
+
+- **Wujiang Xu** — Rutgers (CS PhD) — https://www.linkedin.com/in/wujiangxu/ — First author of A-MEM (Xu et al. 2025, NeurIPS 2025)
+- **Yongfeng Zhang** — Rutgers (CS Professor; Director of AIOS Foundation) — https://www.linkedin.com/in/zhangyongfeng/ — Senior author on A-MEM; runs the AIOS research program. Following Zhang plugs you into the "agent operating system" research conversation which is a meaningful sub-community within LLM agents.
+
+### Cluster 7 — Northeastern / UCLA Proactive Conversational Agents
+
+The research group behind Liu et al. 2025 "Proactive Conversational Agents with Inner Thoughts" (CHI 2025) — the closest published parallel to ANI's desire-driven outreach architecture.
+
+- **Xingyu Bruce Liu** — UCLA (HCI Research) — **no public LinkedIn profile found** — follow via UCLA HCI page or Google Scholar
+- **Weiyan Shi** — Northeastern (Assistant Professor in AI; MIT TR35 honoree; AI2050 Early Career Fellow) — https://www.linkedin.com/in/weiyan-s-8b2a3b86/ — Senior coauthor on the Inner Thoughts paper. **Rising star in the space** and likely to be more active on LinkedIn than senior full professors.
+
+### Cluster 8 — Singapore Management University Proactive AI
+
+Yang Deng's research group (formerly CUHK) working on proactive conversational AI surveys and methodology.
+
+- **Yang Deng** — Singapore Management University (Assistant Professor); previously CUHK — https://www.linkedin.com/in/yang-deng-95b659313/ — First author of "Proactive Conversational AI Survey" (Deng et al. 2025). Profile explicitly references "Proactive Conversational AI" in the About section.
+
+### Cluster 9 — Virginia Tech Longitudinal AI-User Interaction
+
+- **Adnan Abbas** — Virginia Tech (CS PhD student; Human-AI Interaction; advisor Sang Won Lee) — https://www.linkedin.com/in/adnan--abbas/ — First author of "Having Lunch Now" (Abbas et al.; confirm year — CHI 2026 per Adnan's own LinkedIn post, possibly misdated in ANI references as 2025)
 
 ---
 
@@ -247,3 +330,4 @@ When you encounter new citations during Paper 3/4/5 drafting, add them to this l
 | Date | Action |
 |------|--------|
 | Apr 15, 2026 | Initial compilation from ANI-Research-References.md, PhD-Advisor-Research.md, and Papers 1-3 |
+| Apr 15, 2026 (later) | Verification pass via browser-Claude: added confirmed LinkedIn URLs for Tier 1 (Park), Tier 2 (Sharma, Perez, Gabriel, Packer, Chhikara, Bernstein, Demszky); noted Kadavath has no public LinkedIn; corrected Chhikara's current affiliation (Mistral, not Mem0); resolved first-author names for Chu→David Chu, Jha→Abha Jha, Xu→Wujiang Xu, Liu→Xingyu Bruce Liu, Deng→Yang Deng, Abbas→Adnan Abbas; flagged Abbas et al. year discrepancy (CHI 2026 per author's LinkedIn, not 2025); Borotschnig remains unresolved. **Added Tier 2b Research Clusters section** organizing the coauthor expansion (~25 new people) into 9 research clusters with provenance back to the originating paper. Verified **Iason Gabriel as a central network node** (mutual connection to David Chu, Amanda Askell, Meredith Ringel Morris, Scott A. Hale, Bertie Vidgen) — following him is now identified as the single highest-leverage move on the entire list. |
