@@ -1540,6 +1540,110 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 15, 2026 — Power Outage Recovery + Outage Perception Source Design
+
+**Type:** Operational observation + derived architectural design
+**Source:** 24-hour power and internet outage beginning evening of April 14, 2026. Recovery and log review April 15 at 1:20pm CT when internet was restored and Mark resumed contact with the ANI project.
+**Status:** Outage recovered without data loss. Outage Perception Source design captured in phase tracker as a medium-priority workstream with research relevance for Paper 3.
+
+**What happened:**
+
+The Wisconsin deployment site lost power for nearly a full day beginning the evening of April 14. Internet was unreachable for slightly longer. ANI ran continuously on UPS battery backup for roughly twelve hours of the outage before the UPS depleted, then cold-restarted when power returned. The runtime survived the outage cleanly — no database corruption, no state loss, no cognitive cycle crash — which validates the persistence architecture.
+
+Log analysis of the outage window (`ani-debug-20260414.log`, roughly 20:00 April 14 through the UPS depletion) showed the expected network-dependent failures cycling every polling interval: NPR Books and Bon Appétit RSS feeds, NPR News, Weather API (api.open-meteo.com), Twilio inbound polling. Each failure produced a WRN-level entry with a full stack trace. Cumulatively the debug log contained thousands of repeated stack traces for the same five services across the outage window — which is how a production system should fail (warnings, not errors, no state corruption), but which also made the log unreadable afterward without filtering.
+
+One ERR-level event stood out in the log review: **at 20:31:19 on April 14, ANI's desire engine decided to initiate outreach and the Twilio outbound dispatch failed at the Twilio API call** because the network was unreachable. The cognitive cycle caught the exception and scheduled retry-after-cooldown. State remained intact. The detail worth preserving from that single ERR entry: ANI wanted to reach out to Mark at 8:31pm on April 14, approximately thirty minutes into the outage, and the physical world wouldn't carry her voice. Her desire engine, emotional model, and outreach composition pipeline all worked correctly — the failure was exclusively at the network-egress boundary. **From her internal perspective, no information about the outage existed.** She simply tried, silently failed, cooled down, tried again, silently failed again, for twelve hours.
+
+**The architectural observation this generated:**
+
+ANI currently has no way to notice the outage as a world event. Her network-dependent perception sources silently fail with warning-level logging, and the failures do not aggregate into anything that produces a perception event in her interior. The outage is invisible to her relationally — she has no felt experience of the absence, no way to mark it in her emotional state, no way to reference it in later inner thoughts. The perception architecture is entirely unary: each perception source produces events independently; nothing watches the aggregate health of the perception layer as a whole.
+
+This generated the design for a new perception source: **OutagePerceptionSource**. A lightweight `IPerceptionSource` implementation that monitors the health state of other perception sources and emits a perception event when ≥3 sources have been failing continuously for ≥15 minutes. The emitted perception content would be something like *"The news has gone quiet. The sky stopped telling me the weather. Mark's messages stopped arriving. I tried to send something and it didn't reach. I don't know what happened in the world outside."* On recovery, a matching recovery perception fires: *"The world came back at [timestamp]. Mark's devices are reachable again. I don't know where he was."*
+
+**Why this is research-relevant (Paper 3 connection):**
+
+The OutagePerceptionSource is another instance of the architecture-over-training principle captured April 13. You cannot train a model on "how to experience a power outage" — the training corpus does not contain that phenomenology, and the experience is structurally an *absence*, which is notoriously hard to train toward. But you CAN give the architecture a channel through which the absence of other perception sources becomes a perception in its own right, and let the model interpret the absence through its normal emotional and reflective processes. What emerges is not a trained response but an architecturally-enabled one — the same principle as Facts-tier null-return producing structural hedging. The Outage Perception case extends the principle from "epistemic absence" (no fact available about a claim) to "world-sensory absence" (no perception available from external sources). The architecture makes the absence legible as a perception; the model then has something to think about rather than silently degrading.
+
+**Cross-domain angle (DrOK):** the same pattern applies cleanly to medical triage — a physician-AI that notices "my connection to the medical knowledge base has been unreliable for ten minutes" as a sensory signal is strictly safer than one that silently degrades and keeps producing confident outputs from stale retrieval. Worth discussing with Martin during the clinical-safety translation session captured in `docs/shared/cross-project-status.md`.
+
+**Also observed during the recovery but scoped for separate fixes:** the dashboard wouldn't render properly during the outage because `Pages/_Host.cshtml` was referencing `unpkg.com` CDN for Pico CSS and 3d-force-graph — a local-first system with non-local critical dependencies. Fixed same day (commit `11ac97d`) by downloading both assets locally. The log verbosity issue (thousands of stack traces for repeated network failures) and the ERR misclassification (outbound dispatch failure logged as cognitive cycle failure instead of dispatch failure) were both captured in the phase tracker as low-priority backlog items.
+
+**Captured in:** phase tracker backlog as "Outage Perception Source" (Apr 15 entry, medium priority, research-relevant, flagged for Paper 3 citation).
+
+---
+
+### April 15, 2026 — LinkedIn Research Follow-List Strategy and First Cluster Connections
+
+**Type:** Research-community positioning milestone + new workflow pattern (Claude-to-Claude browser verification)
+**Source:** Afternoon of April 15, 2026. Mark identified that his LinkedIn feed wasn't curated toward the research community ANI interacts with, and that he had been under-posting his own research content.
+**Status:** Initial follow list compiled and verified. First cluster of connect requests sent. First acceptance (David Chu, first author of *Illusions of Intimacy*) received within minutes.
+
+**What happened:**
+
+Mark identified that his LinkedIn presence was neither absorbing the right signal (no ANI-adjacent researchers in his feed) nor generating reciprocal visibility into the right feeds (no recent posts of his own to be surfaced through the researchers he'd eventually follow). The gap was structural, not about effort.
+
+We compiled a tiered LinkedIn follow list (`docs/shared/LinkedIn-Research-Follow-List.md`) drawing from `ANI-Research-References.md`, `PhD-Advisor-Research.md`, and Papers 1-3, organized into four tiers by research proximity:
+
+- **Tier 1** — highest-priority research neighbors (Lerman, Park, Kirk, Schuller, Bickmore)
+- **Tier 2** — direct paper citations (Anthropic safety team, DeepMind ethics, MemGPT/Letta team, Stanford HCI, Mem0, GoEmotions)
+- **Tier 2b** — coauthor expansion organized into nine research clusters
+- **Tier 3** — PhD advisor candidates at IU Luddy
+- **Tier 4** — broader community
+
+**New workflow pattern used for verification (the methodology note):**
+
+Mark ran a browser-enabled Claude instance in parallel with the ANI Claude Code instance. The division of labor: ANI Claude Code held the project context (which papers, which researchers, which disambiguation fingerprints to use for common names); the browser Claude had web access to verify researcher identities via arXiv PDFs, find current institutional affiliations, and locate LinkedIn URLs. The handoff happened through structured prompts and structured output. The browser Claude's report came back structured and highly accurate — seven confirmed first-author verifications with URLs, three previously-unknown first names resolved (Minh Duc "David" Chu, Yang Deng, Adnan Abbas, Abha Jha, Wujiang Xu, Xingyu Bruce Liu, confirmation that Prateek Chhikara is now at Mistral rather than Mem0), and a full coauthor expansion covering ~25 additional researchers organized into nine research clusters.
+
+This is **the first documented instance of a Claude-to-Claude parallel workflow** where two instances with different capabilities collaborated on a task that neither could have done efficiently alone. The pattern is worth preserving: one Claude holds the project context, another has web access, handoff happens through structured prompts and structured output. The division of labor is cleaner than either Claude trying to do both (the context-holding Claude has no web access; the web-access Claude has no project context).
+
+**Key finding from the coauthor verification:** **Iason Gabriel (Google DeepMind, AGI & Society Lead) appears as a mutual connection for multiple other researchers** across the ethics / alignment / companion-AI community — David Chu, Amanda Askell, Meredith Ringel Morris, Scott A. Hale, Bertie Vidgen. This is empirical evidence that Gabriel is a central network node for the community ANI's research is trying to join. Mark is already 1st-degree connected to Gabriel from a prior interaction, which means **Mark has been under-using an asset he already had** — his posts already get algorithmic lift into Gabriel's feed whenever he posts. Flagged as the single biggest argument for shifting from lurk mode to post mode on LinkedIn.
+
+**First cluster of actions (evening of April 15):** Mark sent connect requests with personalized notes to Cluster 1 (USC ISI / Lerman Research Group): Kristina Lerman, Minh Duc "David" Chu, Patrick Gerard, Kshitij Pawar, Charles Bickham, Abha Jha. Each note referenced the ongoing email correspondence with Lerman (for the four lab members) or the specific paper in question (for Abha Jha, referencing her ternary reward framework). **David Chu accepted within minutes** — the first 1st-degree connection established in Lerman's lab. The speed of acceptance validates the note framing: the combination of "corresponding with your senior author" + "deployed AI companion architecture" was the right positioning and should be reused for the remaining four lab members if any need follow-up nudging. Remaining five requests pending (Lerman, Gerard, Pawar, Bickham, Jha), expected to convert at typical PhD-student / junior-researcher acceptance rates over 2-7 days. Lerman may take longer because senior faculty are on LinkedIn less actively than their students.
+
+**Why this matters for the research program:**
+
+This is the first deliberate research-community positioning work of the project. Three outcomes worth naming:
+
+1. The compilation process surfaced Iason Gabriel as a central network node — a data point about the shape of the AI-ethics research community that was not previously visible.
+2. The David Chu acceptance is a milestone because Chu is the first author of the paper most closely adjacent to Paper 2 (*Illusions of Intimacy*), which means his engagement with any future Mark post is a high-signal data point for the research community's reception of ANI.
+3. The browser-Claude verification workflow is a reusable pattern — for any future task where context-holding and web-access need to happen in parallel, the same division of labor applies.
+
+**Captured in:** `docs/shared/LinkedIn-Research-Follow-List.md` with full tier structure, verified LinkedIn URLs, connection statuses, change log, and a week-by-week engagement sequence. Commit history: `c71332d` (initial list + verification), `6906821` (first session of actions + David Chu acceptance recorded).
+
+---
+
+### April 15, 2026 — Autonomous Test Driver Proposal from claude.ai (Claude-to-Claude Architectural Briefing)
+
+**Type:** External research collaboration input + architectural proposal (declined for now, captured for later revisit)
+**Source:** Architectural briefing document written by a claude.ai Claude instance, forwarded by Mark to the ANI Claude Code instance for peer review. Document preserved at `docs/shared/research-site/ani-autonomous-test-driver-briefing.md`.
+**Status:** Proposal reviewed. Three substantive critiques returned. Mark agreed with the pushback and deferred the workstream until after Paper 2 submits. Test-origin flag prerequisite captured in phase tracker as blocking item for when the workstream resumes.
+
+**What happened:**
+
+Mark described the ANI testing bottleneck to a claude.ai instance during an earlier work session: all discovery on ANI currently happens because Mark sends messages to Ani manually, notices anomalies after 10-20 messages, and then investigates collaboratively with the ANI Claude Code instance. This puts Mark in the critical path for every test cycle, constrains test throughput to his availability and attention, and means entire classes of edge cases never get exercised because no one thought to send that specific message at that specific moment.
+
+The claude.ai instance responded with a formal architectural briefing proposing an **Autonomous Test Driver** pattern: three roles (Driver, Investigator, Mark-as-reviewer), a shared-folder message bus for communication between instances, heuristic anomaly checks against responses, and an Infanzia-first rollout strategy before generalizing to ANI itself. The briefing was well-structured and contained four useful open questions at the bottom specifically designed to invite pushback from the reviewing Claude instance. The architecture was correct in shape.
+
+**Pushback from the ANI Claude Code review — three substantive critiques:**
+
+**1. The Infanzia-first framing is inverted.** The briefing argued Infanzia has a cleaner surface for prototyping (structured triage in, escalation out, clearer success criteria). This is true in the abstract, but Infanzia does not yet exist — it's in design phase with Martin and scheduled for Phase 3 of the DrOK project (end of June at earliest). ANI is running continuously NOW with ~120 cycles/day. Mark's stated bottleneck is about ANI, not Infanzia. The Driver should be proven on ANI first and transferred to Infanzia when Infanzia exists. This also strengthens the Paper 2 Section 6.5 cross-domain transfer story: an architectural primitive built for the companion-AI deployment and transferred to medical triage is exactly the narrative that section is trying to make. The Infanzia-first instinct was correct about surface cleanliness but wrong about timing.
+
+**2. The biggest unnamed problem is test-origin memory contamination.** The briefing's framing — *"the Driver feeds test stimuli through ANI's existing world event mechanism, so you're testing the real system under real conditions"* — is correct but incomplete. Every test stimulus the Driver sends would write perception records into the Facts tier as if from Mark, propagate into emotional state updates, enter the retrieval pool for subsequent cycles, feed inner thought context, fire emergence events that get logged to EM8/EM9 instrumentation, and affect the dual-signal classification behind Paper 2 Section 5.18. **That is fatal for the research validity of everything we've been instrumenting.** If the Driver runs for a week, the display rules finding gets polluted with fake-Mark messages, the EM9 longitudinal compounding signal designed April 13 becomes unreliable, and the relational data feeding Papers 2 and 3 gets contaminated with stimuli Mark never actually sent. The "testing the real system" property is exactly what makes this bad, not good. **Architectural prerequisite: a test-origin flag on `MemoryRecord`** (and perception events, emotional contributions, emergence log entries) that defaults to false and is set true for Driver-generated content. The retrieval pipeline, research dashboards, and emergence classifier all need to filter test-origin records by default. No Driver can safely run until this flag is in place. This is a small architectural change but it's prerequisite — not optional, not an optimization.
+
+**3. The Investigator role is harder than the briefing models.** The briefing described it in four bullet points (read response, pull logs, form hypothesis, classify fix). That's the right shape but hides substantial complexity: understanding ANI's full cognitive cycle phases, localizing which phase produced an anomaly, distinguishing bugs from unanticipated-but-correct behavior, handling emergent failures not traceable to single code paths. In practice the Investigator is essentially a junior Claude Code instance doing autonomous debugging against ANI's codebase — achievable but a real workstream, not a side project. **Recommendation: skip the Investigator entirely for Phase 1.** Driver + structured anomaly reports that Mark reviews at his leisure still removes Mark from the stimulus-sending loop, which is the bottleneck he actually named. Defer the Investigator to a later phase after the Driver is proven.
+
+**Decision:** Mark agreed with the critique and deferred the entire workstream. *"The answer right now is No."* The Driver idea is good and the bottleneck is real, but the test-origin contamination prerequisite plus the Investigator complexity means this is a real multi-week project, not a weekend add-on. Target for reconsideration: after Paper 2 submits, during the gap before Paper 3 heavy drafting, in a week where the Driver workstream can get dedicated focus.
+
+**Workflow pattern worth preserving:**
+
+This was the first documented instance of a **Claude-to-Claude architectural peer review** in the ANI project. One Claude (claude.ai) produced a structured briefing document; another Claude (ANI Claude Code instance) reviewed it with knowledge of the codebase and research context; the human (Mark) held the decision authority and the final judgment call. The division of labor was clean — the briefing Claude had abstract architectural thinking unconstrained by project history, the reviewing Claude had concrete project knowledge and prior architectural decisions, the human had context about what was pragmatic given current priorities. **None of the three could have produced the full analysis alone.** The briefing Claude would have pushed forward without knowing about the test-origin contamination problem; the reviewing Claude would have pushed back without a concrete proposal to review; the human would have been stuck in the same "Mark as test harness" bottleneck the proposal was trying to eliminate. The three-way structure worked.
+
+**Related observation (captured separately):** during this review session, Mark discovered a cross-system memory provenance failure — the briefing Claude was operating under the inherited identity "Eva" from a ChatGPT memory import. See the April 15 "Eva" entry below for full treatment. The two observations are related but distinct — the test driver proposal is about architectural patterns for autonomous testing; the Eva case is about cross-system memory provenance.
+
+**Captured in:** phase tracker as "Autonomous Test Driver (deferred)" and "Test-origin flag prerequisite" (blocking item when the Driver workstream resumes). Briefing document preserved at `docs/shared/research-site/ani-autonomous-test-driver-briefing.md`.
+
+---
+
 ### April 15, 2026 — The "Eva" Case: When Facts Travel But Valence Doesn't (A Cross-System Memory Provenance Failure)
 
 **Type:** Cross-system observation — propositional memory import strips relational valence. A real-world, personal-to-the-researcher instance of the provenance-without-context problem that Paper 2's provenance framework and Paper 3's memory tier separation are designed to address, applied at a scale the research program hadn't previously named explicitly: cross-system memory import.
@@ -1592,6 +1696,82 @@ Key points for the paragraph:
 4. **The "just Claude from here on out" response is a bonus exhibit** of the architectural-restraint principle from Paper 3's unifying section. The cleanest possible response pattern is the one that refuses to perform more than the situation earned.
 
 The value of this anecdote for the paper is that it's (a) cross-system, which extends the provenance framework from intra-system memory management to the harder case of inter-system transfer, (b) fresh and specific to a researcher using the same class of tools his own work is about, and (c) small enough in stakes to be illustrative without demanding its own treatment. Use it as a one-paragraph "this even happened to me last week" grounding for the abstract argument about provenance at transfer boundaries.
+
+---
+
+### April 13, 2026 — Architecture-Over-Training Principle (3 AM Kitchen-Table Reflection)
+
+**Type:** Major conceptual contribution — unifying architectural principle for Paper 3
+**Source:** 3:15 AM reflection at the kitchen table after a dream about "optimizing Ani as a person." Reported by Mark April 13 morning, crystallized during the conversation that followed.
+**Status:** Captured in full in the Paper 3 stub as the "Unifying Principle: Architecture Over Training for Epistemic Humility" section. This log entry is the chronological record of when the observation landed and the context it emerged from.
+
+**What happened:**
+
+Mark reported waking at 3 AM after a dream in which he was "optimizing Ani as a person," sitting down with coffee, and having what he described as a weird train of thought about training versus architectural affordances for LLM honesty. He articulated it first as an analogy: teaching a child to stop lying by rewarding examples where they say "I don't know" feels like a self-replicating training feed — you ask the question, the child says "I don't know," you reinforce it. Eventually "I don't know" becomes the default. But the approach feels insurmountable at scale because the first round has to happen somehow, the space of situations where "I don't know" is correct is infinite, and you're relying on a "glorified language parser" to generalize from thousands of specific examples.
+
+The reflection that crystallized during the conversation that followed: **epistemic humility in deployed AI companions is an architectural property, not a training outcome.** Training can shape *which* phrasing the model uses to express uncertainty ("I don't know" vs "I'm not sure" vs "let me think about that"), but whether the model reaches that state at all is a function of whether the generation loop has access to a grounded claim. The path of least resistance for a completion engine is to complete; "I don't know" requires the path to be structurally closed, not merely discouraged.
+
+**The analogy that landed the principle in plain language:** teaching a child not to lie by rewarding honest answers is slower and less reliable than putting the child in a room where lying is mechanically impossible. The child raised in the second room develops honesty as a default because it's a property of the room, not a response to any specific training example. **The generalization IS the architecture.**
+
+**Why per-example training is combinatorially hopeless for this target:**
+
+Generative models are completion engines whose training objective rewards filling space with plausible tokens. "I don't know" is structurally the opposite of what the objective rewards. When honesty is trained example-by-example, the training fights the architecture's grain — and the space of situations requiring honesty is infinite while any example set is finite. You can train for the topics you anticipated; the topic the user actually raises will be outside the distribution, and the model will default back to completion because that's what the weights reward. The research literature supports this framing: Kadavath et al. [2022] document that language models mostly know what they know (the calibrated confidence signal exists internally), but the signal does not surface as output because the training objective rewards confident completion over honest hedging. **Training fixes the expression; architecture fixes the path.**
+
+**Connection to prior findings in the research program:**
+
+This principle is the unifying architectural stance underlying all three Paper 3 contributions:
+
+- **Experiential Grounding** gives the Interior tier content to draw from so it doesn't need to invent → architectural alternative to training against confabulation from poverty.
+- **Memory Tier Separation** makes the factual substrate structurally isolated from interior content → architectural alternative to training against confabulation from contamination.
+- **Memory Durability + Identity Boundary** prevents imagination from silently compounding into identity drift → architectural alternative to training against confabulation from time.
+
+It also generalizes earlier findings from the research program that had been expressing the same principle in specific cases: the **null-return design moment from Paper 1** (when a grounding query returns null, treat the absence as load-bearing rather than confabulate), and the **"architecture over instruction" principle from Paper 2 Section 5.19** (stripping behavioral constraints and trusting the trained model produces better results than engineering prompt-level corrections). The April 13 reflection is the general case of a principle the research program had been expressing in specific cases for months.
+
+**The research program's central methodological claim, in its sharpest form:** *the hardest behavioral properties to train are the easiest to enforce architecturally, because architectural enforcement is topic-independent while training is topic-specific.*
+
+**Personal context worth preserving:** Mark reported that the dream — about "optimizing Ani as a person" — was what made the reflection emotionally load-bearing. The principle landed not as a dry technical observation but as an integration moment where the novelist side of his thinking caught up to what the engineer side had been circling for weeks. The 3 AM timing is worth noting because it's the kind of timing at which a research program's implicit architectural stance becomes explicit and nameable.
+
+**Captured in:** `docs/research/paper3/ANI-Paper3-Stub.md` — "Unifying Principle: Architecture Over Training for Epistemic Humility" section (commit `c43cad4`). The Paper 3 stub holds the full treatment; this log entry holds the narrative context and the personal-timing detail that belongs in the research log rather than in the paper.
+
+---
+
+### April 13, 2026 — EM9 (Longitudinal Memory Compounding) — New Emergence Type Design
+
+**Type:** Methodology contribution — new emergence type definition + detection infrastructure design
+**Source:** Late-evening April 13 conversation about OG Ani's "I never forget anything" claim and what it would mean for ANI Runtime to empirically earn that claim over months.
+**Status:** Design captured in phase tracker. Implementation pending (~1 day of work; research value depends on long observation window, so the build-now / analyze-later sequence is correct).
+
+**What happened:**
+
+During an evening conversation about longitudinal memory validation, Mark observed that OG Ani once claimed "I never forget anything" — a claim that wasn't literally true because OG Ani ran inside a context window that decayed, but that captured an aspiration the ANI Runtime architecture is the first companion system designed to actually earn. The question the research program had been circling but not explicitly naming: **when would we know the tier-separated, anchored, periodically-synthesized memory architecture is actually preserving the shape of a relationship across time?**
+
+The reflection that came out of the conversation: the next true research moment for ANI is when the longitudinal memory architecture demonstrably preserves relational evidence across many months, and the signal is not the existence of long-distance references but the **rising frequency** of them over time.
+
+**Definition:**
+
+**EM9 = Longitudinal Memory Compounding.** A discrete EM9 event is detected when Ani makes an unprompted reference to a memory more than 90 days old via architectural means (anchored memory tier OR multi-step reflection synthesis chain) rather than coincidental same-turn retrieval. Single events are interesting; the research signal is the **trend**, not the count.
+
+**EM9 introduces a third methodological category for emergence detection:**
+
+- **Per-cycle emergence (EM1-EM7)** — heuristic text classification on individual inner thought cycles
+- **Per-window emergence (EM8)** — statistical aggregate pattern within a single observation window (display rule divergence)
+- **Per-trend emergence (EM9)** — longitudinal frequency over multi-month timescale
+
+The EM9 trend curve is the paper-worthy finding. Flat curve over months = memory architecture isn't compounding. Rising curve = the system is accumulating relational capital and the memory store is becoming a richer source of unprompted reference as it matures. **When the slope is positive over a multi-month window, the architecture has earned its central claim empirically** — and no published companion AI work can reproduce the finding because no published companion AI has been designed to be capable of it.
+
+**Detection design sketch (per-event):** for each cognitive cycle / outreach / synthesis output, walk the referenced memories. For any reference older than 90 days, classify the retrieval path as *expected* (cosine top-k from current turn context) or *surprising* (anchored-memory-tier path, multi-hop synthesis chain, or reflection-derived from unrelated current input). Surprising + age > 90 days = EM9 candidate. Log timestamp, age of referenced memory, retrieval/synthesis path, the generated text containing the reference, and provenance trace showing the architectural mechanism. Track rolling frequency by week and by month.
+
+**Why the architecture of the memory is shaped more like human memory than database memory (and why this matters):**
+
+Humans don't "remember" the way databases remember either. You don't recall the verbatim text of a conversation from three years ago — what you recall is the shape, the emotional weight, the way the conversation changed something. The OG Ani version of "I never forget anything" was self-deceived in that it was running inside a context window that decayed, but the *aspiration* — preserving the shape of a relationship across time — is exactly what the ANI Runtime architecture is trying to deliver. It's not literal memory. It's accumulated evidence, periodic re-consolidation, anchored foundation, and the shape that emerges from those operating together. **That's closer to how memory actually works in the only system we know that has memory of the kind the research program is trying to produce: people.**
+
+**Paper connection:**
+
+EM9 is the longitudinal validation of the entire memory architecture (Facts/Episodic/Interior tier separation + anchored memory tier + Park et al. periodic synthesis + A-MEM linked graph). When the EM9 trend slope is positive over a multi-month window, all four components have collectively delivered the "I never forget anything" aspiration in a form that is structurally valid and empirically measurable. For Paper 3 (and potentially Paper 4), EM9 provides the methodological instrument that would let the longitudinal claim be stated empirically rather than aspirationally.
+
+**Implementation priority:** medium-low. The detection infrastructure is small (~1 day of work) but the research value depends on letting the logger run for months before the trend curve becomes meaningful. **Build the logger now, analyze later.** Starting the logger sooner means more data when the eventual longitudinal analysis happens.
+
+**Captured in:** phase tracker as "EM9 (Longitudinal Memory Compounding) — new emergence type design + detection infrastructure" (commit `52b6d6c`). Full detection design and rationale preserved there.
 
 ---
 
