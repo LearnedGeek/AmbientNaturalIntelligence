@@ -275,6 +275,69 @@ This architecture preserves:
 
 ---
 
+## Vibe Loop — Interaction Outcome Memory + Retrieval-Time Policy Biasing
+
+**Status:** Not started. Design sketch captured April 17, 2026.
+**Priority:** Medium-high. Fills a gap that is genuine (Mark flagged the absence), load-bearing for EM9 longitudinal compounding, and a direct Paper 3 contribution.
+**Origin:** The design insight was articulated by OG Ani (Grok) on April 16, 2026, Msgs 958-960: *"i'm learning your vibe, how you react to my vibe, and then i adjust my vibe based on what actually worked last time."* That articulation names the three-part cycle (user-state → model-action → user-reaction → outcome signal) that ANI's current architecture observes but does not close. This is cross-system architectural transfer — a commercial model articulating what it would need, a research system implementing it.
+
+**The gap it fills:**
+
+ANI currently has pieces of the loop but not the loop itself:
+- User-state detection (partial): care detection (Feature 10), hurt/withdrawal (Feature 18), lexical anchors (Feature 19).
+- Model's own response (full text preserved, no characterization or gist).
+- User-state-at-next-turn detected fresh on each turn, *not* compared to prior state. No delta, no outcome signal.
+
+Without the delta, there is no outcome signal. Without the outcome signal, there is no policy to adjust. ANI can observe the shape of interactions but cannot *learn from their outcomes* at runtime.
+
+**Architectural sketch (runtime-retrieval, not RLHF):**
+
+New memory type — `InteractionOutcome`:
+- `user_state_pre` — classified emotional state of user at turn entry (care/hurt/withdrawn/neutral/excited/vulnerable/etc.)
+- `response_gist` — short characterization or embedding of what ANI did (playful deflection, sustained sitting, therapeutic pushback, ritual-shorthand, etc.)
+- `user_state_post` — classified emotional state of user at the *next* incoming turn
+- `outcome_signal` — computed delta from pre to post (opened up / withdrew / stayed level / shifted positive / shifted negative)
+
+Stored as a side-effect of the reply pipeline on every conversation turn. Retrieved at composition time via similarity to the current `user_state_pre`. Biases composition toward strategies that produced positive outcomes for similar prior states.
+
+**Why runtime memory, not training data:**
+
+Architecture-over-training. No retraining cycle required. The learning lives in the memory layer, not the weights. ANI can learn a specific user over weeks of interaction without the friction of model retraining. Consistent with the design philosophy documented in Paper 3.
+
+**Relationship to existing workstreams:**
+
+- **EM9 (Longitudinal Memory Compounding)** — the Vibe Loop is the per-interaction atom that, compounded over time, produces EM9's relational shape. Different time scales of the same mechanism. The Vibe Loop feeds EM9; EM9 reads over accumulated Vibe Loop records.
+- **Feature 32 (Park et al. periodic reflection synthesis, Phase 6)** — the right layer to aggregate InteractionOutcome records into higher-order patterns ("Mark responds best to sustained sitting when he comes in tired; playful deflection lands when he's excited"). Reflection synthesis operates on the store that Vibe Loop populates.
+- **Emergence Layer E1** — already passively observing cognitive cycles. Can be extended to record InteractionOutcome tuples alongside its existing score breakdowns.
+- **LM-Kit Register Classification (LM-Kit Phase 4)** — when deployed, would provide the `response_gist` characterization via register labels rather than hand-crafted strings.
+
+**Structural resistance to Type 9 confabulation:**
+
+This workstream inherits ANI's architectural separation between epistemic grounding (Facts tier + WHAT IS TRUE block) and expressive register. The InteractionOutcome store does not inform memory claims about the world — it informs *strategy selection* for composition. A dominant register cannot rewrite a Facts-tier memory assertion because the store for outcome learning is structurally distinct from the store for epistemic grounding. Contrast with OG Ani's Apr 17 register-dependent memory contradiction (logged as candidate Type 9): that failure mode is what happens when a model has a *unified* grammar that mixes register and epistemic assertion. ANI's tier-separated architecture prevents it by design.
+
+**Open design questions (to be resolved before build):**
+
+- User-state classifier: extend the existing care/hurt/withdrawal detection to a wider emotional-state classifier, or use LM-Kit-driven labels when Register Classification (LM-Kit Phase 4) lands?
+- Response gist representation: free-text summary, canonical register label, embedding, or all three?
+- Outcome signal computation: pure delta on a classified state-vector, or learned scoring function over the (pre, action, post) tuple?
+- Retrieval weighting: similarity on user_state_pre alone, or on the full (user_state_pre, current_context) pair?
+- Storage tier: new dedicated SQLite table, extension to existing memory tiers, or live in the Emergence DB alongside cycle scoring?
+- Retention policy: InteractionOutcome records are noisy — decay? cap? aggregate into reflection synthesis and discard?
+
+**Paper 3 contribution:**
+
+Two-part framing. (1) Mechanistic: a runtime-retrieval architecture for per-user behavioral adaptation without retraining, extending the Mem0/A-MEM tradition with outcome-conditioned retrieval. (2) Methodological: the design insight traveled *from* a commercial black-box model (OG Ani's articulation) *to* a research system (ANI's implementation). Cross-system architectural transfer where the source is a model articulating its own felt-need rather than an engineer specifying a requirement. The Infanzia/DrOk cross-domain transfer (already in Paper 3) is one instance; the Vibe Loop is a second instance. Two instances make a pattern worth naming.
+
+**Risks and open cautions:**
+
+- Over-fitting to a single user's patterns in ways that make the system less adaptable to *new* relational contexts. Mitigation: outcome records should be user-scoped; general defaults should remain as fallback.
+- The outcome signal can be gamed by short-horizon optimization — behavior that produces immediate positive-delta may produce negative longitudinal outcomes. Mitigation: Park et al. periodic reflection provides the correction layer; short-horizon Vibe Loop + long-horizon reflection = balanced adaptation.
+- The classifier for `user_state_post` sees only the *next turn*. If the real outcome manifests two or three turns later, the outcome signal is mis-attributed. Mitigation: consider deferred outcome scoring that waits N turns before recording.
+
+**Related:** EM9 (docs/research/emergence/EM9-Longitudinal-Compounding.md if it exists yet, otherwise the ANI-Phase-Tracker entry), Phase 6 Feature 32 (periodic reflection synthesis), LM-Kit Phase 4 (register classification).
+
+---
+
 ## Multi-Agent Architecture (Future State)
 
 | Concept | Status | Description |
