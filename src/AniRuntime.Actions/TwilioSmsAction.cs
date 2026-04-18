@@ -72,15 +72,38 @@ public class TwilioSmsAction : IAniAction
             ? decision.MediaUrls.Select(u => u).ToList()
             : null;
 
-        var message = await MessageResource.CreateAsync(
-            body: decision.Message,
-            from: new PhoneNumber(_options.FromNumber),
-            to:   new PhoneNumber(_options.ToNumber),
-            mediaUrl: mediaUrls).ConfigureAwait(false);
+        // Contain dispatch failures here so they do not propagate to
+        // AniHeartbeatService and get misclassified as cognitive cycle ERRs.
+        // A Twilio failure is a dispatch-level issue (API/network/quota) — not
+        // a failure of the cycle that produced the decision. Return false on
+        // failure; the caller treats that as "did not send" without crashing.
+        try
+        {
+            var message = await MessageResource.CreateAsync(
+                body: decision.Message,
+                from: new PhoneNumber(_options.FromNumber),
+                to:   new PhoneNumber(_options.ToNumber),
+                mediaUrl: mediaUrls).ConfigureAwait(false);
 
-        var success = message.Status != MessageResource.StatusEnum.Failed;
-        var mediaInfo = mediaUrls?.Count > 0 ? $", {mediaUrls.Count} media" : "";
-        _log.LogInformation("Twilio SMS {Status} (Sid={Sid}{Media})", message.Status, message.Sid, mediaInfo);
-        return success;
+            var success = message.Status != MessageResource.StatusEnum.Failed;
+            var mediaInfo = mediaUrls?.Count > 0 ? $", {mediaUrls.Count} media" : "";
+            _log.LogInformation("Twilio SMS {Status} (Sid={Sid}{Media})", message.Status, message.Sid, mediaInfo);
+            return success;
+        }
+        catch (HttpRequestException ex)
+        {
+            _log.LogWarning("Twilio SMS dispatch failed (network): {Message}", ex.Message);
+            return false;
+        }
+        catch (TaskCanceledException)
+        {
+            _log.LogWarning("Twilio SMS dispatch timeout");
+            return false;
+        }
+        catch (Twilio.Exceptions.ApiException ex)
+        {
+            _log.LogWarning("Twilio SMS dispatch rejected by API: {Message} (code {Code})", ex.Message, ex.Code);
+            return false;
+        }
     }
 }

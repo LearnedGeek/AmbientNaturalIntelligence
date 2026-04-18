@@ -114,6 +114,16 @@ public sealed class WeatherPerceptionSource : IPerceptionSource
 
             return events;
         }
+        catch (HttpRequestException ex)
+        {
+            _log.LogWarning("Weather API unreachable: {Message}", ex.Message);
+            return [];
+        }
+        catch (TaskCanceledException)
+        {
+            _log.LogWarning("Weather API timeout");
+            return [];
+        }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Weather perception failed — skipping");

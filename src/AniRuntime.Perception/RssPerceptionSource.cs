@@ -63,6 +63,17 @@ public sealed class RssPerceptionSource : IPerceptionSource
                 var items = await FetchFeedAsync(feed, since, ct).ConfigureAwait(false);
                 events.AddRange(items);
             }
+            catch (HttpRequestException ex)
+            {
+                // Transient network: compress to a single line. Full stack on
+                // every cycle during an outage drowns the log with identical
+                // trees — see Apr 14-15 power outage (24h, multiple feeds).
+                _log.LogWarning("RSS feed '{Feed}' unreachable: {Message}", feed.Name, ex.Message);
+            }
+            catch (TaskCanceledException)
+            {
+                _log.LogWarning("RSS feed '{Feed}' timeout", feed.Name);
+            }
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "RSS feed '{Feed}' failed — skipping", feed.Name);

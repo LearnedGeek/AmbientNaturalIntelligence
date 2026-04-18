@@ -48,7 +48,8 @@ public class ContextBuilder
 
     public async Task<ContextSnapshot> BuildContextSnapshotAsync(
         List<PerceptionEvent> perceptions, CancellationToken ct,
-        EmotionalState? emotionalState = null)
+        EmotionalState? emotionalState = null,
+        bool conversationMode = false)
     {
         var charState    = await _state.GetCharacterStateAsync(ct).ConfigureAwait(false);
         var desireState  = await _desire.GetStateAsync(ct).ConfigureAwait(false);
@@ -105,32 +106,36 @@ public class ContextBuilder
         var interiorContext = new List<MemoryRecord>();
         try
         {
-            if (perceptions.Count > 0)
+            if (!conversationMode)
             {
-                var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
+                if (perceptions.Count > 0)
+                {
+                    var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
 
-                // Facts: tier-scoped semantic search for grounded claims
-                var factResults = await _search.SearchByTierAsync(
-                    searchQuery, EpistemicTier.Facts, 5, ct).ConfigureAwait(false);
-                groundedFacts = factResults.Select(s => s.Record).ToList();
+                    // Facts: tier-scoped semantic search for grounded claims
+                    var factResults = await _search.SearchByTierAsync(
+                        searchQuery, EpistemicTier.Facts, 5, ct).ConfigureAwait(false);
+                    groundedFacts = factResults.Select(s => s.Record).ToList();
 
-                // Interior: tier-scoped semantic search for voice/mood continuity
-                var interiorResults = await _search.SearchByTierAsync(
-                    searchQuery, EpistemicTier.Interior, 5, ct).ConfigureAwait(false);
-                interiorContext = interiorResults.Select(s => s.Record).ToList();
-            }
-            else
-            {
-                // No perceptions — fall back to recent memories from each pool
-                groundedFacts = (await _search.GetByTierAsync(
-                    EpistemicTier.Facts, 8, ct).ConfigureAwait(false)).ToList();
-                interiorContext = (await _search.GetByTierAsync(
-                    EpistemicTier.Interior, 5, ct).ConfigureAwait(false)).ToList();
+                    // Interior: tier-scoped semantic search for voice/mood continuity
+                    var interiorResults = await _search.SearchByTierAsync(
+                        searchQuery, EpistemicTier.Interior, 5, ct).ConfigureAwait(false);
+                    interiorContext = interiorResults.Select(s => s.Record).ToList();
+                }
+                else
+                {
+                    // No perceptions — fall back to recent memories from each pool
+                    groundedFacts = (await _search.GetByTierAsync(
+                        EpistemicTier.Facts, 8, ct).ConfigureAwait(false)).ToList();
+                    interiorContext = (await _search.GetByTierAsync(
+                        EpistemicTier.Interior, 5, ct).ConfigureAwait(false)).ToList();
+                }
             }
 
             // Anchored memories are always facts — ensure they're in the Facts pool
-            // even when semantic search didn't surface them. Dedup by id.
-            var anchoredIds = anchoredMemories.Select(m => m.Id).ToHashSet();
+            // even when semantic search didn't surface them (or when skipped in
+            // conversation mode). Anchored foundation facts are stable and never
+            // produce echoes; they are retained in both modes. Dedup by id.
             var missingAnchors = anchoredMemories
                 .Where(m => !groundedFacts.Any(g => g.Id == m.Id));
             groundedFacts.InsertRange(0, missingAnchors);
@@ -138,7 +143,9 @@ public class ContextBuilder
             _log.LogDebug(
                 "Tier retrieval: {Facts} facts, {Interior} interior (from {Source})",
                 groundedFacts.Count, interiorContext.Count,
-                perceptions.Count > 0 ? "perception query" : "recent fallback");
+                conversationMode
+                    ? "conversation mode — anchored only"
+                    : (perceptions.Count > 0 ? "perception query" : "recent fallback"));
         }
         catch (Exception ex)
         {

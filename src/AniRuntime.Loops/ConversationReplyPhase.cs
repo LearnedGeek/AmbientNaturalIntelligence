@@ -149,11 +149,14 @@ public class ConversationReplyPhase
 
         // Build minimal context — character state and emotional state only.
         // No retrieval, no memory search, no intent extraction, no keyword search.
-        var snapshot = await _contextBuilder.BuildContextSnapshotAsync(perceptions, ct, emotionalState).ConfigureAwait(false);
+        // The conversationMode: true flag skips tier-scoped semantic retrieval
+        // inside ContextBuilder so Mark's prior messages (stored as Perception-
+        // type Facts) cannot be matched and re-injected into WHAT IS TRUE.
+        // Anchored foundation memories remain available as stable grounding.
+        var snapshot = await _contextBuilder.BuildContextSnapshotAsync(
+            perceptions, ct, emotionalState, conversationMode: true).ConfigureAwait(false);
 
-        // Skip the entire retrieval pipeline in conversation mode.
-        // The model gets: persona + conversation history. That's it.
-        _log.LogDebug("Conversation mode: retrieval pipeline bypassed — conversation is the context");
+        _log.LogDebug("Conversation mode: tier-scoped retrieval bypassed — anchored foundation only");
 
         // Phase 3: Update structured conversation state from Mark's message
         var contactName = snapshot.CharacterState.PrimaryContactName ?? "Mark";
