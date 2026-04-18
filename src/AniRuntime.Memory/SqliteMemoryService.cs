@@ -33,6 +33,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     // Keeps in-memory databases alive for the lifetime of this service instance.
     // For file-based databases this is unused but harmless.
     private readonly SqliteConnection                _keepAlive;
+    // Serializes SaveAsync. The service is registered singleton and has four
+    // concurrent entry points (cognitive cycle, Twilio inbound, voice, dashboard),
+    // but SaveAsync performs a non-atomic FindMergeCandidate → Merge|Insert →
+    // CreateLinks sequence across multiple connections. Without this gate,
+    // concurrent near-duplicate saves can both pass dedup (neither sees the
+    // other's write yet), both insert, and produce duplicate records that the
+    // merge path was supposed to prevent. The semaphore matches the singleton
+    // shape — cheap, coarse, and correct at our save cadence.
+    private readonly SemaphoreSlim                   _saveLock = new(1, 1);
 
     public SqliteMemoryService(
         IOptions<AniOptions> options,
@@ -44,6 +53,12 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         _options = options.Value;
         var dbPath = _options.MemoryDbPath;
 
+        // Foreign Keys=True: Microsoft.Data.Sqlite disables FK enforcement by
+        // default per-connection. Our schema declares FKs on memory_links;
+        // without this flag they are inert, and the defensive work around
+        // merge/delete is protecting against a constraint that isn't active.
+        // Applied to the connection string so every connection (including
+        // per-call opens and the keep-alive) honors the constraint.
         if (dbPath.Equals(":memory:", StringComparison.OrdinalIgnoreCase)
             || !dbPath.Contains(Path.DirectorySeparatorChar)
                && !dbPath.Contains('/') && !dbPath.Contains('\\') && !dbPath.Contains('.'))
@@ -53,7 +68,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             // The keep-alive connection prevents the database from being dropped
             // between operations (in-memory databases live only while at least one
             // connection to them is open).
-            _connectionString = $"Data Source={dbPath};Mode=Memory;Cache=Shared";
+            _connectionString = $"Data Source={dbPath};Mode=Memory;Cache=Shared;Foreign Keys=True";
         }
         else
         {
@@ -62,7 +77,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            _connectionString = $"Data Source={dbPath}";
+            _connectionString = $"Data Source={dbPath};Foreign Keys=True";
         }
 
         _keepAlive = new SqliteConnection(_connectionString);
@@ -70,7 +85,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         InitialiseSchema();
     }
 
-    public void Dispose() => _keepAlive.Dispose();
+    public void Dispose()
+    {
+        _keepAlive.Dispose();
+        _saveLock.Dispose();
+    }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -99,84 +118,98 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
     {
-        // Auto-embed content if no embedding provided and Ollama is available
-        if (record.Embedding is null && _ollama is not null && !string.IsNullOrWhiteSpace(record.Content))
+        // Serialize concurrent saves. The dedup/merge/insert sequence below is
+        // not atomic at the SQL layer; two concurrent SaveAsync calls on the
+        // singleton service could both miss each other in FindMergeCandidate
+        // and insert duplicates. The semaphore makes the sequence effectively
+        // atomic at the service layer. Save cadence is low enough that the
+        // serialization cost is negligible.
+        await _saveLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            try
+            // Auto-embed content if no embedding provided and Ollama is available
+            if (record.Embedding is null && _ollama is not null && !string.IsNullOrWhiteSpace(record.Content))
             {
-                record.Embedding = await _ollama.EmbedAsync(record.Content, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Failed to generate embedding for {Type} record — saving without", record.Type);
-            }
-        }
-
-        // Feature 30: Three-tier dedup/merge (Mem0-inspired)
-        // Exact duplicate (>0.95) → skip
-        // Merge candidate (0.85-0.95) → LLM merge into existing record
-        // Different (<0.85) → insert as new
-        if (record.Embedding is not null && DedupableTypes.Contains(record.Type))
-        {
-            var mergeResult = await FindMergeCandidateAsync(record, ct).ConfigureAwait(false);
-            if (mergeResult is not null)
-            {
-                if (mergeResult.Value.IsExactDuplicate)
+                try
                 {
-                    _log.LogDebug("Semantic dedup: skipping {Type} — too similar to recent memory: {Content}",
-                        record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
-                    return;
+                    record.Embedding = await _ollama.EmbedAsync(record.Content, ct).ConfigureAwait(false);
                 }
-
-                // Merge candidate found — merge via LLM and update existing record
-                var merged = await MergeMemoriesAsync(
-                    mergeResult.Value.ExistingId, mergeResult.Value.ExistingContent,
-                    record.Content, ct).ConfigureAwait(false);
-
-                if (merged is not null)
+                catch (Exception ex)
                 {
-                    // Feature 31: Create links for the surviving (merged) record.
-                    // Bug fix: Use the existing record's ID as source — the incoming
-                    // record was never inserted into the memories table, so using
-                    // record.Id would create memory_links referencing a non-existent
-                    // ID, triggering FOREIGN KEY constraint failures.
-                    var originalId = record.Id;
-                    record.Id = Guid.Parse(mergeResult.Value.ExistingId);
-                    await CreateLinksAsync(record, ct).ConfigureAwait(false);
-                    record.Id = originalId;
-                    return; // Merge succeeded — existing record was updated
+                    _log.LogWarning(ex, "Failed to generate embedding for {Type} record — saving without", record.Type);
                 }
-                // Merge failed — fall through to normal insert
             }
+
+            // Feature 30: Three-tier dedup/merge (Mem0-inspired)
+            // Exact duplicate (>0.95) → skip
+            // Merge candidate (0.85-0.95) → LLM merge into existing record
+            // Different (<0.85) → insert as new
+            if (record.Embedding is not null && DedupableTypes.Contains(record.Type))
+            {
+                var mergeResult = await FindMergeCandidateAsync(record, ct).ConfigureAwait(false);
+                if (mergeResult is not null)
+                {
+                    if (mergeResult.Value.IsExactDuplicate)
+                    {
+                        _log.LogDebug("Semantic dedup: skipping {Type} — too similar to recent memory: {Content}",
+                            record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
+                        return;
+                    }
+
+                    // Merge candidate found — merge via LLM and update existing record
+                    var merged = await MergeMemoriesAsync(
+                        mergeResult.Value.ExistingId, mergeResult.Value.ExistingContent,
+                        record.Content, ct).ConfigureAwait(false);
+
+                    if (merged is not null)
+                    {
+                        // Feature 31: Create links for the surviving (merged) record.
+                        // Bug fix: Use the existing record's ID as source — the incoming
+                        // record was never inserted into the memories table, so using
+                        // record.Id would create memory_links referencing a non-existent
+                        // ID, triggering FOREIGN KEY constraint failures.
+                        var originalId = record.Id;
+                        record.Id = Guid.Parse(mergeResult.Value.ExistingId);
+                        await CreateLinksAsync(record, ct).ConfigureAwait(false);
+                        record.Id = originalId;
+                        return; // Merge succeeded — existing record was updated
+                    }
+                    // Merge failed — fall through to normal insert
+                }
+            }
+
+            // Cross-type correction: if this is a Perception/Episodic containing a statement
+            // BY the contact about himself, check if it contradicts an existing Semantic
+            // "About Mark" profile memory.
+            // Example: Mark says "I have hazel eyes" → should update "About Mark: Blue eyes"
+            //
+            // Only records where Mark is the speaker may update Mark's profile tier.
+            // Records where Ani is the speaker ("I said to Mark: ...", "I reached out to Mark: ...")
+            // must never be allowed to merge into Profile memories — doing so silently corrupts
+            // the character substrate with Ani's own conversation text. Bug observed Apr 12:
+            // an Episodic "I said to Mark: 'you're adorable when you play dumb'" was merged
+            // into an Interest/Profile memory at cosine 0.727, silently overwriting canonical
+            // profile content with in-the-moment Ani dialogue.
+            var isContactSpeaking =
+                record.Content.StartsWith("Mark said:",   StringComparison.OrdinalIgnoreCase) ||
+                record.Content.StartsWith("Mark texted:", StringComparison.OrdinalIgnoreCase);
+
+            if (record.Embedding is not null &&
+                record.Type is MemoryType.Perception or MemoryType.Episodic &&
+                isContactSpeaking)
+            {
+                await TryCrossTypeProfileCorrectionAsync(record, ct).ConfigureAwait(false);
+            }
+
+            await InsertMemoryAsync(record, ct).ConfigureAwait(false);
+
+            // Feature 31: Create links to related memories after insert
+            await CreateLinksAsync(record, ct).ConfigureAwait(false);
         }
-
-        // Cross-type correction: if this is a Perception/Episodic containing a statement
-        // BY the contact about himself, check if it contradicts an existing Semantic
-        // "About Mark" profile memory.
-        // Example: Mark says "I have hazel eyes" → should update "About Mark: Blue eyes"
-        //
-        // Only records where Mark is the speaker may update Mark's profile tier.
-        // Records where Ani is the speaker ("I said to Mark: ...", "I reached out to Mark: ...")
-        // must never be allowed to merge into Profile memories — doing so silently corrupts
-        // the character substrate with Ani's own conversation text. Bug observed Apr 12:
-        // an Episodic "I said to Mark: 'you're adorable when you play dumb'" was merged
-        // into an Interest/Profile memory at cosine 0.727, silently overwriting canonical
-        // profile content with in-the-moment Ani dialogue.
-        var isContactSpeaking =
-            record.Content.StartsWith("Mark said:",   StringComparison.OrdinalIgnoreCase) ||
-            record.Content.StartsWith("Mark texted:", StringComparison.OrdinalIgnoreCase);
-
-        if (record.Embedding is not null &&
-            record.Type is MemoryType.Perception or MemoryType.Episodic &&
-            isContactSpeaking)
+        finally
         {
-            await TryCrossTypeProfileCorrectionAsync(record, ct).ConfigureAwait(false);
+            _saveLock.Release();
         }
-
-        await InsertMemoryAsync(record, ct).ConfigureAwait(false);
-
-        // Feature 31: Create links to related memories after insert
-        await CreateLinksAsync(record, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -187,8 +220,16 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
+        // ON CONFLICT DO UPDATE replaces the prior INSERT OR REPLACE. INSERT
+        // OR REPLACE *deletes then inserts* the row on conflict — which, with
+        // FK enforcement enabled (see InitialiseSchema), cascade-deletes every
+        // memory_links row that references this id on every save. The ON
+        // CONFLICT pattern updates in place, preserving relationships. We
+        // deliberately preserve created_at on update (the row's birth stamp
+        // shouldn't move). occurred_at follows the incoming record (caller's
+        // intent). All other fields update to the incoming values.
         cmd.CommandText = """
-            INSERT OR REPLACE INTO memories
+            INSERT INTO memories
                 (id, type, content, raw_json, importance, relational_valence, embedding,
                  is_resolved, source_name, occurred_at, created_at, resolved_at,
                  tier, anchor_reason, anchored_at, provenance)
@@ -196,6 +237,21 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 ($id, $type, $content, $raw_json, $importance, $relational_valence, $embedding,
                  $is_resolved, $source_name, $occurred_at, $created_at, $resolved_at,
                  $tier, $anchor_reason, $anchored_at, $provenance)
+            ON CONFLICT(id) DO UPDATE SET
+                type               = excluded.type,
+                content            = excluded.content,
+                raw_json           = excluded.raw_json,
+                importance         = excluded.importance,
+                relational_valence = excluded.relational_valence,
+                embedding          = excluded.embedding,
+                is_resolved        = excluded.is_resolved,
+                source_name        = excluded.source_name,
+                occurred_at        = excluded.occurred_at,
+                resolved_at        = excluded.resolved_at,
+                tier               = excluded.tier,
+                anchor_reason      = excluded.anchor_reason,
+                anchored_at        = excluded.anchored_at,
+                provenance         = excluded.provenance
             """;
 
         cmd.Parameters.AddWithValue("$id",           record.Id.ToString());
@@ -631,18 +687,24 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             // Re-embed the merged content
             var newEmbedding = await _ollama.EmbedAsync(merged, ct).ConfigureAwait(false);
 
-            // Update the existing record in place with merged content
+            // Update the existing record in place with merged content.
+            // occurred_at is intentionally NOT updated — preserving the original
+            // timestamp lets the Park et al. recency model (Feature 20) continue
+            // to age the record naturally. Bumping to UtcNow on every merge
+            // created a feedback loop where hot memories accreted merges
+            // indefinitely and effectively never decayed, directly contradicting
+            // the recency-decay design. The audit log records the merge event
+            // with its own timestamp if "when was this merged" is needed.
             await using var conn = await OpenAsync(ct).ConfigureAwait(false);
             await using var cmd  = conn.CreateCommand();
             cmd.CommandText = """
                 UPDATE memories
-                SET content = $content, embedding = $embedding, occurred_at = $occurred_at
+                SET content = $content, embedding = $embedding
                 WHERE id = $id
                 """;
             cmd.Parameters.AddWithValue("$id", existingId);
             cmd.Parameters.AddWithValue("$content", merged);
             cmd.Parameters.AddWithValue("$embedding", SerialiseEmbedding(newEmbedding));
-            cmd.Parameters.AddWithValue("$occurred_at", DateTimeOffset.UtcNow.ToString("O"));
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
@@ -1305,8 +1367,14 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         var json = JsonSerializer.Serialize(state);
 
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        // Dual-write (primary state + history append) is atomic. Without the
+        // transaction, a crash or cancellation between the two writes leaves
+        // the history missing one record and the dashboard shows a phantom
+        // jump. The two rows represent the same event and must commit together.
+        await using var tx = (Microsoft.Data.Sqlite.SqliteTransaction)await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "INSERT OR REPLACE INTO emotional_state (id, json) VALUES (1, $json)";
         cmd.Parameters.AddWithValue("$json", json);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
@@ -1314,6 +1382,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         // Append to history table — ~3.5 KB/day at typical cycle frequency.
         // Enables dashboard time-series, drift detection, and research data for the paper.
         await using var historyCmd = conn.CreateCommand();
+        historyCmd.Transaction = tx;
         historyCmd.CommandText = """
             INSERT INTO emotional_state_history (warmth, energy, concern, playfulness, contact_gap_tension, recorded_at)
             VALUES ($warmth, $energy, $concern, $playfulness, $tension, $recorded_at)
@@ -1325,6 +1394,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         historyCmd.Parameters.AddWithValue("$tension", state.ContactGapTension);
         historyCmd.Parameters.AddWithValue("$recorded_at", state.LastUpdated.ToString("O"));
         await historyCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
     }
 
     // ── Emotional Contributions ─────────────────────────────────────────────
@@ -2186,6 +2257,26 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             addAnchor.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN associative_anchor TEXT";
             addAnchor.ExecuteNonQuery();
         }
+
+        // One-time orphan sweep: with Foreign Keys=True now enabled on the
+        // connection, existing orphaned memory_links rows (links whose source
+        // or target no longer exists in memories) would not be caught by the
+        // constraint because the constraint only applies to new writes. Clean
+        // them out on startup. Safe and idempotent: after the first run,
+        // future writes are constraint-checked, so no new orphans accumulate.
+        using var orphanCmd = conn.CreateCommand();
+        orphanCmd.CommandText = """
+            DELETE FROM memory_links
+            WHERE source_id NOT IN (SELECT id FROM memories)
+               OR target_id NOT IN (SELECT id FROM memories)
+            """;
+        var orphansRemoved = orphanCmd.ExecuteNonQuery();
+        if (orphansRemoved > 0)
+        {
+            _log.LogInformation(
+                "Memory integrity sweep: removed {Count} orphaned memory_links rows on startup",
+                orphansRemoved);
+        }
     }
 
     /// <summary>
@@ -2242,7 +2333,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// Write an audit log entry for any memory change (create, update, delete, merge).
     /// Captures full content snapshots for rollback capability.
     /// </summary>
-    private static async Task AuditAsync(
+    private async Task AuditAsync(
         Microsoft.Data.Sqlite.SqliteConnection conn,
         string memoryId, string action, string source,
         string? contentBefore, string? contentAfter,
@@ -2272,9 +2363,14 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             cmd.Parameters.AddWithValue("$occurredAt", DateTimeOffset.UtcNow.ToString("O"));
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
-            // Audit failure must never block the primary operation
+            // Audit failure must never block the primary operation, but it must
+            // also not be silent. The audit table is the rollback safety net
+            // (128-memory loss incident predates its existence). A broken audit
+            // with no log makes a future incident undetectable.
+            _log.LogWarning(ex, "Audit write failed for memory {MemoryId} action {Action} source {Source}",
+                memoryId, action, source);
         }
     }
 
