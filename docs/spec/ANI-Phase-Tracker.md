@@ -338,6 +338,72 @@ Two-part framing. (1) Mechanistic: a runtime-retrieval architecture for per-user
 
 ---
 
+## Phase 6 Merge-on-Rebuild + Vibe Loop Intersection (Design Question)
+
+**Status:** Design question open. Not scheduled. Surfaced April 18, 2026 by the memory-service `/ultrareview` pass.
+**Priority:** Cannot be answered until Phase 6 design firms up. Flagged now so the question is not lost.
+**Origin:** `/ultrareview` Finding C2 — `SqliteMemoryService.ReassignMemoryLinksAsync` (lines 842-908) is dead code. Grep confirms no callers. `RebuildMemoryLinksAsync` (lines 1504-1512) counts duplicate memories and logs them but takes no action on the duplicates. The helper and the duplicate-logging path were clearly built to work together — the helper would reassign links when duplicates got merged during rebuild — but the merging step was never implemented.
+
+**Why this is a design question, not a bug fix:**
+
+`ReassignMemoryLinksAsync` is not stray dead code. It is **half-built scaffolding for a feature that was never completed.** The feature: periodic consolidation of near-duplicate memories during a rebuild pass, with link preservation across the merges. Mark (April 18): *"I think we may keep this, but I think it might tie into the vibe loop also, but we'll have to evaluate."*
+
+The question is therefore not *"delete or wire in?"* It is: **does the architecture want periodic merge-on-rebuild, and if so, which workstream owns it?**
+
+**Three workstreams with potential claim on this feature:**
+
+1. **Phase 6 Feature 30 (Mem0 memory merging).** The Mem0 paper's approach is to periodically merge near-duplicate memories during a dedicated consolidation pass, with provenance preserved. If Feature 30 is implemented as Mem0 describes, RebuildMemoryLinksAsync is the natural host and ReassignMemoryLinksAsync is the natural helper. See `docs/spec/phase-6-memory-reform.md` for current Feature 30 design.
+2. **Phase 6 Feature 32 (Park et al. periodic reflection synthesis).** The Park et al. approach is to periodically synthesize higher-order patterns from accumulated memory over time. The synthesis pass reads many records and produces summaries; in doing so it may identify clusters of near-duplicates that should be merged. RebuildMemoryLinksAsync could become (or feed into) the synthesis trigger.
+3. **Vibe Loop workstream.** The Vibe Loop (see Vibe Loop section above) stores InteractionOutcome records on every conversation turn. Over time, similar interactions with similar outcomes will accumulate as near-duplicates. The periodic reflection that compresses raw outcomes into learned policy patterns is itself a merge-on-rebuild-shaped operation. The Vibe Loop may want the same infrastructure that Feature 30/32 builds.
+
+**The intersection observation (Mark, April 18):** all three workstreams likely share infrastructure. A periodic consolidation pass that:
+- Identifies clusters of near-duplicate records (Feature 30)
+- Synthesizes higher-order patterns from those clusters (Feature 32)
+- Extracts outcome-pattern learnings from InteractionOutcome records (Vibe Loop)
+
+...is one pipeline with three feature-specific policies for "what to do with the cluster." Same find-clusters-and-consolidate engine; different consolidation behaviors per record type.
+
+**If this unified view is correct:** `ReassignMemoryLinksAsync` is prototype scaffolding for that shared consolidation engine. It should NOT be deleted; it should be held for Phase 6 design, then either completed as part of the shared consolidation work or explicitly superseded.
+
+**If the workstreams end up independent:** each builds its own periodic pass, `ReassignMemoryLinksAsync` was for the Feature 30 version only, and it can be deleted once Feature 30 picks a different implementation path.
+
+**What to do now:**
+
+1. **Do NOT delete the helper.** Holding for Phase 6 design decision.
+2. **Do NOT wire it in.** No caller exists; wiring without design intent would be premature.
+3. **Do add a comment** at the helper's declaration noting the design-question status and cross-referencing this tracker entry.
+4. **Do add this question to the Phase 6 design agenda** — specifically: "Does Phase 6 Feature 30/32 share a periodic consolidation engine with Vibe Loop, and if so, is `ReassignMemoryLinksAsync` the starting point for its link-reassignment step?"
+
+**Related:** `/ultrareview` Finding C2 (raw source), `docs/reviews/memory-service-ultrareview-2026-04-18.md`, Pipeline Simplification Proposal Section 14.4 (which explicitly defers this question to Phase 6), Vibe Loop workstream above.
+
+---
+
+## Memory Service Hygiene Batch (Deferred Backlog)
+
+**Status:** Tracked, not scheduled. Low priority. Consolidated from `/ultrareview` low-severity findings (April 18, 2026).
+**Batch together when:** a quiet week or a dedicated "cleanup pass" sitting arrives. Not blocking any current work. None introduce correctness risk on their own.
+**Source:** `docs/reviews/memory-service-ultrareview-2026-04-18.md`
+
+| Finding | Description | Effort |
+|---------|-------------|--------|
+| H1 | `GetLinkedMemoryIdsAsync` IN-list via string concatenation. No injection risk today (all callers pass our GUIDs), but violates CLAUDE.md rule. Parameterize or temp-table JOIN. | 10 min |
+| L1 | `CREATE TABLE memories` missing `provenance` column in authoritative schema. Added via ALTER TABLE migration. Cosmetic but future-reader confusion. | 5 min |
+| L2 | JSON deserialization uses inconsistent options across methods (`JsonDefaults.CaseInsensitive` vs default). Consolidate. | 10 min |
+| L3 | Migration runs `PRAGMA table_info(memories)` 7 times at startup instead of once. Cosmetic. Boot-time only. | 15 min |
+| L4 | `ReadContribution` has bare `catch { }`. Catch specific exceptions, log. CLAUDE.md violation. | 5 min |
+| L5 | Migrations run every startup without version guard. Idempotent, fine today. Add `schema_version` table for future-proofing. | 30 min |
+| L6 | `SaveEmotionalContributionAsync` uses `INSERT OR REPLACE`. Same class as H4 but upsert is truly intended here. Lower impact, migrate to `ON CONFLICT DO UPDATE` for consistency. | 10 min |
+| L7 | No explicit `PRAGMA synchronous` / `busy_timeout`. Default `FULL` + 5s busy timeout reasonable, but `busy_timeout=30000` would reduce transient `SQLITE_BUSY` under concurrent load. | 5 min |
+| M2 | `SearchWithScoresAsync` link-enrichment loop issues one command per linked id on shared connection. Batched `WHERE id IN (...)` would be ~10× faster at scale. Depends on H1 fix. | 20 min |
+| M6 | `GetRecentAuditEntriesAsync` uses string-interpolated `LIMIT`. No injection risk (typed int), but inconsistent with method convention. | 5 min |
+| M7 | `Dispose` does not drain in-flight async operations. In-memory test DBs could flake if cognitive cycle is mid-save at host shutdown. Implement `IAsyncDisposable` with drain counter. | 45 min |
+| M8 | Threshold constants duplicated (`MergeThreshold` constant + hardcoded `0.85f` in cross-type path). Will drift on next tuning. | 5 min |
+| M9 | `SaveConfabulationFlagAsync` allows duplicate rows from rapid `///flag` commands. Document intent or add idempotency. | 10 min |
+
+**Total batch effort estimate:** ~3 hours. Can ship as a single "memory service hygiene" commit when convenient.
+
+---
+
 ## Multi-Agent Architecture (Future State)
 
 | Concept | Status | Description |

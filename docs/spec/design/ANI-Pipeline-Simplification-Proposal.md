@@ -327,3 +327,90 @@ Worth citing once this ships, if it ships successfully: the pipeline simplificat
 ---
 
 *Draft prepared Saturday, April 18, 2026 while Mark was at the gym. Ready for review over CrewTrack testing breaks or whenever.*
+
+---
+
+## 14. Addendum — Memory Layer Extension (Added April 18, 2026 evening)
+
+**Context:** First `/ultrareview` pass on `src/AniRuntime.Memory` (report at `docs/reviews/memory-service-ultrareview-2026-04-18.md`, commit `d31341d`) surfaced findings that exceed the scope of this proposal's original three phases. Mark's reading of the report named the pattern: *"we're trying to nitpick through the trees and ignore the forest... we're not relying on the model to govern itself."*
+
+The original proposal covered architecture-over-instruction at the **pipeline layer.** This addendum extends it to the **memory layer,** because the same principle violation is recurring there. One design session, two layers, one unified Paper 3 story.
+
+### 14.1 The pattern recurring at the memory layer
+
+The pipeline audit identified accumulated rule-based guards that compete with model capabilities. The memory-service review found the same pattern, different file:
+
+| Pipeline layer (original proposal) | Memory layer (this addendum) |
+|-----------------------------------|-----------------------------|
+| Mark-echo guard uses cosine similarity to detect parroting | `ContainsNovelSpecifics` uses regex to detect unsupported claims in merged content |
+| Confabulation classifier + Mark-domain assertion detector run as parallel symptomatic checks | Cross-type merge uses content-prefix filter (`"I said to"` / `"I reached out to"`) to detect speaker register |
+| Clean-slate regen strips grounding to prevent echo | Merge gates reject valid consolidations based on regex false-positives, forcing insert-as-new (which defeats dedup) |
+
+Same shape in all three rows: a rule-based scaffold doing a job a capable model could do better, introduced to solve a specific symptom, now producing its own failures by measuring the wrong signal.
+
+### 14.2 Specific findings from the memory review that belong in this session
+
+**Finding group A — regex gates in the merge path** (`ContainsNovelSpecifics` at `SqliteMemoryService.cs:96, 676-700`). The review's M3 and M4 both surface bugs in hand-crafted regex for detecting "novel" content in LLM-merged output. Mark's reading: regex is the wrong tool. The question a merge needs answered is *"does the merged text introduce claims not supported by either source?"* — that's a semantic verification question, not a lexical pattern-match question.
+
+**Architectural alternatives (ranked by safety):**
+
+1. **Remove the regex gates entirely and rely on the LMKit confabulation classifier.** The classifier already runs over generated content. Let it catch unsupported claims in merged output the same way it catches them elsewhere. The gates become redundant — and redundant scaffolds often produce their own failures.
+2. **Add a dedicated LLM-based merge verifier.** A small targeted prompt: *"Source A: {A}. Source B: {B}. Merged: {M}. Does M introduce any claim not supported by A or B? If yes, quote it."* Lightweight, structured, uses the capability we already have.
+3. **Use LMKit's structured NER + numeric extraction.** Still rule-based, but the rules come from a trained model rather than hand-crafted regex. Acceptable intermediate step if we don't trust full LLM verification yet.
+
+Logging first, as Mark noted: log rejection reasons for the current gates over a week of deployment to measure the actual false-positive rate before replacing. Data over speculation.
+
+**Finding group B — content-prefix filter in cross-type merge** (`TryCrossTypeProfileCorrectionAsync` at `SqliteMemoryService.cs:708-774`, review's H2). The filter blocks records whose content starts with `"I said to"` or `"I reached out to"` — lexical heuristic for "this is Ani's speaker voice." Same category of fragility as the regex gates: a pattern-match approximating a semantic property.
+
+**Architectural alternative:** use `provenance` (an actual classified field) instead of content prefix. Already exists on the record. `ProvenanceBackfill.ClassifyProvenance` already produces the structured answer the prefix filter is approximating. Replace the prefix check with a provenance check; the information is right there.
+
+This is also the cleanest version of the architecture-over-instruction principle: the instructional layer (prefix matching) is fragile; the architectural layer (tier provenance) is structured and reliable. Use the one the architecture gives you.
+
+**Finding group C — broader pattern worth naming.** Across the memory service, the rule-based scaffolding clusters in places where symptomatic checks were introduced before the ML classification layer existed or before tier separation was deployed. Now that both exist, the scaffolding overlaps with capabilities already present. Same lifecycle as the echo guard: scaffold was necessary when added, architecture has since made it redundant, scaffold persists because nobody went back to revisit it.
+
+### 14.3 Revised implementation phases
+
+Adding a **Phase 4** to the original sequence, keeping Phases 1-3 unchanged.
+
+**Phase 4 — Memory-layer architecture-over-instruction pass.** Ships after Phase 3 (relational continuity layer).
+
+**What's in it:**
+
+1. **Replace `ContainsNovelSpecifics` regex gates** with one of the three alternatives from Finding A above. Decision to be made after a week of rejection logging in Phase 2 deployment window.
+2. **Replace content-prefix filter in cross-type merge with provenance check.** Use `provenance == expectedProvenance` instead of `content.StartsWith("I said to")`. Add a test case: Episodic-tier record with profile-shaped content must not mutate Facts-tier memory.
+3. **Audit remaining rule-based guards in the memory service** for the same pattern. The review found M3, M4, H2 explicitly. A follow-up read looking for the pattern specifically may find more.
+
+**What's NOT in it:**
+
+- The review's Category 1 findings (C1, H4, C3, H3, H5, M1) — those are real correctness bugs, not architecture-vs-instruction. Those ship in the memory-service correctness bundle before this Phase 4, not as part of it.
+- Regex removal without logging data — we don't tune blind. Ship with logging in Phase 2 window; remove or replace in Phase 4 based on measured data.
+
+**What Phase 4 does NOT change:**
+
+The confabulation classifier stays. Tier separation stays. Anchored memories stay. The *architecture* is intact; what's removed is redundant scaffolding around it.
+
+### 14.4 Half-built scaffolding — separate design question, not part of this proposal
+
+Finding C2 from the review (`ReassignMemoryLinksAsync` dead code + `RebuildMemoryLinksAsync` duplicate-logging path) is NOT a simplification target. It's half-built feature that was never completed. The architectural question is whether Phase 6 (Memory Reform) wants merge-on-rebuild — if yes, C2 is prototype scaffolding for Feature 30 (Mem0 merge) and Feature 32 (Park et al. periodic reflection). The Vibe Loop workstream may also share infrastructure with this: both want periodic consolidation of related records over time.
+
+**This is a Phase 6 design-session question, tracked in the phase tracker, NOT a pipeline simplification item.** It's flagged here only to explain why it's not in Phase 4.
+
+### 14.5 Success criteria — memory layer additions
+
+Extending the original success criteria:
+
+7. **Merge false-positive rate drops.** After Phase 4, merges that were previously rejected by regex gates succeed when the content genuinely doesn't introduce novel claims (measured against the logging data gathered in Phase 2).
+8. **No cross-tier content contamination.** Episodic content never mutates into Facts-tier records. Test case: Mark's past SMS stored as Episodic cannot update a profile-tier fact through cross-type merge.
+9. **The confabulation classifier carries the load.** If the regex gates are removed and the classifier doesn't catch what they caught, we'll see a measurable rise in confabulation rate. If it does catch them, we've validated that the scaffolding was redundant.
+
+### 14.6 Updated decision points
+
+Adding to Section 13:
+
+6. **Phase 4 depends on logging data from Phase 2.** Acceptable to wait, or want to ship Phase 4 earlier (without the data) because the architectural reasoning is sound on its own?
+7. **Which Finding A alternative (classifier / LLM verifier / NER)?** Depends on Mark's appetite for complexity vs. safety. Option 1 (rely on existing classifier) is safest; option 2 (dedicated verifier) is most thorough.
+8. **Is it acceptable to re-scope the proposal from "three phases" to "four phases"?** Original framing was pipeline-only. This addendum makes the proposal system-wide. Mark may prefer splitting into two docs (pipeline proposal + memory proposal) for reviewability, or may prefer keeping unified for principle coherence.
+
+---
+
+*Addendum prepared 2026-04-18 evening after Mark's review of the memory-service ultrareview. The addendum adds Phase 4 and re-scopes the proposal from pipeline-layer to system-wide. The one-principle-two-layers framing is intended to produce a single coherent Paper 3 contribution rather than two separate improvements.*
