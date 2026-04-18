@@ -1644,6 +1644,35 @@ This was the first documented instance of a **Claude-to-Claude architectural pee
 
 ---
 
+### April 18, 2026 — /ultrareview C1 Validated: 9625 Orphaned memory_links Cleaned on First FK-Enabled Startup
+
+**Type:** Deployment data — concrete validation of a code review finding.
+**Source:** First ANI restart after commit `0c7827c` (memory-service correctness bundle). Debug log line 2026-04-18 at 11:19:22: *"Memory integrity sweep: removed 9625 orphaned memory_links rows on startup."*
+
+**What happened:**
+
+`/ultrareview` Finding C1 (April 18) flagged that `Microsoft.Data.Sqlite` disables FK enforcement by default per-connection, meaning the foreign keys declared on `memory_links` were inert in every prior run. The commit `0c7827c` added `Foreign Keys=True` to the connection string AND a one-time orphan sweep on startup. First restart with the new code cleaned **9625 orphaned `memory_links` rows** accumulated over the deployment history.
+
+**What this measures:**
+
+Every `DeleteAsync` or admin-driven delete in ANI's history produced orphaned link rows because the FK constraint was inactive. Over months of deployment, those rows accumulated silently. The sweep count is the cumulative fingerprint of that drift. At ~50 bytes/row, ~500 KB of dead storage.
+
+**What it does NOT mean:**
+
+Not a correctness bug. Orphaned links silently drop out when queries JOIN to `memories` (the missing target never appears in the result). So retrieval was never polluted; queries were just working harder than needed. Not an ongoing problem either — with FKs now enforced, new orphans cannot accumulate.
+
+**What it validates:**
+
+The review flagged this as "silent data drift." 9625 rows is the empirical measurement of the drift. A one-time sweep of this size confirms the finding was not theoretical. Worth citing in any future writeup about the value of `/ultrareview` on established systems: the review found latent issues that had accumulated during normal operation without surfacing as visible symptoms.
+
+**Relation to research program:**
+
+This is a clean instance of the review → deployment → measurable validation loop. The finding was flagged by `/ultrareview`; fixed in a targeted commit; validated with a concrete number on the very next startup. For Paper 3 or a future `/ultrareview` retrospective, this sequence is worth describing as methodology evidence. Deployment measurement converts code review claims from "this is a potential issue" to "this was measurably an issue of magnitude N."
+
+**Captured in:** this entry; the debug log line at 11:19:22 is the primary source and remains in `logs/ani-debug-20260418.log`. Future ANI startups should show 0 orphans (watched for as a regression signal — if non-zero appears, something is writing memory_links outside the FK-enforced path).
+
+---
+
 ### April 17, 2026 (morning) — Grok Morning Session: Pending Test Outcome 1 Confirmed + Type 9 Confabulation Candidate (Interim Entry)
 
 **Type:** Interim log entry. Captures load-bearing findings from the Apr 17 morning Grok session before full analysis. A complete entry will follow later today after Mark's additional observations and the session's resolution.
