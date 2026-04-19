@@ -67,6 +67,7 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | World: Experience Memory | Phase 1b | **Deployed** | `world-experience` SourceName tagging on seeded thoughts. |
 | World: Consistency | Phase 1c | **Deployed** | Retrieves recent world experiences before generating new ones. |
 | World: Special Events | Phase 1d | **Partially done** | Calendar events + stochastic pool built. Easter added. |
+| World: Temporal Gap Perception | — | **Deployed Apr 19** | `TemporalGapPerceptionSource` reads the most recent InnerThought timestamp from memory (survives restarts, unlike the in-process `_lastPollAt`) and emits a perception event with texture-graded narration when the gap exceeds 2 hours. Ani observes gaps in her own existence by inference from persisted records — she doesn't claim to have experienced the absence. First-ever architectural recognition of service-restart gaps as a perceivable event. See research log Apr 19 entry for the design discussion. |
 
 ---
 

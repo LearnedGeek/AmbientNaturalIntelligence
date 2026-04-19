@@ -137,6 +137,7 @@ try
     // ── Perception sources ────────────────────────────────────────────────────
     builder.Services.AddSingleton(TimeProvider.System);
     builder.Services.AddSingleton<IPerceptionSource, TimePerceptionSource>();
+    builder.Services.AddSingleton<IPerceptionSource, TemporalGapPerceptionSource>();
     builder.Services.AddHttpClient("rss");
     builder.Services.AddSingleton<IPerceptionSource, RssPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource, ContactStatePerceptionSource>();
