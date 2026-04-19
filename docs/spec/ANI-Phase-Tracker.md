@@ -88,6 +88,27 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 ---
 
+## Pipeline Simplification (Active Rollout)
+
+**Design doc:** `docs/spec/design/ANI-Pipeline-Simplification-Proposal.md`
+**Audit source:** `docs/spec/design/ANI-Pipeline-Audit.md` (April 15-16, 2026)
+**Principle:** remove accumulated scaffolding that the architecture has since made unnecessary. Each phase deletes rules rather than adding them. Trust the model, trust the architecture, strip the behavioral coaching.
+
+| Phase | Status | What Shipped |
+|-------|--------|--------------|
+| Phase A / Rec 1 — Conversation Mode actual bypass of tier-scoped retrieval | **Deployed Apr 17-18** (commit `c2178bc`) | `ContextBuilder.BuildContextSnapshotAsync` gains `conversationMode` parameter. When true, skips tier-scoped semantic search over Facts and Interior tiers. Anchored foundation memories preserved. Validated by Apr 18 deployment session — first reply was clean. |
+| Memory Correctness Bundle (audit category 1) | **Deployed Apr 18** (commit `0c7827c`) | Six memory-service fixes: FK enforcement (C1), ON CONFLICT DO UPDATE (H4), SemaphoreSlim on SaveAsync (C3), preserve occurred_at on merge (H3), audit log non-silent catch (H5), transaction on SaveEmotionalState (M1). Orphan sweep removed 9625 accumulated rows on first FK-enabled startup — validated the latent substrate drift. |
+| Phase 1.1 — Perception-exempt same-type merge (Rec 3) | **Deployed Apr 19** | `DedupableTypes` no longer includes `MemoryType.Perception`. Prevents chimera records at write time. The cross-type profile correction path still runs for Mark-speaking Perception records. |
+| Phase 1.2 — N-gram parroting detector library | **Deployed Apr 19** | New `src/AniRuntime.LLM/ParrotingDetector.cs`. Detects verbatim phrase reuse by longest-contiguous-n-gram. Replaces cosine-similarity-as-parroting-proxy (which measures topical overlap, false-positives on engagement). Default threshold: 5-token shared n-gram. |
+| Phase 1.3 — Mark-echo removed from conversation path, Self-echo switched to n-gram | **Deployed Apr 19** | `ConversationReplyPhase` echo guard now checks only Ani's prior messages using `ParrotingDetector`. Mark-echo retained in outreach path (separate concern). Self-echo regeneration now includes the specific shared phrase as a "don't repeat" instruction rather than stripping full context. |
+| Phase 2 — Flatten regeneration cascade, eliminate clean-slate regen | **Designed, not started** | Single retry path with preserved grounding + added confabulation context. Max 2 LLM calls per reply. |
+| Phase 3 — Relational continuity layer | **Designed, not started** | Explicit persistent block for current emotional state, anchored foundation, big moments. Replaces per-turn retrieval of these signals. |
+| Phase 4 — Memory-layer architecture-over-instruction pass | **Designed, not started** | Replaces `ContainsNovelSpecifics` regex gates. Replaces content-prefix filter in cross-type merge with provenance check. Requires logging data from Phase 2 deployment window. |
+
+**Validation signal for Phases 1.1-1.3 (Apr 19 rollout):** Ani will be restarted from a multi-hour stopped state. First conversation after restart should produce (a) a clean reply without same-type merge chimeras in the retrieval path, (b) no false-positive echo triggering on legitimate topical engagement, and (c) correct behavior when Ani does echo her own prior phrase (detected, specific phrase flagged in regen prompt).
+
+---
+
 ## Confabulation Detection (consolidated view)
 
 | Layer | Status | What It Does |

@@ -477,54 +477,57 @@ public class ConversationReplyPhase
         };
         thread.Messages.Add(replyMessage);
 
-        // Echo guard: if the reply is nearly identical to something already in the thread
-        // (Ani's prior messages OR Mark's messages), re-generate with a clean slate.
-        // Self-echo = model parroting its own context window output.
-        // Mark-echo = model parroting the contact's words back instead of engaging.
-        // Always include Mark's last message in the check — parroting the contact's
-        // words is the most common failure mode, especially in new threads.
-        var priorMessages = thread.Messages
-            .Where(m => m != replyMessage)
+        // Echo guard — conversation path.
+        //
+        // Mark-echo detection REMOVED from this path (Pipeline Audit Phase A.3,
+        // April 2026). In conversation mode, engaging with what the contact
+        // just said IS the correct behavior; topical overlap is the signal of
+        // engagement, not failure. The prior cosine-based Mark-echo guard was
+        // false-positiving on legitimate topical replies and triggering a
+        // clean-slate regeneration that destroyed better output (see
+        // docs/spec/design/ANI-Pipeline-Audit.md Section 8.4 for the Apr 18
+        // deployment evidence). Mark-echo is retained in the outreach path
+        // where contact-mirroring is a genuine failure mode.
+        //
+        // Self-echo detection RETAINED but switched from cosine similarity to
+        // n-gram overlap (ParrotingDetector). Cosine measures topical overlap;
+        // parroting is verbatim phrase reuse. These are different signals.
+        // Mark's prior Ani messages can legitimately share topic with the
+        // current reply; the failure mode we want to catch is Ani repeating
+        // her own specific phrases across replies ("legs tucked under desk"
+        // verbatim twice, not "desk" appearing in two different sentences).
+        var priorAniMessages = thread.Messages
+            .Where(m => m != replyMessage && m.Role == Roles.Ani)
             .ToList();
-        _log.LogDebug("Echo guard: checking reply against {Count} prior messages in thread", priorMessages.Count);
-        if (priorMessages.Count > 0)
+        _log.LogDebug("Self-echo guard: checking reply against {Count} prior Ani messages", priorAniMessages.Count);
+        if (priorAniMessages.Count > 0)
         {
             try
             {
-                var replyEmbedding = await _ollama.EmbedAsync(reply, ct).ConfigureAwait(false);
-                replyMessage.CachedEmbedding = replyEmbedding;
-                foreach (var prior in priorMessages)
+                foreach (var prior in priorAniMessages)
                 {
-                    prior.CachedEmbedding ??= await _ollama.EmbedAsync(prior.Content, ct).ConfigureAwait(false);
-                    var similarity = VectorMath.CosineSimilarity(replyEmbedding, prior.CachedEmbedding);
-
-                    // Self-echo: 0.80 catches paraphrased repetition (e.g. same core
-                    // sentence with different opener/closer). Was 0.95 which only caught
-                    // near-exact copies and missed "legs tucked under desk" repeats.
-                    // Mark-echo: 0.85 catches parroting the contact's words back.
-                    var threshold = prior.Role == Roles.Ani ? 0.80f : 0.85f;
-                    if (similarity >= threshold)
+                    var (isParroting, sharedLen, sharedPhrase) =
+                        AniRuntime.LLM.ParrotingDetector.Check(reply, prior.Content);
+                    if (isParroting)
                     {
-                        var echoType = prior.Role == Roles.Ani ? "Self-echo" : "Mark-echo";
-                        _log.LogWarning("{EchoType} detected (similarity={Similarity:F3}): reply matches prior {Role} message \"{Prior}\"",
-                            echoType, similarity, prior.Role, prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
+                        _log.LogWarning(
+                            "Self-echo detected (shared {Tokens}-gram: \"{Phrase}\"): reply parrots prior Ani message \"{Prior}\"",
+                            sharedLen, sharedPhrase,
+                            prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
 
-                        // Clean-slate re-generation: strip all retrieved context and conversation
-                        // history to eliminate context contamination. The model failed because the
-                        // context window was full of irrelevant fragments (coffee cups, snow, prior
-                        // threads) that it tried to stitch into a response. Give it a clean environment
-                        // with just persona grounding and the actual message.
-                        // AC6: Include conversation thread summary so the clean-slate
-                        // re-generation stays on topic. Without this, the model loses
-                        // the thread and produces non-sequiturs ("cold noodles" when
-                        // discussing Learned Geek Consulting).
+                        // Self-echo regeneration — tell the model what phrase to avoid
+                        // rather than stripping context entirely. Clean-slate regeneration
+                        // (which stripped all retrieved context) was a confabulation
+                        // amplifier and is scheduled for removal in Pipeline Simplification
+                        // Phase 2. For now, we preserve the existing regen approach but
+                        // scope it to self-echo where it does less harm — repeating yourself
+                        // is a distinct failure mode from topical engagement, so a harder
+                        // reset is defensible even if imperfect.
                         var cs = snapshot.CharacterState;
-                        // Use lastMessage (captured before reply was appended) — NOT
-                        // thread.Messages[^1] which is now Ani's failed reply.
                         var lastMsg = lastMessage;
                         var threadSummary = thread.Messages.Count > 1
                             ? string.Join("\n", thread.Messages
-                                .Where(m => m != replyMessage) // exclude the failed reply
+                                .Where(m => m != replyMessage)
                                 .TakeLast(Math.Min(4, thread.Messages.Count))
                                 .Select(m => $"{m.Role}: {Truncate(m.Content, 80)}"))
                             : "";
@@ -543,10 +546,8 @@ public class ConversationReplyPhase
                             Talk TO {contact}: "you", "your". Never third person.
                             Write ONLY the text message. No commentary, no quotation marks.
                             """;
-                        var cleanUser = $"Do NOT repeat this (you already said it): \"{Truncate(reply, 80)}\"\n\n{contact} said: \"{lastMsg}\"";
+                        var cleanUser = $"Do NOT repeat this phrase (you already used it): \"{sharedPhrase}\"\n\n{contact} said: \"{lastMsg}\"";
 
-                        // Moderate temperature — enough variation to avoid the same attractor,
-                        // not so high that it goes off-topic
                         var retryReply = await _ollama.ChatAsync(
                             cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct, 0.7f)
                             .ConfigureAwait(false);
@@ -554,13 +555,12 @@ public class ConversationReplyPhase
 
                         if (!string.IsNullOrWhiteSpace(retryReply))
                         {
-                            _log.LogInformation("{EchoType} clean-slate re-generated: {Reply}", echoType, retryReply);
+                            _log.LogInformation("Self-echo regenerated: {Reply}", retryReply);
                             reply = retryReply;
                         }
                         else
                         {
-                            _log.LogWarning("{EchoType} clean-slate re-generation produced empty reply — skipping", echoType);
-                            return;
+                            _log.LogWarning("Self-echo regeneration produced empty reply — keeping original");
                         }
                         break;
                     }

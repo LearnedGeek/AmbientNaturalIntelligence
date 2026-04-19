@@ -103,10 +103,18 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     // Memory types eligible for dedup/merge. Episodic events (conversations, outreach)
     // should never be deduped — each one is a distinct event even if content is similar.
+    //
+    // Perception records were previously eligible but are now exempt (April 2026,
+    // Pipeline Audit Rec 3). Perception entries are first-class event receipts:
+    // each inbound Twilio message, RSS item, or weather observation is a distinct
+    // event even if content looks similar to a prior one. Same-type merging of
+    // Perception records produced chimera records that then polluted tier-scoped
+    // retrieval and triggered echoes in conversation. The correct consolidation
+    // path for Perception content is cross-type correction (profile tier
+    // synthesis), not same-type merge. See TryCrossTypeProfileCorrectionAsync.
     private static readonly HashSet<MemoryType> DedupableTypes = new()
     {
         MemoryType.InnerThought,
-        MemoryType.Perception,
         MemoryType.Semantic,  // Feature 30: profile facts are prime merge candidates
     };
 
