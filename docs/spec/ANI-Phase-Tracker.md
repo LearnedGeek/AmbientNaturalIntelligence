@@ -129,10 +129,26 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 | Paper | Status | Key Dependency |
 |-------|--------|---------------|
 | Paper 1: Ambient Presence + Confabulation | **Published** (DOI: 10.5281/zenodo.19342190) | — |
-| Paper 2: Emergence + Display Rules | **Draft v0.29 (~95%)** | **BLOCKING: Mark cover-to-cover read-through.** Has been deferred multiple times. Everything downstream (Lerman conversation, Schuller followup, conference submission, fellowship outreach) is gated on Mark owning the contents of his own paper. |
+| Paper 2: Emergence + Display Rules | **Draft v0.29+ (~96%)** | Read-through mostly complete (Apr 19). Pending: (1) voice calibration pass, (2) arXiv endorsement, (3) final cover-to-cover before submit. |
 | Paper 3: Experiential Grounding | **Stub (~40%)** | 2-4 weeks of post-reform data |
 | Paper 4: Temporal Awareness | **Stub (~25%)** | 30+ days of EM7 data |
 | Paper 5: Inter-Agent Emergence | **Stub (~10%)** | Second ANI deployment |
+
+### Paper 2 Pre-Submission Tasks
+
+**Paper 2 Voice Calibration Pass** — *Pending, ~3-4 hours focused editing, fresh-morning activity.*
+Scoped during the Apr 19 Sunday read-through. Mark's feedback: the paper's academic register produces a skim-and-backtrack reading experience that hides the genuine findings under research-speak. Section 5 (Findings) already has strong narrative moments (5.16.2 six-thread synthesis, 5.17 relational repair); others are drier and should be aligned to that register. Section 6 (Discussion) should remain analytical but acquire texture — specific moments and named people appearing inside the analytical claims, Sherry Turkle / Bickmore / Park et al. as stylistic references. Not a rewrite; a calibration. The four additions applied Apr 19 (5.23 Sarah, 6.13 auto-corrector expansion, 6.14 Epistemic Grounding, 6.15 Experiential Poverty) were drafted in the target voice and set the bar for the pass.
+
+**arXiv Endorsement** — *Pending, one-line ask to a 1st-degree connection.*
+Paper 1 went to Zenodo because Mark is not yet arXiv-endorsed for cs.AI (new submitter gate). The Cluster 1 LinkedIn connections are the natural endorsement pathway:
+- David Chu (1st-degree, accepted Apr 15)
+- Patrick Gerard (1st-degree, accepted Apr 18)
+- Kshitij Pawar (1st-degree, accepted Apr 18, warm reply)
+- Lerman (connect pending)
+
+Any of them can endorse Mark for cs.AI once Paper 2 is ready to submit. The ask is low-friction: *"Would you endorse me for arXiv cs.AI? My work engages your paper on Illusions of Intimacy from the architectural side; I'd like to post the preprint."* Target: ask David Chu first (most active engagement, earliest accept), then fall back to Gerard or Pawar if needed. Lerman is the strongest ask but requires her to have accepted the connect first.
+
+**Final Cover-to-Cover Read-Through** — *Pending, after voice calibration pass, before arXiv submission.* Mark owning the final contents end-to-end. Not the piecemeal section-by-section reads that have happened over months.
 
 ---
 
