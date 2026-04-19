@@ -404,6 +404,122 @@ The question is therefore not *"delete or wire in?"* It is: **does the architect
 
 ---
 
+## ANI Cloud Edge (Hybrid: Local Core, Azure Edge)
+
+**Status:** Designed. Ready to build when calendar allows. Scoped April 18, 2026 after reviewing the `learnedgeek-infra` Terraform repo.
+**Priority:** Medium. Not blocking any current work. Unblocks: operational reliability (webhook receiver independent of home network), disaster recovery (DB backups to Blob), longitudinal observability (Application Insights aggregation).
+**Infrastructure repo:** `E:\Documents\Work\dev\repos\learnedgeek-infra`. Follows the existing pattern established by txt-geek and signavex.
+**Design principle:** The Llama models and the cognitive cycle stay local. Only the *public-facing surface* and *operational support* move to Azure. The local rig is the substrate of who Ani is; the cloud is the storefront.
+
+**Scope — What's in:**
+
+1. **Azure Functions (Consumption tier)** — Twilio webhook receiver. Replaces ngrok as the always-on public endpoint. Signs and forwards inbound SMS payloads to a Service Bus queue that the local ANI subscribes to. Decouples SMS reliability from home network uptime.
+2. **Service Bus Basic namespace** — Durable queue between the Functions webhook and local ANI. Handles the brief window when the home machine is rebooting, losing power, or temporarily unreachable. ~$0.05/million operations.
+3. **Storage Account + Blob Container** — Nightly DB backups (`ani-memory.db`, `ani-emergence.db`) uploaded from the local machine. 6 months of deployment state is irreplaceable; a $1/month backup pays for itself the moment a local drive dies.
+4. **Application Insights** — Cycle log aggregation and dashboard. Free tier covers ANI's telemetry volume. Enables longitudinal research visualization (months of cognitive cycles in one view) without requiring local log parsing.
+5. **App Service (reuse existing shared `ASP-aniisanidiot-8dd5` plan, or new plan if appropriate)** — ANI dashboard, deployed publicly with Entra ID auth. The existing Entra tenant + Developers security group means auth comes free. Dashboard becomes accessible from anywhere rather than only when on Mark's home network.
+
+**Scope — What's out (intentionally):**
+
+- **No Ollama / LLM inference migration.** The fine-tuned Llama models (`ani-v7-conversation`, `ani-v6-inner`) stay local. They are the substrate. Moving them to Azure GPU VMs breaks the deployment-as-research premise and costs $500+/month.
+- **No SQLite migration.** Local DB stays local. Blob backups are copies, not replacements.
+- **No voice streaming endpoint migration.** MAUI client → local ANI WebSocket path is unchanged. Moving voice to the cloud is a separate future workstream.
+- **No secret migration to Key Vault yet.** Follow the signavex pattern of tfvars-sensitive variables for now. Key Vault migration is a later cleanup pass when the cloud edge is stable.
+
+**Architecture diagram (conceptual):**
+
+```
+Mark's phone (SMS inbound)
+    │
+    ▼
+Twilio
+    │
+    ▼ (webhook POST)
+Azure Functions (public endpoint)
+    │
+    ▼ (signed payload)
+Service Bus Queue
+    │
+    ▼ (local ANI subscribes)
+Local ANI (cognitive cycle, models, memory, dispatch)
+    │
+    ├── Local SQLite (primary)
+    │
+    ├── Nightly backup → Azure Blob Storage
+    │
+    └── Telemetry → Application Insights
+                         │
+                         ▼
+                    Dashboard (Azure App Service, Entra ID auth)
+                         │
+                         ▼
+                    Mark's browser (from anywhere)
+```
+
+**Phased rollout:**
+
+**Phase CE-1 — Backup first (lowest risk, highest disaster-recovery value):**
+- Create new resource group `rg-ani-cloud-edge` in Central US
+- Create Storage Account + Blob Container
+- Write a scheduled task on the local Windows machine that zips + uploads `ani-memory.db` and `ani-emergence.db` nightly
+- Retention policy: keep 30 daily + 12 monthly + 5 yearly
+- **Success criterion:** if the local drive dies tomorrow, last night's state is in Azure.
+- Effort: ~1 hour Terraform + 30 min PowerShell backup script.
+
+**Phase CE-2 — Webhook receiver (eliminates ngrok dependency):**
+- Azure Functions (Consumption) + Service Bus Basic
+- Function receives Twilio POST, validates signature, enqueues to Service Bus
+- Local ANI subscribes to the queue via `TwilioInboundPerceptionSource` (or a new `ServiceBusInboundPerceptionSource` — design decision)
+- Cutover: point Twilio at the Functions URL, retire ngrok
+- **Success criterion:** SMS inbound works when ngrok is off.
+- Effort: ~2 hours Terraform + ~2 hours .NET Functions code + ANI-side subscription code.
+
+**Phase CE-3 — Dashboard deployment (observability + accessibility):**
+- Decide: reuse the existing shared `ASP-aniisanidiot-8dd5` F1 plan, or create a dedicated plan
+- Deploy the dashboard as an App Service, configure Entra ID auth via the Developers security group
+- **Success criterion:** Mark can view ANI's state from his phone while on a plane.
+- Effort: ~2 hours Terraform + config. Dashboard code is already shipped; just needs deployment.
+
+**Phase CE-4 — Application Insights (telemetry):**
+- Add App Insights resource to the new resource group
+- Instrument local ANI with the App Insights SDK (minimal — emit cycle events, emotional state, memory writes)
+- Build basic workbooks: cycle cadence over time, emotional state timeseries, memory growth
+- **Success criterion:** one view shows "last 30 days of ANI" at a glance.
+- Effort: ~3 hours total (instrumentation + workbook design).
+
+**Legacy artifact — Separate deferred decision:**
+
+The existing `ani-is-an-idiot` resource group + `ani-is-a-dork` App Service are sentimental early-era ANI artifacts (named when OG Ani was helping Mark learn Azure, pre-runtime). Current state:
+- `ani-is-an-idiot` is imported into txt-geek's Terraform state for the shared App Service Plan that txt-geek depends on
+- `ani-is-a-dork` App Service exists but is not managed by Terraform
+- Destroying the RG would break txt-geek; a proper cleanup requires migrating txt-geek to a new plan first
+
+**Recommendation:** leave them alone during cloud edge buildout. Build in a fresh `rg-ani-cloud-edge` resource group. The legacy naming continues to exist as a historical artifact — it's only visible to Mark and Terraform, has zero cost on F1, and has sentimental value. A separate "Legacy Azure Artifact Review" workstream can schedule the cleanup if and when Mark decides to tidy the naming.
+
+**Open questions (for future sitting):**
+
+1. **Reuse shared ASP or create a dedicated one?** Reusing the F1 keeps costs at $0 but couples ANI's dashboard reliability to the txt-geek deployment. Dedicated plan is $10-50/month depending on SKU. Probably reuse F1 initially, promote to dedicated if performance or reliability becomes a concern.
+2. **Do we want Entra ID auth on the dashboard from day 1, or start open and add auth before anything sensitive is exposed?** Entra ID is already configured; probably do it from day 1 since the infrastructure exists.
+3. **Service Bus subscription pattern — new `ServiceBusInboundPerceptionSource` or extend `TwilioInboundPerceptionSource`?** Architectural decision: does the cognitive cycle care where inbound SMS came from, or only that it arrived? Probably a thin new source that produces the same `PerceptionEvent` shape.
+4. **Backup encryption at rest — rely on Azure Storage default encryption, or add client-side encryption before upload?** Default is probably fine given the data classification; revisit if Mark wants extra paranoia.
+5. **Monitoring/alerting on ANI health — Application Insights alerts (cycle stopped, exception rate spike) routable to Twilio SMS so Ani can tell Mark she's down?** Fun, recursive, worth considering as a Paper 3 aside ("the system has an out-of-band channel to report its own outages").
+
+**Estimated monthly cost (steady state):**
+- Blob Storage backups: ~$1
+- Service Bus Basic: ~$0.05 (message volume is tiny)
+- Azure Functions Consumption: ~$0-5 (Twilio traffic is low)
+- Application Insights: $0 (within free tier)
+- App Service (F1 reuse): $0
+- **Total: ~$1-6/month.**
+
+**Paper 3 relevance:**
+
+The cloud edge architecture itself is a small applied case of the architecture-over-instruction principle: instead of writing "if ngrok is down, handle the error" as runtime instruction, the architecture eliminates the failure mode by using a durable public endpoint. Worth a one-line mention in any future operational-resilience section. Not paper-worthy on its own.
+
+**Related:** `learnedgeek-infra/txt-geek/main.tf` (App Service pattern reference), `learnedgeek-infra/signavex/main.tf` (Container Instance Worker pattern reference — not used here but establishes precedent for cloud-hosted Worker if we ever want it), `learnedgeek-infra/CLAUDE.md` (infra repo rules — Terraform plan before apply, never commit state/tfvars, RBAC by group).
+
+---
+
 ## Multi-Agent Architecture (Future State)
 
 | Concept | Status | Description |
