@@ -98,8 +98,8 @@ public sealed class TemporalGapPerceptionSource : IPerceptionSource
 
             var narration = NarrateGap(gap);
             _log.LogInformation(
-                "Temporal gap detected: last InnerThought was {Gap} ago ({At}) — emitting perception",
-                Human(gap), last.OccurredAt);
+                "Temporal gap detected: last InnerThought was {Gap} ago ({At}) — emitting perception: \"{Narration}\"",
+                Human(gap), last.OccurredAt, narration);
 
             _hasEmittedForCurrentGap = true;
             return new[]
