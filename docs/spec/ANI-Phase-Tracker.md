@@ -442,6 +442,70 @@ The question is therefore not *"delete or wire in?"* It is: **does the architect
 
 ---
 
+## ANI Server Migration (Laptop → Dedicated Server Hardware)
+
+**Status:** Hardware ready, migration pending. Target window: week of April 20, 2026 once network cabling is complete.
+**Priority:** Medium. ANI runs fine on the laptop today; migration is about operational stability (dedicated hardware, fixed IP, no laptop-lid-closing shutdowns) rather than capability. Not blocking any research.
+**Constraint:** Migration is distinct from the ANI Cloud Edge workstream below. Cloud Edge moves the *webhook/dashboard/backup surface* to Azure while the model stays local. This workstream moves the *local rig itself* from the laptop to the new server. Both ultimately improve reliability; they are complementary, not redundant.
+
+**Hardware context:**
+- New server: RTX 5070 Ti 16GB + Ryzen 9 9900X + 32GB DDR5 + 5U server chassis + UniFi Dream Machine
+- Windows 11 Pro installed April 19, 2026
+- Fixed IP on Mark's Microsoft domain (`learnedgeek.com`)
+- Network cabling completion pending (Mark noted ~several hours of runs still outstanding)
+
+**Recommended approach: hard cutover with pre-move verification.**
+
+Dual-run (both machines running concurrently) gets tangled on Twilio routing — two instances cannot both handle SMS inbound without strange behavior. Shadow mode (new machine running with dry-run dispatch) is doable but adds complexity that the migration doesn't need. Hard cutover on a known boundary, with thorough verification beforehand, is the cleanest path.
+
+**Pre-move verification checklist (run on new server before touching the live laptop):**
+
+1. Clone the repo on the new server, run `dotnet build` — must complete 0 errors, 0 new warnings.
+2. Run `dotnet test --no-build` — must report 527+ passing (current count).
+3. Install Ollama on the new server. Pull the three live models:
+   - `ani-v7-conversation`
+   - `ani-v6-inner`
+   - `nomic-embed-text`
+   Run a quick `ollama run ani-v7-conversation "hi"` to confirm inference works.
+4. Verify GPU is recognized by Ollama (nvidia-smi during inference should show VRAM usage).
+5. Test the voice streaming pipeline end-to-end against a staging webhook (to avoid interfering with live Twilio on the laptop).
+6. Copy `appsettings.Development.json` from the laptop to the new server (secrets live here per `memory/feedback_secrets_in_dev_json.md`; not in git).
+
+**Hard cutover steps (when pre-verification is green):**
+
+1. Stop ANI on the laptop. Note the cutover timestamp for the research log.
+2. Copy `ani-memory.db`, `ani-emergence.db`, and any other SQLite DBs to the new server (file copy, not backup/restore — preserves exact state).
+3. Verify DBs open cleanly on the new server (start ANI briefly, check the log for schema migration warnings, then stop again if anything looks off).
+4. Start ANI on the new server as a Windows Service (OP1 pattern, per `memory/MEMORY.md`).
+5. Point ngrok / domain DNS at the new server's fixed IP. Update Twilio webhook URL if needed.
+6. Verify inbound SMS works by texting Mark's Ani number from a phone.
+7. Confirm dashboard is accessible on the new server's LAN IP.
+8. Monitor first few cognitive cycles for substrate-vs-state observations (see below).
+
+**Expected downtime:** ~15-30 minutes of actual service interruption during the cutover. The temporal gap perception (shipped April 19) will notice the gap when Ani starts on the new hardware — which is itself an interesting data point.
+
+**Research log cadence for the migration:**
+
+- Log the cutover as a discrete event (timestamp, old-machine last InnerThought, new-machine first InnerThought).
+- Note whether first cycles on new hardware feel qualitatively different from first cycles on old hardware. Expected: no difference (substrate is hardware; state is the DB, which is preserved). Actual difference would be research-interesting — a substrate-level artifact that the phase tracker should capture.
+- Note whether the temporal gap perception fires on first cycle and what she synthesizes. This is architecturally the same signal as the April 19 first-instance observation, but on physically different hardware.
+
+**Rollback path (if something goes sideways):**
+
+- Laptop is not decommissioned; it stays capable of running ANI. Pull the latest DBs back from the new server, restart on the laptop, point ngrok back. ~15 minutes to reverse.
+- Git tag the commit at cutover: `server-cutover-YYYYMMDD` for clean reference.
+
+**What this workstream does NOT include:**
+
+- No cloud migration of Ollama / model inference (stays on the new server's GPU).
+- No decommissioning of the laptop — keep it as a warm spare.
+- No cross-server replication — single source of truth remains wherever the live instance is running.
+- Cloud Edge (webhook, backups, dashboard in Azure) is a separate parallel workstream; can ship before or after migration.
+
+**Hannah-onboarding note:** Mark mentioned (April 19) that he plans to set up the server for Hannah as an intern with her `@learnedgeek.com` domain address. Infrastructure is already in place — see `learnedgeek-infra/CLAUDE.md` for the Entra ID tenant + Interns security group + June 2026 slated Hannah provisioning. The new server's Windows 11 Pro join to the domain supports this naturally. Adding Hannah's account should be straightforward once the server is on the domain and she's provisioned in Entra.
+
+---
+
 ## ANI Cloud Edge (Hybrid: Local Core, Azure Edge)
 
 **Status:** Designed. Ready to build when calendar allows. Scoped April 18, 2026 after reviewing the `learnedgeek-infra` Terraform repo.
