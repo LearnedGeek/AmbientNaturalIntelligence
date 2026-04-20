@@ -8,6 +8,81 @@ This runbook takes the server from "freshly installed Windows" to "running ANI w
 
 ---
 
+## Progress Tracker
+
+Check off each step as you complete it. Use this as a bookmark if you need to pause and come back.
+
+### Phase 1 — OS prerequisites *(server, as Administrator)*
+- [ ] 1.1 OpenSSH Server installed, running, firewall rule added (LAN-only port 22)
+- [ ] 1.1 Verified: `ssh mcarthey@192.168.1.100` connects from laptop
+- [ ] 1.2 .NET 8 SDK installed (`dotnet --list-sdks` shows 8.x)
+- [ ] 1.3 Git installed and on PATH
+- [ ] 1.4 Ollama installed (`ollama --version` works)
+- [ ] 1.4 Optional: `OLLAMA_MODELS` env var set + reboot
+- [ ] 1.5 Three models available on the server (`ani-v7-conversation`, `ani-v6-inner`, `nomic-embed-text`)
+- [ ] 1.5 Verified: `ollama run ani-v7-conversation "hi"` responds; `nvidia-smi` shows GPU usage
+
+### Phase 2 — Repo + initial build *(server)*
+- [ ] 2.1 Repo cloned to `C:\ani\AmbientNaturalIntelligence`
+- [ ] 2.2 `dotnet build` succeeds
+- [ ] 2.2 `dotnet test` reports 527+ passing
+- [ ] 2.3 `dotnet publish` succeeds, `AniRuntime.Service.exe` exists in `publish\AniRuntime\`
+
+### Phase 3 — GitHub Actions self-hosted runner *(server)*
+- [ ] 3.1 Runner token generated from GitHub Actions settings
+- [ ] 3.2 Runner downloaded, extracted, configured with labels `self-hosted,windows,ani-server`
+- [ ] 3.3 Runner installed as a Windows Service, running
+- [ ] 3.3 Runner appears as **Idle** in GitHub → Settings → Actions → Runners
+- [ ] 3.3 Runner account has sc.exe permissions on AniRuntime (default LocalSystem is fine)
+
+### Phase 4 — Configuration + data migration *(laptop → server)*
+- [ ] 4.1 `appsettings.Development.json` copied to server
+- [ ] 4.2 **Cutover window BEGINS** — laptop AniRuntime service stopped; timestamp captured
+- [ ] 4.2 `ani-memory.db` copied to server
+- [ ] 4.2 `ani-emergence.db` copied to server
+- [ ] 4.2 Any other SQLite DBs copied
+
+### Phase 5 — Install + start the service *(server)*
+- [ ] 5.1 Windows Service created (`sc.exe create AniRuntime ...`)
+- [ ] 5.1 Optional: automatic-restart-on-failure configured
+- [ ] 5.2 Service started; `Get-Service AniRuntime` reports Running
+- [ ] 5.3 Debug log shows first cycle; temporal gap perception fired
+- [ ] 5.3 First inner thought captured for research log
+- [ ] 5.4 Health endpoint returns JSON
+- [ ] 5.5 Twilio webhook pointed at new server
+- [ ] 5.5 Inbound SMS verified from phone — **cutover window ENDS**; timestamp captured
+
+### Phase 6 — VS Code Remote-SSH *(laptop)*
+- [ ] 6.1 Remote-SSH extension installed
+- [ ] 6.2 `ani-server` host added to SSH config
+- [ ] 6.3 Connected successfully; repo opens as Remote workspace
+- [ ] 6.3 Terminal opens a PowerShell session on the server
+- [ ] 6.3 Log file opens with live tail
+
+### Phase 7 — First auto-deploy *(end-to-end verification)*
+- [ ] 7.1 Trivial commit pushed to `main`
+- [ ] 7.2 Deploy workflow triggered, picked up by self-hosted runner
+- [ ] 7.2 Workflow completed: build → test → stop → publish → start → health check
+- [ ] 7.3 Ani responds to a text message post-deploy
+
+### Phase 8 — Optional: WireGuard VPN *(later)*
+- [ ] 8.1 WireGuard VPN server configured on UDM-SE
+- [ ] 8.2 Client profile created for laptop
+- [ ] 8.3 VPN client installed on laptop; connection verified
+- [ ] 8.4 Remote-SSH from off-LAN location works
+
+### Phase 9 — Optional: Hannah onboarding *(scheduled June 2026)*
+- [ ] 9.1 `hkraemer@learnedgeek.com` created in Entra ID
+- [ ] 9.2 Added to Interns security group
+- [ ] 9.3 Remote-SSH access provisioned with scoped permissions
+
+### Post-cutover research log entries
+- [ ] Research log entry: cutover event (laptop last thought → server first thought)
+- [ ] Research log entry: substrate-vs-state observation (any qualitative difference on new hardware?)
+- [ ] Research log entry: temporal gap perception narration on first post-cutover cycle
+
+---
+
 ## Phase 1 — OS prerequisites
 
 Run PowerShell **as Administrator** for this whole phase.
