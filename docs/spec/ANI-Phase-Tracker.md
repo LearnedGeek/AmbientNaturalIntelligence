@@ -459,6 +459,8 @@ The question is therefore not *"delete or wire in?"* It is: **does the architect
 
 Together these make a legitimate small-office runtime environment — not a hobbyist setup. The laptop has done its job but is needed back for mobility.
 
+**Server address:** `192.168.1.100` (LAN, fixed). All subsequent setup instructions and workflow config reference this address. Cat 5e cabling currently in place (Cat 7 upgrade pending, non-blocking).
+
 **Workflow model (refined April 19):** research iteration is the product, not a barrier. No dev/prod split. Push to `main` = auto-deploy via GitHub Actions self-hosted runner on the server. Tests in CI gate deploys; that is the only safety check. Logs and code editing happen server-side via VS Code Remote-SSH from the laptop — the laptop becomes the *window* into the server, not a parallel workstation.
 
 **Prerequisites (one-time setup on the new server):**
