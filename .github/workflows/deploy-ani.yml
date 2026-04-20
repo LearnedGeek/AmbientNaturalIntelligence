@@ -1,0 +1,162 @@
+name: Deploy ANI to Server
+
+# Auto-deploy pipeline for the ANI runtime. Triggers on every push to main.
+# Runs on a self-hosted runner installed on the dedicated ANI server
+# (192.168.1.100) so deploys happen in-place without SSH/WinRM round-trips.
+#
+# Contract:
+#   - Build fails → deploy blocked
+#   - Any test fails → deploy blocked
+#   - Service stop/start failure → workflow fails; admin investigates
+#   - No Blue/Green or staging — research velocity over operational safety
+#     (acceptable because research IS the iteration; rollback = revert commit,
+#     push again, workflow redeploys)
+#
+# Prerequisites on the server (one-time):
+#   - .NET 8 SDK installed
+#   - GitHub Actions self-hosted runner registered with labels [self-hosted, windows, ani-server]
+#   - Runner service running under an account with sc.exe permissions on AniRuntime
+#   - ANI Windows Service installed (see SERVER-SETUP.md)
+#   - appsettings.Development.json and SQLite DBs present in expected locations
+#     (these are NOT in git; placed manually during initial cutover)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:     # manual trigger from the Actions UI
+
+concurrency:
+  group: deploy-ani
+  cancel-in-progress: false    # never cancel a deploy mid-flight
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+  SERVICE_NAME: AniRuntime
+  PUBLISH_DIR: publish/AniRuntime
+
+jobs:
+  deploy:
+    name: Build, Test, Deploy
+    runs-on: [self-hosted, windows, ani-server]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore tests/AniRuntime.Tests/AniRuntime.Tests.csproj
+
+      - name: Build (test project)
+        run: dotnet build tests/AniRuntime.Tests/AniRuntime.Tests.csproj --no-restore --configuration Release
+
+      - name: Test (gate)
+        run: >
+          dotnet test
+          tests/AniRuntime.Tests/AniRuntime.Tests.csproj
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ./test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: ./test-results/**
+          retention-days: 14
+
+      # If we get here, tests passed. Safe to deploy.
+
+      - name: Check service exists
+        id: service-check
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
+          if ($null -eq $svc) {
+            Write-Host "::warning::Service '$env:SERVICE_NAME' not installed on this runner. First-time deploy requires manual install — see SERVER-SETUP.md."
+            "installed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host "Service '$env:SERVICE_NAME' is currently: $($svc.Status)"
+            "installed=true"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "prior_status=$($svc.Status)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Stop service
+        if: steps.service-check.outputs.installed == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "Stopping $env:SERVICE_NAME..."
+          sc.exe stop $env:SERVICE_NAME
+          # Wait up to 30s for clean stop; don't proceed if still running
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            Start-Sleep -Seconds 2
+            $svc = Get-Service -Name $env:SERVICE_NAME
+            Write-Host "  status: $($svc.Status)"
+          } while ($svc.Status -ne 'Stopped' -and (Get-Date) -lt $deadline)
+          if ($svc.Status -ne 'Stopped') {
+            Write-Error "Service did not stop within 30s. Aborting deploy."
+            exit 1
+          }
+
+      - name: Publish
+        run: dotnet publish src/AniRuntime.Service/AniRuntime.Service.csproj -c Release -o ${{ env.PUBLISH_DIR }}
+
+      - name: Start service
+        if: steps.service-check.outputs.installed == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "Starting $env:SERVICE_NAME..."
+          sc.exe start $env:SERVICE_NAME
+          # Wait up to 30s for running state
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            Start-Sleep -Seconds 2
+            $svc = Get-Service -Name $env:SERVICE_NAME
+            Write-Host "  status: $($svc.Status)"
+          } while ($svc.Status -ne 'Running' -and (Get-Date) -lt $deadline)
+          if ($svc.Status -ne 'Running') {
+            Write-Error "Service did not reach Running within 30s. Check server logs."
+            exit 1
+          }
+
+      - name: Health check
+        if: steps.service-check.outputs.installed == 'true'
+        shell: pwsh
+        run: |
+          # Give the service a moment to bind the port
+          Start-Sleep -Seconds 5
+          try {
+            $response = Invoke-RestMethod -Uri "http://localhost:5100/health" -Method Get -TimeoutSec 10
+            Write-Host "Health check OK"
+            Write-Host ($response | ConvertTo-Json -Depth 3)
+          } catch {
+            Write-Warning "Health endpoint not responding: $_"
+            Write-Warning "Deploy completed but service health is unconfirmed — investigate server logs."
+            # Non-fatal: service may still be warming up. Don't fail the deploy on this alone.
+          }
+
+      - name: Deploy summary
+        if: always()
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
+          $status = if ($svc) { $svc.Status } else { "Not Installed" }
+          @"
+          ### ANI Deploy Summary
+
+          - **Commit:** ${{ github.sha }}
+          - **Service status:** $status
+          - **Publish dir:** $env:PUBLISH_DIR
+          - **Triggered by:** ${{ github.actor }}
+
+          Logs on the server: `src/AniRuntime.Service/logs/ani-debug-$(Get-Date -Format 'yyyyMMdd').log`
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
