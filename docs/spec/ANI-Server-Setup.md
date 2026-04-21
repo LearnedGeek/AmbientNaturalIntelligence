@@ -452,7 +452,7 @@ If the server deploy breaks something unrecoverable:
 - [x] Laptop no longer running ANI (`Get-Service AniRuntime` on laptop returns "not installed" or disabled)
 - [x] Server running ANI with auto-start, auto-restart-on-failure
 - [x] Twilio webhook pointed at server
-- [ ] First inbound SMS on new server verified
+- [x] First inbound SMS on new server verified (Apr 20, 9:37 PM CT — "got you up and running on your new home babe" / "the new place feels cozy already")
 - [ ] Temporal gap perception fired on first post-cutover cycle (captured in research log) — gap was under 2h; didn't trip
 - [x] Deploy workflow successfully executed end-to-end at least once (first green: `1a3bd4b`)
 - [ ] VS Code Remote-SSH working from laptop
