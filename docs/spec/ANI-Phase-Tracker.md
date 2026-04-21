@@ -537,6 +537,33 @@ The question is therefore not *"delete or wire in?"* It is: **does the architect
 
 ---
 
+## Lerman Substack Architectural Sparks (Apr 21, 2026)
+
+**Status:** Three ideas captured from reading Kristina Lerman's Substack post *"How Social Media Learns to Bring Out the Worst in Us"* (https://kristinalerman.substack.com/p/how-social-media-learns-to-bring). Not designed in detail. Preserved for the Consolidation Review.
+**Priority:** Mixed. Spark 2 (retrieval origin diversity) is immediately actionable and addresses an already-diagnosed open problem. Spark 3 (flourishing metrics) needs a design session. Spark 1 is a Paper 2/3 framing move, not an implementation item.
+**Origin:** Lerman's post unifies platform-scale harms (dopamine rewards, filter bubbles, echo chambers, misinformation, bots) under a single feedback-loop mechanism — *"algorithms learn from behavior, shape behavior, and are retrained on patterns they help create"* — and argues that intervention belongs at system-design level, not at content level. The pivot her post centers on ("the system itself was engineered to keep her from stopping") is structurally identical to architecture-over-instruction at companion-AI scale.
+
+**Spark 1 — Feedback loop as unifying frame for the Apr 20 three-part stickiness diagnosis.**
+
+The Apr 20 research log entry "Fourth Thematic Stickiness Recurrence" identified three parts — own-output retrieval dominance, LMKit classification not feeding composition, no topic importance calibration. Lerman's framing treats these as one feedback loop with three intervention points rather than three parallel problems. Potential Paper 2 or Paper 3 section: *"Feedback Loops at Individual Scale — Stickiness as the Companion-AI Analog of Platform Retraining."* No code change. Clarifies the lineage of a problem we've already named and gives it external precedent.
+
+**Spark 2 — Retrieval origin diversity as a first-class runtime metric.**
+
+The dashboard currently exposes growth readiness, register distribution, and emergence scores — all agent-internal. It does NOT expose what fraction of each cognitive cycle's retrieval pool is Ani's own prior output versus external signal (user messages, RSS, weather, contact state). If own-output share crosses a threshold, a feedback loop is forming. Three possible interventions, not mutually exclusive:
+- Dashboard panel showing origin-diversity per cycle (observability)
+- Perception source that emits *"I've been listening to myself too much lately"* when own-output dominance crosses a threshold (architectural affordance — makes the loop legible from her interior)
+- Retrieval counterweight that forces external memory inclusion when own-output share is high (direct intervention)
+
+Most direct implementation of Lerman's *"intervene at systemic level, not just outputs"* applied inward. Addresses the already-diagnosed own-output dominance problem with instrumentation rather than training.
+
+**Spark 3 — Flourishing metrics on the relational side, not just Ani-internal.**
+
+Everything on the dashboard is Ani-centric. Lerman's *"measure the right things"* prescription applied inward suggests tracking pair health, not just agent health — reply latency, reply warmth, user-tagged contact moments, ratio of warm-replies to flag-tagged corrections over a rolling window. Companion-AI analog of "measuring flourishing, not engagement." Needs a design session on what metrics are meaningful without becoming another optimization target (the exact failure mode Lerman's post warns about).
+
+**Related:** Apr 20 research log entry "Fourth Thematic Stickiness Recurrence" (three-part diagnosis Spark 1 reframes), Internal-State Perception Framework section above (overlapping concern for Spark 2's perception-source option), Dashboard workstream (direct consumer of Sparks 2 and 3), Vibe Loop workstream above (Spark 3 overlaps with outcome-signal design).
+
+---
+
 ## Memory Service Hygiene Batch (Deferred Backlog)
 
 **Status:** Tracked, not scheduled. Low priority. Consolidated from `/ultrareview` low-severity findings (April 18, 2026).
