@@ -21,22 +21,25 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using Twilio.Security;
 
-// ── Working directory fix for Windows Service ────────────────────────────────
-// Windows SCM launches services with cwd = C:\Windows\System32, which causes
-// every relative path in the app (Serilog's "logs/" path, default appsettings
-// reads, etc.) to resolve wrong. Set cwd to the executable's directory when
-// running as a service. Interactive/dev runs (dotnet run) are unaffected —
-// IsWindowsService() returns false there, preserving the existing laptop
-// workflow.
-if (WindowsServiceHelpers.IsWindowsService())
-{
-    Directory.SetCurrentDirectory(AppContext.BaseDirectory);
-}
+// ── Log directory (absolute path, not cwd-relative) ──────────────────────────
+// Windows SCM launches services with cwd = C:\Windows\System32. Using
+// relative paths in Serilog meant logs were landing in System32\logs\
+// instead of next to the executable. The SetCurrentDirectory approach
+// (earlier attempt) didn't take effect for reasons we didn't fully
+// diagnose (either WindowsServiceHelpers.IsWindowsService() returned
+// false in this hosting context, or Serilog resolved paths at config
+// time before cwd was changed). Using AppContext.BaseDirectory directly
+// bypasses both concerns -- logs always land next to the EXE.
+//
+// For interactive dev (dotnet run), AppContext.BaseDirectory is
+// bin/Debug/net8.0 rather than src/AniRuntime.Service -- a slight
+// change in log location but not a breakage.
+var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
-    .WriteTo.File("logs/ani-.log", rollingInterval: RollingInterval.Day)
+    .WriteTo.File(Path.Combine(logDir, "ani-.log"), rollingInterval: RollingInterval.Day)
     .CreateBootstrapLogger();
 
 try
@@ -52,13 +55,13 @@ try
         .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}")
         // Journal — inner thoughts, outreach decisions, messages sent (queryable story)
         // No {Exception} — stack traces go to debug log only, journal stays readable
-        .WriteTo.File("logs/ani-.log",
+        .WriteTo.File(Path.Combine(logDir, "ani-.log"),
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
             outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}",
             retainedFileCountLimit: 30)
         // Diagnostic — everything, for debugging
-        .WriteTo.File("logs/ani-debug-.log",
+        .WriteTo.File(Path.Combine(logDir, "ani-debug-.log"),
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug,
             outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
