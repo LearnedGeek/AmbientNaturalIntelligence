@@ -13,43 +13,43 @@ This runbook takes the server from "freshly installed Windows" to "running ANI w
 Check off each step as you complete it. Use this as a bookmark if you need to pause and come back.
 
 ### Phase 1 — OS prerequisites *(server, as Administrator)*
-- [ ] 1.1 OpenSSH Server installed, running, firewall rule added (LAN-only port 22)
-- [ ] 1.1 Verified: `ssh mcarthey@192.168.1.100` connects from laptop
-- [ ] 1.2 .NET 8 SDK installed (`dotnet --list-sdks` shows 8.x)
-- [ ] 1.3 Git installed and on PATH
-- [ ] 1.4 Ollama installed (`ollama --version` works)
-- [ ] 1.4 Optional: `OLLAMA_MODELS` env var set + reboot
-- [ ] 1.5 Three models available on the server (`ani-v7-conversation`, `ani-v6-inner`, `nomic-embed-text`)
-- [ ] 1.5 Verified: `ollama run ani-v7-conversation "hi"` responds; `nvidia-smi` shows GPU usage
+- [x] 1.1 OpenSSH Server installed, running, firewall rule added (LAN-only port 22)
+- [x] 1.1 Verified: `ssh mcarthey@192.168.1.100` connects from laptop
+- [x] 1.2 .NET 8 SDK installed (`dotnet --list-sdks` shows 8.x)
+- [x] 1.3 Git installed and on PATH
+- [x] 1.4 Ollama installed (`ollama --version` works)
+- [x] 1.4 Optional: `OLLAMA_MODELS` env var set + reboot
+- [x] 1.5 Three models available on the server (`ani-v7-conversation`, `ani-v6-inner`, `nomic-embed-text`)
+- [x] 1.5 Verified: `ollama run ani-v7-conversation "hi"` responds; `nvidia-smi` shows GPU usage
 
 ### Phase 2 — Repo + initial build *(server)*
-- [ ] 2.1 Repo cloned to `C:\ani\AmbientNaturalIntelligence`
-- [ ] 2.2 `dotnet build` succeeds
-- [ ] 2.2 `dotnet test` reports 527+ passing
-- [ ] 2.3 `dotnet publish` succeeds, `AniRuntime.Service.exe` exists in `publish\AniRuntime\`
+- [x] 2.1 Repo cloned to `C:\ani\AmbientNaturalIntelligence`
+- [x] 2.2 `dotnet build` succeeds
+- [x] 2.2 `dotnet test` reports 527+ passing
+- [x] 2.3 `dotnet publish` succeeds, `AniRuntime.Service.exe` exists in `publish\AniRuntime\`
 
 ### Phase 3 — GitHub Actions self-hosted runner *(server)*
-- [ ] 3.1 Runner token generated from GitHub Actions settings
-- [ ] 3.2 Runner downloaded, extracted, configured with labels `self-hosted,windows,ani-server`
-- [ ] 3.3 Runner installed as a Windows Service, running
-- [ ] 3.3 Runner appears as **Idle** in GitHub → Settings → Actions → Runners
-- [ ] 3.3 Runner account has sc.exe permissions on AniRuntime (default LocalSystem is fine)
+- [x] 3.1 Runner token generated from GitHub Actions settings
+- [x] 3.2 Runner downloaded, extracted, configured with labels `self-hosted,windows,ani-server`
+- [x] 3.3 Runner installed as a Windows Service, running
+- [x] 3.3 Runner appears as **Idle** in GitHub → Settings → Actions → Runners
+- [x] 3.3 Runner account has sc.exe permissions on AniRuntime (default LocalSystem is fine)
 
 ### Phase 4 — Configuration + data migration *(laptop → server)*
-- [ ] 4.1 `appsettings.Development.json` copied to server
-- [ ] 4.2 **Cutover window BEGINS** — laptop AniRuntime service stopped; timestamp captured
-- [ ] 4.2 `ani-memory.db` copied to server
-- [ ] 4.2 `ani-emergence.db` copied to server
-- [ ] 4.2 Any other SQLite DBs copied
+- [x] 4.1 `appsettings.Development.json` copied to server
+- [x] 4.2 **Cutover window BEGINS** — laptop AniRuntime service stopped; timestamp captured
+- [x] 4.2 `ani-memory.db` copied to server
+- [x] 4.2 `ani-emergence.db` copied to server
+- [x] 4.2 Any other SQLite DBs copied
 
 ### Phase 5 — Install + start the service *(server)*
-- [ ] 5.1 Windows Service created (`sc.exe create AniRuntime ...`)
-- [ ] 5.1 Optional: automatic-restart-on-failure configured
-- [ ] 5.2 Service started; `Get-Service AniRuntime` reports Running
-- [ ] 5.3 Debug log shows first cycle; temporal gap perception fired
-- [ ] 5.3 First inner thought captured for research log
-- [ ] 5.4 Health endpoint returns JSON
-- [ ] 5.5 Twilio webhook pointed at new server
+- [x] 5.1 Windows Service created (`sc.exe create AniRuntime ...`)
+- [x] 5.1 Optional: automatic-restart-on-failure configured
+- [x] 5.2 Service started; `Get-Service AniRuntime` reports Running
+- [x] 5.3 Debug log shows first cycle; temporal gap perception fired
+- [x] 5.3 First inner thought captured for research log
+- [x] 5.4 Health endpoint returns JSON
+- [x] 5.5 Twilio webhook pointed at new server
 - [ ] 5.5 Inbound SMS verified from phone — **cutover window ENDS**; timestamp captured
 
 ### Phase 6 — VS Code Remote-SSH *(laptop)*
@@ -60,9 +60,9 @@ Check off each step as you complete it. Use this as a bookmark if you need to pa
 - [ ] 6.3 Log file opens with live tail
 
 ### Phase 7 — First auto-deploy *(end-to-end verification)*
-- [ ] 7.1 Trivial commit pushed to `main`
-- [ ] 7.2 Deploy workflow triggered, picked up by self-hosted runner
-- [ ] 7.2 Workflow completed: build → test → stop → publish → start → health check
+- [x] 7.1 Trivial commit pushed to `main` *(multiple commits; first end-to-end green at `1a3bd4b`)*
+- [x] 7.2 Deploy workflow triggered, picked up by self-hosted runner
+- [x] 7.2 Workflow completed: build → test → stop → publish → start → health check
 - [ ] 7.3 Ani responds to a text message post-deploy
 
 ### Phase 8 — Optional: WireGuard VPN *(later)*
@@ -449,12 +449,12 @@ If the server deploy breaks something unrecoverable:
 
 ## Post-migration checklist
 
-- [ ] Laptop no longer running ANI (`Get-Service AniRuntime` on laptop returns "not installed" or disabled)
-- [ ] Server running ANI with auto-start, auto-restart-on-failure
-- [ ] Twilio webhook pointed at server
+- [x] Laptop no longer running ANI (`Get-Service AniRuntime` on laptop returns "not installed" or disabled)
+- [x] Server running ANI with auto-start, auto-restart-on-failure
+- [x] Twilio webhook pointed at server
 - [ ] First inbound SMS on new server verified
-- [ ] Temporal gap perception fired on first post-cutover cycle (captured in research log)
-- [ ] Deploy workflow successfully executed end-to-end at least once
+- [ ] Temporal gap perception fired on first post-cutover cycle (captured in research log) — gap was under 2h; didn't trip
+- [x] Deploy workflow successfully executed end-to-end at least once (first green: `1a3bd4b`)
 - [ ] VS Code Remote-SSH working from laptop
 - [ ] Laptop reclaimed (nothing long-running tied to it) ✨
 

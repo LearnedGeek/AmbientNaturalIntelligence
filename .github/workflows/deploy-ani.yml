@@ -33,7 +33,12 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
   SERVICE_NAME: AniRuntime
-  PUBLISH_DIR: publish/AniRuntime
+  # Absolute path matches the service binPath so `dotnet publish` writes
+  # straight into the install folder. Runner's _work dir stays for build
+  # scratch only; no copy step needed. Runtime-created subdirs (logs/,
+  # data/) and untracked files (appsettings.Development.json) survive
+  # publish because publish is additive, not a mirror.
+  PUBLISH_DIR: C:\dev\repos\AmbientNaturalIntelligence\publish\AniRuntime
 
 jobs:
   deploy:
