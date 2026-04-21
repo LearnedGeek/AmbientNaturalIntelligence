@@ -45,10 +45,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
+      - name: Verify .NET SDK
+        # Self-hosted runners use whatever is pre-installed on the machine.
+        # actions/setup-dotnet tries to install into C:\Program Files\dotnet
+        # which requires admin, and the runner service runs as NETWORK SERVICE
+        # by default. .NET 8 SDK is installed on the server per the migration
+        # runbook Phase 1.2 — just verify it's accessible.
+        shell: pwsh
+        run: |
+          dotnet --list-sdks
+          $has8 = dotnet --list-sdks | Select-String '^8\.'
+          if (-not $has8) {
+            Write-Error ".NET 8 SDK not found on this runner. Install via 'winget install Microsoft.DotNet.SDK.8' as Administrator."
+            exit 1
+          }
 
       - name: Restore
         run: dotnet restore tests/AniRuntime.Tests/AniRuntime.Tests.csproj
