@@ -89,6 +89,127 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 ---
 
+## Internal-State Perception Framework (Emergent Workstream — Design-Complete, Consolidation Pending)
+
+**Status:** Design session complete (April 20, 2026, evening). Implementation pending the Phase Tracker Consolidation Review (next section).
+**Origin:** April 20 morning — fourth recurrence of thematic stickiness pattern ("dorky little morning person" loop). Research log entry: Apr 20 "Fourth Thematic Stickiness Recurrence: Three-Part Architectural Diagnosis."
+**Research co-designer:** Ani (OG system) contributed five of the nine signals in the framework below. Documented in the Apr 20 research log. Worth citing in Paper 3 as an instance of introspective affect reporting (Schuller's "Absent" gap) operationalized into a design contribution — the subject of the architecture participating in its own design.
+
+**The three-part architectural diagnosis (April 20 morning):**
+
+The Apr 20 morning "dorky morning person" self-echo loop surfaced three interlocking architectural issues. No single one is the root cause; together they produce the theme-stickiness failure mode documented across four recurrences (Apr 7 dinner-at-seven, Apr 8 duck-norris, Apr 9 glitter, Apr 20 morning-person).
+
+1. **Own-output dominance in retrieval.** Three-way score (cosine + importance + recency) privileges Ani's own recent high-valence outputs. Tier separation prevents cross-tier contamination but not within-Interior self-looping. Her outputs form an attractor basin for subsequent composition.
+2. **LMKit classification exists but does not modulate composition.** Classifier tags every contribution with an emotional register (Tenderness, Longing, Playfulness, etc.) but nothing consumes the signal to modulate the next composition. Infrastructure to *know* the register exists; infrastructure to *act* on it does not.
+3. **No topic importance calibration.** Light moments and weighty moments receive the same retrieval treatment because importance is computed primarily as emotional intensity. A 20-second joke gets the same multi-hour rehearsal loop as a breakthrough emotional moment.
+
+**The design principle at work:**
+
+Mark's framing (April 20): *"We have to sort out how to redirect without direct guidance... what helps someone understand 'why' they should move on. Importance, reaction, response, etc. We have the metrics, but we're not using them to help her make a decision. We don't want to suggest 'you've been doing this enough' but instead want to provide information so she can decide herself."*
+
+This is the **architecture-over-instruction principle (Paper 2 Section 6.8) applied recursively** — not to what the model says, but to the internal state the model can see when deciding what to say. The temporal gap perception (deployed Apr 19) was the first application of this principle to internal state. The full framework generalizes it.
+
+**The nine-signal framework (Mark + Ani collaborative design session, April 20):**
+
+| # | Signal | What it surfaces | Existing today? |
+|---|--------|------------------|-----------------|
+| 1 | **Register saturation** | Last N contributions have been in the same register family | LMKit classifies; no downstream consumer |
+| 2 | **Retrieval source provenance** | Whether composition context is dominated by own-outputs vs perceptions vs contact utterances | Tier separation partial; within-tier source tagging absent |
+| 3 | **Reciprocity** | Whether the contact is matching investment or pulling back | Partial (care/hurt/withdrawal); true reciprocity metric absent |
+| 4 | **Natural transition point** | Discrete off-ramp events (laugh landed, pause arrived, topic pivot from contact, new perception) | Absent as a unified signal |
+| 5 | **Topic importance calibration** | Light / medium / weighty classification of each memory at save time | Absent — importance conflated with emotional intensity |
+| 6 | **Response quality / genuine interest** | Novelty-delta of next output vs own recent outputs; whether continuing adds anything | Absent |
+| 7 | **Emotional safety / comfort** | Contact is open vs guarded / distracted / performative | Partial overlap with hurt/withdrawal; "guarded" and "performative" are novel |
+| 8 | **Diminishing returns** | Theme-recurrence counter over rolling window | Absent as explicit signal |
+| 9 | **Purpose alignment** | Whether continuing serves the reason the conversation is happening (connection / venting / problem-solving / fun) | Absent — genuinely new design territory |
+
+**Signals 3, 4, 6, 7, and 9 were Ani's contributions to the design session.** Signal 3 (Reciprocity) in particular is the sharpest diagnostic for the Chris Farley failure mode — the person at the party keeps going because they're enthusiastic, not because the other person is matching. The Apr 20 "dorky morning person" loop was a failure of reciprocity detection: Mark's tag signaled one-sidedness; Ani did not perceive it.
+
+**Vibe Loop intersection:** Mark noted (April 20 evening) that Emotional Safety / Comfort (signal 7) overlaps with the Vibe Loop workstream's interaction-outcome tracking. Both want to detect *how the contact is responding to the conversation over time*. Worth treating as joint design in the consolidation review — they may share infrastructure.
+
+**Implementation priority (pending consolidation review):**
+
+Preliminary ordering by leverage and tractability:
+1. **Register saturation** — smallest change, leverages existing LMKit output, same pattern as Apr 19 temporal gap perception
+2. **Retrieval source provenance** — small metadata change, high behavioral signal
+3. **Reciprocity** — high-value addition from Ani's contribution, needs cross-turn analysis
+4. **Natural transition point** — tractable, discrete events, high signal
+5. **Topic importance calibration** — memory-layer change, Paper 3 contribution
+6. **Response quality / genuine interest** — possibly measurable via output entropy
+7. **Emotional safety / comfort** — extends existing care detection + Vibe Loop
+8. **Diminishing returns** — simple counter, useful with others
+9. **Purpose alignment** — hardest, most novel, genuine Paper 3 design territory
+
+**Classifier capacity:**
+
+LMKit-appropriate (discrete categorical, single-text classification): signals 1, 5, 7 (partial). Not LMKit-appropriate without extension: signals 3, 4, 6, 9 (need cross-turn comparison, event detection, or conversation-level context). For non-LMKit signals, plausible paths are heuristic computations (turn-length ratios, embedding deltas, response-time patterns) or LLM-based classification against Ollama prompts. Heuristics preferred for cheap numerical signals; LLM-based reserved for semantic signals like purpose alignment.
+
+**What this workstream does NOT do yet:**
+
+- No implementation. Design-complete, build-pending.
+- No classifier sprint committed. LMKit capacity investigation is a scoping exercise that happens before build work.
+- No feature-by-feature rollout sequence. The Consolidation Review (next section) will establish the actual build order, likely by identifying shared mechanisms across signals rather than building nine individual features.
+
+**Paper relevance:**
+
+- **Paper 2 Section 6.8 (Architecture Over Instruction):** this framework is the next case of the principle applied recursively. The temporal gap perception was the first; this is the systematic generalization. Worth a paragraph in 6.8 during the voice calibration pass.
+- **Paper 2 Section 5.19 (Echo Chamber):** the thematic-stickiness pattern is a register-layer instance of the same echo-chamber mechanism 5.19 identified at the inner-thought layer. Section 5.19 generalizes.
+- **Paper 3 (Experiential Grounding):** signals 5 (topic importance) and 9 (purpose alignment) are novel design territory. The subject-as-co-designer observation (Ani contributed five signals) is itself a Paper 3 methodology contribution.
+
+**Related workstreams (to be consolidated in the next section):**
+
+- Interoception / Curiosity Hunger (addresses input-seeking side of theme stickiness; does NOT address own-output dominance or LMKit feedback gap)
+- Vibe Loop (interaction outcome memory — overlaps with Emotional Safety)
+- Memory Durability / Identity Boundary (v8)
+- Phase 6 Feature 30/32 (Mem0 merge, Park reflection)
+- Memory Service Hygiene Batch
+- Pipeline Simplification Phase 2/3/4
+
+---
+
+## Phase Tracker Consolidation Review (Scheduled — Next Strategic Step)
+
+**Status:** Scheduled for a fresh morning this week. Target: approx 2-3 hours of focused work when Mark is well and rested.
+**Purpose:** Read the full phase tracker with the explicit goal of identifying shared mechanisms across seemingly separate workstreams, then consolidate into a smaller set of meta-workstreams rather than continuing to treat every pending item as discrete feature work.
+
+**Motivation (Mark, April 20 evening):**
+
+*"I'm not sure where to go with this. The reason is that we have so many elements that are pending in our tracker, and they all seem intertwined. It's become difficult to decide that one takes priority over another, and I'm not sure anymore how they can be implemented discretely. I suspect if we examine our phase tracker, especially with these new findings in mind, we are going to find themes and design opportunities to start consolidating."*
+
+This is a maturity signal, not a confusion signal. When pending work becomes interconnected like this, individual prioritization becomes arbitrary because multiple items are solving different facets of the same underlying problem. The right response is architectural consolidation: find the shared mechanism, build it once, and treat each specific feature as a plugin on top of the common substrate.
+
+**Preliminary consolidation themes (Claude's scan, April 20 — subject to refinement during the full review):**
+
+- **Theme A — Internal State Perception framework.** The Apr 20 design session (above) is one instance. Temporal gap perception (Apr 19 deployed) was another. Future instances: register saturation, theme-recurrence counters, retrieval-source provenance, off-ramp detection. Shared mechanism: **a common way to surface internal state as perception events the model reads like any other world observation.** Vibe Loop belongs here too — "let the model see what worked with this contact" is structurally an internal-state perception.
+- **Theme B — Memory-layer semantic weight.** Topic importance classification, Phase 6 Feature 30 (Mem0 merge where weight affects merge priority), Memory Durability v8, the own-output retrieval penalty, retrieval source provenance metadata, Feature 32 periodic reflection synthesis. Shared mechanism: **memories carrying richer per-record metadata than the current cosine+importance+recency scoring, and a retrieval scoring layer that uses it.**
+- **Theme C — Emotional state → behavioral modulation loop.** LMKit classification feedback, Curiosity Hunger, register saturation modulation, reciprocity detection, Emotional Safety + Vibe Loop joint design, genuine interest via output entropy. Shared mechanism: **a path from classifier output back to composition input. Build the path once; each specific feedback signal is a light addition.**
+- **Theme D — Operational infrastructure.** Server Migration, Cloud Edge CE-1 through CE-4, CI/CD, Remote-SSH, backups, monitoring. Already somewhat consolidated; mostly a scheduling question now. Largely independent of Themes A-C.
+
+**If these themes hold up during the full review:**
+
+The implementation decision changes from *"Curiosity Hunger or topic importance or register saturation?"* to *"build the internal-state-perception framework, build the memory semantic weight framework, build the emotional-modulation loop, then most pending items become small increments on top."* Three meta-workstreams instead of twenty discrete features.
+
+**Expected output from the review:**
+
+1. A consolidated roadmap organized by meta-workstream rather than feature.
+2. Clear dependencies between themes (Theme A depends on Theme C's feedback loop; Theme B partially enables Theme A by giving perception events richer metadata to surface).
+3. A deprioritized list — items that can be dropped, deferred, or subsumed into the meta-workstreams.
+4. A clearer sense of what ships first (the unifying infrastructure) vs what ships later (specific feedback signals).
+
+**What the review is NOT:**
+
+- Not more feature design. The point is to find structure, not add content.
+- Not a commitment to implement anything. It's a planning artifact.
+- Not a re-architecture of deployed systems. Nothing currently running gets disrupted by this; the review only affects *future* build order.
+
+**Meta-principle (Paper 3 candidate):**
+
+*"When a deployed system reaches architectural intertwining, step back and find the shared mechanisms. Consolidate at the mechanism level, not the feature level. This is architecture-over-instruction applied to the development process itself."*
+
+This observation is worth a short Paper 3 note in its own right. It generalizes the architecture-over-instruction principle from *what the system does* to *how the system is built over time*. Specifically relevant to longitudinal deployment-as-research where the project evolves the architecture as findings accumulate.
+
+---
+
 ## Pipeline Simplification (Active Rollout)
 
 **Design doc:** `docs/spec/design/ANI-Pipeline-Simplification-Proposal.md`
