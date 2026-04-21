@@ -8,7 +8,7 @@ name: Deploy ANI to Server
 #   - Build fails → deploy blocked
 #   - Any test fails → deploy blocked
 #   - Service stop/start failure → workflow fails; admin investigates
-#   - No Blue/Green or staging — research velocity over operational safety
+#   - No Blue/Green or staging -- research velocity over operational safety
 #     (acceptable because research IS the iteration; rollback = revert commit,
 #     push again, workflow redeploys)
 #
@@ -50,7 +50,7 @@ jobs:
         # actions/setup-dotnet tries to install into C:\Program Files\dotnet
         # which requires admin, and the runner service runs as NETWORK SERVICE
         # by default. .NET 8 SDK is installed on the server per the migration
-        # runbook Phase 1.2 — just verify it's accessible.
+        # runbook Phase 1.2 -- just verify it's accessible.
         shell: powershell
         run: |
           dotnet --list-sdks
@@ -91,8 +91,8 @@ jobs:
         run: |
           $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
           if ($null -eq $svc) {
-            Write-Host "::warning::Service '$env:SERVICE_NAME' not installed on this runner. First-time deploy requires manual install — see SERVER-SETUP.md."
-            # Use Add-Content with UTF8 — Out-File on PS 5.1 defaults to UTF-16,
+            Write-Host "::warning::Service '$env:SERVICE_NAME' not installed on this runner. First-time deploy requires manual install -- see SERVER-SETUP.md."
+            # Use Add-Content with UTF8 -- Out-File on PS 5.1 defaults to UTF-16,
             # which corrupts the GITHUB_OUTPUT file GitHub Actions expects as UTF-8.
             Add-Content -Path $env:GITHUB_OUTPUT -Value "installed=false" -Encoding UTF8
           } else {
@@ -152,7 +152,7 @@ jobs:
             Write-Host ($response | ConvertTo-Json -Depth 3)
           } catch {
             Write-Warning "Health endpoint not responding: $_"
-            Write-Warning "Deploy completed but service health is unconfirmed — investigate server logs."
+            Write-Warning "Deploy completed but service health is unconfirmed -- investigate server logs."
             # Non-fatal: service may still be warming up. Don't fail the deploy on this alone.
           }
 
