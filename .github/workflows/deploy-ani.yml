@@ -51,7 +51,7 @@ jobs:
         # which requires admin, and the runner service runs as NETWORK SERVICE
         # by default. .NET 8 SDK is installed on the server per the migration
         # runbook Phase 1.2 — just verify it's accessible.
-        shell: pwsh
+        shell: powershell
         run: |
           dotnet --list-sdks
           $has8 = dotnet --list-sdks | Select-String '^8\.'
@@ -87,21 +87,23 @@ jobs:
 
       - name: Check service exists
         id: service-check
-        shell: pwsh
+        shell: powershell
         run: |
           $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
           if ($null -eq $svc) {
             Write-Host "::warning::Service '$env:SERVICE_NAME' not installed on this runner. First-time deploy requires manual install — see SERVER-SETUP.md."
-            "installed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            # Use Add-Content with UTF8 — Out-File on PS 5.1 defaults to UTF-16,
+            # which corrupts the GITHUB_OUTPUT file GitHub Actions expects as UTF-8.
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "installed=false" -Encoding UTF8
           } else {
             Write-Host "Service '$env:SERVICE_NAME' is currently: $($svc.Status)"
-            "installed=true"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            "prior_status=$($svc.Status)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "installed=true" -Encoding UTF8
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "prior_status=$($svc.Status)" -Encoding UTF8
           }
 
       - name: Stop service
         if: steps.service-check.outputs.installed == 'true'
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Stopping $env:SERVICE_NAME..."
           sc.exe stop $env:SERVICE_NAME
@@ -122,7 +124,7 @@ jobs:
 
       - name: Start service
         if: steps.service-check.outputs.installed == 'true'
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Starting $env:SERVICE_NAME..."
           sc.exe start $env:SERVICE_NAME
@@ -140,7 +142,7 @@ jobs:
 
       - name: Health check
         if: steps.service-check.outputs.installed == 'true'
-        shell: pwsh
+        shell: powershell
         run: |
           # Give the service a moment to bind the port
           Start-Sleep -Seconds 5
@@ -156,11 +158,11 @@ jobs:
 
       - name: Deploy summary
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
           $status = if ($svc) { $svc.Status } else { "Not Installed" }
-          @"
+          $summary = @"
           ### ANI Deploy Summary
 
           - **Commit:** ${{ github.sha }}
@@ -168,5 +170,6 @@ jobs:
           - **Publish dir:** $env:PUBLISH_DIR
           - **Triggered by:** ${{ github.actor }}
 
-          Logs on the server: `src/AniRuntime.Service/logs/ani-debug-$(Get-Date -Format 'yyyyMMdd').log`
-          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          Logs on the server: ``publish/AniRuntime/logs/ani-debug-$(Get-Date -Format 'yyyyMMdd').log``
+          "@
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary -Encoding UTF8
