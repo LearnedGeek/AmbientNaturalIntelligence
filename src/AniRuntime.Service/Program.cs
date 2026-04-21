@@ -16,9 +16,22 @@ using LearnedGeek.ML;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Twilio.Security;
+
+// ── Working directory fix for Windows Service ────────────────────────────────
+// Windows SCM launches services with cwd = C:\Windows\System32, which causes
+// every relative path in the app (Serilog's "logs/" path, default appsettings
+// reads, etc.) to resolve wrong. Set cwd to the executable's directory when
+// running as a service. Interactive/dev runs (dotnet run) are unaffected —
+// IsWindowsService() returns false there, preserving the existing laptop
+// workflow.
+if (WindowsServiceHelpers.IsWindowsService())
+{
+    Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+}
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
