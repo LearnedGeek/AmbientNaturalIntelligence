@@ -1,14 +1,17 @@
 @page "/research"
+@using AniRuntime.Core
 @using AniRuntime.Core.Interfaces
 @using AniRuntime.Core.Models
 @using AniRuntime.LLM
 @using AniRuntime.Loops
+@using Microsoft.Extensions.Options
 @inject IMemoryAnalytics MemoryAnalytics
 @inject IMemoryPersistence MemoryPersistence
 @using LearnedGeek.ML.Interfaces
 @inject IOllamaClient Ollama
 @inject EmotionalProcessor EmotionalProcessor
 @inject ITextClassificationService MLClassifier
+@inject IOptions<AniOptions> AniOptionsAccessor
 
 <h1>Research Findings</h1>
 <p><em>Empirical results from ANI's deployment — presentation-ready with context and methodology.</em></p>
@@ -786,8 +789,22 @@
     private readonly List<string> _convFiles = new();
     private ConversationStage _convCombined = new();
 
-    private static readonly string ClassifyDir = Path.Combine(
-        AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "conversations", "classify");
+    // Apr 22, 2026 — ClassifyDir is configurable via AniOptions. Default falls back to
+    // the legacy relative path (repo-root-relative) for laptop dev where the repo is
+    // checked out locally. On the server, set `Ani:ClassifyDir` in appsettings (or
+    // env var `Ani__ClassifyDir`) to an absolute path like `C:/dev/ani-data/classify`
+    // since the deployed service does not have `docs/` five levels above its base dir.
+    private string ClassifyDir
+    {
+        get
+        {
+            var configured = AniOptionsAccessor.Value.ClassifyDir;
+            if (!string.IsNullOrWhiteSpace(configured))
+                return configured;
+            return Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "conversations", "classify");
+        }
+    }
 
     private async Task ScanAndClassifyDirectory()
     {
@@ -896,8 +913,22 @@
         StateHasChanged();
     }
 
-    private static readonly string ConvResultsPath = Path.Combine(
-        AppContext.BaseDirectory, "..", "..", "..", "data", "conversation-classifier-results.json");
+    // Apr 22, 2026 — ConvResultsPath is configurable via AniOptions. Default falls
+    // back to the legacy relative path (service-local data/ folder) which works in
+    // laptop dev and in the published install. On the server, set `Ani:ClassifierResultsPath`
+    // to an absolute path like `C:/dev/ani-data/conversation-classifier-results.json`
+    // to co-locate with the memory DB and other ani-data artifacts.
+    private string ConvResultsPath
+    {
+        get
+        {
+            var configured = AniOptionsAccessor.Value.ClassifierResultsPath;
+            if (!string.IsNullOrWhiteSpace(configured))
+                return configured;
+            return Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "data", "conversation-classifier-results.json");
+        }
+    }
 
     private async Task SaveConversationResultsAsync()
     {

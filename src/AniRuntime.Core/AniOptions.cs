@@ -125,6 +125,17 @@ public class AniOptions
     public string CharacterStatePath     { get; set; } = "data/character-state.json";
     public string MemoryDbPath           { get; set; } = "data/ani-memory.db";
 
+    // Apr 22, 2026 — Research dashboard classifier paths (configurable).
+    // On laptop dev these default to the legacy relative-to-base-dir lookups
+    // (repo root / docs/conversations/classify and service-local data/ folder).
+    // On the server (or any deployed install), override via appsettings or env
+    // var to an absolute path, typically under C:/dev/ani-data/ alongside
+    // ani-memory.db and character-state.json.
+    //   Ani__ClassifyDir             — folder containing .txt/.json classify inputs
+    //   Ani__ClassifierResultsPath   — full path to conversation-classifier-results.json
+    public string ClassifyDir            { get; set; } = "";
+    public string ClassifierResultsPath  { get; set; } = "";
+
     // Apr 21, 2026 — "Stop the spin" protective patches (Option C, commit 2).
     // These are small, targeted, reversible. They do not replace the theme-level
     // architectural response (Feature 14 v2, Conscience, Correction Channel) — they
