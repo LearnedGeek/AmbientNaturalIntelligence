@@ -1372,23 +1372,32 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     // ── AC5: Confabulation Flags ──────────────────────────────────────────────
 
-    public async Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default)
+    public async Task SaveConfabulationFlagAsync(
+        string contactMessage,
+        string aniReply,
+        string? topicCategory = null,
+        string? notes = null,
+        CancellationToken ct = default)
     {
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
         cmd.CommandText = """
-            INSERT INTO confabulation_flags (id, flagged_at, contact_message, ani_reply)
-            VALUES ($id, $flaggedAt, $contactMessage, $aniReply)
+            INSERT INTO confabulation_flags (id, flagged_at, contact_message, ani_reply, topic_category, notes)
+            VALUES ($id, $flaggedAt, $contactMessage, $aniReply, $topicCategory, $notes)
             """;
 
         cmd.Parameters.AddWithValue("$id",             Guid.NewGuid().ToString());
         cmd.Parameters.AddWithValue("$flaggedAt",      DateTimeOffset.UtcNow.ToString("O"));
         cmd.Parameters.AddWithValue("$contactMessage", contactMessage);
         cmd.Parameters.AddWithValue("$aniReply",       aniReply);
+        cmd.Parameters.AddWithValue("$topicCategory",  (object?)topicCategory ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$notes",          (object?)notes         ?? DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        _log.LogWarning("AC5: Confabulation flag saved — reply: \"{Reply}\"",
+        var labelSuffix = string.IsNullOrWhiteSpace(topicCategory) ? "" : $" [{topicCategory}]";
+        _log.LogWarning("AC5: Confabulation flag saved{Label} — reply: \"{Reply}\"",
+            labelSuffix,
             aniReply.Length > 80 ? aniReply[..80] + "…" : aniReply);
     }
 

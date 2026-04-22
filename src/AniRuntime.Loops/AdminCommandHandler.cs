@@ -82,12 +82,11 @@ public class AdminCommandHandler
             "live"       => await HandleLiveAsync(ct).ConfigureAwait(false),
             "status"     => await HandleStatusAsync(ct).ConfigureAwait(false),
             "reset-mood" => await HandleResetMoodAsync(ct).ConfigureAwait(false),
-            "flag"       => await HandleFlagAsync(ct).ConfigureAwait(false),
             "new-thread" => await HandleNewThreadAsync(ct).ConfigureAwait(false),
             "rebuild-links" => await HandleRebuildLinksAsync(ct).ConfigureAwait(false),
             "rebuild-emergence" => await HandleRebuildEmergenceAsync(ct).ConfigureAwait(false),
             "diagnose" => await HandleDiagnoseAsync(ct).ConfigureAwait(false),
-            _ when trimmed.StartsWith("tag ") => HandleTag(trimmed[4..].Trim()),
+            _ when trimmed.StartsWith("tag ") => await HandleTagAsync(trimmed[4..].Trim(), ct).ConfigureAwait(false),
             "audit" => await HandleAuditAsync(ct).ConfigureAwait(false),
             _            => $"Unknown command: ///{trimmed}\nSend ///help for available commands."
         };
@@ -106,11 +105,11 @@ public class AdminCommandHandler
             "///test       — Snapshot DB, enter test mode",
             "///live       — Restore DB, exit test mode",
             "///reset-mood — Reset emotions to baselines",
-            "///flag       — Flag last reply as confabulation",
             "///new-thread — Close current thread, start fresh",
             "///rebuild-links — Build memory graph links (one-time, may take minutes)",
             "///rebuild-emergence — Tag historical emergence log with EM1-EM6 types",
-            "///tag <note>  — Tag an observation for later review",
+            "///tag <label> — Tag the last reply with a label (e.g. confabulation, temporal",
+            "              confusion, repetition) — saved to confabulation_flags table",
             "///audit       — Show last 5 memory changes",
         });
     }
@@ -244,26 +243,33 @@ public class AdminCommandHandler
     }
 
     /// <summary>
-    /// AC5: Flag the most recent Ani reply as a confabulation.
-    /// Stores the flagged exchange in the confabulation_flags table for
-    /// pattern analysis — builds a map of confabulation-prone topics.
+    /// AC5: Tag the most recent Ani reply with a label and persist it for pattern analysis.
+    /// Consolidated Apr 22, 2026 — previously split between ///tag (text-file only) and
+    /// ///flag (DB-only, no label). Now a single path: ///tag &lt;label&gt; saves the
+    /// preceding Mark message + Ani's reply to the confabulation_flags table with the
+    /// label as `topic_category`. Common labels Mark uses: "confabulation", "temporal
+    /// confusion", "repetition", and other ad-hoc research tags.
     /// </summary>
-    private async Task<string> HandleFlagAsync(CancellationToken ct)
+    private async Task<string> HandleTagAsync(string note, CancellationToken ct)
     {
+        _log.LogInformation("[TAG] {Note}", note);
+
+        if (string.IsNullOrWhiteSpace(note))
+            return "Usage: ///tag <label>  — e.g. ///tag confabulation";
+
         // Find the most recent conversation thread with Ani's reply
         var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
         if (thread is null || thread.Messages.Count < 2)
         {
-            // Check most recent closed thread
             var recent = await _conversations.GetRecentThreadsAsync(1, ct).ConfigureAwait(false);
             thread = recent.FirstOrDefault();
         }
 
         if (thread is null || thread.Messages.Count < 2)
-            return "No recent conversation to flag.";
+            return $"Tagged [{note}] — but no recent conversation pair found to persist.";
 
         // Find the last Ani reply and the preceding Mark message
-        string? aniReply = null;
+        string? aniReply    = null;
         string? markMessage = null;
 
         for (var i = thread.Messages.Count - 1; i >= 0; i--)
@@ -278,13 +284,14 @@ public class AdminCommandHandler
         }
 
         if (aniReply is null)
-            return "No Ani reply found in recent conversation.";
+            return $"Tagged [{note}] — no Ani reply found in recent conversation.";
 
         markMessage ??= "(no preceding message found)";
 
-        await _persist.SaveConfabulationFlagAsync(markMessage, aniReply, ct).ConfigureAwait(false);
+        await _persist.SaveConfabulationFlagAsync(
+            markMessage, aniReply, topicCategory: note, notes: null, ct: ct).ConfigureAwait(false);
 
-        return $"Flagged as confabulation:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"";
+        return $"Tagged [{note}]:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"";
     }
 
     private Task<string> HandleNewThreadAsync(CancellationToken ct)
@@ -347,22 +354,6 @@ public class AdminCommandHandler
         {
             return $"Audit query failed: {ex.Message}";
         }
-    }
-
-    private string HandleTag(string note)
-    {
-        _log.LogInformation("[TAG] {Note}", note);
-
-        // Append to a persistent tags file for easy review
-        try
-        {
-            var tagsPath = Path.Combine(AppContext.BaseDirectory, "data", "tags.txt");
-            var entry = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} | {note}";
-            File.AppendAllText(tagsPath, entry + Environment.NewLine);
-        }
-        catch { /* file write failure is non-critical */ }
-
-        return $"Tagged: {note}";
     }
 
     private async Task<string> HandleDiagnoseAsync(CancellationToken ct)

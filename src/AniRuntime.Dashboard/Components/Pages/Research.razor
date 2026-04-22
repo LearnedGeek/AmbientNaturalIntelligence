@@ -364,9 +364,10 @@
     </p>
 
     <p style="opacity: 0.7; font-size: 0.85em;">
-        Place conversation files in <code>docs/conversations/classify/</code>. Supported formats:
+        Place conversation files in <code>@ClassifyDir</code>. Supported formats:
         Grok exports (<code>.txt</code> with [Message N] YOU/GROK pattern) and training JSONL (<code>.json</code>/<code>.jsonl</code>).
-        Each file becomes one stage in the trajectory.
+        Each file becomes one stage in the trajectory. Override the folder via
+        <code>Ani:ClassifyDir</code> in appsettings or <code>Ani__ClassifyDir</code> env var.
     </p>
 
     <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">

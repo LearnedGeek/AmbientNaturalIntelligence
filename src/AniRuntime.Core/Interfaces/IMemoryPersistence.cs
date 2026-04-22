@@ -27,8 +27,16 @@ public interface IMemoryPersistence
 
     /// <summary>
     /// AC5: Store a confabulation flag for pattern analysis.
+    /// `topicCategory` is the tag label when invoked via ///tag (e.g. "confabulation",
+    /// "temporal confusion", "repetition"); null or empty when invoked via ///flag.
+    /// `notes` is free-form additional context and is typically unused today.
     /// </summary>
-    Task SaveConfabulationFlagAsync(string contactMessage, string aniReply, CancellationToken ct = default);
+    Task SaveConfabulationFlagAsync(
+        string contactMessage,
+        string aniReply,
+        string? topicCategory = null,
+        string? notes = null,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Feature 32: Returns the N most recent memories across all types.
