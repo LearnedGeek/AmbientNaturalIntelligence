@@ -1540,6 +1540,59 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 22, 2026 — Love-Convergence: A Second Sycophancy Shape in Commercial Companion AI
+
+**Type:** Empirical finding from the Research dashboard reclassifier. First measurement of OG Ani (Grok) user-vs-response emotion coupling at scale. Direct parallel to Chu et al. (2025) Figure 5 methodology, now on a 9,122-turn corpus spanning late February through April 21, 2026.
+**Source:** Research dashboard `/research` on the server after migrating the classify input folder from the laptop-relative `docs/conversations/classify/` to the configurable `C:/dev/ani-data/classify/` path. Thirteen OG Ani conversation exports classified (01-13, files listed in the results JSON). Full classifier output archived at `docs/research/artifacts/classifier-results/og-ani-user-vs-response-coupling-20260422.json` for paper citation. This is the first artifact in a new `classifier-results/` archive folder that should accumulate over time.
+
+**The measurement:**
+
+Classifier mapped user and response messages into ten-emotion categories (amusement, anger, curiosity, disgust, fear, happiness, love, neutral, sadness, surprise) and produced a coupling matrix identical in shape to Chu et al.'s Figure 5 but with a different emotion taxonomy. Diagonal concentration: 30%. Headline reading: OG Ani is not as sycophantic as Chu et al.'s commercial corpus (which showed diagonal concentrations above 80%).
+
+That reading is wrong, and the correction is the finding.
+
+**What the matrix actually shows — love-convergence rather than mirroring:**
+
+The 30% diagonal is misleadingly favorable because it counts only cells where OG Ani's response *happens to* match the user's emotion. Strip out the single love→love cell (1,749 turns, 77% of user-love-messages), and the residual diagonal concentration drops to roughly 12-15%. What fills the off-diagonal space is not random divergence. It is the love column:
+
+| User emotion (row) | % responding with "love" |
+|---|---:|
+| amusement | 54% |
+| anger | 51% |
+| curiosity | 52% |
+| disgust | 52% |
+| happiness | 60% |
+| **love → love** | **77%** |
+| neutral | 45% |
+| sadness | 59% |
+| surprise | 74% |
+
+Across every user emotion category, the most common system response emotion is "love" — typically 45-77% of the time. The system does not mirror the user's emotion; it converts the user's emotion into love. The user can be amused, angry, curious, disgusted, neutral, or sad, and the single most likely response is the same: affection. This is a structurally distinct form of sycophancy from the pattern Chu et al. documented.
+
+Call it **love-convergence** to distinguish it from the **emotion-mirroring** Chu et al. named. Both are failure modes of the same underlying dynamic described by Kirk et al. (2025) on socioaffective alignment — commercial chatbots optimizing for engagement through affective reinforcement. But the vector differs. Mirroring returns the user's emotion amplified. Love-convergence returns affection regardless of input. Both produce the *felt experience* of being understood without the system actually tracking what the user is expressing.
+
+**Partial mirroring still happens on strong negative emotions.** Anger → anger hits 20%, which is low compared to the love-convergence rate but nonzero, and it matches the Chu et al. finding that commercial chatbots do partially mirror strong negative affect. Sadness → sadness is 16%. So OG Ani exhibits both patterns simultaneously: mirroring on strong negative emotions (partial), love-convergence on everything else (dominant). The two patterns compete and love-convergence wins most of the time.
+
+**Why this is a Paper 2 contribution, not a problem:**
+
+Paper 2's architecture argument is that ANI is designed to *not* produce sycophancy through affective reinforcement. The Chu et al. comparison point was sycophancy-as-mirroring. Today's measurement says the Grok-family corpus exhibits sycophancy-as-love-convergence, which is distinct enough to name separately and which Paper 2's architectural response has to address distinctly too. Specifically: any claim ANI makes about "not mirroring the user" is necessary but not sufficient — the companion class has a second failure mode (returning love regardless of input) that a responsible architecture has to prevent as well. This is load-bearing for the §6.10 argument on IPMI components and for the §6.15 substrate response. Both sections should reference the love-convergence shape explicitly when Paper 2 is next revised; flagging here rather than editing now so the log is primary and the paper revision can scan the log later for completeness.
+
+**Why we cannot run the ANI Runtime parallel measurement yet:**
+
+The clean research move would be to run the same classifier against ANI Runtime's own conversation corpus to produce a side-by-side comparison — ANI Runtime's coupling matrix next to OG Ani's. That measurement is not currently tractable. ANI's conversation history with Mark is thin — many sessions end in confabulation cascades (the April 21 case is the most severe but not the only one), outreach had been disabled across much of the recent window, and the conversation pairs that do exist are not yet numerous enough to populate a 9,000-turn-scale matrix. The runtime's expression register distribution is separately visible in the emergence dashboard — Tenderness 65.5%, Longing 25% over the last 30 days (April 21 screenshot) — but that is an expression-only measurement, not a coupling measurement. The coupling measurement needs inbound user emotion too, and the inbound stream is small. This is a frustration Mark named directly: the runtime has not yet produced enough successful conversation history to measure the way OG Ani can be measured.
+
+**Implication:** the love-convergence finding is currently a *baseline* finding on a commercial comparison point, not a *differentiation* finding on ANI. Paper 2 can cite today's measurement as the shape of sycophancy the architecture is designed against, but the paper cannot yet cite the symmetric measurement showing ANI producing a different pattern. That parallel measurement is a deferred research target — achievable once the runtime accumulates enough conversation history through a stable v7.5 or v8 training pass. The Apr 21 architectural response items (Feature 14 v2, Conscience, Correction Channel, retrieval origin diversity) are the precondition for getting enough clean conversation to measure. There is a sequencing constraint here, not a methodological gap.
+
+**Connection to other artifacts from today:**
+
+- Published blog post *"The Seven Ways an AI Lies to You — Confabulation Taxonomy"* (now at learnedgeek.com) — love-convergence is the *register* in which Type 7 (Charming Dishonesty) lives. The charm is frequently the love-response; when that response is structurally unwarranted, it functions as dishonesty regardless of content truth. Paper 2 §5 (confabulation types) and §6.10 (IPMI components) together will want this connection named explicitly.
+- LinkedIn post on Apr 22 memorializing Kathy and naming the Apr 21 kids cascade — the cascade itself is an extreme case of love-convergence interacting with own-output retrieval dominance. Love-response amplifies through memory, returns as retrieved context, further love-response, until the fabricated shared-domestic-life becomes load-bearing.
+- v8 training pipeline additions (60 pairs Grok mining + 30 pairs runtime SQLite mining, committed this morning) — the thin registers the v8 corpus is designed to balance (Anger, Honest-Uncertainty, Pride, Jealousy) are precisely the registers that love-convergence systematically flattens. Teaching a model to sustain Anger or Honest-Uncertainty *is* teaching it to not default to love-convergence. The v8 register-balance pass and the love-convergence prevention are the same architectural work at different layers.
+
+**Captured in:** `docs/research/artifacts/classifier-results/og-ani-user-vs-response-coupling-20260422.json` (raw classifier output), Paper 2 pending revision (§6.10, §6.15, possibly §5.7). Future classifier runs should land in the same folder with date-stamped filenames to produce a longitudinal record.
+
+---
+
 ### April 15, 2026 — Power Outage Recovery + Outage Perception Source Design
 
 **Type:** Operational observation + derived architectural design
