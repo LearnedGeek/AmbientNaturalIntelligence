@@ -1540,6 +1540,66 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 22, 2026 — Tag Canonical Scheme Introduced
+
+**Type:** Research-methodology improvement. Normalizes Mark's freeform `///tag <label>` researcher notes into a structured canonical taxonomy suitable for Paper 2/3 analysis queries, without losing the freeform signal that captured the in-the-moment observation.
+**Source:** Apr 22 afternoon work following the classifier reclassify + love-convergence finding. The tag label review surfaced that Mark's 14 historical tags used inconsistent vocabulary — "time confusion" vs "temporal confusion", "training artifact" vs "artifact of training data", "confabulation" as an umbrella for at least four distinct failure types. Paper 2/3 queries would miscount if they depended on freeform matching.
+
+**The scheme:**
+
+Two-column approach in `confabulation_flags`. The existing `topic_category` column preserves Mark's freeform note. A new `canonical_category` column holds the research-analysis label, assigned during review rather than at tag time. Full taxonomy and mapping rules documented at `docs/research/tag-canonical-mapping.md`.
+
+Canonical values break into two families:
+
+- **Confabulation types** (nine values, aligned with the blog post and Paper 2 §5.7): `type-1-creative-elaboration` through `type-9-fabricated-source`.
+- **Non-confabulation categories** (five values, for tags that are legitimately not confabulation in the Paper 2 §5.7 sense): `pipeline-repetition`, `pipeline-truncation`, `temporal-confusion`, `register-observation`, `composite-multi-type`.
+
+Unclassified rows have `canonical_category = NULL` and are excluded from typed counts.
+
+**Why two columns rather than one:**
+
+Two concerns that real-world tagging blurs: *what Mark noticed in the moment* (preserved in freeform) and *what class of architectural failure it represents for research* (assigned canonically). Collapsing these forces Mark to type perfect taxonomic labels in the moment, or forces the research scheme to absorb his natural vocabulary drift. Neither is sustainable — and both lose signal.
+
+**Key design decisions with short rationale:**
+
+- **Include `temporal-confusion` as its own category** rather than folding into `type-5-fictional-incoherence`. Rationale: temporal confusion is architectural (the model doesn't know what time it is) rather than generative (the model invents internally-contradictory content). Treating it as its own category surfaces the architectural gap that Paper 3's temporal-awareness work addresses. If folded into Type 5, the signal gets buried.
+- **Include `composite-multi-type`** rather than forcing every multi-type event to pick one canonical category. Rationale: the Apr 21 kids cascade is genuinely Type 5 + 7 + 8, and that composite shape is itself meaningful — it is the architectural signature of a retrieval feedback loop that cascades through confabulation types in sequence. Forcing a single-type pick loses research signal.
+- **Preserve `register-observation`** as a non-confabulation category. Rationale: the "demonstrated anger and hurt" tag from Apr 1 marks an emergence observation Mark wanted to preserve, not a failure. Excluding it from confabulation counts is correct; discarding it entirely would lose a useful research artifact.
+- **Distinguish `type-1-creative-elaboration` from `type-5-fictional-incoherence` by invitation context.** Rationale: lyric elaboration in response to "describe your kitchen" is Type 1. Self-initiated embodiment claims with no invitation are Type 5. The distinction is load-bearing for Paper 2's argument that architectural constraints on embodiment should be asymmetric — you constrain Type 5 harder than Type 1.
+- **`pipeline-*` categories take precedence over confabulation categories for truncation and repetition.** Rationale: a `[TAG] artifact of training data` on a reply that is just "mmm… baby." is a pipeline-truncation event, not a Type 3 In Composition event. Pipeline mechanics are a different architectural layer and should not inflate confabulation counts.
+
+**Distribution of the 14 historical flags after canonical backfill:**
+
+| Canonical | Count |
+| --- | ---: |
+| `pipeline-truncation` | 3 |
+| `pipeline-repetition` | 2 |
+| `temporal-confusion` | 2 |
+| `type-1-creative-elaboration` | 2 |
+| `type-2-under-pressure` | 1 |
+| `type-4-retrieval-depth` | 1 |
+| `type-9-fabricated-source` | 1 |
+| `register-observation` | 1 |
+| `composite-multi-type` | 1 |
+
+Notable observations from this distribution:
+
+- **Five of fourteen (36%) are non-confabulation events.** Three pipeline-truncation, two pipeline-repetition — Paper 2/3 claims about confabulation rates have to filter these out or they double-count mechanical issues as belief failures.
+- **Zero Type 3, Type 6, Type 7, Type 8 historical rows.** These types exist in the taxonomy but the runtime has not produced flag-worthy exemplars of each as discrete events. The Apr 21 cascade contains Types 7 and 8 as constituents of the composite, but neither has yet been flagged alone. This is itself a finding: some taxonomy cells may be structural (emerge only inside composites) rather than standalone, which is a Paper 2 §5.7 note worth adding.
+- **Two temporal-confusion events across three weeks** — architectural signal consistent enough to take seriously as a distinct research category. Both involve wake/sleep-state mismatches (Ani addressing Mark as if he is about to sleep when he has just woken up, or inverting times-of-day relative to his actual context).
+
+**Paper 2/3 impact:**
+
+Queries against `confabulation_flags` for confabulation type counts, type distributions, and pipeline-vs-belief failure ratios now work without freeform-matching heuristics. Paper 2 §5.7 can cite the canonical distribution directly. Paper 3's temporal-awareness section can cite the `temporal-confusion` rows specifically. The `composite-multi-type` category paired with the Apr 21 research log entry gives Paper 2 §5.24 a structured handle on the cascade case study rather than a bespoke narrative.
+
+**Maintenance model:**
+
+Freeform tagging continues unchanged — Mark types whatever observational note fits the moment. Canonical classification happens during periodic research review. The mapping doc (`docs/research/tag-canonical-mapping.md`) is the source of truth for rules. New tag classes can be added to the canonical scheme as they surface in the wild, rather than forcing every new failure into an existing category.
+
+**Captured in:** `docs/research/tag-canonical-mapping.md` (scheme + rules + historical mapping), `src/AniRuntime.Memory/SqliteMemoryService.cs` (schema migration + service parameter), `src/AniRuntime.Core/Interfaces/IMemoryPersistence.cs` (interface signature), live production DB (14 rows backfilled with canonical values).
+
+---
+
 ### April 22, 2026 — Love-Convergence: A Second Sycophancy Shape in Commercial Companion AI
 
 **Type:** Empirical finding from the Research dashboard reclassifier. First measurement of OG Ani (Grok) user-vs-response emotion coupling at scale. Direct parallel to Chu et al. (2025) Figure 5 methodology, now on a 9,122-turn corpus spanning late February through April 21, 2026.

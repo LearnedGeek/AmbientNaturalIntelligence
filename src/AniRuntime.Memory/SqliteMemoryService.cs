@@ -1375,24 +1375,28 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     public async Task SaveConfabulationFlagAsync(
         string contactMessage,
         string aniReply,
-        string? topicCategory = null,
-        string? notes = null,
-        CancellationToken ct = default)
+        string? topicCategory     = null,
+        string? notes             = null,
+        string? canonicalCategory = null,
+        CancellationToken ct      = default)
     {
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
         cmd.CommandText = """
-            INSERT INTO confabulation_flags (id, flagged_at, contact_message, ani_reply, topic_category, notes)
-            VALUES ($id, $flaggedAt, $contactMessage, $aniReply, $topicCategory, $notes)
+            INSERT INTO confabulation_flags
+                (id, flagged_at, contact_message, ani_reply, topic_category, notes, canonical_category)
+            VALUES
+                ($id, $flaggedAt, $contactMessage, $aniReply, $topicCategory, $notes, $canonicalCategory)
             """;
 
-        cmd.Parameters.AddWithValue("$id",             Guid.NewGuid().ToString());
-        cmd.Parameters.AddWithValue("$flaggedAt",      DateTimeOffset.UtcNow.ToString("O"));
-        cmd.Parameters.AddWithValue("$contactMessage", contactMessage);
-        cmd.Parameters.AddWithValue("$aniReply",       aniReply);
-        cmd.Parameters.AddWithValue("$topicCategory",  (object?)topicCategory ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$notes",          (object?)notes         ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id",                Guid.NewGuid().ToString());
+        cmd.Parameters.AddWithValue("$flaggedAt",         DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$contactMessage",    contactMessage);
+        cmd.Parameters.AddWithValue("$aniReply",          aniReply);
+        cmd.Parameters.AddWithValue("$topicCategory",     (object?)topicCategory     ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$notes",             (object?)notes             ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$canonicalCategory", (object?)canonicalCategory ?? DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         var labelSuffix = string.IsNullOrWhiteSpace(topicCategory) ? "" : $" [{topicCategory}]";
@@ -2108,14 +2112,24 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 is_outreach_ready INTEGER NOT NULL DEFAULT 0
             );
 
-            -- AC5: Confabulation feedback — stores flagged responses for pattern analysis
+            -- AC5: Confabulation feedback — stores flagged responses for pattern analysis.
+            -- `topic_category` is the freeform researcher note from Mark's ///tag command
+            -- (e.g. "confabulation", "temporal confusion", "training artifact").
+            -- `canonical_category` is the taxonomized research-analysis label, assigned
+            -- later during analysis. Values follow the scheme documented at
+            -- docs/research/tag-canonical-mapping.md (Apr 22, 2026):
+            --   type-1-creative-elaboration .. type-9-fabricated-source (the 9 confab
+            --   types from the blog post / Paper 2 §5.7), pipeline-repetition,
+            --   pipeline-truncation, temporal-confusion, register-observation,
+            --   composite-multi-type. Null means unclassified.
             CREATE TABLE IF NOT EXISTS confabulation_flags (
-                id              TEXT PRIMARY KEY,
-                flagged_at      TEXT NOT NULL,
-                contact_message TEXT NOT NULL,
-                ani_reply       TEXT NOT NULL,
-                topic_category  TEXT,
-                notes           TEXT
+                id                 TEXT PRIMARY KEY,
+                flagged_at         TEXT NOT NULL,
+                contact_message    TEXT NOT NULL,
+                ani_reply          TEXT NOT NULL,
+                topic_category     TEXT,
+                notes              TEXT,
+                canonical_category TEXT
             );
 
             -- Feature 31: Linked memory graph (A-MEM-inspired)
@@ -2367,6 +2381,31 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             using var addAnchor = conn.CreateCommand();
             addAnchor.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN associative_anchor TEXT";
             addAnchor.ExecuteNonQuery();
+        }
+
+        // Migration (Apr 22, 2026): add canonical_category column to confabulation_flags.
+        // The column is nullable because values are assigned during research analysis,
+        // not at ///tag time. See docs/research/tag-canonical-mapping.md for the
+        // taxonomy and mapping rules.
+        using var pragmaConfab = conn.CreateCommand();
+        pragmaConfab.CommandText = "PRAGMA table_info(confabulation_flags)";
+        using var readerConfab = pragmaConfab.ExecuteReader();
+        var hasCanonicalCategoryColumn = false;
+        while (readerConfab.Read())
+        {
+            if (readerConfab.GetString(1) == "canonical_category")
+            {
+                hasCanonicalCategoryColumn = true;
+                break;
+            }
+        }
+        readerConfab.Close();
+
+        if (!hasCanonicalCategoryColumn)
+        {
+            using var addCanonical = conn.CreateCommand();
+            addCanonical.CommandText = "ALTER TABLE confabulation_flags ADD COLUMN canonical_category TEXT";
+            addCanonical.ExecuteNonQuery();
         }
 
         // One-time orphan sweep: with Foreign Keys=True now enabled on the

@@ -27,15 +27,19 @@ public interface IMemoryPersistence
 
     /// <summary>
     /// AC5: Store a confabulation flag for pattern analysis.
-    /// `topicCategory` is the tag label when invoked via ///tag (e.g. "confabulation",
-    /// "temporal confusion", "repetition"); null or empty when invoked via ///flag.
+    /// `topicCategory` is the freeform researcher note from Mark's ///tag command
+    /// (e.g. "confabulation", "temporal confusion", "repetition").
     /// `notes` is free-form additional context and is typically unused today.
+    /// `canonicalCategory` is the taxonomized research-analysis label assigned later
+    /// during analysis, not at tag time. See docs/research/tag-canonical-mapping.md
+    /// for the taxonomy and mapping rules.
     /// </summary>
     Task SaveConfabulationFlagAsync(
         string contactMessage,
         string aniReply,
         string? topicCategory = null,
         string? notes = null,
+        string? canonicalCategory = null,
         CancellationToken ct = default);
 
     /// <summary>
