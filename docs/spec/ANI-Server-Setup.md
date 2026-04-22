@@ -23,7 +23,7 @@ Check off each step as you complete it. Use this as a bookmark if you need to pa
 - [x] 1.5 Verified: `ollama run ani-v7-conversation "hi"` responds; `nvidia-smi` shows GPU usage
 
 ### Phase 2 — Repo + initial build *(server)*
-- [x] 2.1 Repo cloned to `C:\ani\AmbientNaturalIntelligence`
+- [x] 2.1 Repo cloned to `C:\dev\repos\AmbientNaturalIntelligence`
 - [x] 2.2 `dotnet build` succeeds
 - [x] 2.2 `dotnet test` reports 527+ passing
 - [x] 2.3 `dotnet publish` succeeds, `AniRuntime.Service.exe` exists in `publish\AniRuntime\`
@@ -201,7 +201,7 @@ All 527+ tests should pass. If they don't, stop and investigate before proceedin
 dotnet publish src/AniRuntime.Service/AniRuntime.Service.csproj -c Release -o publish/AniRuntime
 ```
 
-This produces the executable at `C:\ani\AmbientNaturalIntelligence\publish\AniRuntime\AniRuntime.Service.exe`.
+This produces the executable at `C:\dev\repos\AmbientNaturalIntelligence\publish\AniRuntime\AniRuntime.Service.exe`.
 
 ---
 
@@ -305,10 +305,10 @@ Still as Administrator on the server:
 ### 5.1 Install the Windows Service
 
 ```powershell
-cd C:\ani\AmbientNaturalIntelligence
+cd C:\dev\repos\AmbientNaturalIntelligence
 
 sc.exe create AniRuntime `
-  binPath= "C:\ani\AmbientNaturalIntelligence\publish\AniRuntime\AniRuntime.Service.exe" `
+  binPath= "C:\dev\repos\AmbientNaturalIntelligence\publish\AniRuntime\AniRuntime.Service.exe" `
   start= auto `
   DisplayName= "ANI Runtime"
 
@@ -381,7 +381,7 @@ Host ani-server
 
 ### 6.3 Connect and open the repo
 
-`Ctrl+Shift+P` → `Remote-SSH: Connect to Host...` → `ani-server` → when connected, `File` → `Open Folder` → `C:\ani\AmbientNaturalIntelligence`.
+`Ctrl+Shift+P` → `Remote-SSH: Connect to Host...` → `ani-server` → when connected, `File` → `Open Folder` → `C:\dev\repos\AmbientNaturalIntelligence`.
 
 VS Code is now operating server-side. Terminal opens a PowerShell session on the server. Log files open with live tail. Git operations run server-side.
 

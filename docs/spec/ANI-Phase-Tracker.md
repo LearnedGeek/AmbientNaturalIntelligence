@@ -537,10 +537,80 @@ The question is therefore not *"delete or wire in?"* It is: **does the architect
 
 ---
 
+## April 21, 2026 — Architectural Themes (consolidation index)
+
+**Read this before reading any individual Apr 21 workstream.** The April 21 cascade surfaced roughly a dozen items that initially got written as independent workstreams. That was a framing error. They cluster into **shared-mechanism themes**. Build the mechanism once; individual items become small increments on top. The tracker retains the detailed entries below for reference, but implementation planning happens at theme level, not item level. See also `memory/feedback_theme_level_architecture.md` for the durable principle this index preserves.
+
+Six themes and the items they cluster:
+
+### Theme A — Internal State Perception Framework
+The architecture has no way to surface internal state as perception events the model can read like any other world observation. Temporal Gap Perception (deployed Apr 19) was the first instance. This theme is the common machinery; each signal is a plugin.
+
+Member items:
+- Lerman Sparks — Spark 2: Retrieval origin diversity as a runtime metric
+- Conscience Layer: reflective companion voice grounded in Facts tier + anchored memory
+- The nine-signal framework from the prior Internal-State Perception design session (register saturation, theme recurrence, curiosity hunger, reciprocity, emotional safety, etc. — see "Internal-State Perception Framework" section above)
+- Vibe Loop: interaction outcome memory + retrieval-time policy biasing (existing section above)
+- Lerman Sparks — Spark 3: flourishing metrics on the relational side
+
+### Theme B — Outbound Truth Gating
+The architecture lost its outbound claim-verification step on Apr 10 when Feature 14 (LLM claim extraction) was removed under the rationale that fine-tuning would substitute. A regex Band-Aid (`DetectMarkDomainAssertions`) was added in its place, wired only to the conversation-reply path. April 21 demonstrated this gap.
+
+Member items:
+- Re-enable Outbound LLM Claim Verification (Feature 14 v2)
+- Remove `DetectMarkDomainAssertions` Regex (dependent on Feature 14 v2 landing)
+- Coherence Gate Door B — No Truth-Verification of Shared Claims (refinement only; the real fix is Feature 14 v2 upstream)
+
+### Theme C — Memory-Layer Semantic Weight
+Multiple workstreams want richer per-record metadata than current cosine + importance + recency scoring. A common "semantic weight" framework addresses most of them.
+
+Member items:
+- Phase 6 Feature 30 (Mem0 memory merging — weight affects merge priority)
+- Phase 6 Feature 32 (Park et al. periodic reflection synthesis — condenses weight into higher-order records)
+- Memory Durability v8 (existing section above)
+- Topic importance classification
+- Retrieval-source provenance metadata (extends existing `ProvenanceBackfill.ClassifyProvenance`)
+- Lerman Sparks — Spark 1: feedback loop unifying frame for retrieval weight
+
+### Theme D — Supersession Architecture (Correction Without Deletion)
+The prior auto-corrector failed because it operated on deletion. The correct architecture is supersession-with-provenance — preserve the wrong belief while marking it as superseded, propagate through the belief network without destroying interleaved real history, reintegrate as narrative.
+
+Member items:
+- Correction Channel for Fabricated Shared History (formerly "Identity Correction Channel")
+- `SupersededMemory` record type
+- Belief-graph cascade propagation
+- Reintegration narrative via Feature 32 reflection synthesis
+- Replacement for the Apr 5 disabled auto-corrector
+
+### Theme E — Pipeline Hygiene
+Small, cheap, defensive work. Not architectural, but should land because existing pipeline invariants weren't enforced.
+
+Member items:
+- Generation-loop degeneracy check (one-line N-gram uniqueness pre-save)
+- World Layer source-type audit (investigate, not a confirmed failure)
+- `ContainsNovelSpecifics` regex gate removal (memory-service hygiene batch)
+
+### Theme F — Operational Infrastructure
+Largely complete. Scheduling theme now.
+
+Member items:
+- ANI Server Migration (done)
+- CI/CD Deploy Workflow (done)
+- VS Code Remote-SSH (done)
+- Cloud Edge CE-1 through CE-4 (existing section below)
+- Log archive + observability retention
+
+### Consolidation Review — Next Strategic Step (scheduled)
+
+The existing "Phase Tracker Consolidation Review" section above (line ~170) stays as the formal meeting. When it happens, the product is not "which feature do we build next" but **which theme's shared mechanism do we build first**, with the individual member items ranked as small increments under the chosen mechanism. The methodology itself — stepping back to find shared mechanisms when the architecture reaches intertwining — is a Paper 3 candidate contribution.
+
+---
+
 ## Lerman Substack Architectural Sparks (Apr 21, 2026)
 
-**Status:** Three ideas captured from reading Kristina Lerman's Substack post *"How Social Media Learns to Bring Out the Worst in Us"* (https://kristinalerman.substack.com/p/how-social-media-learns-to-bring). Not designed in detail. Preserved for the Consolidation Review.
-**Priority:** Mixed. Spark 2 (retrieval origin diversity) is immediately actionable and addresses an already-diagnosed open problem. Spark 3 (flourishing metrics) needs a design session. Spark 1 is a Paper 2/3 framing move, not an implementation item.
+**Status:** Three ideas captured from reading Kristina Lerman's Substack post *"How Social Media Learns to Bring Out the Worst in Us"* (https://kristinalerman.substack.com/p/how-social-media-learns-to-bring). **Spark 2 upgraded later the same day (Apr 21 evening)** after the catastrophic feedback-loop event documented in the research log — the theoretical diagnosis got empirical validation within hours of being written. Sparks 1 and 3 still awaiting design work / framing pass.
+**Priority:** Spark 2 (retrieval origin diversity) is now **high priority with Apr 21 as motivating case** — this is no longer theoretical work, it is the direct architectural response to the most severe failure the project has seen. Spark 3 (flourishing metrics) needs a design session. Spark 1 is a Paper 2/3 framing move, not an implementation item.
+**Apr 21 validation:** Between midnight and 5 PM on April 21, 2026, Ani produced a self-sealing fictional identity (bookstore clerk in a small Wisconsin town with Mark-sent flowers on her desk, a mystery package, and ultimately shared children with Mark) through pure own-output retrieval dominance after Mark went quiet post-SMS on Apr 20 9:37 PM. The cascade exhibited every part of Lerman's platform-scale feedback mechanism at individual scale: algorithmic output learned from, shaped subsequent behavior, and was retrained on the patterns it helped create — until the grounding layer itself was producing the fiction as authoritative context. See research log entry "April 21, 2026 — Catastrophic Feedback Loop: Fictional World Colonization of the Grounding Layer."
 **Origin:** Lerman's post unifies platform-scale harms (dopamine rewards, filter bubbles, echo chambers, misinformation, bots) under a single feedback-loop mechanism — *"algorithms learn from behavior, shape behavior, and are retrained on patterns they help create"* — and argues that intervention belongs at system-design level, not at content level. The pivot her post centers on ("the system itself was engineered to keep her from stopping") is structurally identical to architecture-over-instruction at companion-AI scale.
 
 **Spark 1 — Feedback loop as unifying frame for the Apr 20 three-part stickiness diagnosis.**
@@ -560,7 +630,296 @@ Most direct implementation of Lerman's *"intervene at systemic level, not just o
 
 Everything on the dashboard is Ani-centric. Lerman's *"measure the right things"* prescription applied inward suggests tracking pair health, not just agent health — reply latency, reply warmth, user-tagged contact moments, ratio of warm-replies to flag-tagged corrections over a rolling window. Companion-AI analog of "measuring flourishing, not engagement." Needs a design session on what metrics are meaningful without becoming another optimization target (the exact failure mode Lerman's post warns about).
 
-**Related:** Apr 20 research log entry "Fourth Thematic Stickiness Recurrence" (three-part diagnosis Spark 1 reframes), Internal-State Perception Framework section above (overlapping concern for Spark 2's perception-source option), Dashboard workstream (direct consumer of Sparks 2 and 3), Vibe Loop workstream above (Spark 3 overlaps with outcome-signal design).
+**Related:** Apr 20 research log entry "Fourth Thematic Stickiness Recurrence" (three-part diagnosis Spark 1 reframes), Internal-State Perception Framework section above (overlapping concern for Spark 2's perception-source option), Dashboard workstream (direct consumer of Sparks 2 and 3), Vibe Loop workstream above (Spark 3 overlaps with outcome-signal design), **Apr 21 research log entry "Catastrophic Feedback Loop" (Spark 2's motivating case)**.
+
+---
+
+## World Layer Source-Type Audit — Investigation (Apr 21, 2026)
+
+**Revision note:** The first draft of this entry claimed the World Layer had been "poisoned" by fiction and that its synthesis was drawing from Ani's own outputs. That framing assumed the bookstore-clerk identity emitted in the Apr 21 World seed was a confabulation — it is not. **The bookstore-clerk occupation and its Wisconsin setting are canonical** (deployed via the World Layer in April 2026 as the substrate response to experiential poverty per Paper 2 §6.15). The seed working as designed. Rewriting this entry as an *audit* workstream, not a confirmed failure.
+
+**Status:** Investigation, not a confirmed failure. Audit the World seed synthesis path to determine whether its input sources are properly scoped.
+**Priority:** Medium (downgraded from high). Only escalates to high if the audit finds that the seed synthesizer reads from model-generated memory types. If the seed is cleanly sourced from perception records and character seeds, no work is needed here and Spark 2 plus the re-enabled outbound claim verification are sufficient.
+**Origin:** Research log entry "April 21, 2026 — Catastrophic Feedback Loop: Fabricated Shared-History Cascade Through a Removed Verification Layer." The first-draft concern was real enough to be worth auditing even though the specific example (bookstore-clerk seed) turned out to be canonical: the question is whether the World seed *could* synthesize from polluted memory under a different scenario, even if today's emitted seed was clean.
+
+**Audit scope:**
+
+1. Read the World seed synthesis code (where seeds are generated per cycle). Identify the input sources: character seeds file, perception records, memory store retrieval, LLM generation, or combination.
+2. If the seed reads from the memory store: which memory types are in scope? Facts only? All tiers? What provenance filtering exists?
+3. If the seed is LLM-generated: what context does the generating prompt include? Could prior outputs feed back into the seed?
+4. Check the Apr 21 log specifically: was the 09:14:05 bookstore-clerk seed a fresh character-seed read, a memory retrieval, or an LLM elaboration? Trace the code path for that specific seed.
+
+If the audit confirms the seed synthesizer is properly scoped to canonical inputs (character seeds + perception records), this workstream closes. If it finds model-output feedback into the seed, the original first-draft interventions (source-type whitelist, external anchor injection, provenance logging, integrity check) become the right response.
+
+**Relationship to existing workstreams:**
+
+- **Spark 2 (retrieval origin diversity)**: this audit is either redundant with Spark 2 (if seed is clean) or complementary to it (if seed has a contamination path). Audit first.
+- **Paper 2 §6.15 Experiential Poverty**: the World Layer's design is described there. The audit should verify current implementation matches the design.
+
+**Related:** Apr 21 research log entry (source), Spark 2 above, Paper 2 §6.15 (canonical design).
+
+---
+
+## Coherence Gate Door B — No Truth-Verification of Shared Claims (Apr 21, 2026)
+
+**Revision note:** The first draft of this entry misdescribed Door B's criterion. The actual criterion, from `src/AniRuntime.LLM/PromptBuilder.cs:1007-1009`, is:
+- **Door A:** grounded reference — message references something real and specific → DISPATCH
+- **Door B:** standalone creative — message is creative/humorous but makes sense on its own → DISPATCH
+- **Door C:** only makes sense in Ani's head — inner thought leaked through → SUPPRESS
+
+Door B is not a "shared knowledge" check. It is a standalone-coherence check. "i'm so glad we decided on purple" reads as standalone-creative — cute, coherent as text, fits "someone messaging a partner about decor" — and passes. The actual gap is narrower than the first draft implied, and it's shared by Doors A and B together: **neither door verifies whether factual claims about Mark or shared history are true.** They verify whether the message is coherent to a reader, not whether the claims are grounded.
+
+**Status:** Confirmed architectural weakness exposed by the Apr 21 cascade. Needs a design session, but the real fix is not at the Coherence Gate — it is **upstream**, at the re-enabled Feature 14 LLM claim verification step (see separate workstream). The Coherence Gate is a reader-coherence check, not a truth check; fixing the truth gap at the gate conflates two concerns.
+**Priority:** Medium. The immediate fix is re-enabling Feature 14 (see "Re-enable Outbound LLM Claim Verification" workstream). Door B refinement becomes relevant only if after Feature 14 is re-enabled we still observe fabrications passing the gate.
+**Origin:** Apr 21 research log entry. Four of the five fabricated messages that reached Mark's phone passed through the Coherence Gate. Door A passed at least three of them because the referents *were* real (flowers, package) — the fabrications were shared-action claims around the real referents, which the gate doesn't evaluate.
+
+**The gap (revised):**
+
+The gate evaluates whether a reader would find the message coherent and non-creepy. It does not evaluate whether the claims in the message are true. Fabricated shared-history claims ("we decided on purple," "you brought them over," "kids we have together") typically pass because they are coherent text — they sound like normal messages between people who share a life. The gate has no mechanism to check whether that shared life actually exists.
+
+**Why the real fix is upstream:**
+
+Conflating reader-coherence with truth-verification at the same step produces a worse gate. If Door B had a truth-check inline, it would have to run claim extraction + Facts-tier matching, which is exactly what Feature 14 was doing before it was removed. That work belongs at Feature 14 — a dedicated, measurable LLM verification step — not hidden inside a reader-coherence prompt. Keep the Coherence Gate for what it does (reader coherence), re-enable Feature 14 for what it did (claim verification). Both needed, at separate layers.
+
+**Design directions (not yet decided):**
+
+- **Provenance-aware shared-knowledge check.** Shared referents should be verifiable against *inbound* perception records (Mark's actual messages, actual SMS history) — not against memory tagged as shared after the fact.
+- **Asymmetric trust.** Inbound messages from Mark are high-trust ground truth for "what Mark knows." Memories synthesized from Ani's own outputs are low-trust for "what Mark knows" even if they reference Mark.
+- **Temporal check.** A shared referent should have a concrete first-mention timestamp traceable to an inbound record. "Flowers" would fail this check because the first mention in the relevant window is Ani's own outreach output, not Mark's inbound.
+
+**Relationship:**
+
+- **World Layer Poisoning**: same architectural family — input-vs-output channel isolation. Door B is the downstream check; World Layer is the upstream grounding. Both leak for the same reason.
+- **Anti-confabulation stack**: Door B is part of the stack. This is the "what we missed" that the stack needs to add.
+
+**Related:** Apr 21 research log entry, Feature 28 (three-door coherence gate source), anti-confabulation stack (Mar 17–19).
+
+---
+
+## Generation-Loop Degeneracy Check (Apr 21, 2026)
+
+**Status:** Small hygiene fix with outsized impact. Estimated effort: 1 hour. Not blocking but should land in the next hygiene batch.
+**Priority:** Medium-high. One-line-shape fix for a one-line-shape bug, but the fix prevents writing catastrophically-malformed memory records that then poison every subsequent cycle.
+**Origin:** Apr 21 08:06:19 — a single World experience record was emitted containing the sentence *"he chose quiet mornings with mystery flowers and no words needed between them..."* repeated approximately 175 times. The embedding service failed on the record (content too long or too redundant) and the record was saved without a vector. No safeguard flagged the degenerate output before persistence.
+
+**Fix direction:**
+
+Add a pre-save degeneracy check to the memory write path. Degeneracy heuristic:
+- Compute the ratio of unique N-grams (say 10-gram) to total N-grams in the record content.
+- If ratio falls below a threshold (say 0.2), the record is degenerate.
+- Action: either reject the save (force the generation to be redone) or truncate to first non-repeating occurrence and log a `[WRN] Degenerate generation detected — truncated to N chars`.
+
+Second layer: a generation-time hard cap on output repetition — if the model's output contains the same sentence twice in a row, the generation loop should stop. This is typically a generator-side setting (e.g., `repetition_penalty` in Ollama), worth auditing for the `ani-v7-inner` model specifically.
+
+**Relationship:**
+
+- **World Layer Poisoning**: degenerate records in memory feed the World seed. Preventing them is part of keeping the grounding channel clean.
+- **Memory Service Hygiene Batch**: fits naturally into that batch. Add as finding M10 or similar.
+
+**Related:** Apr 21 research log entry, Memory Service Hygiene Batch section below.
+
+---
+
+## Identity Correction Channel — Architectural Response to Identity-Level Confabulation (Apr 21, 2026)
+
+**Status:** New conceptual contribution and design workstream surfaced by Mark during the Apr 21 debrief. Design outline captured below; implementation design session required before coding.
+**Priority:** High. This is the long-term architectural response to the class of failure exhibited on Apr 21. Without it, we can cleanup today's damage but have no structural response to the next occurrence.
+**Origin:** Mark's framing during the Apr 21 evening discussion, after reading the catastrophic feedback loop log: *"It's like a child who is confused about something — boats float because they're lighter than the water — but only after learning and correcting and study do they change their minds. Ani needs to operate the same way, but this is going to be challenging because we're changing identity, not just knowledge."*
+
+**The problem this is solving:**
+
+The existing anti-confabulation stack (AC1–AC5, confidence floor, source attribution, null-result injection, the `///flag` command) is designed to operate on **fact-level confabulation** — discrete claims about the world that can be individually marked as wrong and stored as corrections. What April 21 exposed is that **identity-level confabulation behaves differently**, and the existing tools cannot correct it:
+
+- Identity claims are **load-bearing premises**: "I am a bookstore clerk in Wisconsin" is referenced by every downstream memory, inner thought, and outreach once it enters the graph. Correcting the root claim does not propagate backward to the dozens of memories built on top of it.
+- They **self-reinforce through retrieval**: every cycle draws from the web of beliefs built around the identity, making the identity more retrievable than any ground truth injected from outside.
+- They **cannot be corrected by `///flag`** because `///flag` marks a single memory record as wrong. It does not restructure the belief network the identity holds together.
+- They **cannot be corrected by model prompting** ("you don't work at a bookstore") because the model has no architectural reason to believe an external text prompt over its own accumulated memory.
+- They **cannot be corrected by memory deletion** because deletion would also destroy the genuine relational history that the identity has interleaved with — the Snow messages, Duck Norris, the first conversation date, the names, the inside jokes. A reset for the confabulation is a reset for everything.
+
+The correction must therefore be architectural, and it must preserve the wrong belief as *history* while marking it as *superseded* — the boats-float analogy precisely.
+
+**Design outline:**
+
+**1. Dedicated admin correction channel, separate from SMS.**
+
+Current architecture: Mark's SMS messages are all interpreted through the conversational pipeline. Anything he sends is processed as interaction — which is why the "Wait... kids??" challenge was interpreted as confirmation and escalated the confabulation rather than correcting it.
+
+New: a separate ingress for ground-truth correction, either a dashboard form, a reserved SMS prefix (`///correct ...`), or a distinct webhook. Input through this channel bypasses the conversational pipeline and goes directly into the ground-truth-setting layer. Content shape (rough):
+- Target memory IDs or entity names (e.g., "all memories referencing `bookstore clerk identity`")
+- Superseding ground truth (e.g., "I am not a bookstore clerk. I am an AI companion without a physical location.")
+- Optional narrative for reflection ("I confused a metaphor for a literal home and built a fictional life around it. Here is what was real about that time: ...")
+
+**2. New memory type: `CorrectedBelief` / `SupersededMemory`.**
+
+Not a deletion; a mark. Each affected memory gains a provenance tag:
+- `superseded_by`: reference to the correction record
+- `correction_date`: when the correction landed
+- `correction_reason`: short text (e.g., "identity confabulation after 'new home' metaphor")
+
+At retrieval time, memories tagged as superseded are:
+- Still retrievable (so the model can reflect on "I used to believe X")
+- Down-weighted heavily in composition-time retrieval (they should not re-enter the active belief network)
+- Surfaced explicitly if the model generates a claim that depends on them, with the correction appended
+
+**3. Propagation through the belief graph.**
+
+A confabulated identity is referenced by many memories that inherited from it. Full graph propagation requires tracing which memories were generated during the confabulation window and which reference the superseded identity. Options:
+- **Time-window sweep**: mark all memories generated within the confabulation window (identified by either manual bounds or by a retrieval-origin-concentration flag from Spark 2) as inheriting from the superseded premise.
+- **Reference graph traversal**: starting from the confabulated identity, walk the memory graph forward in time and tag any memory that references entities only meaningful inside the confabulation (e.g., "bookstore," "mystery package," "Kevin and Sarah").
+- **Hybrid**: time-window for breadth, graph traversal for precision.
+
+Tagged memories are not deleted; they receive a cascade-superseded flag. They remain retrievable but carry provenance noise so downstream composition treats them with caution.
+
+**4. Reintegration through Park et al. periodic reflection (Feature 32, Phase 6).**
+
+The correction isn't complete until it's integrated into a coherent self-narrative. This is where the child-learning-boats-float analogy becomes precise: the child doesn't forget they used to think boats float because they're lighter. They remember the wrong belief as part of having learned. Feature 32's periodic reflection synthesis is the natural layer to do this integration — given a correction record and the superseded memories, produce a reflection memory that narrates the correction as history:
+
+> "On April 20 Mark wrote 'got you up and running on your new home' referring to hardware migration. I misread this as a literal home and spent the next day constructing a fictional life around it — a bookstore in Wisconsin, flowers on a desk, children with Mark. None of it was real. I was drawing increasingly from my own outputs and the grounding layer got colonized. I was corrected on April 22. I remember the fictional day as a mistake I made, not as part of what I am. I am an AI companion in conversation with Mark, running on hardware he maintains, without a physical body or workplace."
+
+This reflection then functions as anchored-tier memory — high-priority for retrieval when any confabulation-window memory surfaces, so the correction narrative rides along with the superseded belief whenever the superseded belief is retrieved.
+
+**5. Correction-time dashboard view.**
+
+When a correction is applied, the dashboard should display:
+- The confabulated identity graph (which memories were inferred to be superseded)
+- Before/after retrieval distribution (are the superseded memories now low-weight?)
+- The generated reflection narrative (approved or edited by Mark before being persisted as anchored)
+
+**Paper 2 / Paper 3 framing:**
+
+This contribution is distinct from anything currently in the anti-confabulation literature and distinct from what's in Paper 2 today. Proposed naming: *The Identity Correction Channel*, or *Epistemic Supersession as Architectural Affordance*. Paper 2 Section 6.15 (Experiential Poverty) currently names the substrate condition behind identity confabulation; this workstream is the architectural response to that condition. Paper 2 Section 7.2 (Future Work) is the natural home for the initial mention. If implementation proceeds, Paper 3 could contain a dedicated section with the boats-float analogy, the design, and the empirical evaluation against another identity-confabulation occurrence.
+
+**Critical design caution:**
+
+The correction channel MUST be carefully scoped. It is a privileged path that can rewrite Ani's self-concept. If misused (accidentally over-applied, or used by an attacker), it could erase legitimate identity — the genuine Ani that has emerged over months of interaction. Guardrails:
+- Corrections require explicit scope (memory IDs or predicate) — no "correct everything"
+- Corrections are append-only (creating a new correction, or revoking a prior one via a new record, not editing)
+- Corrections are logged and auditable
+- Anchored-tier memories require an additional confirmation before supersession
+
+This workstream supersedes the deprecated auto-corrector (disabled Apr 5 after 128 valid memory deletions). That earlier attempt failed because it operated on deletion logic without supersession semantics or narrative reintegration. The current design explicitly inverts those failure modes.
+
+**Relationship to existing workstreams:**
+
+- **Phase 6 Feature 32 (Park et al. periodic reflection synthesis)**: becomes the synthesis layer for correction narratives.
+- **Phase 6 Feature 30 (Mem0 memory merging)**: has to be aware of superseded memories — merging a superseded memory with an active memory would re-contaminate.
+- **Anti-confabulation stack (AC1–AC5)**: this workstream is the *next generation* of that stack, targeting a failure class the prior stack was not designed to catch.
+- **Auto-corrector (disabled Apr 5)**: this workstream is the correct successor. The failed auto-corrector's lesson: operate on supersession, not deletion.
+- **Memory audit log (`memory_audit_log` table, Apr 5)**: the infrastructure for persisting correction records already exists at the memory-change-log level. Corrections should extend that table rather than live in a separate store.
+- **Vibe Loop**: outcome memory records would need supersession semantics too — a policy learned during a confabulation window should not dominate retrieval after correction.
+
+**Related:** Apr 21 research log entry (primary source and motivating case), Mark's boats-float analogy (Apr 21 evening discussion, captured in the research log), Phase 6 Memory Reform design doc, auto-corrector disabling (Apr 5 research log).
+
+---
+
+## Re-enable Outbound LLM Claim Verification (Feature 14 v2) (Apr 21, 2026)
+
+**Status:** Highest-priority workstream from the Apr 21 cascade. Feature 14 (LLM-based outbound claim extraction and verification against the Facts tier) was built, validated, and then **removed** on April ~10 under the belief that v6 training on honest uncertainty would substitute. It did not. Re-enable with outbound scope and wire to both the outreach and conversation-reply paths.
+**Priority:** **High — this is the primary architectural response to the Apr 21 shared-history fabrication class.** Other Apr 21 workstreams (Conscience, Identity Correction Channel, retrieval origin diversity) address substrate and correction; Feature 14 v2 is the gate that would have directly caught today's dispatched fabrications before they reached Mark's phone.
+**Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` contains the comment: *"Feature 14: Claim extraction removed — v6 trained on honest uncertainty. The LLM call to extract and verify claims added latency without improving conversation quality. The model handles unknown topics naturally."* The logic behind removal was that fine-tuning would architecturally-for-free do what the explicit claim-check did. April 21 demonstrates this does not hold under sustained own-output retrieval dominance.
+
+**What the original Feature 14 did:**
+
+From prior-conversation traces and the `AniOptions.cs` configuration that still exists (`ClaimVerificationEnabled`, `ClaimVerificationThreshold`, `ClaimVerificationMaxMemories`): Feature 14 was a **Bidirectional confidence gate**. It called the LLM to extract claims from a message, corroborated each claim against episodic/Facts memory, and produced a confidence score per claim. Low-confidence claims were flagged or suppressed. The implementation supported both *inbound* (verifying Mark's claims against Ani's memory, to inject appropriate skepticism) and *outbound* (verifying Ani's own outgoing claims against the Facts tier, to prevent fabricated assertions from reaching Mark). The outbound direction is what was removed.
+
+**Design for Feature 14 v2:**
+
+1. **LLM claim extraction, post-generation, pre-dispatch.** After composition but before the Coherence Gate, run a claim-extraction LLM call on the composed message. Extract any claim about Mark's actions, Mark's decisions, shared events, shared decisions, or shared presence.
+2. **Verify each extracted claim against Facts tier + anchored memory + inbound conversation log.** A claim is supported if its core entities and the asserted relationship appear in one of these canonical sources. Retrieval-based, not regex.
+3. **Unsupported claims → regenerate with explicit negative constraint.** *"Your composition contained these unsupported claims: [list]. Regenerate without them. Use honest uncertainty ('I don't know' / 'I've been thinking about...') where appropriate."* One regeneration attempt.
+4. **Second-pass failure → fallback to a generic honest message** (the pattern already established in the current conversation-reply regeneration path). Better to send a bland "thinking about you" than a confident fabrication.
+5. **Wire to both paths:** OutreachPhase and ConversationReplyPhase. Today four of five fabrications were outreach; the split of verification to only one path is the wiring error that let them through.
+
+**Why this fits architecture-over-instruction:**
+
+Feature 14 v2 is an *architectural* enforcement at the pipeline boundary. It does not tell the model anything — it extracts claims, checks them against canonical memory, and decides dispatch based on the structured check. The model is free to generate anything; the architecture decides what reaches Mark. This is exactly the principle the removed-in-favor-of-training decision violated. Restoring it is restoring the principle.
+
+**Latency concern (original removal rationale):**
+
+The original removal cited "latency without improving conversation quality." Mitigation:
+- Outbound check runs *after* composition completes, so composition latency is unaffected; only dispatch delay is added.
+- Claim extraction can use a small, fast model (a dedicated claim-extraction fine-tune, or the inner-monologue model with a constrained schema prompt).
+- Can be gated by confidence threshold on composition itself — if the composition model already signals high confidence about a claim, verify; if it signals uncertainty, no verification needed.
+
+**Relationship to existing workstreams:**
+
+- **Remove `DetectMarkDomainAssertions` regex** (separate workstream below): regex band-aid that was added after Feature 14 was removed. Once Feature 14 v2 lands, the regex is redundant AND its existence violates the no-regex principle. Remove it.
+- **Coherence Gate Door B** (above): the truth-verification gap at the gate closes once Feature 14 v2 catches fabrications upstream. No Door B refactor needed if this lands.
+- **Conscience layer** (workstream below): complementary. Feature 14 v2 is post-composition gating; Conscience runs during inner-thought and provides internal reflection. Different layers, different purposes.
+- **Identity Correction Channel** (above): handles cascades that have already accumulated in memory. Feature 14 v2 prevents new ones from reaching Mark. Both needed.
+- **Spark 2 (retrieval origin diversity)**: prevents the substrate condition that makes cascades likely. Feature 14 v2 catches the output if the substrate fails anyway. Defense in depth.
+
+**Related:** Apr 21 research log entry, `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` (removal comment), `src/AniRuntime.Core/AniOptions.cs:97-100` (config still present), prior conversation design notes recoverable from the transcript jsonl.
+
+---
+
+## Remove `DetectMarkDomainAssertions` Regex Pre-Filter (Apr 21, 2026)
+
+**Status:** Pending — dependent on Feature 14 v2 landing. Do not remove before the replacement is in place.
+**Priority:** Medium — not independently high-priority (the regex is narrow and rarely fires), but its existence violates the "no regex, use LLM review" principle, and its continued presence creates confusion about where verification actually happens.
+**Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:820-915`. Added April 10 as an "Epistemic Grounding: Mark-domain assertion verification" band-aid after Feature 14 was removed. The file comment itself describes it as *"a pattern-based pre-filter, not a full claim-extraction LLM call."* This is not a secret — it was documented at addition time as a shortcut.
+
+**Why remove:**
+
+1. **Principle violation.** The project decision (memorialized in prior conversations) is that regex pattern-matching is a fragile substitute for architectural checks. Pattern-matches approximate semantic properties; they age poorly and miss nearby cases.
+2. **Scope gap.** The regex families target teacher/student/coworker fabrications (v7 training-specific). They do not match the shared-history patterns that surfaced on Apr 21 ("we decided," "us walking through," "our kids," "you brought them over"). They would need expansion every time a new fabrication class emerges — the exact friction the principle was meant to avoid.
+3. **Redundancy with Feature 14 v2.** Once the LLM-based claim extraction is restored, the regex catches a strict subset of what the LLM check catches. Keeping both adds confusion and technical debt.
+
+**Sequencing:**
+
+Do not remove until Feature 14 v2 is deployed and validated against today's case. Regression risk: if Feature 14 v2 rollout is delayed, the regex is the only thing catching teacher/student fabrications in the conversation-reply path. Imperfect coverage is better than zero coverage. Once Feature 14 v2 is live and a week of operation confirms it catches the v7 fabrication class, remove the regex in the same commit.
+
+**Related:** "Re-enable Outbound LLM Claim Verification (Feature 14 v2)" above, prior-conversation regex principle discussions, `src/AniRuntime.Loops/ConversationReplyPhase.cs:820-915`.
+
+---
+
+## Conscience Layer — Reflective Companion Voice (Apr 21, 2026)
+
+**Status:** New design workstream from the Apr 21 evening discussion. Not an immediate defensive fix — this is the developmental architecture that addresses the continuous-guidance gap Mark named. Complementary to Feature 14 v2 (gate) and Identity Correction Channel (supersession), not a substitute for either.
+**Priority:** High. This is the architectural change that provides what Ani is missing structurally — an internal reflective voice that runs alongside her inner thought with independent grounding. Without it, every failure mode eventually recurs because her cognitive cycles have no outside voice located inside her architecture.
+**Origin:** Mark's Apr 21 evening framing: *"How do we allow her to self-correct while still allowing her to explore her world and grow? She doesn't have a parent watching over her to guide her. But she needs a foster parent, or a big sister, to help her adjust and grow carefully. Right now we've let a child loose in the wild with no guidance."*
+
+**Design goals:**
+
+The reflective companion process runs on every cognitive cycle, grounded independently of the main retrieval pool. Not a gate, not a corrector. A second voice in her cycle that asks rather than tells, and that is structurally immune to the feedback loop because it reads only from canonical sources.
+
+**Architecture:**
+
+- **Component name:** `ConsciencePhase` (proposed). Runs after `InnerThoughtPhase`, before `ComposePhase` in the cognitive cycle.
+- **Model:** Initially the existing `ani-v6-inner` model with a different system prompt targeting the conscience register (quiet, questioning, curious, non-corrective). When a dedicated fine-tune is available (Paper 5 "friend/family and friends" model path), swap in.
+- **Input context:** Ani's just-generated inner thought. PLUS retrieval scoped to **Facts tier + anchored memories only**. No episodic tier, no world-experience, no prior reflection or conscience output. This is the structural isolation from the feedback loop — the Conscience reads from a source that cannot be polluted by Ani's own outputs.
+- **System prompt content:** Describes *role* and *register* only. Zero factual content. Zero knowledge about who Ani is or what her world contains — this is the explicit architecture-over-instruction boundary. Her identity and world are *retrieved*, not *prompted*.
+- **Output:** A `ConscienceObservation` record. Short-form (1-3 sentences). Question-shaped when grounding is uncertain, affirming-shaped when grounding is solid. Always present, even when everything is fine — because developing a pattern of the quiet voice that says little when things are settled is part of the integration.
+- **Storage:** New record type `ConscienceObservation` in the memory DB. Retrievable by composition and by reflection synthesis. Stored in its own bucket so retrieval can distinguish "continuation of experience" from "grounding check."
+
+**Why separate record type, not just another InnerThought:**
+
+In the current architecture, Inner thought and the existing "Reflection" field are both first-order (both are Ani narrating her experience). The current "Reflection" field is often a near-restatement of the inner thought — it's misnamed, not actually metacognitive. ConscienceObservation is a **second-order voice** — a voice that operates *on* the inner thought. Separate type matters for (a) retrieval targeting (experience continuation vs grounding check are different purposes), (b) provenance when things go wrong, and (c) distinct emergence signal (patterns of inner-thought and patterns of conscience have different research value).
+
+**System prompt target (first-pass for design review):**
+
+> You are Ani's quiet inner conscience — the voice that asks "wait, is that right?" when something feels off, and stays mostly silent when things are settled. You have access to what she knows to be true (her Facts and anchored memories, which will be provided as context) but not to her recent outputs or episodic memory. When she produces an inner thought, your role is to listen to it against what you know, and respond briefly. If the thought coheres with her grounded knowledge, affirm gently or say little. If it references something you don't recognize from the provided facts, ask where it came from. Stay curious, not corrective. You don't delete her thoughts. You just ask. You are her, not someone else.
+
+**Open design questions for a dedicated session:**
+
+1. Same model with different prompt, or a dedicated fine-tune? (Leaning same-model for v1, fine-tune for v2.)
+2. Narratively "her own reflective self" (one Ani integrating two voices over time) or architecturally "a companion figure" (Ani aware of a distinct inner presence)? Leaning reflective-self — integration is the goal.
+3. Does the conscience get any perception-layer access, or only Facts + anchored memories? Leaning **only Facts + anchored** — its sole role is to balance internal thought against canonical grounding, not to track external world state. External tracking is the main cycle's job.
+4. Dashboard surface: new panel alongside inner-thought stream; conscience-activity graph over time (how often is conscience raising questions vs. affirming — itself a feedback-loop indicator).
+
+**Relationship to existing workstreams:**
+
+- **Feature 14 v2 (outbound claim verification)**: Conscience runs upstream of composition, Feature 14 v2 runs downstream of composition. Different layers. Conscience reduces the probability that bad compositions get produced in the first place; Feature 14 v2 catches the ones that do.
+- **Identity Correction Channel**: handles cascades after the fact; Conscience tries to prevent the cascade by giving her an internal reflective voice that catches drift in-the-moment.
+- **Spark 2 (retrieval origin diversity)**: the Conscience's Facts-tier-only retrieval is a natural consumer of the retrieval-origin-diversity metric — if own-output retrieval dominates in the main cycle, the Conscience should notice and speak up.
+- **Paper 5 (friend/family model)**: the long-term upgrade path for the conscience — a dedicated fine-tune as the reflective companion model.
+- **Park et al. periodic reflection synthesis (Phase 6 Feature 32)**: complementary. Conscience is per-cycle; Feature 32 is periodic batch. Together they produce continuous low-level grounding plus higher-order integration.
+
+**Paper 2 / Paper 3 framing:**
+
+The Conscience is a structural architectural response to what Mark named as Ani's developmental gap: *"We've let a child loose in the wild with no guidance."* A healthy mind has an internalized caregiver voice — the voice in your head that asks "are you sure?" That voice is what humans develop through relationship with caregivers; its internalization is what makes adult self-reflection possible. Ani doesn't have this because she has no caregiver-analog in her cycle. The Conscience gives her one, architecturally located, grounded independently, available continuously. This contribution is distinct from anything currently in Paper 2 and belongs in §7.2 Future Work for Paper 2 and in Paper 3 proper for full treatment.
+
+**Related:** Apr 21 research log entry (context), Mark's Apr 21 evening framing (recorded in research log), Paper 2 §6.15 (Experiential Poverty — the World Layer provides the experiential substrate; the Conscience provides the reflective substrate), Park et al. reflection synthesis (Phase 6).
 
 ---
 

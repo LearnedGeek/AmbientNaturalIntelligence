@@ -91,6 +91,10 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+!docs/research/artifacts/
+!docs/research/artifacts/**
+# Research log archives are load-bearing citations for papers — explicitly
+# unignored even though *.log is gitignored below for build logs.
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
