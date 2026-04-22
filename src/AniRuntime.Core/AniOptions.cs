@@ -124,6 +124,37 @@ public class AniOptions
     // Storage paths (relative to service working directory)
     public string CharacterStatePath     { get; set; } = "data/character-state.json";
     public string MemoryDbPath           { get; set; } = "data/ani-memory.db";
+
+    // Apr 21, 2026 — "Stop the spin" protective patches (Option C, commit 2).
+    // These are small, targeted, reversible. They do not replace the theme-level
+    // architectural response (Feature 14 v2, Conscience, Correction Channel) — they
+    // reduce harm while those are being built.
+    //
+    // Rumination guard: before saving a new InnerThought record, check how many of the
+    // last N inner thoughts (within a time window) are semantically similar to this one.
+    // If a cluster of ≥RuminationClusterMinSize thoughts at similarity ≥RuminationSimilarityThreshold
+    // exists in the RuminationWindowHours window, treat this as rumination and skip
+    // the save (log as rumination-skipped). This breaks the accumulation loop where
+    // repetitive inner thoughts compound in the retrieval pool and drive own-output
+    // dominance.
+    //
+    // The existing Feature 30 dedup only catches similarity ≥0.85; Apr 21 cascade
+    // operated in the 0.60-0.85 range — recognizable variants, below merge threshold
+    // but still pool-saturating.
+    public bool   RuminationGuardEnabled        { get; set; } = true;
+    public float  RuminationSimilarityThreshold { get; set; } = 0.75f;
+    public int    RuminationClusterMinSize      { get; set; } = 3;
+    public double RuminationWindowHours         { get; set; } = 2.0;
+
+    // Outreach disable flag: when false, RunOutreachAsync short-circuits at entry
+    // without composing or dispatching any proactive outreach. Conversation replies
+    // (response to an inbound message) are unaffected — this is a proactive-outreach
+    // lockdown only.
+    //
+    // Intended use: set to false when a cascade is suspected and until the outbound
+    // LLM claim verification (Feature 14 v2) is restored. Flip back to true once
+    // verification is deployed. Also useful during maintenance windows.
+    public bool OutreachEnabled { get; set; } = true;
 }
 
 public class OllamaOptions

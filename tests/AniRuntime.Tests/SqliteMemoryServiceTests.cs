@@ -284,6 +284,87 @@ public class SqliteMemoryServiceTests : AniTestBase
     }
 
     [Fact]
+    public async Task SaveAsync_RuminationGuard_SkipsWhenClusterSaturated()
+    {
+        // Apr 21, 2026 — Rumination guard (Option C).
+        // When ≥3 existing InnerThoughts in the last 2 hours sit at cosine similarity ≥0.75
+        // with the incoming record, the save is skipped as rumination.
+        //
+        // Construct three unit-length embeddings with pairwise cosine 0.80 using the
+        // a·V0 + b·Wi pattern: a² = 0.80 → a = √0.80 ≈ 0.894, b = √0.20 ≈ 0.447.
+        // Each pair shares the V0 component (dot product 0.80) with orthogonal perturbations.
+        var svc = CreateService($"ani-test-rumination-{Guid.NewGuid():N}");
+
+        var e1 = new float[] { 0.894f, 0.447f, 0.0f,   0.0f };
+        var e2 = new float[] { 0.894f, 0.0f,   0.447f, 0.0f };
+        var e3 = new float[] { 0.894f, 0.0f,   0.0f,   0.447f };
+
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "shelving romance novels", Embedding = e1 });
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "a regular customer in grey", Embedding = e2 });
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "the slow Tuesday afternoon", Embedding = e3 });
+
+        // Three records below the 0.85 merge threshold — all should persist independently.
+        var seeded = await svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10);
+        seeded.Should().HaveCount(3, "three distinct thoughts at 0.80 cosine are below the 0.85 merge threshold");
+
+        // Fourth record also sits in the cluster at ~0.80 similarity to each of the above.
+        var e4 = new float[] { 0.894f, 0.258f, 0.258f, 0.258f };
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "the weight of quiet mornings", Embedding = e4 });
+
+        // Rumination guard should have short-circuited the save before dedup/merge ran.
+        var after = await svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10);
+        after.Should().HaveCount(3, "rumination guard should skip the 4th thought when the cluster is saturated");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuminationGuard_DoesNotSkipWhenClusterUnsaturated()
+    {
+        // When only one or two existing InnerThoughts match at ≥0.75, the cluster is not
+        // saturated (min cluster size = 3) and the guard must not fire.
+        var svc = CreateService($"ani-test-rumination-unsat-{Guid.NewGuid():N}");
+
+        var e1 = new float[] { 0.894f, 0.447f, 0.0f, 0.0f };
+        var e2 = new float[] { 0.894f, 0.0f,   0.447f, 0.0f };
+
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "one", Embedding = e1 });
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "two", Embedding = e2 });
+
+        var e3 = new float[] { 0.894f, 0.0f, 0.0f, 0.447f };
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "three", Embedding = e3 });
+
+        // All three should persist — only two existed when the third saved, so the
+        // cluster size (2) was below the min-size threshold (3).
+        var results = await svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10);
+        results.Should().HaveCount(3, "guard should not fire when only 2 similar thoughts exist");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuminationGuard_OffByConfig()
+    {
+        // When RuminationGuardEnabled=false, saves proceed regardless of cluster saturation.
+        var dbName  = $"ani-test-rumination-off-{Guid.NewGuid():N}";
+        var options = Options.Create(new AniOptions
+        {
+            MemoryDbPath           = dbName,
+            RuminationGuardEnabled = false,
+        });
+        var svc = new SqliteMemoryService(options, NullLogger<SqliteMemoryService>.Instance);
+
+        var e1 = new float[] { 0.894f, 0.447f, 0.0f, 0.0f };
+        var e2 = new float[] { 0.894f, 0.0f,   0.447f, 0.0f };
+        var e3 = new float[] { 0.894f, 0.0f,   0.0f,   0.447f };
+        var e4 = new float[] { 0.894f, 0.258f, 0.258f, 0.258f };
+
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "one", Embedding = e1 });
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "two", Embedding = e2 });
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "three", Embedding = e3 });
+        await svc.SaveAsync(new MemoryRecord { Type = MemoryType.InnerThought, Content = "four",  Embedding = e4 });
+
+        var results = await svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10);
+        results.Should().HaveCount(4, "with the guard disabled, all four thoughts should persist");
+    }
+
+    [Fact]
     public async Task SaveAsync_NeverDedupesEpisodicMemories()
     {
         // Episodic records are distinct events even if content is similar

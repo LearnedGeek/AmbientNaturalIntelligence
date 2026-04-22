@@ -63,6 +63,23 @@ public class OutreachPhase
     public async Task RunOutreachAsync(
         ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
+        // Apr 21, 2026 — Outreach disable flag (Option C, commit 2).
+        // When OutreachEnabled=false, the proactive outreach path short-circuits at
+        // entry: no decision call, no composition, no dispatch. Inbound conversation
+        // replies (ConversationReplyPhase) are unaffected — Mark can still reach her
+        // and she can still respond. This is a proactive-outreach lockdown only.
+        //
+        // Intended to be flipped off while the outbound LLM claim verification
+        // (Feature 14 v2) is being built, then flipped back on once verification is
+        // deployed. Flip via appsettings.json or appsettings.Development.json:
+        //   "Ani": { "OutreachEnabled": false }
+        if (!_aniOptions.OutreachEnabled)
+        {
+            _log.LogInformation(
+                "Outreach disabled: OutreachEnabled=false in config — skipping proactive outreach composition and dispatch");
+            return;
+        }
+
         // Step 1: Decision — should Ani reach out? (JSON, no message required)
         var outreachPrompt = PromptBuilder.BuildOutreachPrompt(snapshot, recentThought, _desire.IsNightHours());
         var raw            = await _ollama.ChatJsonAsync(

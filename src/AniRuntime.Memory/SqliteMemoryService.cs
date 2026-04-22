@@ -148,6 +148,39 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 }
             }
 
+            // Apr 21, 2026 — Rumination guard (Option C, commit 2).
+            // Before the existing Feature 30 dedup, check whether this InnerThought is
+            // part of a rumination cluster — three or more semantically similar thoughts
+            // within the last 2 hours at similarity ≥0.75. If so, skip the save.
+            //
+            // The existing Feature 30 dedup only catches ≥0.85 similarity. The Apr 21
+            // cascade operated in the 0.60-0.85 range: near-duplicate variants that
+            // were below merge threshold but still pool-saturating. This guard
+            // specifically addresses that gap by detecting cluster saturation rather
+            // than pairwise duplication.
+            //
+            // Scope: InnerThought only. Episodic events remain first-class (see
+            // DedupableTypes comment above), and Semantic profile merging is well-served
+            // by the existing Feature 30 path.
+            if (_options.RuminationGuardEnabled
+                && record.Type == MemoryType.InnerThought
+                && record.Embedding is not null)
+            {
+                if (await IsRuminationAsync(record, ct).ConfigureAwait(false))
+                {
+                    var preview = record.Content is null
+                        ? "(null)"
+                        : record.Content[..Math.Min(60, record.Content.Length)];
+                    _log.LogInformation(
+                        "Rumination guard: skipping InnerThought — ≥{Min} similar thoughts in last {Hours}h at similarity ≥{Threshold:F2}. Content: {Preview}",
+                        _options.RuminationClusterMinSize,
+                        _options.RuminationWindowHours,
+                        _options.RuminationSimilarityThreshold,
+                        preview);
+                    return;
+                }
+            }
+
             // Feature 30: Three-tier dedup/merge (Mem0-inspired)
             // Exact duplicate (>0.95) → skip
             // Merge candidate (0.85-0.95) → LLM merge into existing record
@@ -615,6 +648,67 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// </summary>
     private readonly record struct MergeCandidateResult(
         string ExistingId, string ExistingContent, bool IsExactDuplicate);
+
+    /// <summary>
+    /// Apr 21, 2026 — Rumination guard detector.
+    ///
+    /// Returns true when the incoming record's embedding has ≥RuminationClusterMinSize
+    /// neighbors at similarity ≥RuminationSimilarityThreshold within the last
+    /// RuminationWindowHours window. This is a cluster-saturation check, not a
+    /// pairwise-duplicate check — it triggers when the recent InnerThought pool has
+    /// accumulated a concentration of similar content, which is the signature of
+    /// own-output retrieval dominance.
+    ///
+    /// Cheap: scans up to 20 recent same-type records, short-circuits once the cluster
+    /// size is reached.
+    /// </summary>
+    internal async Task<bool> IsRuminationAsync(MemoryRecord record, CancellationToken ct)
+    {
+        if (record.Embedding is null) return false;
+
+        try
+        {
+            await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+            await using var cmd  = conn.CreateCommand();
+
+            cmd.CommandText = """
+                SELECT embedding FROM memories
+                WHERE type = $type
+                  AND embedding IS NOT NULL
+                  AND occurred_at >= $since
+                ORDER BY occurred_at DESC
+                LIMIT 20
+                """;
+            cmd.Parameters.AddWithValue("$type", (int)record.Type);
+            cmd.Parameters.AddWithValue(
+                "$since",
+                DateTime.UtcNow.Subtract(TimeSpan.FromHours(_options.RuminationWindowHours))
+                    .ToString("o"));
+
+            var similarCount = 0;
+            await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                if (reader.IsDBNull(0)) continue;
+                var existing = DeserialisedEmbedding((byte[])reader[0]);
+                if (existing is null || existing.Length != record.Embedding.Length) continue;
+
+                var similarity = CosineSimilarity(record.Embedding, existing);
+                if (similarity >= _options.RuminationSimilarityThreshold)
+                {
+                    similarCount++;
+                    if (similarCount >= _options.RuminationClusterMinSize)
+                        return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Rumination guard check failed — defaulting to allow save");
+            return false;
+        }
+    }
 
     private async Task<MergeCandidateResult?> FindMergeCandidateAsync(
         MemoryRecord record, CancellationToken ct)
