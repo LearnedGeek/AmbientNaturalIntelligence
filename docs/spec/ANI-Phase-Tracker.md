@@ -1038,6 +1038,63 @@ Once the migration is complete, configuring WireGuard on the UniFi Dream Machine
 
 ---
 
+## Database Migration — SQLite → MSSQL on Server (Apr 22, 2026)
+
+**Status:** Design decision made, implementation deferred. Target: MSSQL on the ANI server (same hardware, not Azure — keeps local-first commitment). Not Azure SQL, not PostgreSQL, not on the server's existing SQL Express if one is already running (audit first).
+**Priority:** Medium. Not blocking current work. The April 21 architectural response items (Feature 14 v2, Conscience, Correction Channel, retrieval origin diversity) are more urgent for making the runtime stable enough to produce research data. DB migration unblocks research sharing and ops hygiene but does not change cognitive architecture. **Ship when triggers hit, not before.**
+**Origin:** Discussed April 22, 2026 after the day's combined friction — pulling a snapshot for SQLite mining, installing sqlite3.exe on the server for a one-off backfill, dealing with `.db-wal` consistency concerns on every snapshot, the prospect of external collaborators (Lerman, Charles) wanting access to the data. All point toward the file-based DB pattern being at the edge of useful.
+
+**What's actually hurting with SQLite (triggers for migration):**
+
+- **Ops friction around snapshots and backups.** Every mining pull is against a live-written file with WAL sidecar considerations. MSSQL provides proper point-in-time backup semantics.
+- **Tooling friction at research time.** `sqlite3.exe` had to be installed on the server for the one-off flag backfill (Apr 22). A proper DB has tooling available by default.
+- **Single-writer bottleneck latent in the architecture.** WAL mode allows concurrent readers + one writer in theory, but `SqliteMemoryService._saveLock` (SqliteMemoryService.cs:44) serializes the dedup+merge+insert sequence at the service layer because the sequence isn't atomic at the SQL layer. Any future parallelism (voice ingest + cognitive cycle + dashboard query concurrent writes) would press on this; MSSQL with proper transaction semantics removes the need for the service-layer lock.
+- **Sharing with external collaborators.** "Clone the repo and pull the 42 MB .db" is not the shape that invites serious research collaboration. A proper DB behind a managed endpoint (even on-prem) is the shape that does.
+
+**What is NOT currently hurting (and doesn't justify migration on its own):**
+
+- Size. 42 MB is a yawn for SQLite.
+- Query performance. ~2,986 InnerThoughts with embeddings + ~1,689 Episodic records is well within SQLite's comfortable range.
+- Local-first commitment. MSSQL on the same server as the runtime keeps this. Azure breaks it.
+
+**Migration triggers (ship when any of these hit):**
+
+1. **Concurrent-write contention** appears in logs (lock waits on `_saveLock`, deadlocks, or degraded cognitive cycle latency traced to save serialization).
+2. **First external collaborator access** is requested or committed to — Lerman / Charles / any IUI or CSCW reviewer who wants data access.
+3. **Runtime corpus crosses a size threshold** where SQLite query latency becomes meaningful. The soft threshold is usually ~10 GB total or ~10M rows; neither is close right now.
+4. **Operational incident traceable to `.db-wal` inconsistency** — a snapshot that didn't read cleanly, a backup that was missing recent writes, an orphaned WAL file blocking startup.
+5. **A scheduled quiet week appears in the calendar.** Migration is substantial but bounded work; it belongs in a dedicated block rather than squeezed between architectural priorities.
+
+**Scope estimate (when triggered):**
+
+Not an afternoon. Roughly one focused week:
+
+- Extract IMemory* interfaces to be provider-agnostic (currently they mostly are; the concrete SqliteMemoryService is the tight coupling)
+- Implement SqlServerMemoryService mirroring the concrete SqliteMemoryService
+- Migrate schema (straightforward — the SQLite DDL is portable with minor syntax adjustments)
+- Migrate data (one-shot ETL from the snapshot)
+- Update the dashboard results path (`Ani:ClassifierResultsPath`) to match
+- Update deploy workflow to ensure MSSQL service is running before ANI service starts
+- Add MSSQL connection string to appsettings / env vars (matching the pattern established with `Ani__MemoryDbPath` for SQLite)
+- Parallel-run both DBs for one validation week before flipping the connection string
+
+**Relationship to other workstreams:**
+
+- **Conscience layer** — independent. Conscience needs Facts tier + anchored memory retrieval, which works against either DB. Migration does not block Conscience.
+- **Feature 14 v2 (outbound LLM claim verification)** — independent. Feature 14 works against either DB.
+- **Correction Channel for Fabricated Shared History** — complementary. The Correction Channel's `SupersededMemory` record type and belief-graph cascade propagation are *easier* to implement against MSSQL (proper joins, windowed queries). If Correction Channel is being built anyway, doing it after the DB migration avoids writing some SQLite-specific patterns twice. Worth considering migration as a precondition for Correction Channel rather than an independent track.
+- **ANI Cloud Edge (next section below)** — tangent. Cloud Edge is about webhook resilience and backups, not primary storage. Migration to MSSQL-on-server doesn't change Cloud Edge's design.
+
+**Why not Azure SQL or PostgreSQL instead of MSSQL on server:**
+
+- **Azure SQL** breaks the local-first commitment. Mark has been deliberate about ANI running on his own hardware; moving primary storage off-prem is a qualitative shift that the project's philosophy doesn't currently support. If external collaboration pressure grows, a separately hosted *snapshot* for sharing is the right response, not moving primary storage.
+- **PostgreSQL** is a legitimate alternative but adds a second DBMS to ops. The server runs Windows; MSSQL is the native option; Mark has consulting history with MSSQL. PostgreSQL would require Docker or WSL management that isn't warranted yet.
+- **SQL Express already on server** — worth auditing. If a Microsoft SQL Express instance is already available on the server from prior work, the migration is shorter. First step of the migration week: check.
+
+**Related:** SqliteMemoryService.cs:44 (save lock), `Ani__MemoryDbPath` env var pattern (current SQLite config), ANI Cloud Edge section below (webhook / backup layer, distinct), Apr 22 research log entry on love-convergence (external-collaborator sharing is one trigger motivation).
+
+---
+
 ## ANI Cloud Edge (Hybrid: Local Core, Azure Edge)
 
 **Status:** Designed. Ready to build when calendar allows. Scoped April 18, 2026 after reviewing the `learnedgeek-infra` Terraform repo.
