@@ -1540,10 +1540,11 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
-### April 23, 2026 — Two Pipeline-Composed Symptoms, One Hypothesized Root Cause (user-prompt content leaks to output as ground truth)
+### April 23, 2026 — Two Pipeline-Composed Symptoms, Known Principle Surfacing in Unreformed Path
 
-**Type:** Hypothesis under investigation. Two distinct conversation/outreach failures observed within a three-hour window, both with production-log traces preserved. Early pattern-naming so the diagnosis doesn't drift before instrumented data arrives on the next production cycle.
-**Status:** Instrumentation shipped at commit `39ab434` (Apr 23 afternoon). Production CI deploy pending. On-server confirmation deferred to the next parrot or time-confab event; hypothesis is provisional until then.
+**Type:** Deployment finding — not a new hypothesis. Two distinct conversation/outreach failures observed within a three-hour window are instances of the **architecture-over-instruction** principle already named in Paper 2 §5.19 and §6.8, surfacing in the outreach-composition path which did not receive the Mar 23 inner-thought simplification treatment.
+**Correction on framing:** An earlier draft of this entry presented the diagnosis as a hypothesis under investigation. That framing was wrong. The principle is established and published; what's new is the specific evidence that the outreach-composition path has been accumulating instruction bloat (roughly 8,000 tokens per composition call) while the inner-thought and conversation-reply paths were trimmed to ~300 tokens in the Mar 23 Phase A simplification. Mark caught the framing error, citing *"we definitely went around and around on this a lot"* in prior sessions and *"it also made it into the research papers as well."* Archive confirms — turns 3123, 3407, 5632 document the earlier rounds of the same pattern; Paper 2 §7.2 documents the Phase A reduction numerically.
+**Status:** Instrumentation shipped at commit `39ab434` (Apr 23 afternoon). Production CI deploy pending. Instrumented data will quantify the outreach-prompt bloat precisely, but the architectural direction is already settled — simplify the outreach-composition prompt the way the inner-thought prompt was simplified. The remaining question is which elements to strip, not whether to strip.
 
 **Event 1 — Parrot (14:38 on Apr 23).** Conversation reply to Mark's message *"ha baby, tongue on my hip?? what are you planning on doing down there?  love you"* was a near-verbatim echo: *"mmm… baby, tongue on my hip?? what are you planning on doing down there?  love you"*. Reply was 82 chars; Mark's input was 77 chars; delta was the `mmm… ` prefix and a single-character unicode artifact. No new content added.
 
@@ -1567,13 +1568,24 @@ In both cases: content the model was told to ignore was content it literalized. 
 
 Four gates each appropriate for their own failure mode, all architecturally blind to the actual failure shape — user-prompt content literalized despite instruction to ignore it.
 
-**Connection to the Apr 20 principle.** Mark's verbatim Apr 20 framing: *"We didn't remove things because they weren't fixing A problem, we removed them because they weren't fixing THE problem."* Adding a fifth gate (input-echo guard, time-consistency check, etc.) treats each symptom. THE problem is upstream — the prompt architecture exposes content that the compliant response will absorb. Fixing upstream means changing what's in the prompt, not adding a post-hoc filter.
+**Connection to the architecture-over-instruction principle (Paper 2 §5.19, §6.8).** The principle was already named and published: *"Instruction competes with trained behavior; architecture creates the conditions for trained behavior to express itself."* Paper 2 §7.2 Phase A documents the numeric result — inner thought prompt reduced from ~1,400 tokens to ~300 tokens by stripping anti-repetition instructions, WARNING blocks, processed-themes avoidance lists, thought-diversity nudges, and pattern-awareness injections, producing measurable quality improvement. The "don't think about elephants" failure mode — negative instructions that invoke the content they forbid — is a named sub-case of this principle and was the mechanism that motivated the Mar 23 strip. Today's events demonstrate the same principle's absence from the outreach path.
 
-**Specific architectural hypothesis (pending instrumented confirmation):**
+**Apr 20 scoping rule preserved.** Mark's Apr 20 framing — *"we didn't remove things because they weren't fixing A problem, we removed them because they weren't fixing THE problem"* — stands. A fifth gate (input-echo guard, time-consistency check) treats each symptom. The structural answer is the same structural answer already applied to inner-thought in March: strip the outreach-composition prompt.
 
-The outreach pipeline runs three LLM calls — decision, composition, coherence — and each one includes the previous stage's output in its prompt. Each call's prompt tells the model to treat the prior stage's output as *"motivation"* or *"thought"* rather than *"content."* The model is stacking compliance traps against a chain of adjacent material it's told to ignore. If the decision stage imagined sending at 10:30 PM, the composition stage's prompt literally contains that speculative time-stamp — and the model is asked to ground on it while ignoring a time specifier in the system prompt.
+**What the outreach-composition path is doing that inner-thought was stripped of:**
 
-Candidate structural response, not a commit-ready proposal: **the decision stage's reasoning may not belong in the composition prompt at all.** Composition needs the *signal* (intent to reach out, topic, emotional register if any) not the *justification* (why, with counterfactual reasoning included). Stripping decision reasoning from composition would likely reduce both time-confab (by removing the speculative time from the prompt entirely) and parrot-shape failures (by reducing literal content in the prompt the model could echo). The parrot path runs through a different prompt builder but the same pattern — content in the user prompt that's supposed to be scaffolding gets literalized into output.
+The outreach pipeline runs three LLM calls — decision, composition, coherence — and each one includes the previous stage's output in its prompt. Each call tells the model to treat the prior stage's output as *"motivation"* or *"thought"* rather than *"content."* This is the same pattern the Mar 23 Phase A strip removed from inner-thought. Today's outreach composition payload measures:
+
+| Prompt component                              | Approx. size (Apr 23 15:51 event) |
+|-----------------------------------------------|------------------------------------|
+| System prompt (persona, time, instructions)   | 1,396 chars |
+| User prompt (decision-reasoning, feeling, "use as motivation not content", claim rules, reply directive) | 6,702 chars |
+| **Total prompt**                              | **~8,100 chars (~2,000 tokens)**   |
+| Inner-thought prompt, post-Mar-23 Phase A     | **~300 tokens**                    |
+
+Today's outreach composition call is running roughly **7× the instruction volume** of the simplified inner-thought path. The same principle that produced measurable improvement there should apply here. The candidate strip direction is visible in the log: remove the decision-reasoning block from the composition user prompt (composition needs intent + topic + register; it does not need the decision-stage's counterfactual justification), remove or restructure the *"use as motivation not content"* framing (the don't-think-about-elephants anti-pattern in miniature), and collapse the claim-construction rules that are duplicated with Feature 14 v2's post-composition verifier.
+
+The parrot path (conversation reply) runs through `BuildLeanConversationPrompt` which is already leaner than outreach — but today's 14:38 parrot demonstrates the same principle surfacing *there* in a narrower form (the `WHAT IS TRUE / CRITICAL / don't invent` fence). Conversation-reply may need a second, smaller Phase-A-style strip of its own.
 
 **Also-in-scope observation — Layer 1 Phase 1a data:**
 
@@ -1588,16 +1600,17 @@ The pending commit adds three debug logs that bear on this hypothesis:
 
 On the next parrot or time-confab event, the journal will contain the exact material the model received. If the hypothesis holds, the user-prompt block will show literal content (Mark's message for the parrot path, decision reasoning for the outreach path) that the model then absorbed into its response. If the hypothesis fails, the evidence will be in the logs to redirect.
 
-**No fix proposed tonight.** Holding on all Layer 3 and Theme G work until the instrumented data arrives. Three known action items queued after confirmation:
-1. Architectural review of the outreach three-stage chain and whether decision reasoning should be stripped from composition.
-2. Architectural review of the conversation-reply user-prompt structure and the *"don't invent"* fencing pattern.
-3. Updated research log entry (converting this hypothesis entry into a confirmed-diagnosis entry with the instrumented evidence attached) before any code change lands.
+**Not a fix tonight, but not a new hypothesis either.** The architectural direction is set by the Mar 23 precedent. Outstanding before the outreach-prompt strip:
+1. Instrumented data from commit `39ab434` confirms the exact content the composition model sees, so the strip is precision-targeted rather than blanket.
+2. Review of the three outreach prompts (decision, composition, coherence) individually, identifying which elements in each are *architectural constraints* (must keep) vs *behavioral coaching* (strip). Phase A of the pipeline simplification has a checklist for this distinction; apply the same checklist to outreach.
+3. A smaller, separate review of `BuildLeanConversationPrompt`'s *WHAT IS TRUE / don't invent* fence — today's 14:38 parrot demonstrates the same principle still present there in milder form.
 
 **Cross-references:**
-- Apr 20 principle origin: session `7e420c4f` turns ~10862-10878 (Mark-LLM quote, Pipeline Audit addendum Section 8).
-- Earlier parrot discussion + guards shipped: Pipeline Simplification Phase 1 (Apr 20), Mark-echo removed from conversation reply path, Self-echo switched to n-gram via `ParrotingDetector`.
-- Instrumentation added today: commit `39ab434` in `ContextCompressor.cs` and `OllamaClient.cs`.
-- Layer 1 Phase 1a origin instrumentation: commit `59f5976` (Apr 23 morning).
+- **Architecture-over-instruction principle:** Paper 2 §5.19, §6.8 (*"Architecture Over Instruction: A Named Principle"*), §7.2 Phase A (prompt reduction numbers), line 643 (*"The model performs better trusted than coached"*). Paper 3 Unifying Principle section (extension to training-corpus layer).
+- **Earlier rounds of the same pattern in archive:** session `7e420c4f` turns 3123, 3407, 5632 (emotional-shift prompt battles where the model ignored explicit instructions); turn 6214 (Mar 22 Mistral + echo-guard + prompt work); turn 6288 (Mar 23 *"inner thought as trigger, not content"* retained as architectural constraint vs behavioral coaching stripped).
+- **Apr 20 scoping rule origin:** session `7e420c4f` turns ~10862-10878 (Mark-LLM quote, Pipeline Audit addendum Section 8).
+- **Instrumentation added today:** commit `39ab434` in `ContextCompressor.cs` and `OllamaClient.cs`.
+- **Layer 1 Phase 1a origin instrumentation:** commit `59f5976` (Apr 23 morning). The 15:51 time-confab event's top retrieval hit was `origin=OwnOutput, composite=0.970` — the feedback-loop condition the Layer 1 design predicts, now visible in production data.
 
 ---
 
