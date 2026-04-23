@@ -132,6 +132,46 @@ public class PromptBuilderTests
         system.Should().NotContain("What you know about yourself:");
     }
 
+    // ── Agentic Lens Layer 5: Inner-thought subject-space opener ───────────────
+    // The no-WorldSeed final question used to be "What is passing through your mind
+    // right now?" — neutral in principle, but produced caregiver-centered thought in
+    // practice because the surrounding substrate is ~95% caregiver-shaped. Layer 5
+    // rewrites it to an anchored opener that explicitly invites subject-diverse
+    // content without forbidding caregiver-centered thought (forbidding would be
+    // instruction; the rewrite is architecture).
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_UsesSubjectSpaceOpener_WhenNoWorldSeed()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.WorldSeed = null;
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        // New Layer 5 opener
+        user.Should().Contain("What are you noticing right now?");
+        user.Should().Contain("Anchor it in something specific");
+        user.Should().Contain("It doesn't have to be about anyone.");
+
+        // Old generic opener should be gone
+        user.Should().NotContain("What is passing through your mind right now?");
+    }
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_UsesWorldSeed_WhenPresent()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.WorldSeed = "You're shelving romance novels on a slow Sunday morning.";
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        // When a World Layer seed is present, that IS the prompt.
+        user.Should().Contain("shelving romance novels on a slow Sunday morning");
+
+        // The no-seed subject-space opener should not also be injected.
+        user.Should().NotContain("What are you noticing right now?");
+    }
+
     // ── Feature 22: Coherence Gate — Fictional Coherence Check ────────────────
 
     [Fact]

@@ -14,6 +14,10 @@
 # Ollama model data — large binaries, not tracked
 ollama-data/
 
+# Claude Code runtime state (settings and hooks ARE tracked; session locks are not)
+.claude/*.lock
+.claude/projects/
+
 # Large model files — not tracked in git
 *.gguf
 

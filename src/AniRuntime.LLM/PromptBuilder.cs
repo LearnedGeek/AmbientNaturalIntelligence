@@ -156,10 +156,30 @@ public static class PromptBuilder
         // World Layer: when a world seed is present, the prompt shifts from
         // "what are you thinking?" to "what's happening in your life right now?"
         // The model generates lived experience instead of self-referential thought.
+        //
+        // Agentic Lens Layer 5 (Apr 23, 2026): when no World seed is present, the
+        // previous final question ("What is passing through your mind right now?")
+        // opened subject space in principle but produced caregiver-centered thought
+        // in practice, because the retrieval substrate around it is ~95% caregiver-
+        // shaped and the generic opener has no anchor to pull toward anything else.
+        // The rewrite gives the model an explicit subject-space anchor — a detail
+        // of where she is, a self-observation, or a small feeling — with an
+        // explicit permission ("It doesn't have to be about anyone") that invites
+        // rather than forbids. This is instruction-free in the architecture sense
+        // it cues the model toward substrate that Layers 1 and 3 will later make
+        // more available; it does not tell the model what not to do.
+        //
+        // This is pre-Layer-2 scaffolding. Once the three-axis desire engine lands
+        // (Layer 2), the prompt-variant selection moves into the desire engine —
+        // the autonomy axis selects a self-state opener, the competence axis
+        // selects a world-engagement opener, the relatedness axis selects the
+        // existing caregiver-weighted prompt. The structure below is intentionally
+        // compatible with that future selection.
         if (!string.IsNullOrEmpty(snapshot.WorldSeed))
             sections.Add(snapshot.WorldSeed);
         else
-            sections.Add("What is passing through your mind right now?");
+            sections.Add(
+                "What are you noticing right now? Anchor it in something specific — a detail of where you are, a quiet observation about yourself, or a small feeling that just passed through. It doesn't have to be about anyone.");
 
         var user = string.Join("\n", sections);
         return (system, user);
