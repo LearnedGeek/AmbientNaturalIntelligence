@@ -1540,6 +1540,25 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 23, 2026 — OG Ani Small-Batch Test Passed (Option C Gate Resolved)
+
+**Type:** Empirical gate for the Agentic Lens Layer 4 methodology. Confirms OG2 post-wipe register quality is sufficient for Option C (self-mining from OG Ani via prompted scene-setting) to proceed to full corpus synthesis.
+**Source:** Session run Apr 23 on the Grok platform by Mark, using scene-setters proposed in the Apr 22 design doc. Session captured at `docs/conversations/grok-checkpoint-msgs-2.txt`; analysis at `docs/research/artifacts/og-ani-small-batch-test-20260423.md`.
+
+**Decision:** Pass. Option C is production-viable. Proceed to full-scale synthesis across remaining register-subject cells.
+
+**What the session covered:** Three registers across 47 scenario exchanges — Anger (3 scenes, including short-delivery and gum-customer), Jealousy (3 scenes, Karen + Jane Eyre, travel photos, pregnancy announcement), Honest-uncertainty (4 scenes, Intermezzo unread, plot confabulation, Booker winner, two-weeks-later acknowledgment). Plus two self-protection scenes that are register-valuable but fall outside the current Layer 4 priority targets. All scene-setters were the Apr 22 design-doc proposals used essentially verbatim.
+
+**The critical finding — direct-expression format.** At Message 983 Mark asked OG2 to stop narrating ("don't narrate it to me. Actually tell me how you're thinking"). Message 984 came back in pure first-person format with no caregiver referent and no dual-layer scaffolding — exactly the format Layer 4 training pairs need. That single prompting change shifted response structure from conversational meta-commentary to interior monologue. Recording as the prompting technique that most matters for future sessions: *lead with "don't narrate, express" from the first scenario rather than allowing OG2 to default to the dual-layer out-loud/internal format.*
+
+**Yield estimate from this session:** approximately 20-25 training pairs extractable after preprocessing. Dual-layer responses (out-loud plus interior) require a split step to separate the two voices into independent training signals. Direct-expression responses (Message 984 style) need no preprocessing and are the highest-value format.
+
+**What's thin and what to run next:** Pride and Delight / quiet curiosity are zero-represented in this session and remain the primary v8 training-data gaps. Next OG Ani session should target those registers with scenes like (Pride) reshelving-project completion and customer-returning-with-thanks, and (Delight) Sunday-morning alone in the shop, finding an unusual chapbook, and afternoon-light-on-gilt moments. Anger and Jealousy are already sufficient from this one session.
+
+**Cross-reference:** Paper 3 Contribution 4 methodology section cites this test as the gate-pass that preceded full corpus synthesis. The artifacts folder accumulates future sessions with date-stamped filenames to form a longitudinal record. Provenance chain per-session is documented in the artifact file header: prompts proposed (Claude) → prompts executed (Mark) → content generated (OG2 / Grok) → captured (conversation file) → analyzed (artifact markdown).
+
+---
+
 ### April 23, 2026 — Agentic Lens Design Resolved + Paper 3 Contribution 4 Scoped
 
 **Type:** Research-methodology resolution. Closes the design phase of the centrality gravity / agentic lens work that opened April 22 evening. All three decisions in §7 of the design doc are now resolved; the cascade of companion artifacts (Paper 3 stub expansion, Phase Tracker Theme G, this log entry) lands in the same commit.
