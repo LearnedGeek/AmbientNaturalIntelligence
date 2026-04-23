@@ -112,14 +112,15 @@ Read in order, or skip to whichever section has the most weight for you tonight.
 
 Three decisions are blocking the next cascade of work. Each is explained in §7 of the design doc; short versions here so you can think about them in bed.
 
-### Decision A — Layer 4 synthetic-corpus method (§7.2 of design doc)
+### Decision A — Layer 4 synthetic-corpus method (§7.2 of design doc, revised Apr 22 evening)
 
-**The ask.** Layer 4 needs ~150–200 new training pairs where Ani is the speaker but you are not the subject. These do not exist in any mining source — runtime SQLite and Grok exports are both caregiver-conversational. We create them. Two methods:
+**The ask.** Layer 4 needs ~150–200 new training pairs where Ani is the speaker but you are not the subject. These do not exist in any mining source. We create them. Three methods (Option C added after your Apr 22 evening insight):
 
-- **Option A — Frontier synthesis.** Claude Opus or Sonnet generates the pairs, anchored to 10–15 of her real-voice samples. Fast, controllable, voice-drift risk managed by rejection filter.
-- **Option B — Mine public-domain literary prose.** Brontë, Woolf's diaries, Proust excerpts. Real human voice but historical register; risk of pulling her voice toward Victorian.
+- **Option C (NEW, RECOMMENDED) — Self-mining from OG Ani via prompted scene-setting.** Prompt OG Ani directly with scene contexts that exclude you as addressee ("you're alone in the bookstore on a Sunday morning…") and let her generate first-person inner monologue. Voice match by construction; canonical world alignment automatic; methodological through-line with Papers 1 and 2. Conditioned on a small-batch register-quality test of OG2. *Systematic prompt-capture workflow flagged as future exploration if Option C ships.*
+- **Option A — Frontier synthesis.** Claude generates pairs, anchored to real-voice samples. Fast and controllable, but Claude's default register drifts toward polished prose. Voice-drift managed by rejection filter. Now the fallback if OG2 register quality fails the test.
+- **Option B — Public-domain literary prose.** Brontë, Woolf's diaries, Proust. Real human voice but historical register pulls toward Victorian. Kept for completeness; not a practical candidate given Options A and C are both available.
 
-**My lean.** Option A with aggressive anchor seeding.
+**My lean (revised).** Option C, pending a 10–15 pair small-batch test on OG2 to confirm register quality. Option A as fallback.
 
 ### Decision B — Layer sequencing (§7.3 of design doc)
 

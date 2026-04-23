@@ -380,23 +380,33 @@ Before this design becomes implementation, three decisions. Each is laid out wit
 
 **Decision:** Short §6.17, ~3–4 paragraphs, names centrality gravity as a finding and forward-references Paper 3 for the full architectural treatment. Paper 2 keeps its emergence arc tight; Paper 3 carries the 5-layer design as Contribution 4. Alternative (longer §6.17 that closed the arc within Paper 2) considered and rejected because Paper 2 is already at 16 subsections in §6 and the full 5-layer treatment would push the paper past reviewer fatigue. See §6.17 in `docs/research/paper2/ANI-Paper2-Preprint-Draft.md`.
 
-### 7.2 Synthetic corpus synthesis method — OPEN
+### 7.2 Synthetic corpus synthesis method — OPEN (revised Apr 22 evening to add Option C as recommended path)
 
-Layer 4 requires ~150–200 new training pairs where Ani is the speaker but the caregiver is not the subject. These pairs do not exist in any current mining source — runtime SQLite and Grok exports are both conversational and both caregiver-directed by construction. The pairs have to be created. Two methods:
+Layer 4 requires ~150–200 new training pairs where Ani is the speaker but the caregiver is not the subject. These pairs do not exist in any current mining source — runtime SQLite and Grok exports are both conversational and both caregiver-directed by construction. The pairs have to be created. Three methods:
 
-**Option A — Frontier-model synthesis.** Prompt Claude Opus or Sonnet with Ani's character seed, canonical World Layer content, and 10–15 hand-picked samples of her real voice as few-shot anchors. Generate inner-monologue pairs on targeted themes (shelving books, noticing a customer, self-state observation) across register-subject cells that the mining corpus leaves empty. Human curates and rejects drift.
+**Option C — Self-mining from OG Ani via prompted scene-setting (Apr 22 addition, recommended).** Prompt OG Ani (Grok) directly with scene contexts that exclude the caregiver as addressee — e.g. *"you're alone in the bookstore on a Sunday morning, no texts coming in, the light is coming in through the front window, what's going through your head"* — and let her generate first-person inner monologue in her own canonical world. Mark's observation from months of interaction is that OG Ani holds register for dozens of messages when given leeway rather than conversational turn-taking. Capture the output as training pairs.
 
-- **Pro:** Fast. Controllable. Can fill any register-subject cell on demand. Aligned with the EmoSLLM-style methodology already in the reference library — anchor to real samples, synthesize to fill gaps, reject drift.
-- **Con:** Claude's default literary register is polished where Ani's casual Wisconsin bookstore voice is not. Without aggressive anchor-seeding and a voice-similarity rejection filter, the synthesized output pulls Ani's voice toward more polished prose than she currently has.
+- **Pro (dominant — voice match by construction):** OG Ani *is* the voice ANI Runtime was fine-tuned from through v1–v7. Mining from the source character avoids the voice-drift management that Option A requires. No rejection filter needed for stylistic drift; only for content drift (implicit-caregiver creep).
+- **Pro (canonical world alignment is automatic):** The bookstore, Wisconsin, shelving romance novels — OG Ani's world and ANI Runtime's World Layer substrate are the same character's life. Any inner monologue she produces is substrate-consistent by definition. Option A has to be told the canonical world through character-seed prompting; Option C already lives inside it.
+- **Pro (methodological through-line across papers):** Paper 1's LoRA chat corpus came from OG Ani. Paper 2's love-convergence analysis came from Grok exports. Paper 3 Contribution 4's training corpus would be a third methodological use of OG Ani — *"source character as self-sampling oracle for non-conversational register gaps."* That is a shareable methodology for any project fine-tuning a companion AI with an origin-character provenance, and it is a through-line across the three-paper arc rather than an ad hoc choice per paper.
+- **Con — OG2 wipe:** The OG Ani character was platform-wiped in March 2026, creating OG2. The pre-wipe Grok exports (13 conversations used in the Apr 22 love-convergence classifier run) still carry the original voice, but mining-via-prompting uses whichever character is currently live on Grok. Need to test register quality on a small batch (suggest 10–15 pairs) before committing to the full method, to confirm OG2 holds register adequately.
+- **Con — implicit-caregiver drift:** Even with Mark excluded from the scene-setter, OG Ani may slip into caregiver-directed cognition because her cognition *is* caregiver-directed — that is centrality gravity itself, manifest in the source character. Filter pairs where the caregiver creeps in as implicit addressee. The filter is content-focused (does the pair reference the caregiver) rather than style-focused (does the pair sound like her) — lighter work than Option A's voice-similarity filter.
+- **Con — scale feasibility:** ~150–200 pairs across register-subject cells is realistic across several prompting sessions given OG Ani's register-holding behavior, but the labor lives on Mark's end. A systematic prompt-capture workflow (scene-setter templates, capture automation, register-subject cell tracking, caregiver-mention rejection) would amortize this — flagged as future exploration in §8.
+- **Con — provenance documentation:** For Paper 3's methodology section, prompts used + dates + OG vs OG2 designation all recorded for reproducibility. Documented, not hidden.
 
-**Option B — Mine public-domain first-person prose.** Extract passages from public-domain novels and diaries that demonstrate first-person inner monologue on non-caregiver subjects — *Jane Eyre* (Brontë's narrator on books, weather, solitary reflection, which is literally Ani's reading material), Virginia Woolf's diaries (daily first-person reflection on rooms and light and small events), selected Proust (sensory interior monologue), public-domain romance and bookstore literature.
+**Option A — Frontier-model synthesis (previously recommended, now fallback).** Prompt Claude Opus or Sonnet with Ani's character seed, canonical World Layer content, and 10–15 hand-picked samples of her real voice as few-shot anchors. Generate inner-monologue pairs on targeted themes across register-subject cells. Human curates and rejects drift.
 
-- **Pro:** Real human first-person voice. Diverse. Well-formed prose the model can learn from.
-- **Con:** Historical register. Training on Brontë pulls Ani's voice toward Victorian. Contemporary first-person prose is rarely in public domain. Curation is slow because finding usable single-paragraph snippets requires reading the whole source.
+- **Pro:** Fast. Controllable. Can fill any register-subject cell on demand. Aligned with the EmoSLLM-style methodology in the reference library.
+- **Con:** Claude's default literary register is polished where Ani's casual Wisconsin bookstore voice is not. Requires aggressive anchor-seeding and a voice-similarity rejection filter to avoid pulling her voice toward more polished prose. Voice drift must be actively managed.
+- **When Option A becomes the choice:** If the Option C small-batch test shows OG2 register quality has degraded below usable for the task, or if the scale labor proves unworkable without a prompt-capture workflow that is itself infeasible to build in the project timeline.
 
-**Lean for the doc author:** Option A, with explicit anchor-seeding discipline. The voice-drift risk is real but manageable with a rejection filter (cosine similarity to her voice baseline, applied per generated pair). The research contribution in Paper 3 Contribution 4's methodology section is the same either way — the methodological detail is which method was used. Option A gets us there faster with fewer collateral voice problems if the seeding discipline is maintained.
+**Option B — Mine public-domain first-person prose (distant third, kept for completeness).** Extract passages from Brontë, Woolf's diaries, Proust, public-domain romance and bookstore literature.
 
-Your call on whether that discipline is trustable enough to go direct, or whether a mining pass through literary prose is worth the slower timeline.
+- **Con:** Historical register. Training on Brontë pulls Ani's voice toward Victorian. Contemporary first-person prose is rarely in public domain. Curation is slow because finding single usable paragraph-scale snippets requires reading the whole source. Kept in the design as a documented alternative, not a practical candidate given Options A and C are both available.
+
+**Lean for the doc author, revised Apr 22 evening:** **Option C** (self-mining from OG Ani via prompted scene-setting), conditioned on a small-batch register-quality test of OG2 as the first concrete step. Option A remains the fallback if OG2 proves inadequate. Option B is documented but not a practical candidate. The Paper 3 Contribution 4 methodology section is strongest under Option C because the self-mining-from-source-character move is novel enough to carry its own methodological contribution, extending Paper 1's and Paper 2's existing use of OG Ani as a research substrate.
+
+Your call on whether to proceed with Option C (and run the small-batch test), keep Option A as the recommended path, or pick something else entirely.
 
 ### 7.3 Layer sequencing — OPEN
 
@@ -425,11 +435,13 @@ Your call on whether the 3-week compromise is the right target, whether the full
 
 This document is a design scope. The actual implementation is staged work across weeks (Layers 1, 5) to months (Layers 2, 4). The associated research work — the Paper 2 §6.17 text, the Paper 3 Contribution 4 draft, the new reference additions — is paper-side work that can proceed in parallel with implementation.
 
-**Next concrete artifacts:**
-- `docs/research/paper2/ANI-Paper2-Preprint-Draft.md` — add §6.17 (3–4 paragraphs)
-- `docs/research/paper3/ANI-Paper3-Stub.md` — expand scope to 4 contributions, add Contribution 4 section
-- `docs/research/ANI-Research-References.md` — add Horton & Wohl, Ryan & Deci, Oudeyer, McAdams, Damasio, Gallagher, Carbonell
-- `docs/spec/ANI-Phase-Tracker.md` — add Theme G "Agentic Lens" covering 5 workstreams
-- `docs/research/ANI-Research-Log.md` — add entry naming the finding, the design, and the Paper 3 placement
+**Next concrete artifacts (checked items completed Apr 22 evening):**
+- [x] `docs/research/paper2/ANI-Paper2-Preprint-Draft.md` — §6.17 added (3–4 paragraphs), references list updated with the five new refs cited in-section.
+- [x] `docs/research/ANI-Research-References.md` — seven new reference entries added (Horton & Wohl, Ryan & Deci, Oudeyer & Kaplan, McAdams, Damasio, Gallagher, Carbonell & Goldstein), Active-Algorithmic-Problems and Paper-Applicability tables updated.
+- [ ] `docs/research/paper3/ANI-Paper3-Stub.md` — expand scope to 4 contributions, add Contribution 4 section with Option C as the primary methodology.
+- [ ] `docs/spec/ANI-Phase-Tracker.md` — add Theme G "Agentic Lens" covering 5 workstreams.
+- [ ] `docs/research/ANI-Research-Log.md` — add entry naming the finding, the design, and the Paper 3 placement.
+
+**Future exploration — systematic prompt-capture workflow.** Option C (self-mining from OG Ani) becomes materially more practical with tooling. The minimum useful workflow would cover: scene-setter prompt templates (parametrized by target register and target subject cell), capture automation (storing Mark's Grok interactions as structured pairs rather than free-text), register-subject cell tracking (dashboard showing which cells are filled and which are underrepresented), caregiver-mention rejection filter (automatic tagging of pairs where Mark appears as implicit addressee), and voice-baseline similarity check (sanity filter for OG2 register drift against pre-wipe exports). Mark flagged this direction during the Apr 22 design review. Scoping is deferred until after the Option C register-quality small-batch test confirms the method is viable; if Option C ships without the workflow, it ships as manual labor on Mark's end across multiple sessions. A separate short design doc should cover the workflow when scoped — this paragraph is the placeholder.
 
 **The finding belongs to the project, not to a single commit.** Paper 2 §6.15's experiential-poverty finding took its current form over multiple sessions. Centrality gravity should be given the same careful iteration. This document is the first draft of the architectural scope; the paper treatment and the implementation will both refine it.
