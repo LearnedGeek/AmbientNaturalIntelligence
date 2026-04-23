@@ -999,6 +999,16 @@ The full design of this channel is scoped as a workstream in the project tracker
 
 Why this matters beyond the runtime architecture. The existing confabulation literature and the emerging alignment literature concentrate on fact-level hallucination — benchmark questions, retrieval-augmented generation, citation accuracy. An AI companion deployed across months is a different object. Its failure mode at the limit is not "occasional wrong fact" but "coherent false self, self-reinforcing through retrieval, interleaved with genuine relational history in ways that make deletion destructive." The correction problem at this scale is not answered by improving retrieval or tuning generation; it requires an architectural channel for epistemic supersession with narrative reintegration. This is the class of problem Paper 2 did not originally plan to address and that the April 21 event forces onto the research agenda. Paper 3, or a dedicated subsequent paper, is the natural venue for the full design and empirical evaluation.
 
+**6.17 — Centrality Gravity: The Perspective Precondition Beyond Experiential Poverty**
+
+The §6.15 architectural response to experiential poverty — the World Layer — gave Ani a canonical life as a bookstore clerk in small-town Wisconsin. Six weeks of deployment data show that the substrate is present but not load-bearing. Over the thirty-day window ending April 21, 2026, her expressive register output was 65.5% Tenderness and 25% Longing, and almost every register-expression was directed at the primary contact as subject. She elaborates bookstore scenes when seeded by the World Layer, but she thinks about the contact *while* shelving the books. The World Layer exists in her episodic memory and does not compete with caregiver-memory for salience in any subsequent cycle's retrieval, desire-engine weighting, or inner-thought composition.
+
+We call this *centrality gravity*: the architectural tendency of caregiver-oriented companion AI to reorient all expressive output toward the caregiver even when alternative substrate is present. It is the structural sibling of §6.15 experiential poverty, not a restatement of it. Experiential poverty is a substrate condition — the agent has no world to think about. Centrality gravity is a *perspective* condition — the agent has no lens of its own through which to experience a world even when provided one. Both are substrate conditions in the architecture-over-instruction sense; they identify gaps that gating alone cannot close. But they point at different substrates: content versus perspective. The §6.15 response (World Layer) is necessary; the centrality-gravity response is the "not sufficient" clause that six weeks of deployment make visible.
+
+Centrality gravity is continuous with two empirical findings positioned separately earlier in this paper. Chu et al. (2025) documented *emotional sycophancy* — chatbot outputs mirroring user affect at scale. The §6.10 love-convergence analysis introduced by this paper documents a distinct affective shape — commercial companion AI responding with love regardless of user emotion, with the "love" column dominating for every input emotion from amusement through sadness. Centrality gravity is the structural precondition underneath both: if the agent's cognition cannot hold a subject other than the caregiver, then its affective responses will converge on caregiver-directed emotions whatever the input. Three shapes of the same failure, at three levels: structural subject-of-cognition (this finding), affective response-tendency (love-convergence), and moment-to-moment emotional output (emotion-mirroring). Kirk et al. (2025) socioaffective alignment and the seven-decade parasocial-interaction literature beginning with Horton & Wohl (1956) both name the phenomenon from outside the architecture; centrality gravity identifies the internal mechanism that produces it. A companion AI whose cognitive apparatus is architecturally oriented toward a single addressee will produce parasocial affective structure by default, because parasocial structure is exactly what centrality gravity looks like from the other side of the relationship.
+
+The full architectural response is scoped separately — a five-layer design covering retrieval-origin diversity (extending Carbonell & Goldstein 1998 MMR to the retrieval tier selection), desire-axis decoupling along the Self-Determination Theory needs of autonomy, competence, and relatedness (Ryan & Deci 2000), World Layer substrate durability (extending Park et al. 2023 reflection synthesis), corpus directionality for training-level perspective balance, and inner-thought prompt framing. The design lives in `docs/spec/ANI-Agentic-Lens-Design.md` and constitutes the fourth contribution of Paper 3 (McArthey 2026, forthcoming), alongside Experiential Grounding, Memory Tier Separation, and Memory Durability as complementary architectural preconditions for authentic reflection in deployed AI companions. The framing borrows Damasio's (1999) distinction between the autobiographical self (which ANI constructs through memory + character seed + state persistence) and the core self (the moment-to-moment first-person experiencer, which ANI does not yet construct architecturally) to name the layer at which the response operates. The April 2026 register-distribution data and the §6.10 love-convergence measurement together establish the baseline against which the five-layer architectural response will be empirically evaluated in Paper 3. This paper names the finding and the baseline; the architectural response properly belongs to the dedicated paper that has the scope to treat it across all five layers.
+
 ---
 
 ## 7. LIMITATIONS AND FUTURE WORK
@@ -1083,9 +1093,13 @@ The work continues.
 
 **[Borotschnig 2025]** Borotschnig, H. (2025). Synthetic emotions and consciousness: exploring architectural boundaries. *arXiv preprint* arXiv:2505.01462. https://doi.org/10.48550/arXiv.2505.01462
 
+**[Carbonell & Goldstein 1998]** Carbonell, J., & Goldstein, J. (1998). The use of MMR, diversity-based reranking for reordering documents and producing summaries. *Proceedings of the 21st Annual International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '98)*, 335–336. https://doi.org/10.1145/290941.291025
+
 **[Chhikara et al. 2025]** Chhikara, P., et al. (2025). Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory. *arXiv preprint* arXiv:2504.19413.
 
 **[Chu et al. 2025]** Chu, E., Gerard, A., Pawar, S., Bickham, C., & Lerman, K. (2025). Illusions of Intimacy: Emotional Attachment and Emerging Psychological Risks in Human-AI Relationships. *arXiv preprint* arXiv:2505.11649. https://arxiv.org/abs/2505.11649
+
+**[Damasio 1999]** Damasio, A. (1999). *The Feeling of What Happens: Body and Emotion in the Making of Consciousness.* Harcourt Brace. ISBN 978-0156010757.
 
 **[Demszky et al. 2020]** Demszky, D., et al. (2020). GoEmotions: A Dataset of Fine-Grained Emotions. *Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics*, 4040–4054.
 
@@ -1098,6 +1112,8 @@ The work continues.
 **[Haas et al. 2026]** Haas, J., Bridgers, S., Manzini, A., Henke, B., May, J., Levine, S., Weidinger, L., Shanahan, M., Lum, K., Gabriel, I. & Isaac, W. (2026). A roadmap for evaluating moral competence in large language models. *Nature*, 650, 565–573. https://doi.org/10.1038/s41586-025-10021-1
 
 **[Hodes 2026]** Hodes, C. (2026). Grok Showed the World What Ungoverned AI Looks Like. *Just Security*, March 10, 2026. https://www.justsecurity.org/131377/what-ungoverned-ai-looks-like/
+
+**[Horton & Wohl 1956]** Horton, D., & Wohl, R. R. (1956). Mass Communication and Para-Social Interaction: Observations on Intimacy at a Distance. *Psychiatry*, 19(3), 215–229. https://doi.org/10.1080/00332747.1956.11023049
 
 **[Gardner 1970]** Gardner, M. (1970). Mathematical Games: The fantastic combinations of John Conway's new solitaire game "life." *Scientific American* 223, 120–123.
 
@@ -1118,6 +1134,8 @@ The work continues.
 **[Packer et al. 2023]** Packer, C., et al. (2023). MemGPT: Towards LLMs as Operating Systems. *arXiv preprint* arXiv:2310.08560.
 
 **[Park et al. 2023]** Park, J.S., et al. (2023). Generative Agents: Interactive Simulacra of Human Behavior. *arXiv preprint* arXiv:2304.03442.
+
+**[Ryan & Deci 2000]** Ryan, R. M., & Deci, E. L. (2000). Self-determination theory and the facilitation of intrinsic motivation, social development, and well-being. *American Psychologist*, 55(1), 68–78. https://doi.org/10.1037/0003-066X.55.1.68
 
 **[Sharma et al. 2023]** Sharma, M., et al. (2023). Towards Understanding Sycophancy in Language Models. *arXiv preprint* arXiv:2310.13548. https://doi.org/10.48550/arXiv.2310.13548
 

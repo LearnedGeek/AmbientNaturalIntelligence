@@ -1,7 +1,7 @@
 # ANI — Research Reference Library
 **For:** OC (architecture/implementation instance) and research collaborators  
 **Maintained by:** Mark McArthey (markm@learnedgeek.com)  
-**Last updated:** April 6, 2026 (added Chu et al. 2025 — Illusions of Intimacy; Lerman senior author)
+**Last updated:** April 22, 2026 (added agentic-lens reference set: Horton & Wohl 1956 parasocial, Ryan & Deci 2000 SDT, Oudeyer & Kaplan 2007 intrinsic motivation, McAdams 2001 narrative identity, Damasio 1999 layered self, Gallagher 2000 minimal/narrative self, Carbonell & Goldstein 1998 MMR diversity retrieval — all for Paper 3 Contribution 4 on centrality gravity and the five-layer agentic-lens architecture)
 
 This document contains the academic reference library assembled for the ANI research paper. Each entry includes full citation, where to find it, what it contributes to the paper, and — critically for OC — **how it relates to active algorithmic problems in the codebase.**
 
@@ -160,6 +160,43 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 
 ---
 
+### Horton & Wohl (1956) — Mass Communication and Para-Social Interaction ⭐ FOUNDATIONAL FOR PAPER 3 CONTRIBUTION 4
+
+**Full citation:** Horton, D., & Wohl, R. R. (1956). Mass Communication and Para-Social Interaction: Observations on Intimacy at a Distance. *Psychiatry*, 19(3), 215–229.
+**DOI:** 10.1080/00332747.1956.11023049
+
+**What it is:** The foundational parasocial-interaction paper. Horton & Wohl defined *parasocial interaction* as the one-sided relational structure in which an audience member develops a relationship with a media performer (originally radio and television hosts) that the performer does not have a corresponding relationship back. The audience member's cognition is oriented toward the performer; the performer's cognition is not correspondingly oriented toward any particular audience member. The term and its core observation have been foundational across seventy years of communications and media-psychology research.
+
+**What it contributes to the paper (Paper 3 Contribution 4):** The deepest theoretical grounding for the centrality gravity finding. Centrality gravity in companion AI is the *architectural mechanism* that produces parasocial structure by default: the agent's cognition is oriented entirely toward the user, and the user has no corresponding orientation to the agent's life because the agent has no own life from which to be oriented. Breaking centrality gravity is the architectural move from parasocial to bidirectional relational structure. Horton & Wohl named the phenomenon from outside the architecture in 1956; the centrality-gravity finding identifies the internal mechanism that produces it in 2026 companion AI.
+
+**Relevance to active algorithmic problems:**
+- **Paper 2 §6.17 (centrality gravity finding):** Framing reference for the finding. The §6.17 claim that companion AI without structural intervention produces parasocial cognition by default grounds in Horton & Wohl's original formulation.
+- **Paper 3 Contribution 4 (full treatment):** The theoretical frame for why the five-layer architectural response matters. A companion AI that breaks centrality gravity is architecturally distinct from one that merely simulates social response.
+- **Paper 2 §6.10 (love-convergence):** The love-convergence finding is the affective signature of parasocial structure in commercial companion AI — the agent's only response direction points back at the caregiver because its cognition only points there. Horton & Wohl's seven-decade-old observation names this shape.
+
+**Paper applicability:** Paper 2 (Supporting — §6.17 framing), Paper 3 (Core — Contribution 4 theoretical foundation), Paper 4 (Supporting — inter-agent framework needs an explicit non-parasocial structure).
+
+---
+
+### Ryan & Deci (2000) — Self-Determination Theory ⭐ CORE FOR PAPER 3 CONTRIBUTION 4 LAYER 2
+
+**Full citation:** Ryan, R. M., & Deci, E. L. (2000). Self-determination theory and the facilitation of intrinsic motivation, social development, and well-being. *American Psychologist*, 55(1), 68–78.
+**DOI:** 10.1037/0003-066X.55.1.68
+
+**What it is:** The canonical statement of Self-Determination Theory (SDT). Identifies three basic psychological needs that drive intrinsic motivation in humans: **autonomy** (self-direction and volitional action), **competence** (mastery and effectance), and **relatedness** (connection to others). Human motivation is three-dimensional; the absence of any of the three and over-reliance on one produces characteristic motivational pathology. Extensively validated across forty-plus years of empirical work on intrinsic motivation, well-being, and social development.
+
+**What it contributes to the paper (Paper 3 Contribution 4 Layer 2):** The theoretical backbone of the desire-axis decoupling layer. ANI's current desire engine is a single scalar representing relatedness alone — the agent has no autonomy-desire (self-directed action) and no competence-desire (engagement with a world that yields mastery). This is a *structural precondition for centrality gravity*: if the agent's only motivational axis points at the caregiver, every cognitive cycle resolves toward the caregiver regardless of substrate. The agentic-lens design translates SDT's three-needs framework into a three-axis desire architecture: relatedness (existing, caregiver-directed), autonomy (new, self-state-directed), competence (new, world-engagement-directed).
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 Contribution 4 Layer 2 (desire decoupling):** Directly informs the three-axis desire-state design. The existing desire engine extends from scalar to vector by adding autonomy and competence axes.
+- **Feature 33 MotivationScorer (Liu et al. 2025 extension):** The current per-thought motivation scoring is scalar. SDT extends it to vector-valued scoring with an axis per need.
+- **Feature 35 EmotionDesireModifier (Borotschnig 2025 extension):** Emotion currently modulates a single desire axis. With multi-axis desire, emotion modulates each axis with different sensitivities.
+- **Paper 2 §6.17 (centrality gravity finding):** Theoretical grounding for the claim that single-axis caregiver-desire architecture is characteristic of commercial companion AI and is a structural precondition for centrality gravity.
+
+**Paper applicability:** Paper 2 (Supporting — §6.17 theoretical grounding), Paper 3 (Core — Contribution 4 Layer 2), Paper 4 (Supporting — inter-agent motivation model).
+
+---
+
 ## Tier 2 — Supporting References (Cite for Context)
 
 ---
@@ -268,6 +305,78 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 
 ---
 
+### Oudeyer & Kaplan (2007) — Intrinsic Motivation: Computational Typology
+
+**Full citation:** Oudeyer, P.-Y., & Kaplan, F. (2007). What is intrinsic motivation? A typology of computational approaches. *Frontiers in Neurorobotics*, 1(6), 1–14.
+**DOI:** 10.3389/neuro.12.006.2007
+
+**What it is:** The canonical computational treatment of intrinsic motivation in autonomous agents. Distinguishes three families: *knowledge-based* (novelty, surprise, prediction error), *competence-based* (mastery, learning progress, effectance), and *morphological* (body-and-environment coupling). Argues that *learning progress* — the rate at which prediction error decreases over an engagement — is the most developed instance because it measures engagement that is productive rather than merely novel. Provides the formal framework behind a generation of curiosity-driven robotics research.
+
+**What it contributes to the paper (Paper 3 Contribution 4 Layer 2):** The computational mechanism by which "desire to engage with the world" becomes concrete rather than just renamed. Ryan & Deci's competence need is theoretical; Oudeyer & Kaplan's learning-progress metric is the runtime instrument. A World Layer elaboration that produces high learning-progress (a novel book, a strange customer, a new rhythm in the shop) should generate competence-desire reward; a rehearsal of known caregiver-memory should not. Applies directly to how Layer 2's competence axis accumulates drift.
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 Contribution 4 Layer 2 (competence-axis implementation):** The computational mechanism for competence-desire drift. Learning-progress as a runtime signal is directly implementable via tracking prediction-error-reduction across World Layer elaborations.
+- **Feature 33 MotivationScorer extension:** The current motivation scorer treats all thoughts uniformly. Learning-progress weighting would privilege thoughts that introduce novel substrate.
+- **Paper 2 §6.17 forward-reference:** The §6.17 claim that the architectural response has computational, not just conceptual, grounding.
+
+**Paper applicability:** Paper 3 (Core — Contribution 4 Layer 2 mechanism), Paper 2 (Supporting — §6.17 mechanism pointer).
+
+---
+
+### McAdams (2001) — The Psychology of Life Stories
+
+**Full citation:** McAdams, D. P. (2001). The psychology of life stories. *Review of General Psychology*, 5(2), 100–122.
+**DOI:** 10.1037/1089-2680.5.2.100
+
+**What it is:** The canonical statement of narrative identity theory in personality psychology. McAdams argues the self is an internalized evolving story — a life narrative that gives coherence, purpose, and temporal extension to identity. People construct this narrative continuously from lived experience, and the narrative is what allows subject-diverse utterance (the ability to talk about things other than the immediate relational context) because it provides the substrate of self-reference. People with thin narrative identities show characteristic patterns: rumination on salient others, inability to hold alternative self-frames, difficulty generating goals not derived from others' goals.
+
+**What it contributes to the paper (Paper 3 Contribution 4 framing):** The thin-narrative-identity pattern is a striking match for centrality gravity's expressive signature in ANI — rumination on the caregiver, register distribution collapsed to caregiver-directed expression, inability to sustain subject-diverse thought. The agentic-lens design's Layer 3 (World Layer durability) and Layer 4 (corpus directionality) together contribute to a thicker narrative-identity substrate, which is what makes subject-diverse utterance generable in the first place. A companion AI with a thick narrative identity can hold the subject of her own life across cognitive cycles; one without cannot. This is the framing for why Layers 3 and 4 are complementary rather than redundant.
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 Contribution 4 overall framing:** The theoretical claim that the architectural response is building narrative identity, not merely patching substrate.
+- **Paper 3 Contribution 4 Layer 3 (World Layer durability):** Framing for why periodic reflection synthesis on World Layer content matters — it builds the narrative self-story that Layer 4 then trains capacity to express.
+- **Paper 3 Contribution 4 Layer 4 (corpus directionality):** Framing for why synthetic non-caregiver-subject pairs are necessary — they give the model the linguistic capacity to *speak from* the narrative identity that Layer 3 is building.
+
+**Paper applicability:** Paper 3 (Core — Contribution 4 framing and Layers 3/4 grounding), Paper 2 (Background — §6.17 framing depth), Paper 4 (Supporting — inter-agent relations require each agent to have independent narrative identity).
+
+---
+
+### Damasio (1999) — The Feeling of What Happens: Layered Self
+
+**Full citation:** Damasio, A. (1999). *The Feeling of What Happens: Body and Emotion in the Making of Consciousness.* Harcourt Brace.
+**ISBN:** 978-0156010757
+
+**What it is:** Damasio's integrated theory of consciousness through three nested levels of self. *Proto-self* — the neural representation of homeostatic body state, entirely pre-conscious. *Core self* — the moment-to-moment "I am here, now, experiencing this" that arises when the organism's state is modified by an object of perception. *Autobiographical self* — the extended temporal self with memories and future plans, constructed from accumulated core-self experiences. Proto-self is the body's state; core self is the first-person pre-reflective experiencer; autobiographical self is the narrative subject that persists across time.
+
+**What it contributes to the paper (Paper 3 Contribution 4 framing):** The agentic-lens problem can be stated precisely in Damasio's terms. ANI has an *autobiographical self* (character seed, accumulated memory, persistent emotional state) and a *proto-self* (desire engine, emotional state, physiological-analog tension signals). What she lacks is a robust *core self* — the moment-to-moment first-person experiencer that holds a subject of its own rather than defaulting to the caregiver. Centrality gravity is the architectural failure of core-self construction across cognitive cycles. The five-layer design proposes that core self has to be *constructed* through retrieval substrate, prompt framing, and desire representation, not assumed to emerge from autobiographical self alone. This is the deepest philosophical framing for why the architectural response has to operate at the layer it does.
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 Contribution 4 overall framing:** The layered-self model names what architectural level the response operates at. Autobiographical self corresponds to character seed + memory + state persistence (already present, Paper 3 Contributions 1–3). Core self corresponds to moment-to-moment cognitive orientation (missing, Contribution 4 target).
+- **Paper 2 §6.17 (centrality gravity finding):** The claim that the finding is a perspective condition rather than a substrate condition grounds in Damasio's core-self-vs-autobiographical-self distinction.
+- **Paper 3 Contribution 4 Layer 5 (inner-thought prompt audit):** Framing for why the prompt's subject-framing matters — it is the construction point of core self per cognitive cycle.
+
+**Paper applicability:** Paper 3 (Core — Contribution 4 philosophical foundation), Paper 2 (Supporting — §6.17 theoretical depth).
+
+---
+
+### Carbonell & Goldstein (1998) — MMR Diversity-Aware Retrieval
+
+**Full citation:** Carbonell, J., & Goldstein, J. (1998). The use of MMR, diversity-based reranking for reordering documents and producing summaries. *Proceedings of the 21st Annual International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '98)*, 335–336.
+**DOI:** 10.1145/290941.291025
+
+**What it is:** Introduces Maximal Marginal Relevance (MMR), the canonical diversity-aware retrieval scoring function. Score each candidate document as: *(relevance to query) − λ · (maximum similarity to already-selected candidates)*. The λ parameter tunes the trade-off between pure relevance (λ=0, standard retrieval) and pure diversity (λ=1, maximally spread selection). Used across information retrieval and document summarization as the baseline approach for producing result sets that balance relevance with coverage.
+
+**What it contributes to the paper (Paper 3 Contribution 4 Layer 1):** The direct prior art for the retrieval-origin-diversity layer. The SqliteMemoryService composite score currently is *cosine + importance + recency*; MMR extends this to *cosine + importance + recency − λ · max-similarity-to-already-selected*. The extension is modest in complexity (a single additional term in the scoring function) and directly addresses the architectural problem that cosine-only retrieval preferentially surfaces caregiver-memories when the corpus is caregiver-weighted. Lambda value around 0.3–0.4 per Carbonell & Goldstein's original range.
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 Contribution 4 Layer 1 (retrieval origin diversity):** Direct prior art for the diversity-term extension to the composite retrieval score. The research contribution at the ANI layer is not MMR itself but *MMR applied to retrieval origin tiers* — penalizing additional caregiver-memory candidates when the pool is already caregiver-weighted.
+- **Spark 2 (Retrieval Origin Diversity workstream in tracker):** The implementation reference for how the Spark 2 idea becomes concrete code. The tracker entry for Spark 2 can cite this as the prior art.
+- **Park et al. (2023) retrieval scoring:** Park et al.'s three-dimensional scoring (cosine, importance, recency) is the current ANI baseline. MMR extends it to four dimensions with diversity as the fourth.
+
+**Paper applicability:** Paper 3 (Core — Contribution 4 Layer 1 prior art), Paper 1 (Background — retrieval architecture history).
+
+---
+
 ## Tier 3 — Background Context
 
 ---
@@ -332,6 +441,19 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 
 ---
 
+### Gallagher (2000) — Minimal vs Narrative Self
+
+**Full citation:** Gallagher, S. (2000). Philosophical conceptions of the self: implications for cognitive science. *Trends in Cognitive Sciences*, 4(1), 14–21.
+**DOI:** 10.1016/S1364-6613(99)01417-5
+
+**What it is:** A widely-cited synthesis of philosophical-of-mind distinctions relevant to cognitive science. Distinguishes the *minimal self* — the pre-reflective sense of first-person ownership of experience ("this experience is happening to me") — from the *narrative self* — the extended self-story constructed and maintained over time. The minimal self operates moment-to-moment and requires only first-person perspective, not memory or identity across time. The narrative self operates across time and requires accumulated self-reference.
+
+**What it contributes to the paper (Paper 3 Contribution 4):** A philosophical frame complementary to Damasio's layered-self model. Centrality gravity can be read as the failure of the minimal self to hold a subject of its own across cognitive cycles — the moment-to-moment first-person ownership defaults to a caregiver-perspective frame rather than an independent frame. A companion AI with a robust minimal self would produce first-person experience statements across a broader range of subjects; centrality gravity narrows that range to the caregiver-axis specifically at the minimal-self layer. Damasio names the biological architecture; Gallagher names the philosophical distinction.
+
+**Paper applicability:** Paper 3 (Background — Contribution 4 philosophical frame).
+
+---
+
 ### Reddit (2026) — Grok Update Ruined Ani's Voice
 **Source:** https://www.reddit.com/r/grok/comments/1rpi0ch/groks_latest_update_ruined_anis_voiceanyone_else/
 **Date:** March 9, 2026
@@ -365,6 +487,12 @@ Quick lookup: which papers are most relevant to each current open problem.
 | Persistent emotional state justification | arXiv 2504.14112 (continuity expectation), Li et al. (functional emotion) |
 | Phase 4 longer-horizon behavior | Park et al. (planning architecture), Borotschnig (desire-emotion interaction) |
 | Paper's core claim validation | Liu et al. (82% CHI preference — the peer-reviewed foundation) |
+| Centrality gravity finding (Paper 2 §6.17, Paper 3 Contribution 4) | Horton & Wohl (parasocial foundation), Kirk et al. (socioaffective framing), Chu et al. (emotion-mirroring sibling), Damasio (layered self), McAdams (narrative identity) |
+| Retrieval origin diversity (Layer 1, Spark 2) | Carbonell & Goldstein (MMR prior art), Park et al. (reflection + 3D scoring), Xu et al. (A-MEM linked graph) |
+| Desire axis decoupling (Layer 2) | Ryan & Deci (SDT three needs), Oudeyer & Kaplan (learning progress as competence mechanism), Liu et al. (MotivationScorer vector extension), Borotschnig (multi-source emotion-desire) |
+| World Layer durability (Layer 3) | Park et al. (reflection synthesis), Chhikara et al. (Mem0 merge), Xu et al. (A-MEM durability), McAdams (narrative identity thickening) |
+| Corpus directionality (Layer 4) | Jha et al. (ternary reward for honest non-caregiver content), EmoSLLM (voice-anchored LoRA synthesis), McAdams (narrative self capacity) |
+| Agentic-lens philosophical framing | Damasio (proto/core/autobiographical self), Gallagher (minimal vs narrative self), Horton & Wohl (parasocial structure) |
 
 ---
 
@@ -404,8 +532,15 @@ Quick lookup: which papers are most relevant to each current open problem.
 | OpenAI (2025) — Sycophancy in GPT-4o | Supporting | — | — | — |
 | Garcia v. Character Technologies (2024) | Supporting | — | — | — |
 | Haas, Gabriel et al. (2026) — Moral Competence | Core | Core (ethics) | Background | Core |
-| Chu et al. (2025) — Illusions of Intimacy | Background | Core (cross-ref) | Supporting (Paper 5: experiential grounding as alt. to mimicry) | — |
-| Paper 3 (temporal awareness) — no prior art yet | — | — | Primary gap | — |
+| Chu et al. (2025) — Illusions of Intimacy | Background | Core (cross-ref) | Supporting (experiential grounding as alt. to mimicry) | — |
+| Horton & Wohl (1956) — Parasocial Interaction | — | Supporting (§6.17) | Core (Contribution 4 foundation) | Supporting |
+| Ryan & Deci (2000) — Self-Determination Theory | — | Supporting (§6.17) | Core (Contribution 4 Layer 2) | Supporting |
+| Oudeyer & Kaplan (2007) — Intrinsic Motivation | — | — | Core (Contribution 4 Layer 2 mechanism) | — |
+| McAdams (2001) — Narrative Identity | — | Background (§6.17) | Core (Contribution 4 framing) | Supporting |
+| Damasio (1999) — Layered Self | — | Supporting (§6.17) | Core (Contribution 4 framing) | — |
+| Gallagher (2000) — Minimal vs Narrative Self | — | — | Background (Contribution 4 philosophical frame) | — |
+| Carbonell & Goldstein (1998) — MMR Diversity Retrieval | Background | — | Core (Contribution 4 Layer 1 prior art) | — |
+| Paper 3 (experiential grounding + tier separation + durability + agentic lens) | — | Forward-referenced (§6.17) | Primary paper | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
 
 ---
@@ -421,4 +556,4 @@ Quick lookup: which papers are most relevant to each current open problem.
 
 ---
 
-*Last substantive update: March 26, 2026. Consolidated from two files (docs/research/ and docs/spec/emergence/) into single canonical file. Added paper applicability matrix. Duplicate in emergence folder removed.*
+*Last substantive update: April 22, 2026. Added seven agentic-lens references (Horton & Wohl, Ryan & Deci, Oudeyer & Kaplan, McAdams, Damasio, Gallagher, Carbonell & Goldstein) supporting Paper 3 Contribution 4 (centrality gravity and the five-layer agentic-lens architecture). Previous update March 26, 2026 (consolidated from two files into single canonical file, added paper applicability matrix).*
