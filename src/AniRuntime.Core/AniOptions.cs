@@ -71,6 +71,18 @@ public class AniOptions
     // by importance/recency of semantically unrelated memories.
     public double RetrievalConfidenceFloor  { get; set; } = 0.60;
 
+    // Agentic Lens Layer 1 Phase 1a: retrieval origin observability.
+    // When enabled, ContextBuilder emits a per-cycle log line with the origin
+    // distribution of the relevant-memory retrieval pool (Caregiver / OwnOutput
+    // / World / External / Anchored / Unknown). Pure observation — no behavior
+    // change. Flag exists so high-frequency installs can disable the log line;
+    // for the primary deployment it stays on because the Paper 3 Contribution 4
+    // evaluation arc needs this baseline distribution as the pre-intervention
+    // measurement. Layer 1 Phases 1b-1d introduce their own separate flags
+    // (default-off per the "observe first" rollout pattern) once their scoring
+    // and backfill behavior is wired in.
+    public bool RetrievalOriginLoggingEnabled { get; set; } = true;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.

@@ -273,6 +273,49 @@ public class ContextBuilder
         // Processed themes — topics whose emotional contributions have fully decayed
         var processedThemes = await _analytics.GetProcessedThemesAsync(5, ct).ConfigureAwait(false);
 
+        // Agentic Lens Layer 1 Phase 1a: origin-distribution logging.
+        // Measures the composition of the inner-thought retrieval pool by
+        // RetrievalOrigin class (Caregiver / OwnOutput / World / External /
+        // Anchored / Unknown). Pure observation — no behavior change. The
+        // Paper 3 Contribution 4 evaluation arc uses the pre-intervention
+        // distribution logged here as the baseline the Phase 1b (MMR) and
+        // Phase 1c (protected slots) interventions will be measured against.
+        //
+        // Aggregates across the combined substrate the inner-thought prompt
+        // actually sees: relevantMem (semantic search), recentMem (latest),
+        // groundedFacts (Facts tier), interiorContext (Interior tier), and
+        // anchoredMemories (always-present foundation). Conversation-scoped
+        // retrieval (RecentExchanges) is populated on the reply path, not
+        // here, and is out of scope for Layer 1 per the design decision to
+        // leave conversation-reply retrieval caregiver-weighted.
+        if (_aniOptions.RetrievalOriginLoggingEnabled)
+        {
+            var pool = new List<MemoryRecord>();
+            pool.AddRange(relevantMem);
+            pool.AddRange(recentMem);
+            pool.AddRange(groundedFacts);
+            pool.AddRange(interiorContext);
+            pool.AddRange(anchoredMemories);
+
+            if (pool.Count > 0)
+            {
+                var histogram = pool
+                    .Select(RetrievalOriginClassifier.Classify)
+                    .GroupBy(o => o)
+                    .ToDictionary(g => g.Key, g => g.Count());
+
+                _log.LogInformation(
+                    "Retrieval origin distribution (pool={Total}): caregiver={Caregiver} own-output={OwnOutput} world={World} external={External} anchored={Anchored} unknown={Unknown}",
+                    pool.Count,
+                    histogram.GetValueOrDefault(RetrievalOrigin.Caregiver, 0),
+                    histogram.GetValueOrDefault(RetrievalOrigin.OwnOutput, 0),
+                    histogram.GetValueOrDefault(RetrievalOrigin.World,     0),
+                    histogram.GetValueOrDefault(RetrievalOrigin.External,  0),
+                    histogram.GetValueOrDefault(RetrievalOrigin.Anchored,  0),
+                    histogram.GetValueOrDefault(RetrievalOrigin.Unknown,   0));
+            }
+        }
+
         return new ContextSnapshot
         {
             CharacterState           = charState,

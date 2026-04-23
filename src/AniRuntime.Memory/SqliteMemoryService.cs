@@ -452,7 +452,13 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             {
                 var cosine = CosineSimilarity(queryEmbedding, r.Embedding!);
                 var composite = ComputeRetrievalScore(queryEmbedding, r);
-                return new ScoredMemory(r, composite, cosine);
+                // Agentic Lens Layer 1 Phase 1a: attach origin classification so
+                // downstream consumers (cycle instrumentation, later-phase
+                // scoring and protected-slot logic) don't re-classify.
+                return new ScoredMemory(r, composite, cosine)
+                {
+                    OriginTier = RetrievalOriginClassifier.Classify(r),
+                };
             })
             .OrderByDescending(x => x.CompositeScore)
             .Take(topK)
@@ -462,8 +468,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}): {Content}",
-                candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Type,
+                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}, origin={Origin}): {Content}",
+                candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Type, top.OriginTier,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -496,8 +502,13 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                         if (cosine < LinkRelevanceThreshold) continue;
 
                         var composite = ComputeRetrievalScore(queryEmbedding, linked);
-                        // Small bonus for being linked to a direct match
-                        linkedCandidates.Add(new ScoredMemory(linked, composite + 0.05f, cosine));
+                        // Small bonus for being linked to a direct match.
+                        // Layer 1 Phase 1a: classify origin here too so link-
+                        // enhanced results are origin-aware in the aggregate pool.
+                        linkedCandidates.Add(new ScoredMemory(linked, composite + 0.05f, cosine)
+                        {
+                            OriginTier = RetrievalOriginClassifier.Classify(linked),
+                        });
                     }
                 }
 
