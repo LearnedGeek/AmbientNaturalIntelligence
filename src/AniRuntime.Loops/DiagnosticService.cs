@@ -31,9 +31,15 @@ public class DiagnosticService : IDiagnosticService
         _options = options.Value;
         _log = log;
         // Log files are in the service's data directory or working directory
-        _logDirectory = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "logs");
-        if (!Directory.Exists(_logDirectory))
-            _logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+        // Match Serilog's actual sink location (set in Program.cs:37).
+        // The previous dev-tree-aware fallback chain fell through to
+        // Directory.GetCurrentDirectory()/logs when run as a Windows Service,
+        // which resolves to C:\WINDOWS\system32\logs and produced spurious
+        // "No log file found at C:\WINDOWS\system32\logs\..." debug lines
+        // on every diagnostic cycle. Using AppContext.BaseDirectory directly
+        // keeps dev and service deployments in lockstep with where the
+        // logs actually land.
+        _logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
     }
 
     public async Task<DiagnosticReport> RunDiagnosticAsync(CancellationToken ct = default)
