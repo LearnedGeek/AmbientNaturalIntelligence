@@ -100,6 +100,25 @@ public class AniOptions
     public bool   RetrievalDiversityEnabled { get; set; } = false;
     public double RetrievalDiversityLambda  { get; set; } = 0.3;
 
+    // Agentic Lens Layer 1 Phase 1c: origin-tier protected slots on the
+    // inner-thought retrieval pool (Apr 2026).
+    //
+    // When enabled, the inner-thought retrieval call (ContextBuilder → SearchAsync
+    // with enforceOriginQuota=true) reserves at least MinNonCaregiverRetrievalFraction
+    // of the top-K slots for non-caregiver-origin memories (World, External, Anchored,
+    // OwnOutput). If the natural ranking does not meet the quota, caregiver candidates
+    // at the bottom of the top-K are swapped for the highest-scoring non-caregiver
+    // candidates from the remainder. Does NOT run on the conversation-reply retrieval
+    // path — reply retrieval stays caregiver-weighted because the conversation channel
+    // is caregiver-oriented by definition.
+    //
+    // Default off per the "observe first" rollout pattern. Flip after Phase 1a baseline
+    // accumulates and Phase 1b MMR observation is stable. The 0.30 default is a
+    // principled starting point per the Layer 1 design doc; tune empirically against
+    // the dashboard origin distribution.
+    public bool   RetrievalProtectedSlotsEnabled    { get; set; } = false;
+    public double MinNonCaregiverRetrievalFraction  { get; set; } = 0.30;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.

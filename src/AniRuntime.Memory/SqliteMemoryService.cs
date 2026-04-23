@@ -363,7 +363,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     }
 
     public async Task<IEnumerable<MemoryRecord>> SearchAsync(
-        string query, int topK = 10, CancellationToken ct = default)
+        string query, int topK = 10, CancellationToken ct = default,
+        bool enforceOriginQuota = false)
     {
         // If no embedding client available, fall back to recency
         if (_ollama is null)
@@ -429,13 +430,29 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 .ToList();
         }
 
+        // Agentic Lens Layer 1 Phase 1c (Apr 2026): origin-tier protected slots.
+        // Runs only when BOTH the caller opted in (enforceOriginQuota=true —
+        // inner-thought path) AND the global flag is on. If the current top-K
+        // has insufficient non-caregiver share, swap lowest-scoring caregiver
+        // slots for highest-scoring non-caregiver candidates from the remainder.
+        // Scoped to the inner-thought cycle only; conversation-reply callers
+        // leave enforceOriginQuota=false and get the original caregiver-weighted
+        // retrieval.
+        var protectedSlotsActive = enforceOriginQuota && _options.RetrievalProtectedSlotsEnabled;
+        if (protectedSlotsActive && ranked.Count > 0)
+        {
+            ranked = ApplyProtectedSlotsBackfill(
+                ranked, scoredAll, topK,
+                (float)_options.MinNonCaregiverRetrievalFraction);
+        }
+
         if (ranked.Count > 0)
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
-                _options.RetrievalDiversityEnabled,
+                _options.RetrievalDiversityEnabled, protectedSlotsActive,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -717,6 +734,79 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         }
 
         return selected;
+    }
+
+    /// <summary>
+    /// Agentic Lens Layer 1 Phase 1c (Apr 2026): origin-tier protected-slots backfill.
+    ///
+    /// Enforces a minimum non-caregiver-origin share on the ranked top-K by swapping
+    /// the lowest-scoring caregiver slots for the highest-scoring non-caregiver
+    /// candidates from the remainder pool. Does nothing if the quota is already met,
+    /// and nothing if no non-caregiver candidates exist in the remainder (we never
+    /// drop caregiver memories for a pool that has no alternative).
+    ///
+    /// Origin classification (caregiver vs not) comes from
+    /// <see cref="RetrievalOriginClassifier.IsCaregiverOriented"/>. Caregiver origin
+    /// is exactly <see cref="RetrievalOrigin.Caregiver"/> — all other origin classes
+    /// (Anchored, OwnOutput, World, External, Unknown) count toward the non-caregiver
+    /// quota. This matches the Layer 1 design intent: Anchored and World in particular
+    /// are the substrates whose visibility the protected slots are meant to preserve.
+    ///
+    /// The backfill preserves the ranked order of non-caregiver candidates (score-desc)
+    /// and replaces the lowest-ranked caregiver slots. This keeps the top-ranked
+    /// caregiver memories (which are usually the strongest relevance signal) while
+    /// trading off the marginal caregiver slots for substrate diversity.
+    /// </summary>
+    internal static List<ScoredMemory> ApplyProtectedSlotsBackfill(
+        List<ScoredMemory> rankedTopK,
+        List<ScoredMemory> allCandidates,
+        int topK,
+        float minNonCaregiverFraction)
+    {
+        if (rankedTopK.Count == 0 || topK <= 0 || minNonCaregiverFraction <= 0f)
+            return rankedTopK;
+
+        // Quota: ceil(K * fraction) slots must be non-caregiver.
+        int requiredNonCaregiver = (int)Math.Ceiling(topK * minNonCaregiverFraction);
+        int currentNonCaregiver  = rankedTopK.Count(r => !RetrievalOriginClassifier.IsCaregiverOriented(r.OriginTier));
+        int shortfall = requiredNonCaregiver - currentNonCaregiver;
+        if (shortfall <= 0)
+            return rankedTopK;
+
+        // Source pool: non-caregiver candidates not already in the top-K.
+        // Sorted by composite score desc so we pull the best substitutes first.
+        var selectedIds = new HashSet<Guid>(rankedTopK.Select(r => r.Record.Id));
+        var backfillPool = allCandidates
+            .Where(c => !selectedIds.Contains(c.Record.Id))
+            .Where(c => !RetrievalOriginClassifier.IsCaregiverOriented(c.OriginTier))
+            .OrderByDescending(c => c.CompositeScore)
+            .Take(shortfall)
+            .ToList();
+
+        if (backfillPool.Count == 0)
+            return rankedTopK;  // no substitutes available — leave the pool alone
+
+        // Swap: drop the lowest-scoring caregiver slots, add the best non-caregiver
+        // candidates in their place. Preserves the composite-score ordering of the
+        // result by sorting at the end.
+        var result = new List<ScoredMemory>(rankedTopK);
+        int swapsNeeded = Math.Min(backfillPool.Count, shortfall);
+
+        var caregiverSlotsOrderedByScore = result
+            .Where(r => RetrievalOriginClassifier.IsCaregiverOriented(r.OriginTier))
+            .OrderBy(r => r.CompositeScore)  // ascending — weakest first
+            .Take(swapsNeeded)
+            .ToList();
+
+        foreach (var weakCaregiver in caregiverSlotsOrderedByScore)
+            result.Remove(weakCaregiver);
+
+        result.AddRange(backfillPool.Take(swapsNeeded));
+
+        // Re-sort so the final pool respects composite-score ordering.
+        return result
+            .OrderByDescending(r => r.CompositeScore)
+            .ToList();
     }
 
     /// <summary>

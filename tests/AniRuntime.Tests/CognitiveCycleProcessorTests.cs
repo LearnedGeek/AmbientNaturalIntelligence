@@ -614,7 +614,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                           .Returns(Task.CompletedTask);
 
         // SearchAsync returns both memories (simulating retrieval contamination)
-        MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
                   .ReturnsAsync(new[] { bookMemory, soupMemory });
         // AC1: Scored search — conversation reply now uses SearchWithScoresAsync
         // Both memories above confidence floor so contradiction test works
@@ -686,7 +686,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
                           .ReturnsAsync(thread);
         _mockConversations.Setup(c => c.AddMessageAsync(It.IsAny<Guid>(), It.IsAny<ConversationMessage>(), It.IsAny<CancellationToken>()))
                           .Returns(Task.CompletedTask);
-        MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        MockMemory.Setup(m => m.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
                   .ReturnsAsync(new[] { bookMemory });
         MockMemory.Setup(m => m.SearchWithScoresAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new[] { new ScoredMemory(bookMemory, 0.8f, 0.7f) });

@@ -9,7 +9,18 @@ namespace AniRuntime.Core.Interfaces;
 /// </summary>
 public interface IMemorySearch
 {
-    Task<IEnumerable<MemoryRecord>> SearchAsync(string query, int topK = 10, CancellationToken ct = default);
+    /// <summary>
+    /// Semantic search with optional origin-quota enforcement (Agentic Lens Layer 1 Phase 1c,
+    /// Apr 2026). When <paramref name="enforceOriginQuota"/> is true AND
+    /// <see cref="AniOptions.RetrievalProtectedSlotsEnabled"/> is true, the returned pool
+    /// is adjusted to reserve a minimum non-caregiver-origin share per
+    /// <see cref="AniOptions.MinNonCaregiverRetrievalFraction"/>. Intended for the inner-thought
+    /// cycle retrieval path; conversation-reply retrieval should leave this false so reply
+    /// generation remains caregiver-weighted.
+    /// </summary>
+    Task<IEnumerable<MemoryRecord>> SearchAsync(
+        string query, int topK = 10, CancellationToken ct = default,
+        bool enforceOriginQuota = false);
     Task<IEnumerable<ScoredMemory>> SearchWithScoresAsync(string query, int topK = 10, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> SearchByTypeAsync(string query, MemoryType type, int topK = 5, CancellationToken ct = default);
     Task<IEnumerable<MemoryRecord>> GetByTypeAsync(MemoryType type, int limit = 50, CancellationToken ct = default);

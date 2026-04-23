@@ -77,7 +77,13 @@ public class ContextBuilder
             var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
             try
             {
-                var results = await _search.SearchAsync(searchQuery, 5, ct).ConfigureAwait(false);
+                // Agentic Lens Layer 1 Phase 1c (Apr 2026): inner-thought retrieval
+                // opts in to origin-quota enforcement. When RetrievalProtectedSlotsEnabled
+                // is off in config this is a no-op. Conversation-reply callers leave
+                // enforceOriginQuota=false so reply retrieval stays caregiver-weighted.
+                var results = await _search.SearchAsync(
+                    searchQuery, topK: 5, ct: ct, enforceOriginQuota: true)
+                    .ConfigureAwait(false);
                 relevantMem = results.ToList();
                 _log.LogDebug("Semantic search returned {Count} relevant memories", relevantMem.Count);
             }
