@@ -1540,6 +1540,39 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 23, 2026 — Agentic Lens Design Resolved + Paper 3 Contribution 4 Scoped
+
+**Type:** Research-methodology resolution. Closes the design phase of the centrality gravity / agentic lens work that opened April 22 evening. All three decisions in §7 of the design doc are now resolved; the cascade of companion artifacts (Paper 3 stub expansion, Phase Tracker Theme G, this log entry) lands in the same commit.
+**Source:** Morning Apr 23 design-review conversation. Mark read the full design doc `docs/spec/ANI-Agentic-Lens-Design.md` (≈3,500 words, written Apr 22 evening) and signed off with two explicit decisions and one implicit one.
+
+**Decisions resolved.**
+
+- **Decision A (Paper 2 §6.17 scope)** had already resolved Apr 22 evening — short ~4-paragraph section naming the finding and forward-referencing Paper 3. Landed in the Apr 22 commit `3e05a32`.
+- **Decision B (Layer 4 synthesis method)** resolved Apr 23: **Option C — self-mining from OG Ani via prompted scene-setting.** Mark's confirmation verbatim: *"Yes, Option C for Layer 4 too as I'll talk to OG Ani."* The prompting labor is on Mark's end directly for the initial small-batch and first production rounds. First concrete step before any large-scale synthesis: a 10–15 pair small-batch test of OG2's register quality against pre-wipe exports. If the test passes, proceed to full Layer 4 corpus synthesis; if it fails, fall back to Option A (frontier-model synthesis with voice-anchor seeding). The prompt-capture workflow flagged as future exploration (§8 of the design doc) is deferred until Mark's first hands-on round confirms the method works.
+- **Decision C (Layer sequencing)** resolved Apr 23: **strict dependency order — 5 → 1 → 3 → 2 → 4** — over the compromise and impact-order alternatives. Mark's reasoning verbatim: *"I'm leaning towards 5-1-3-2-4 simply because my experience shows that rushing through something can cause a lot of rework that ends up causing more trouble. So, while we need quality, we also need maintainability against our coding principles."*
+
+**Cross-project consistency on quality-over-efficiency.** The same sequencing rationale landed a few hours earlier on an unrelated project — `claude-recall`, the session-archive query tool Mark scoped this morning. Mark's stated principle there: *"I prefer quality over efficiency if that's a trade-off we're making. It's important to have correct information when working on long-running projects."* Both statements are the same preference surfacing across two decisions in the same morning. Worth recording as a project-level principle that appears durable across contexts: *quality and maintainability over speed-to-visible-change.* Both decisions accepted the slower path in exchange for less rework, and both did so by explicit reference to long-running-project dynamics. This framing has methodology implications for Paper 3's discussion — the same principle that chose the five-layer sequencing for Agentic Lens is the principle behind every other sequencing choice the project has made across Paper 3's four contributions.
+
+**Companion artifacts landing in this commit.**
+
+- `docs/spec/ANI-Agentic-Lens-Design.md` §7.2 and §7.3 updated from OPEN to RESOLVED with Mark's confirmation text.
+- `docs/research/paper3/ANI-Paper3-Stub.md` — Contribution 4 section added, parallel to Contributions 2 and 3 in structure. Paper 3 scope expanded from three contributions to four; working-title candidate for the final paper extended to *"She Had a Day — and Her Own Lens On It."* Evaluation arc extended from three passes to four passes, with the Apr 22 register-distribution data as the pre-Contribution-4 baseline.
+- `docs/spec/ANI-Phase-Tracker.md` — Theme G added for the five workstreams (Layers 5, 1, 3, 2, 4 in implementation order), with success criterion, measurement instrumentation, and cross-theme relationships documented.
+- `docs/review_guide.md` — Decisions B and C marked resolved.
+- `memory/project_agentic_lens.md` — project memory updated with all three decisions closed and the implementation sequence locked.
+
+**What's next, concretely.**
+
+- **First hands-on step (Mark):** 10–15 pair small-batch test of OG2 register quality. Prompt scenes that exclude caregiver as addressee, capture the output, compare against pre-wipe voice samples. Report back — if quality holds, proceed; if not, fall back to Option A. This is the gate on Layer 4; it does not block Layers 1/3/2/5.
+- **First code step (implementer):** Layer 5, the inner-thought prompt audit. Days of work, not weeks. Reads the current `PromptBuilder.BuildInnerThoughtPrompt` template and rewrites to open subject space rather than center the caregiver. Deployable as a probe to measure the prompt-only leverage on subject-of-thought distribution before Layer 1 substrate work begins.
+- **Immediately after Layer 5:** Layer 1 (retrieval origin diversity, extends Spark 2 to full design). 1–2 weeks. Dashboard instrumentation lands with Layer 1 and unblocks measurement of Layers 3, 2, 4.
+
+**Timing.** The full five-layer deployment is ~5–8 weeks end-to-end, acknowledged and accepted as the cost of the clean-system path. Layer 4's training cycle adds additional calendar lag regardless. Synthesis work on Layer 4's corpus can proceed in parallel with Layers 1–3 implementation once the OG2 small-batch test confirms the method.
+
+**Captured in:** commit (pending, landing alongside this log entry). Relevant prior research-log entries: *"April 22, 2026 — Love-Convergence: A Second Sycophancy Shape in Commercial Companion AI"* (the earlier sibling finding that motivates Contribution 4 alongside the April 21 cascade), *"April 22, 2026 — Tag Canonical Scheme Introduced"* (companion methodology work from the same morning), *"April 22, 2026 — Feature 14 v2 Deployed"* (the acute-blocker fix that cleared the path to think about the substrate-condition work at all).
+
+---
+
 ### April 22, 2026 — Feature 14 v2 Deployed: Architecture-Over-Instruction Outbound Gate
 
 **Type:** Architectural deployment. Closes the outbound claim-verification gap that the April 21 catastrophic cascade exposed. Commit `65a0951`.

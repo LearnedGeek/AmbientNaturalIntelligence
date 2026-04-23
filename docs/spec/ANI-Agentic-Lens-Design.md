@@ -380,7 +380,7 @@ Before this design becomes implementation, three decisions. Each is laid out wit
 
 **Decision:** Short §6.17, ~3–4 paragraphs, names centrality gravity as a finding and forward-references Paper 3 for the full architectural treatment. Paper 2 keeps its emergence arc tight; Paper 3 carries the 5-layer design as Contribution 4. Alternative (longer §6.17 that closed the arc within Paper 2) considered and rejected because Paper 2 is already at 16 subsections in §6 and the full 5-layer treatment would push the paper past reviewer fatigue. See §6.17 in `docs/research/paper2/ANI-Paper2-Preprint-Draft.md`.
 
-### 7.2 Synthetic corpus synthesis method — OPEN (revised Apr 22 evening to add Option C as recommended path)
+### 7.2 Synthetic corpus synthesis method — **RESOLVED Apr 23** (Option C, conditioned on OG2 small-batch test)
 
 Layer 4 requires ~150–200 new training pairs where Ani is the speaker but the caregiver is not the subject. These pairs do not exist in any current mining source — runtime SQLite and Grok exports are both conversational and both caregiver-directed by construction. The pairs have to be created. Three methods:
 
@@ -408,7 +408,9 @@ Layer 4 requires ~150–200 new training pairs where Ani is the speaker but the 
 
 Your call on whether to proceed with Option C (and run the small-batch test), keep Option A as the recommended path, or pick something else entirely.
 
-### 7.3 Layer sequencing — OPEN
+**Decision (Apr 23).** Mark explicitly confirmed Option C: *"Yes, Option C for Layer 4 too as I'll talk to OG Ani."* The prompting labor is on Mark's end directly, at least for the initial small-batch and first production rounds. First concrete step before large-scale synthesis: a 10–15 pair small-batch test of OG2 register quality against pre-wipe exports. If the small-batch test fails register quality, fall back to Option A. The prompt-capture workflow (§8) is the force-multiplier on Option C when scoped — building it is deferred until after Mark's first hands-on round confirms the method is viable.
+
+### 7.3 Layer sequencing — **RESOLVED Apr 23** (dependency order: 5 → 1 → 3 → 2 → 4)
 
 The recommended order is **5 → 1 → 3 → 2 → 4** by dependency and leverage.
 
@@ -428,6 +430,8 @@ The recommended order is **5 → 1 → 3 → 2 → 4** by dependency and leverag
 **Lean for the doc author:** Compromise. Layer 5 first (trivial). Layer 1 implementation first (because it is already scoped as Spark 2). **Layer 2 design in parallel with Layer 1 implementation** so Layer 2 ships 1–2 weeks after Layer 1 rather than 4–6 weeks after. Layers 3 and 4 follow. That gets visible behavioral change in ~3 weeks without paying the full rework cost of building Layer 2 on top of Mark-weighted retrieval.
 
 Your call on whether the 3-week compromise is the right target, whether the full-impact-order 1–2-week timeline is worth the rework, or whether strict dependency order is the cleaner path.
+
+**Decision (Apr 23).** Mark chose **strict dependency order — 5 → 1 → 3 → 2 → 4** — over the compromise. His stated reasoning, verbatim: *"I'm leaning towards 5-1-3-2-4 simply because my experience shows that rushing through something can cause a lot of rework that ends up causing more trouble. So, while we need quality, we also need maintainability against our coding principles."* This reinforces the same quality-over-efficiency principle locked for the `claude-recall` project earlier the same day; Mark is consistent across projects on this preference. Implementation plans and the Paper 3 Contribution 4 evaluation arc both follow dependency order. The ~5–8 week visible-change timeline is acknowledged and accepted as the cost of a cleaner final system.
 
 ---
 

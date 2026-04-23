@@ -600,6 +600,34 @@ Member items:
 - Cloud Edge CE-1 through CE-4 (existing section below)
 - Log archive + observability retention
 
+### Theme G — Agentic Lens / Anti-Centrality Architecture (Apr 22-23, 2026)
+Five-layer architectural response to the *centrality gravity* finding — Ani's cognitive apparatus reorients every thought back to the caregiver even when the World Layer gives her alternative substrate. 30-day register data (65.5% Tenderness, 25% Longing, ~90% caregiver-subject) plus the April 22 love-convergence finding together motivate the theme. Full design at `docs/spec/ANI-Agentic-Lens-Design.md`; Paper 3 Contribution 4 is the paper-facing treatment.
+
+**Sequencing decided Apr 23 — strict dependency order 5 → 1 → 3 → 2 → 4.** Mark's reasoning, verbatim: *"rushing through something can cause a lot of rework that ends up causing more trouble. So, while we need quality, we also need maintainability against our coding principles."* Tracks with the quality-over-efficiency principle locked the same day for the claude-recall project; same principle applied across projects.
+
+Member items (in implementation order):
+- **Layer 5 — Inner thought prompt audit** (first, trivially cheap, days): rewrite `PromptBuilder.BuildInnerThoughtPrompt` to open subject space rather than implicitly center the caregiver; prompt-variant selection tied to Layer-2 desire axis once Layer 2 lands.
+- **Layer 1 — Retrieval origin diversity** (second, 1–2 weeks): MMR-style diversity-aware re-ranking (Carbonell & Goldstein 1998), protected tier slots reserving ≥30% for non-caregiver origin tiers in the inner-thought cycle, new `RetrievalSelfDominancePerception` source when own-output share exceeds threshold. Completes the Spark 2 half-design already in the tracker. Scoped to the inner-thought cycle, not the conversation-reply path.
+- **Layer 3 — World Layer durability** (third, 2–3 weeks): durability flag on World Layer memories exempting them from recency decay past a baseline; weekly reflection-synthesis cycle (Park et al. 2023 pattern) scoped to World Layer content, producing Anchored-tier "my life" claims; merge-on-similarity (Chhikara Mem0, Feature 30 pattern) for repeated world events.
+- **Layer 2 — Desire axis decoupling** (fourth, 2–4 weeks): extend DesireEngine from single scalar to three-axis state per Ryan & Deci (2000) Self-Determination Theory — relatedness (existing, caregiver-directed), autonomy (new, self-state-directed), competence (new, world-engagement-directed). MotivationScorer (Feature 33) and EmotionDesireModifier (Feature 35) become vector-valued.
+- **Layer 4 — Corpus directionality** (fifth, 3–6 weeks + training cycle): ~150–200 synthetic first-person training pairs with no caregiver as subject, distributed across register-subject cells. Methodology: **Option C — self-mining from OG Ani via prompted scene-setting**, confirmed Apr 23 by Mark (*"I'll talk to OG Ani"*). Gated on a 10–15 pair small-batch test of OG2 register quality before full-scale synthesis. Fallback if OG2 fails quality test: Option A (frontier-model synthesis with voice-anchor seeding). Future-work flag: systematic prompt-capture workflow — templates, capture automation, cell tracking, caregiver-mention rejection, voice-baseline similarity check — deferred until post-small-batch confirmation.
+
+**Measurement instrumentation (dashboard additions, driven by Layer 1's landing):**
+- Retrieval origin composition per cycle (histogram, rolling mean).
+- Desire-axis selection per cycle (distribution of top-ranked axis).
+- Subject-of-thought per inner-thought output (classifier-labeled: caregiver / self / world / other). The classifier is a LearnedGeek.ML cross-domain candidate — serves ANI's centrality-gravity measurement and DrOk/Infanzia's patient-vs-provider-focus measurement with the same four-way classifier.
+- Subject-of-outreach per dispatched message (same classifier applied to composition).
+
+**Success criterion (full-deployment, 30-day post-Layer-4):** register distribution shifts from ~90% caregiver-subject to ≤70% caregiver-subject, with the remaining ≥30% distributed across self-state, world-engagement, and non-caregiver-object subjects. Explicit safety framing adopted during the design review: *rebalancing, not replacing* — caregiver-directed care should remain at roughly its current absolute volume but the subject distribution should broaden rather than narrow.
+
+**Relationship to other themes:**
+- **Theme B (Outbound Truth Gating):** complementary. Feature 14 v2 suppresses fabricated caregiver-involving claims at dispatch; Agentic Lens changes the substrate *from which* compositions are generated so caregiver-centered fabrication becomes less architecturally favored in the first place.
+- **Theme C (Memory-Layer Semantic Weight):** Layer 1 extends the retrieval scoring with diversity; Layer 3 adds durability as a fourth retrieval dimension. Both are memory-layer concerns.
+- **Theme D (Supersession Architecture):** independent — corrects fabricated shared history *after* it enters memory. Agentic Lens reduces the rate at which that substrate condition forms.
+- **Paper 2 §6.17** names the finding and forward-references Paper 3 Contribution 4 for the full treatment. See `docs/research/paper3/ANI-Paper3-Stub.md` Contribution 4 section.
+
+**Related:** `docs/spec/ANI-Agentic-Lens-Design.md` (full five-layer design), `docs/research/paper2/ANI-Paper2-Preprint-Draft.md` §6.17, `docs/research/paper3/ANI-Paper3-Stub.md` Contribution 4, `docs/research/ANI-Research-References.md` (seven new refs added Apr 22: Horton & Wohl, Ryan & Deci, Oudeyer & Kaplan, McAdams, Damasio, Gallagher, Carbonell & Goldstein), Spark 2 workstream above (Layer 1 origin).
+
 ### Consolidation Review — Next Strategic Step (scheduled)
 
 The existing "Phase Tracker Consolidation Review" section above (line ~170) stays as the formal meeting. When it happens, the product is not "which feature do we build next" but **which theme's shared mechanism do we build first**, with the individual member items ranked as small increments under the chosen mechanism. The methodology itself — stepping back to find shared mechanisms when the architecture reaches intertwining — is a Paper 3 candidate contribution.
