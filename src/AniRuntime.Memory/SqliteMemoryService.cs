@@ -396,24 +396,50 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
 
-        var ranked = candidates
+        // Build the full scored candidate set (ScoredMemory so MMR can see both
+        // composite score and embedding). When diversity is disabled, we still
+        // collapse to the (record, score) tuple path at the end for minimal
+        // change to the downstream return shape.
+        var scoredAll = candidates
             .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
-            .Select(r => (record: r, score: ComputeRetrievalScore(queryEmbedding, r)))
-            .OrderByDescending(x => x.score)
-            .Take(topK)
+            .Select(r =>
+            {
+                var cosine = CosineSimilarity(queryEmbedding, r.Embedding!);
+                var composite = ComputeRetrievalScore(queryEmbedding, r);
+                return new ScoredMemory(r, composite, cosine)
+                {
+                    OriginTier = RetrievalOriginClassifier.Classify(r),
+                };
+            })
             .ToList();
+
+        // Agentic Lens Layer 1 Phase 1b (Apr 2026): diversity-aware re-ranking.
+        // Same treatment as SearchWithScoresAsync — gated on the flag, default
+        // off until Phase 1a origin-logging baselines accumulate.
+        List<ScoredMemory> ranked;
+        if (_options.RetrievalDiversityEnabled && scoredAll.Count > 0)
+        {
+            ranked = ApplyMmrRerank(scoredAll, topK, (float)_options.RetrievalDiversityLambda);
+        }
+        else
+        {
+            ranked = scoredAll
+                .OrderByDescending(x => x.CompositeScore)
+                .Take(topK)
+                .ToList();
+        }
 
         if (ranked.Count > 0)
         {
             var top = ranked[0];
-            var cosine = CosineSimilarity(queryEmbedding, top.record.Embedding!);
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}): {Content}",
-                candidates.Count, top.score, cosine, top.record.Importance, top.record.Type,
-                top.record.Content.Length > 80 ? top.record.Content[..80] + "..." : top.record.Content);
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}): {Content}",
+                candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
+                _options.RetrievalDiversityEnabled,
+                top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
-        return ranked.Select(x => x.record);
+        return ranked.Select(x => x.Record);
     }
 
     public async Task<IEnumerable<ScoredMemory>> SearchWithScoresAsync(
@@ -446,7 +472,7 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
 
-        var ranked = candidates
+        var scoredAll = candidates
             .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
             .Select(r =>
             {
@@ -460,16 +486,33 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                     OriginTier = RetrievalOriginClassifier.Classify(r),
                 };
             })
-            .OrderByDescending(x => x.CompositeScore)
-            .Take(topK)
             .ToList();
+
+        // Agentic Lens Layer 1 Phase 1b (Apr 2026): diversity-aware re-ranking.
+        // When enabled, MMR replaces the pure score-descending top-K selection
+        // with iterative diversity-penalized selection. Default off — flipping
+        // the flag changes retrieval composition, which is why it's gated until
+        // Phase 1a baseline logs accumulate for before/after comparison.
+        List<ScoredMemory> ranked;
+        if (_options.RetrievalDiversityEnabled && scoredAll.Count > 0)
+        {
+            ranked = ApplyMmrRerank(scoredAll, topK, (float)_options.RetrievalDiversityLambda);
+        }
+        else
+        {
+            ranked = scoredAll
+                .OrderByDescending(x => x.CompositeScore)
+                .Take(topK)
+                .ToList();
+        }
 
         if (ranked.Count > 0)
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}, origin={Origin}): {Content}",
+                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}, origin={Origin}, mmr={Mmr}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Type, top.OriginTier,
+                _options.RetrievalDiversityEnabled,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -595,6 +638,86 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     // Feature 9: Delegate to shared SIMD-accelerated implementation
     private static float CosineSimilarity(float[] a, float[] b)
         => VectorMath.CosineSimilarity(a, b);
+
+    /// <summary>
+    /// Agentic Lens Layer 1 Phase 1b (Apr 2026): Maximal Marginal Relevance
+    /// rerank over an already-scored candidate set.
+    ///
+    /// Algorithm (Carbonell &amp; Goldstein 1998):
+    /// 1. Select the candidate with the highest composite score as the first pick.
+    /// 2. For each subsequent pick, compute an adjusted score for every remaining
+    ///    candidate:
+    ///       adjusted = composite − λ · max(cosine(candidate, already_selected))
+    /// 3. Select the candidate with the highest adjusted score.
+    /// 4. Repeat until <paramref name="topK"/> candidates are selected or the
+    ///    remaining pool is empty.
+    ///
+    /// The penalty term is the maximum cosine similarity between the candidate
+    /// and any already-selected candidate — it measures how much the candidate
+    /// would duplicate existing coverage. High similarity → large penalty →
+    /// drops in the effective ranking. When λ = 0 the rerank collapses to pure
+    /// composite-score ranking (no diversity); when λ = 1 it maximizes diversity
+    /// after the first pick. Default 0.3 is relevance-heavy, diversity tie-breaks
+    /// only.
+    ///
+    /// Candidates without embeddings contribute zero similarity to any penalty,
+    /// which is conservative — they are neither rewarded nor penalized for
+    /// diversity. In practice all candidates reaching this method have
+    /// embeddings (filtered upstream).
+    /// </summary>
+    internal static List<ScoredMemory> ApplyMmrRerank(
+        List<ScoredMemory> scoredCandidates, int topK, float lambda)
+    {
+        if (scoredCandidates.Count == 0 || topK <= 0)
+            return new List<ScoredMemory>();
+
+        var selected  = new List<ScoredMemory>(Math.Min(topK, scoredCandidates.Count));
+        var remaining = new List<ScoredMemory>(scoredCandidates);
+
+        // First pick: highest composite score. Standard MMR initialization.
+        ScoredMemory first = remaining[0];
+        for (int i = 1; i < remaining.Count; i++)
+        {
+            if (remaining[i].CompositeScore > first.CompositeScore)
+                first = remaining[i];
+        }
+        selected.Add(first);
+        remaining.Remove(first);
+
+        while (selected.Count < topK && remaining.Count > 0)
+        {
+            ScoredMemory? best = null;
+            float bestAdjusted = float.NegativeInfinity;
+
+            foreach (var candidate in remaining)
+            {
+                float maxSimilarity = 0f;
+                if (candidate.Record.Embedding is not null)
+                {
+                    foreach (var sel in selected)
+                    {
+                        if (sel.Record.Embedding is null) continue;
+                        if (sel.Record.Embedding.Length != candidate.Record.Embedding.Length) continue;
+                        var sim = CosineSimilarity(sel.Record.Embedding, candidate.Record.Embedding);
+                        if (sim > maxSimilarity) maxSimilarity = sim;
+                    }
+                }
+
+                float adjusted = candidate.CompositeScore - (lambda * maxSimilarity);
+                if (adjusted > bestAdjusted)
+                {
+                    bestAdjusted = adjusted;
+                    best = candidate;
+                }
+            }
+
+            if (best is null) break;
+            selected.Add(best);
+            remaining.Remove(best);
+        }
+
+        return selected;
+    }
 
     /// <summary>
     /// Feature 20 + Feature 24: Park et al. three-way retrieval scoring with type-aware decay.

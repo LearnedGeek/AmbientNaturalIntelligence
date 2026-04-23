@@ -83,6 +83,23 @@ public class AniOptions
     // and backfill behavior is wired in.
     public bool RetrievalOriginLoggingEnabled { get; set; } = true;
 
+    // Agentic Lens Layer 1 Phase 1b: MMR diversity-aware re-ranking of the
+    // cognitive-cycle retrieval pool (Carbonell & Goldstein 1998).
+    //
+    // When enabled, the composite score (cosine + importance + recency) is
+    // extended with a diversity penalty: each candidate's adjusted score is
+    //   adjusted = composite − λ · max(cosine(candidate, already_selected))
+    // iterated across top-K selection. This breaks near-duplicate clusters in
+    // the top-K (e.g. five semantically-similar caregiver-memories collapsing
+    // to one slot) and opens space for substrate-diverse retrieval.
+    //
+    // Default off per the "observe first" rollout pattern. Flip to true after
+    // Phase 1a baseline logs accumulate enough data to compare before/after
+    // origin distributions. λ default 0.3 per Carbonell & Goldstein's original
+    // range of 0.3–0.5 — relevance-heavy, diversity tie-breaks.
+    public bool   RetrievalDiversityEnabled { get; set; } = false;
+    public double RetrievalDiversityLambda  { get; set; } = 0.3;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.
