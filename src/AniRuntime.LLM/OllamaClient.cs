@@ -52,10 +52,51 @@ public class OllamaClient : IOllamaClient
             new { role = "system", content = systemPrompt }
         };
 
-        foreach (var m in history)
+        // Capture history in a concrete list so we can both iterate for the
+        // request AND log the same sequence for the parrot-bug investigation
+        // (Apr 23, 2026). Iterating the IEnumerable twice would be unsafe for
+        // some underlying collections; materializing here is cheap.
+        var historyList = history as IList<ChatMessage> ?? history.ToList();
+        foreach (var m in historyList)
             messages.Add(new { role = m.Role, content = m.Content });
 
         messages.Add(new { role = "user", content = userMessage });
+
+        // Parrot-bug investigation (Apr 23, 2026): log the full payload being
+        // sent to the model. The Apr 23 raw-Ollama diagnostic showed that
+        // ani-v7-conversation produces rich, non-parroting replies when given
+        // raw turns directly. Parroting appears only through our pipeline's
+        // prompt composition. To diagnose which pipeline transform is causing
+        // the echo behavior, the journal needs a record of exactly what the
+        // model received at the moment it produced the problematic reply.
+        // Per-message content truncated to 200 chars to keep log lines
+        // manageable; full content is still recoverable from upstream logs
+        // (ContextCompressor dumps the summary, ConversationReplyPhase dumps
+        // the user prompt, PromptBuilder code is the source of truth for the
+        // system prompt shape).
+        if (_log.IsEnabled(LogLevel.Debug))
+        {
+            _log.LogDebug(
+                "Ollama [{Model}] payload: {Messages} messages, system={SystemChars}c, history={HistoryCount}, user={UserChars}c",
+                model, messages.Count, systemPrompt.Length, historyList.Count, userMessage.Length);
+
+            // System prompt preview (one line, truncated).
+            _log.LogDebug("Ollama [{Model}] payload[0] system ({Chars}c): {Preview}",
+                model, systemPrompt.Length, Truncate(systemPrompt, 200));
+
+            // Per-history-message preview. Numbering from 1 to match the
+            // payload-index (system is index 0). User prompt ends at N+1.
+            for (int i = 0; i < historyList.Count; i++)
+            {
+                var m = historyList[i];
+                _log.LogDebug("Ollama [{Model}] payload[{Idx}] {Role} ({Chars}c): {Preview}",
+                    model, i + 1, m.Role, m.Content.Length, Truncate(m.Content, 200));
+            }
+
+            // User-prompt tail (the actual reply directive).
+            _log.LogDebug("Ollama [{Model}] payload[{Idx}] user ({Chars}c): {Preview}",
+                model, historyList.Count + 1, userMessage.Length, Truncate(userMessage, 200));
+        }
 
         // keep_alive controls how long the model stays loaded in VRAM after this request.
         // "0" unloads immediately (used by intent extraction to free VRAM for conversation model).
@@ -114,7 +155,12 @@ public class OllamaClient : IOllamaClient
                                      .ConfigureAwait(false);
 
             var content = body?.Message?.Content ?? string.Empty;
-            _log.LogDebug("Ollama [{Model}] response ({Chars} chars)", model, content.Length);
+            // Parrot-bug investigation (Apr 23, 2026): include a truncated
+            // preview of the response so per-cycle log inspection does not
+            // require cross-referencing the "Conversation reply:" log line
+            // to match up request and response. Still Debug-level.
+            _log.LogDebug("Ollama [{Model}] response ({Chars} chars): {Preview}",
+                model, content.Length, Truncate(content, 200));
             return content;
         }
 
@@ -229,6 +275,21 @@ public class OllamaClient : IOllamaClient
             imageBytes.Length, description);
 
         return description;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a single-line preview of <paramref name="text"/> truncated to
+    /// <paramref name="maxChars"/>. Newlines are collapsed to spaces so each
+    /// log line stays on one line for grep-ability. Added for the Apr 23, 2026
+    /// parrot-bug investigation instrumentation.
+    /// </summary>
+    private static string Truncate(string text, int maxChars)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        var collapsed = text.Replace('\n', ' ').Replace('\r', ' ');
+        return collapsed.Length <= maxChars ? collapsed : collapsed[..maxChars] + "...";
     }
 
     // ── Response shapes ───────────────────────────────────────────────────────

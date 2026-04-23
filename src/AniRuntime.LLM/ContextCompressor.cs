@@ -92,6 +92,15 @@ public class ContextCompressor
 
             _log.LogDebug("Context compression: summarized {Count} messages into {Len} chars (target {Target})",
                 summarizeCount, summary.Length, targetLength);
+
+            // Agentic Lens parrot-bug investigation (Apr 23, 2026): log the
+            // compressed summary text itself so we can see what the reply
+            // model actually receives. Per the Apr 23 raw-Ollama diagnostic,
+            // the fine-tune replies richly when given raw context; the parrot
+            // behavior appears only through the pipeline. The compressed
+            // summary is one of the transforms the pipeline applies, so its
+            // content needs to be visible in the journal to diagnose.
+            _log.LogDebug("Context compression summary text: {Summary}", summary);
         }
 
         // Build the result: structured state + optional LLM summary + recent messages
@@ -103,6 +112,11 @@ public class ContextCompressor
         if (stateBlock is not null)
         {
             result.Add(new("user", stateBlock));
+            // Parrot-bug investigation (Apr 23): log the state-block content.
+            // The structured-state prompt block is another transform between
+            // raw conversation and what the reply model sees.
+            _log.LogDebug("Context compression state block ({Len} chars): {State}",
+                stateBlock.Length, stateBlock);
         }
 
         // LLM summary as fallback for context the structured state doesn't capture
@@ -114,6 +128,16 @@ public class ContextCompressor
         result.AddRange(toKeep.Select(m => new ChatMessage(
             m.Role == Roles.Ani ? "assistant" : "user",
             m.Content)));
+
+        // Parrot-bug investigation (Apr 23): log the shape of the final
+        // compressed-history payload so we can correlate per-cycle history
+        // size to response quality.
+        _log.LogDebug(
+            "Context compression payload: {Total} messages ({State} state-block, {Summary} summary, {Raw} raw)",
+            result.Count,
+            stateBlock is not null ? 1 : 0,
+            thread.CompressedSummary is not null ? 1 : 0,
+            toKeep.Count);
 
         return result;
     }
