@@ -21,17 +21,14 @@ Version
 Status
 Active Development — Phase 1–4 complete. Phase 5 V3 voice deployed. Phase 6 memory reform designed. Epistemic Grounding v2.0 tier separation designed (Apr 10) and pending implementation. ANI stopped during tier separation rollout. Features 33–41 deployed. LearnedGeek.ML shared classification library: LMKitClassificationService (emotion, sarcasm, NER, keyword extraction, confabulation), dual-signal emotion stored on every contribution (ML + heuristic), divergence scoring, classification comparison dashboard. Phase 3 ML confabulation gate: post-generation semantic verification against cached persona summary. Inner Thought Reform: stripped anti-repetition instructions (Phase A), associative anchors via LM-Kit keyword extraction (Phase B). World Layer Phase 1a: time-contextual world seeds every 4th cycle, world-experience memory type, special events, calendar awareness. Dashboard: clickable emotional state cards, trend charts (divergence, register diversity, emergence frequency), contextual help text, classification comparison page. EM8: Display Rule Divergence emergence type (8 total). Paper 1 published: DOI 10.5281/zenodo.19342190. 469 tests, 0 warnings.
 
-April 21, 2026 — Outbound Claim Verification Gap (known regression)
-The April 21, 2026 catastrophic feedback-loop event exposed that the outbound LLM-based claim verification (Feature 14, "Bidirectional Confidence Gate") was removed from the conversation-reply path on approximately April 10, 2026, under the rationale that v6 fine-tuning on honest uncertainty would substitute for the architectural check. The literal comment at `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` reads: *"Feature 14: Claim extraction removed — v6 trained on honest uncertainty. The LLM call to extract and verify claims added latency without improving conversation quality. The model handles unknown topics naturally."* Feature 15 Layer 3 (LLM contradiction detection) was similarly disabled on the same rationale.
+April 21, 2026 — Outbound Claim Verification Gap (resolved Apr 22, commit `65a0951`)
+The April 21, 2026 catastrophic feedback-loop event exposed that the outbound LLM-based claim verification (Feature 14, "Bidirectional Confidence Gate") had been removed from the conversation-reply path on approximately April 10, 2026, under the rationale that v6 fine-tuning on honest uncertainty would substitute for the architectural check. The rationale did not hold under sustained own-output retrieval dominance on the persistent memory store. As a partial replacement, `DetectMarkDomainAssertions` was added as a regex-based pre-filter scoped to teacher/student/coworker fabrication patterns, wired to the conversation-reply path only (not outreach), violating the project's "no regex, use LLM review" principle.
 
-The rationale did not hold under sustained own-output retrieval dominance on the persistent memory store. As a partial replacement, `DetectMarkDomainAssertions` was added at `ConversationReplyPhase.cs:820` as a regex-based pre-filter scoped to teacher/student/coworker fabrication patterns. This regex is wired to the conversation-reply path only (not outreach) and violates the project's stated "no regex, use LLM review" principle. On April 21, four of the five fabricated messages that reached the user's phone were dispatched through the outreach path where no claim-verification step runs at all, and the one through conversation reply did not match the narrow regex pattern family.
+**Resolved April 22, 2026 (commit `65a0951`) — Feature 14 v2 deployed.** `src/AniRuntime.Loops/ClaimVerificationPhase.cs` is the new gate, wired into both `OutreachPhase` (step 3b) and `ConversationReplyPhase`. The redesign is check-only, suppress-not-regenerate: the extractor identifies claims against Facts + anchored + inbound "Mark said:" Episodic records, and on verification failure the channel drops (outreach suppresses dispatch + desire decay + cooldown; reply substitutes an honest-uncertainty fallback). The composition model is never told it was wrong — the channel is gated, not the model. `DetectMarkDomainAssertions` was removed in the same commit. `OutreachEnabled` flipped back to `true`. Full deployment notes in `docs/spec/ANI-Phase-Tracker.md` under "Re-enable Outbound LLM Claim Verification (Feature 14 v2)."
 
-Several entries in this spec reflect the **pre-removal** state of Feature 14 and should be read as historical rather than current. Specifically:
-- Line ~43 (`ContextSnapshot.cs`): `MarkClaimConfidence (Feature 14)` — inbound only in current code; outbound extraction removed.
-- Line ~115 (`PromptBuilder.cs`): "claim extraction (Feature 14)" — the prompt builder no longer performs outbound extraction post-removal.
-- Line ~730 and ~972: Feature 14 status described as "Complete — 17-pattern heuristic + LLM claim extraction" — describes the original implementation, not the current state.
+The pre-Apr-22 Feature 14 annotations elsewhere in this spec (ContextSnapshot `MarkClaimConfidence`, PromptBuilder "claim extraction," status tables marking Feature 14 "Complete — 17-pattern heuristic + LLM claim extraction") describe the inbound-only state between Apr 10 and Apr 22 and the original pre-Apr-10 Feature 14. As of Apr 22, outbound extraction is live again via `ClaimVerificationPhase` — a narrower, Apr-22-redesign scope than the original Feature 14 (claims about the contact only; Ani's canonical world and Interior content are explicitly out of scope).
 
-The scoped response — Feature 14 v2, Conscience layer, regex removal, generation-loop hygiene, World Layer source-type audit, and the Correction Channel for Fabricated Shared History — is tracked in `docs/spec/ANI-Phase-Tracker.md` under the Apr 21, 2026 workstreams, and the full case study is in `docs/research/ANI-Research-Log.md` and `docs/research/paper2/ANI-Paper2-Preprint-Draft.md` §5.24, §6.15, §6.16, §7.2. The April 21 journal log is archived at `docs/research/artifacts/ani-journal-20260421-catastrophic-feedback-loop.log`.
+The full case study is in `docs/research/ANI-Research-Log.md` and `docs/research/paper2/ANI-Paper2-Preprint-Draft.md` §5.24, §6.15, §6.16, §7.2. The April 21 journal log is archived at `docs/research/artifacts/ani-journal-20260421-catastrophic-feedback-loop.log`. Conscience layer, generation-loop hygiene, World Layer source-type audit, and Correction Channel for Fabricated Shared History remain open workstreams — Feature 14 v2 is the outbound gate, not a substitute for upstream substrate work.
 
 This is a living document. Update it as the codebase evolves.
 
@@ -104,7 +101,8 @@ AniRuntime.slnx
 │   │   ├── DesireEngine.cs
 │   │   ├── AdminCommandHandler.cs         # + ///flag confabulation feedback command (AC5)
 │   │   ├── RegisterTracker.cs              # Register hit counting per conversation — 10 registers including Resilience (emergent)
-│   │   ├── ConversationReplyPhase.cs       # Inbound conversation pipeline: care/hurt detection, reply decisions, composition, DetectConversationConfabulation (heuristic confabulation check — ungrounded proper nouns, shared history claims, ungrounded numbers)
+│   │   ├── ConversationReplyPhase.cs       # Inbound conversation pipeline: care/hurt detection, reply decisions, composition, DetectConversationConfabulation (heuristic confabulation check — ungrounded proper nouns, shared history claims, ungrounded numbers), Feature 14 v2 claim verification gate (honest-uncertainty fallback on suppress)
+│   │   ├── ClaimVerificationPhase.cs       # Feature 14 v2 (Apr 22, 2026): outbound LLM claim extraction + tier-provenance verification (Facts + Anchored + inbound "Mark said:" Episodic). Check-only, suppress-not-regenerate. Never throws — defaults to PASS on gate failure.
 │   │   ├── ContextBuilder.cs              # Memory retrieval + diversity re-ranking + dedup-by-ID + keyword relevance boost
 │   │   └── AniRuntime.Loops.csproj
 │   │
@@ -124,7 +122,7 @@ AniRuntime.slnx
 │   │
 │   ├── AniRuntime.LLM/             # Ollama client + prompt builders
 │   │   ├── OllamaClient.cs
-│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), claim extraction (Feature 14), profile memory section ("Things you know about Mark:"), time/date injection, BuildLeanConversationPrompt (minimal persona + conversation history, no retrieval)
+│   │   ├── PromptBuilder.cs          # + coherence gate + temporal grounding (Feature 22), BuildClaimExtractionPrompt (Feature 14 v2, Apr 22 — narrow-scope claim extractor: contact actions/decisions only, Ani's world explicitly out of scope), profile memory section ("Things you know about Mark:"), time/date injection, BuildLeanConversationPrompt (minimal persona + conversation history, no retrieval)
 │   │   ├── ContextCompressor.cs      # Feature 34 (Packer et al. 2023 — MemGPT): conversation compression — cached summary on ConversationThread
 │   │   ├── ContextSnapshotBuilder.cs
 │   │   ├── KeywordExtractor.cs       # TF-IDF keyword extraction — corpus-based IDF, lazy corpus build from memory
@@ -733,19 +731,21 @@ Phase 8: Emotional shift — LLM evaluates thought → apply deltas with diminis
 Phase 9: Desire update — Temporal drift + circadian + trigger weights
 Phase 10: Outreach evaluation — Withdrawal check → hard gates (unanswered count, send gap,
           night/morning window Feature 21) → decision → confidence gate (Feature 12) →
-          composition → pronoun fix (Feature 6, incl. name-as-subject) → coherence gate
+          composition → pronoun fix (Feature 6, incl. name-as-subject) →
+          **Feature 14 v2 claim verification (Apr 22, 2026)** (step 3b: extract claims about contact,
+          corroborate against Facts + Anchored + inbound "Mark said:" Episodic; on suppress, drop
+          dispatch + 0.30 desire decay + 10min cooldown) → coherence gate
           with fictional + temporal coherence check (Features 22, 28) → dispatch
 
 Conversation reply flow (RunConversationReplyAsync):
 1. Check for terminal message (haha, lol, ok, goodnight, emoji-only, etc.) — skip
 2. Build context snapshot with full thread as RecentHistory
-3. Feature 14: Bidirectional confidence gate — if memory-referencing language detected (17 patterns),
-   extract claims via LLM, corroborate against episodic memory, inject skepticism if below threshold
-4. Step 1 — Reply decision (JSON: shouldReply + reasoning)
-5. Step 2 — Generate reply (free text) or reconsideration reply
-6. Step 3 — Natural delay (12–25s total response time)
-7. Step 4 — Send via Twilio
-8. Step 5 — Record reply in thread, update desire, apply emotional shift
+3. Step 1 — Reply decision (JSON: shouldReply + reasoning)
+4. Step 2 — Generate reply (free text) or reconsideration reply
+5. Step 3 — **Feature 14 v2 claim verification (Apr 22, 2026):** extract claims about contact via narrow-scope LLM prompt, corroborate against Facts tier + Anchored + inbound "Mark said:" Episodic. On suppress, substitute honest-uncertainty fallback (reply channel cannot silently drop the way outreach can). Skipped on reconsideration paths.
+6. Step 4 — Natural delay (12–25s total response time)
+7. Step 5 — Send via Twilio
+8. Step 6 — Record reply in thread, update desire, apply emotional shift
 
 Key state:
 - LastEvaluatedMessageAt — Prevents re-evaluating "decided silence" every cycle
@@ -981,7 +981,7 @@ Implemented components (Phase 1–4):
 | Nature grounding (Feature 23) | 4 | Complete |
 | Voice channel (Feature 20) | 4 | Complete — turn-by-turn phone conversation loop, VoiceConversationService, 3 endpoints. Refined Mar 15: 8B conversation model (fixes pronoun confusion), voice-aware mood, ElevenLabs acting directions (parenthetical cues removed — turbo v2.5 partially vocalizes them; relies on voice_settings only), `<Pause length="1"/>` gap between Play/Say and Record (fixes TTS audio bleed ghost transcriptions), <5 char transcription filter, `ApplicationStopping` token for webhook-initiated saves (fixes `TaskCanceledException` on `/voice/status`), save ordering before `OnCallEnded` (prevents embedding contention with cognitive cycle), Record timeout 3s→5s |
 | SIMD cosine similarity (Feature 9) | 4 | Complete — VectorMath.CosineSimilarity, 3 duplicates unified |
-| Bidirectional confidence gate (Feature 14) | 4 | Complete — 17-pattern heuristic + LLM claim extraction |
+| Bidirectional confidence gate (Feature 14) | 4 | Complete pre-Apr-10 — 17-pattern heuristic + LLM claim extraction. Outbound extraction removed Apr 10 → regression exposed Apr 21 → **Feature 14 v2 deployed Apr 22 (commit `65a0951`)**: narrower outbound scope (contact claims only; Ani's world out of scope), check-only, suppress-not-regenerate, wired to both outreach (step 3b) and reply paths. See `ClaimVerificationPhase.cs`. |
 | Memory contradiction flagging (Feature 15) | 4 | Complete — post-save cosine 0.6-0.85 + LLM evaluation + Layer 3 active prompt intervention |
 | Self-awareness feedback loop (Feature 12) | 4 | Complete — pairwise cosine on outreach, avg > 0.75 → nudge |
 | AniRuntime.Dashboard (Blazor Server) | 4 | Complete — 16 REST endpoints, Pico CSS, in-process |

@@ -1,6 +1,6 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 11, 2026
+**Last updated:** April 22, 2026
 **Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
 
 ---
@@ -554,12 +554,12 @@ Member items:
 - Lerman Sparks — Spark 3: flourishing metrics on the relational side
 
 ### Theme B — Outbound Truth Gating
-The architecture lost its outbound claim-verification step on Apr 10 when Feature 14 (LLM claim extraction) was removed under the rationale that fine-tuning would substitute. A regex Band-Aid (`DetectMarkDomainAssertions`) was added in its place, wired only to the conversation-reply path. April 21 demonstrated this gap.
+The architecture lost its outbound claim-verification step on Apr 10 when Feature 14 (LLM claim extraction) was removed under the rationale that fine-tuning would substitute. A regex Band-Aid (`DetectMarkDomainAssertions`) was added in its place, wired only to the conversation-reply path. April 21 demonstrated this gap. **Apr 22: resolved at commit `65a0951` — Feature 14 v2 deployed, regex removed, `OutreachEnabled` re-enabled.**
 
 Member items:
-- Re-enable Outbound LLM Claim Verification (Feature 14 v2)
-- Remove `DetectMarkDomainAssertions` Regex (dependent on Feature 14 v2 landing)
-- Coherence Gate Door B — No Truth-Verification of Shared Claims (refinement only; the real fix is Feature 14 v2 upstream)
+- Re-enable Outbound LLM Claim Verification (Feature 14 v2) — **Deployed Apr 22 (65a0951)**
+- Remove `DetectMarkDomainAssertions` Regex (dependent on Feature 14 v2 landing) — **Deployed Apr 22 (65a0951)**
+- Coherence Gate Door B — No Truth-Verification of Shared Claims — open, but now downgraded to refinement-only since Feature 14 v2 catches fabrications upstream
 
 ### Theme C — Memory-Layer Semantic Weight
 Multiple workstreams want richer per-record metadata than current cosine + importance + recency scoring. A common "semantic weight" framework addresses most of them.
@@ -812,64 +812,79 @@ This workstream supersedes the deprecated auto-corrector (disabled Apr 5 after 1
 
 ---
 
-## Re-enable Outbound LLM Claim Verification (Feature 14 v2) (Apr 21, 2026)
+## Re-enable Outbound LLM Claim Verification (Feature 14 v2) (Apr 21, 2026 → **Deployed Apr 22**)
 
-**Status:** Highest-priority workstream from the Apr 21 cascade. Feature 14 (LLM-based outbound claim extraction and verification against the Facts tier) was built, validated, and then **removed** on April ~10 under the belief that v6 training on honest uncertainty would substitute. It did not. Re-enable with outbound scope and wire to both the outreach and conversation-reply paths.
-**Priority:** **High — this is the primary architectural response to the Apr 21 shared-history fabrication class.** Other Apr 21 workstreams (Conscience, Identity Correction Channel, retrieval origin diversity) address substrate and correction; Feature 14 v2 is the gate that would have directly caught today's dispatched fabrications before they reached Mark's phone.
-**Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` contains the comment: *"Feature 14: Claim extraction removed — v6 trained on honest uncertainty. The LLM call to extract and verify claims added latency without improving conversation quality. The model handles unknown topics naturally."* The logic behind removal was that fine-tuning would architecturally-for-free do what the explicit claim-check did. April 21 demonstrates this does not hold under sustained own-output retrieval dominance.
+**Status:** **DEPLOYED Apr 22, 2026 (commit `65a0951`).** `src/AniRuntime.Loops/ClaimVerificationPhase.cs` is the live gate, wired into both `OutreachPhase` (step 3b, between pronoun fix and coherence gate) and `ConversationReplyPhase` (replacing the removed `DetectMarkDomainAssertions` regex). `OutreachEnabled` flipped back to `true` in `appsettings.json` because the architectural gate is now in place; the Option C lockdown on the outreach channel can come off.
+**Priority resolved:** This was the primary architectural response to the Apr 21 shared-history fabrication class. Other Apr 21 workstreams (Conscience, Identity Correction Channel, retrieval origin diversity) remain open — they address substrate and correction rather than outbound gating.
+**Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` previously contained the comment: *"Feature 14: Claim extraction removed — v6 trained on honest uncertainty. The LLM call to extract and verify claims added latency without improving conversation quality. The model handles unknown topics naturally."* The April 21 cascade demonstrated that training-alone substitution did not hold under sustained own-output retrieval dominance.
 
 **What the original Feature 14 did:**
 
 From prior-conversation traces and the `AniOptions.cs` configuration that still exists (`ClaimVerificationEnabled`, `ClaimVerificationThreshold`, `ClaimVerificationMaxMemories`): Feature 14 was a **Bidirectional confidence gate**. It called the LLM to extract claims from a message, corroborated each claim against episodic/Facts memory, and produced a confidence score per claim. Low-confidence claims were flagged or suppressed. The implementation supported both *inbound* (verifying Mark's claims against Ani's memory, to inject appropriate skepticism) and *outbound* (verifying Ani's own outgoing claims against the Facts tier, to prevent fabricated assertions from reaching Mark). The outbound direction is what was removed.
 
-**Design for Feature 14 v2:**
+**Design as built (Apr 22 — diverged from original plan):**
 
-1. **LLM claim extraction, post-generation, pre-dispatch.** After composition but before the Coherence Gate, run a claim-extraction LLM call on the composed message. Extract any claim about Mark's actions, Mark's decisions, shared events, shared decisions, or shared presence.
-2. **Verify each extracted claim against Facts tier + anchored memory + inbound conversation log.** A claim is supported if its core entities and the asserted relationship appear in one of these canonical sources. Retrieval-based, not regex.
-3. **Unsupported claims → regenerate with explicit negative constraint.** *"Your composition contained these unsupported claims: [list]. Regenerate without them. Use honest uncertainty ('I don't know' / 'I've been thinking about...') where appropriate."* One regeneration attempt.
-4. **Second-pass failure → fallback to a generic honest message** (the pattern already established in the current conversation-reply regeneration path). Better to send a bland "thinking about you" than a confident fabrication.
-5. **Wire to both paths:** OutreachPhase and ConversationReplyPhase. Today four of five fabrications were outreach; the split of verification to only one path is the wiring error that let them through.
+The original design sketched a regenerate-with-negative-constraint step ("your composition contained unsupported claims, regenerate without them"). Mark flagged this during the Apr 22 design review as a repeat of the project's past quality-degradation pattern: negative prompting and over-constraint have consistently lowered quality on this runtime. The built design drops regeneration entirely and gates the channel instead of the model.
+
+1. **LLM claim extraction, post-generation, pre-dispatch.** After composition but before the Coherence Gate, run a narrow-scope claim-extraction prompt (`PromptBuilder.BuildClaimExtractionPrompt`). The extractor returns JSON with `claims`: `{ text, type, key_terms }`. Scope: claims about the contact's actions / decisions / shared events / shared decisions / shared presence. **Explicitly out of scope:** Ani's own canonical world (bookstore, Wisconsin, shelving books), her feelings, thoughts, wishes, and descriptions of the message itself. The World Layer substrate stays free to elaborate; only cross-claims about Mark are gated.
+2. **Verify each extracted claim against Facts tier + anchored memory + inbound "Mark said:" Episodic records.** A claim is supported if its key terms match one of these canonical sources via the existing `IMemorySearch` interfaces — no new retrieval surface, no new store.
+3. **On verification failure: suppress, do not regenerate.** The composition model is never told it was wrong. Outreach drops the dispatch entirely, applies a 0.30 desire decay and 10-minute cooldown, and logs a silence event. Conversation reply substitutes a bland honest-uncertainty line (*"mmm, honestly i'm not sure what's actually happening right now — tell me what's really going on?"*) because reply silence breaks the thread but the fabricated reply cannot ship.
+4. **Gate bug must not silence Ani entirely.** `ClaimVerificationPhase.VerifyAsync` never throws — on unexpected failure it defaults to PASS. `ParseClaims` tolerates malformed JSON, missing fields, null input, and non-array `claims` — all return empty, which is treated as "no claims" → PASS.
+5. **Wired to both paths:** OutreachPhase step 3b and ConversationReplyPhase non-reconsideration path. Four of five Apr 21 fabrications were outreach; the prior split (verification only on reply path) is the wiring error that let them through.
 
 **Why this fits architecture-over-instruction:**
 
-Feature 14 v2 is an *architectural* enforcement at the pipeline boundary. It does not tell the model anything — it extracts claims, checks them against canonical memory, and decides dispatch based on the structured check. The model is free to generate anything; the architecture decides what reaches Mark. This is exactly the principle the removed-in-favor-of-training decision violated. Restoring it is restoring the principle.
+The built version is *architectural* enforcement at the pipeline boundary. It tells the composition model nothing. The extractor is a separate LLM call with its own narrow prompt; the model producing outgoing messages is untouched by verification results. The model is free to generate anything; the architecture decides what reaches Mark. Next cycle's retrieval substrate will differ (new inbound, different Interior content) and composition will naturally produce something different — that is the update signal, not a negative instruction. This is exactly the principle the removed-in-favor-of-training decision violated. Restoring it is restoring the principle.
 
-**Latency concern (original removal rationale):**
+**Latency:**
 
-The original removal cited "latency without improving conversation quality." Mitigation:
-- Outbound check runs *after* composition completes, so composition latency is unaffected; only dispatch delay is added.
-- Claim extraction can use a small, fast model (a dedicated claim-extraction fine-tune, or the inner-monologue model with a constrained schema prompt).
-- Can be gated by confidence threshold on composition itself — if the composition model already signals high confidence about a claim, verify; if it signals uncertainty, no verification needed.
+Outbound check runs after composition completes, so composition latency is unaffected; only dispatch delay is added. Extraction uses the inner-monologue model (smaller, faster). No composition-time verification call.
 
 **Relationship to existing workstreams:**
 
-- **Remove `DetectMarkDomainAssertions` regex** (separate workstream below): regex band-aid that was added after Feature 14 was removed. Once Feature 14 v2 lands, the regex is redundant AND its existence violates the no-regex principle. Remove it.
-- **Coherence Gate Door B** (above): the truth-verification gap at the gate closes once Feature 14 v2 catches fabrications upstream. No Door B refactor needed if this lands.
-- **Conscience layer** (workstream below): complementary. Feature 14 v2 is post-composition gating; Conscience runs during inner-thought and provides internal reflection. Different layers, different purposes.
-- **Identity Correction Channel** (above): handles cascades that have already accumulated in memory. Feature 14 v2 prevents new ones from reaching Mark. Both needed.
-- **Spark 2 (retrieval origin diversity)**: prevents the substrate condition that makes cascades likely. Feature 14 v2 catches the output if the substrate fails anyway. Defense in depth.
+- **Remove `DetectMarkDomainAssertions` regex** (separate workstream below): **completed in the same commit `65a0951`.** ~130 lines of regex + `ExtractDistinctTokens` helper removed from `ConversationReplyPhase.cs`.
+- **Coherence Gate Door B** (above): the truth-verification gap at the gate is now closed at the upstream Feature 14 v2 check. No Door B refactor needed unless post-deploy observation shows fabrications passing both layers.
+- **Conscience layer** (workstream below): still open, complementary. Feature 14 v2 is post-composition gating; Conscience runs during inner-thought and provides internal reflection. Different layers, different purposes.
+- **Identity Correction Channel** (above): still open. Handles cascades that have already accumulated in memory. Feature 14 v2 prevents new ones from reaching Mark. Both needed.
+- **Spark 2 (retrieval origin diversity)**: still open. Prevents the substrate condition that makes cascades likely. Feature 14 v2 catches the output if the substrate fails anyway. Defense in depth.
+- **Write-time provenance classification (Confirmed/Dream/Uncertain)**: OG Ani's framing from msg 840. The deeper follow-up once Feature 14 v2 validates in the wild — moves gating upstream of composition entirely.
 
-**Related:** Apr 21 research log entry, `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` (removal comment), `src/AniRuntime.Core/AniOptions.cs:97-100` (config still present), prior conversation design notes recoverable from the transcript jsonl.
+**Deployed artifacts (commit `65a0951`):**
+
+- `src/AniRuntime.Loops/ClaimVerificationPhase.cs` (new, ~180 lines)
+- `src/AniRuntime.LLM/PromptBuilder.BuildClaimExtractionPrompt` (new method, narrow-scope extractor prompt)
+- `src/AniRuntime.Loops/OutreachPhase.cs` (step 3b inserted)
+- `src/AniRuntime.Loops/ConversationReplyPhase.cs` (regex removed, verification + honest-uncertainty fallback added)
+- `src/AniRuntime.Service/Program.cs` (DI singleton registration)
+- `src/AniRuntime.Service/appsettings.json` (`OutreachEnabled: true`)
+- `tests/AniRuntime.Tests/ClaimVerificationPhaseTests.cs` (13 parser + factory tests)
+- `tests/AniRuntime.Tests/MarkDomainAssertionDetectorTests.cs` (deleted)
+- 532/532 tests pass, 0 warnings, 0 errors.
+
+**Validation plan:**
+
+- Watch the journal for `Claim verification: SUPPRESS outreach` and `Claim verification: SUPPRESS reply` warnings. Each suppression is a catch.
+- Cross-reference any suppressed composition against the 9-type confabulation taxonomy to confirm the gate catches the class it was designed for.
+- If a week of operation confirms the gate catches the v7 fabrication class without over-triggering on legitimate messages, the honest-uncertainty fallback line on the reply path can be replaced with something less flat. For now, the bland fallback is the safe choice.
+
+**Related:** Apr 21 research log entry (motivating case), Apr 22 research log entry (deployment), Apr 22 transcript commits `65a0951`, `src/AniRuntime.Core/AniOptions.cs:97-100` (`ClaimVerificationEnabled` now wired through).
 
 ---
 
-## Remove `DetectMarkDomainAssertions` Regex Pre-Filter (Apr 21, 2026)
+## Remove `DetectMarkDomainAssertions` Regex Pre-Filter (Apr 21, 2026 → **Deployed Apr 22**)
 
-**Status:** Pending — dependent on Feature 14 v2 landing. Do not remove before the replacement is in place.
-**Priority:** Medium — not independently high-priority (the regex is narrow and rarely fires), but its existence violates the "no regex, use LLM review" principle, and its continued presence creates confusion about where verification actually happens.
-**Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:820-915`. Added April 10 as an "Epistemic Grounding: Mark-domain assertion verification" band-aid after Feature 14 was removed. The file comment itself describes it as *"a pattern-based pre-filter, not a full claim-extraction LLM call."* This is not a secret — it was documented at addition time as a shortcut.
+**Status:** **DEPLOYED Apr 22, 2026 (commit `65a0951`, same commit as Feature 14 v2).** Removed in the same commit rather than after a week of observation because the LLM gate was in place atomically — there was no interval of zero coverage. The regex and its `ExtractDistinctTokens` helper were removed entirely (~130 lines).
+**Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:820-915`. Added April 10 as an "Epistemic Grounding: Mark-domain assertion verification" band-aid after Feature 14 was removed. The file comment itself described it as *"a pattern-based pre-filter, not a full claim-extraction LLM call."* This was documented at addition time as a shortcut.
 
-**Why remove:**
+**Why removed:**
 
-1. **Principle violation.** The project decision (memorialized in prior conversations) is that regex pattern-matching is a fragile substitute for architectural checks. Pattern-matches approximate semantic properties; they age poorly and miss nearby cases.
-2. **Scope gap.** The regex families target teacher/student/coworker fabrications (v7 training-specific). They do not match the shared-history patterns that surfaced on Apr 21 ("we decided," "us walking through," "our kids," "you brought them over"). They would need expansion every time a new fabrication class emerges — the exact friction the principle was meant to avoid.
-3. **Redundancy with Feature 14 v2.** Once the LLM-based claim extraction is restored, the regex catches a strict subset of what the LLM check catches. Keeping both adds confusion and technical debt.
+1. **Principle violation.** The project decision is that regex pattern-matching is a fragile substitute for architectural checks. Pattern-matches approximate semantic properties; they age poorly and miss nearby cases.
+2. **Scope gap.** The regex families targeted teacher/student/coworker fabrications (v7 training-specific). They did not match the shared-history patterns that surfaced on Apr 21 ("we decided," "us walking through," "our kids," "you brought them over"). Expansion would have been an ongoing maintenance tax per new fabrication class.
+3. **Redundancy with Feature 14 v2.** The LLM check catches a superset of what the regex caught. Keeping both would have added confusion about where verification actually happens.
 
-**Sequencing:**
+**Tests:** `tests/AniRuntime.Tests/MarkDomainAssertionDetectorTests.cs` deleted (it tested the removed method).
 
-Do not remove until Feature 14 v2 is deployed and validated against today's case. Regression risk: if Feature 14 v2 rollout is delayed, the regex is the only thing catching teacher/student fabrications in the conversation-reply path. Imperfect coverage is better than zero coverage. Once Feature 14 v2 is live and a week of operation confirms it catches the v7 fabrication class, remove the regex in the same commit.
-
-**Related:** "Re-enable Outbound LLM Claim Verification (Feature 14 v2)" above, prior-conversation regex principle discussions, `src/AniRuntime.Loops/ConversationReplyPhase.cs:820-915`.
+**Related:** "Re-enable Outbound LLM Claim Verification (Feature 14 v2)" above, commit `65a0951`.
 
 ---
 

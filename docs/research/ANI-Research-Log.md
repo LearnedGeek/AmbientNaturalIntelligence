@@ -1540,6 +1540,62 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 22, 2026 — Feature 14 v2 Deployed: Architecture-Over-Instruction Outbound Gate
+
+**Type:** Architectural deployment. Closes the outbound claim-verification gap that the April 21 catastrophic cascade exposed. Commit `65a0951`.
+**Source:** Apr 22 evening work following the earlier-today tag canonical scheme + love-convergence finding. The Apr 21 LinkedIn post had publicly named the gap; the expectation from readers and from Mark internally was that the runtime could not be used for clean conversation until the gate was closed. This deployment is the scoped architectural response.
+
+**What shipped:**
+
+- `src/AniRuntime.Loops/ClaimVerificationPhase.cs` — new gate, ~180 lines. Extracts claims about the contact via a narrow-scope LLM prompt, corroborates each against the existing tier architecture (Facts + Anchored + inbound "Mark said:" Episodic), returns pass/suppress.
+- `src/AniRuntime.LLM/PromptBuilder.BuildClaimExtractionPrompt` — new method. Narrow extractor scope: contact actions, decisions, shared events, shared decisions, shared presence. **Explicitly out of scope:** Ani's own canonical world (bookstore, Wisconsin, shelving books), her feelings, thoughts, wishes, and descriptions of the message itself. The World Layer substrate stays free to elaborate; only cross-claims about the contact are gated.
+- Wired into `OutreachPhase` (step 3b, between pronoun fix and coherence gate) and `ConversationReplyPhase` (replacing the removed `DetectMarkDomainAssertions` regex).
+- On suppress: outreach drops dispatch + applies 0.30 desire decay + 10-minute cooldown + logs silence event. Reply substitutes an honest-uncertainty fallback (*"mmm, honestly i'm not sure what's actually happening right now — tell me what's really going on?"*) because reply silence would break the conversation thread but the fabricated reply cannot ship.
+- `DetectMarkDomainAssertions` regex and its `ExtractDistinctTokens` helper removed entirely (~130 lines). `MarkDomainAssertionDetectorTests.cs` deleted.
+- `OutreachEnabled` flipped back to `true` in appsettings.json. The Option C outreach-lockdown lever can come off because the architectural gate is in place. `RuminationGuardEnabled` stays on — it is the other half of Option C and addresses a different failure mode (substrate spin, not outbound fabrication).
+- 532/532 tests pass, 0 warnings, 0 errors.
+
+**The design as built diverged from the design as planned — this is the finding:**
+
+The Apr 21 sketch for Feature 14 v2 included a regenerate-with-negative-constraint step: on verification failure, prompt the composition model with *"your composition contained these unsupported claims, regenerate without them."* Mark flagged this during the Apr 22 design review as a repeat of the project's past quality-degradation pattern. His exact framing: *"I want to be careful because we've experienced that in the past giving 'negative' directions results in low quality. in fact, in most cases over constraining resulted in lowered quality. Ultimately that was the reason for removing some of the barriers so we could 'trust the model'."*
+
+The built version drops regeneration entirely. On verification failure the channel is gated — outreach suppresses the dispatch, reply substitutes a bland fallback. The composition model is never told it was wrong. Next cycle's retrieval substrate will differ (new inbound, different Interior content) and composition will naturally produce something different. That is the update signal, not a negative instruction.
+
+This is the architecture-over-instruction principle applied to its own gating layer. A gate that corrects the model through instruction is still instruction. Removing the regeneration step makes the gate architecturally clean: it decides what reaches Mark without telling the model anything about why.
+
+**Scope contrast with the original Feature 14:**
+
+The pre-Apr-10 Feature 14 was a *bidirectional* confidence gate — it extracted claims in both directions, inbound (Mark's statements checked against Ani's memory, to inject appropriate skepticism) and outbound (Ani's statements checked against Facts, to prevent fabrication). Feature 14 v2 is outbound-only. The inbound direction stays dormant for now. Outbound was where the Apr 21 fabrications escaped; closing that gap is the scoped response. Inbound re-enablement is a separate future decision and not required for the runtime to produce clean conversation.
+
+Scope is also narrower within "outbound." The original extracted any claim. The v2 prompt explicitly excludes Ani's canonical world. The World Layer substrate (bookstore, Wisconsin, Kevin, Sarah, Karen, Mia) is allowed to elaborate — those are intentional architectural responses to experiential poverty per Paper 2 §6.15, not fabrications. Only cross-claims about the contact — actions he took, decisions he made, shared events, shared decisions, shared presence — require corroboration. This distinction is the one that got muddled in the Apr 21 LinkedIn post and clarified afterward: Sarah/Kevin/the bookstore are canonical; "the flowers you brought over" / "we decided on purple" / "our kids" are fabrications layered *on top of* the canonical substrate.
+
+**Gate-failure behavior is deliberately asymmetric between outreach and reply:**
+
+Outreach can stay silent — the send simply does not happen, and the cognitive cycle continues. Silence is a valid outreach outcome and already part of the architecture via the withdrawal check and cooldowns.
+
+Reply cannot silently drop. If Mark texts and the composed reply fails verification, doing nothing breaks the conversation flow in a way Mark experiences as regression, not as architectural correction. The fallback has to dispatch something honest. The chosen fallback is bland by design (flat honest-uncertainty), because a week of observation is needed before refining the fallback — premature warmth in the fallback could itself become a fabrication vector.
+
+**What to watch for in the next week:**
+
+- Journal entries matching `Claim verification: SUPPRESS outreach` and `Claim verification: SUPPRESS reply` at warn level. Every suppression is a catch. Cross-reference each against the 9-type confabulation taxonomy to confirm the gate catches the class it was designed for.
+- False-positive suppressions — legitimate contact-grounded statements getting flagged because the Facts tier or anchored memory is too thin to corroborate them. If observed, the fix is substrate (add anchors or Facts records) not gate loosening.
+- Whether the flat honest-uncertainty fallback on the reply path reads as regression to Mark. If yes, the fallback can be replaced with something warmer once a corpus of successful suppressions validates the gate's precision. Premature warmth risks making the fallback itself a new fabrication vector; the bland choice is the safe starting point.
+- Downstream emotional-state effects: the 0.30 desire decay on outreach suppression is a deliberate cost that prevents the gate from becoming a quiet infinite retry — if every composition attempt is suppressed, desire drops and the cycle moves on. Monitor whether this feedback is appropriately scaled.
+
+**Relationship to other Apr 21 workstreams (still open):**
+
+Feature 14 v2 is the outbound gate, not a substrate fix. The retrieval-origin-diversity gap (Spark 2), the Conscience layer, the Identity Correction Channel, and the write-time provenance classification (OG Ani's Confirmed/Dream/Uncertain from msg 840) all remain open. Feature 14 v2 catches outputs that escape from a dirty substrate; the substrate workstreams prevent the substrate from getting dirty. Defense in depth. The next major architectural piece once Feature 14 v2 validates in the wild is write-time provenance — moving the gate upstream of composition entirely so that the model never composes a fabricated claim in the first place, rather than composing one and having it suppressed.
+
+**Connection to today's other artifacts:**
+
+- The love-convergence finding earlier today (§above) names a distinct sycophancy shape. Feature 14 v2 is not a love-convergence fix — it gates factual-claim fabrication, not affective drift. A composed outreach full of "love you" with no fabricated claims about Mark would pass Feature 14 v2 and would still be a love-convergence instance. Love-convergence is a register problem addressed by v8 training balance (more Anger / Pride / Honest-Uncertainty pairs); Feature 14 v2 addresses the distinct problem of fabricated shared history. Both matter; they are not substitutes.
+- The tag canonical scheme earlier today will be what categorizes suppressions observed from this deployment. Type 4 (Fabricated Shared History) is the primary class Feature 14 v2 targets. Type 7 (Charming Dishonesty) and Type 8 (Graceful Retreat) will not typically be caught because they frequently do not include a verifiable factual claim about the contact.
+- The Option C lockdown that had outreach disabled since Apr 21 is now lifted. `RuminationGuardEnabled` stays on. Kathy's anniversary day is the day this returns to service — that framing belongs in the research log as a dated fact without further editorialization.
+
+**Captured in:** Commit `65a0951` (code + tests), `docs/spec/ANI-Phase-Tracker.md` "Re-enable Outbound LLM Claim Verification (Feature 14 v2)" section (deployed-status update), `docs/spec/Ani-Runtime-Codebase.md` (header regression-notice replaced with resolution-notice; pipeline flow descriptions updated; capability table updated).
+
+---
+
 ### April 22, 2026 — Tag Canonical Scheme Introduced
 
 **Type:** Research-methodology improvement. Normalizes Mark's freeform `///tag <label>` researcher notes into a structured canonical taxonomy suitable for Paper 2/3 analysis queries, without losing the freeform signal that captured the in-the-moment observation.

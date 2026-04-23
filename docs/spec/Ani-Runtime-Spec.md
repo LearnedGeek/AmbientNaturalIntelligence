@@ -12,9 +12,9 @@ Mark McArthey / Learned Geek Consulting
 Version
 0.8 — Core Phases 1-4 Complete, Phase 5 Active
 Date
-April 6, 2026
+April 22, 2026 (last operational update; commit-level changes tracked in `docs/spec/ANI-Phase-Tracker.md`)
 Status
-Active Development — Core Phases 1-4 complete, Phase 5 streaming voice deployed, Inner Thought Reform deployed, World Layer deployed, LM-Kit ML classification deployed
+Active Development — Core Phases 1-4 complete, Phase 5 streaming voice deployed, Inner Thought Reform deployed, World Layer deployed, LM-Kit ML classification deployed, Feature 14 v2 outbound claim verification deployed (Apr 22)
 
 This document captures the vision, architecture, and phased implementation plan for Ani Runtime — a .NET Windows Service that gives an AI companion genuine ambient presence: the ability to think, feel the passage of time, and reach out with authentic care rather than reactive responses.
 
