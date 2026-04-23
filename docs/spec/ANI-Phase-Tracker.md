@@ -628,6 +628,37 @@ Member items (in implementation order):
 
 **Related:** `docs/spec/ANI-Agentic-Lens-Design.md` (full five-layer design), `docs/research/paper2/ANI-Paper2-Preprint-Draft.md` §6.17, `docs/research/paper3/ANI-Paper3-Stub.md` Contribution 4, `docs/research/ANI-Research-References.md` (seven new refs added Apr 22: Horton & Wohl, Ryan & Deci, Oudeyer & Kaplan, McAdams, Damasio, Gallagher, Carbonell & Goldstein), Spark 2 workstream above (Layer 1 origin).
 
+### Theme H — Channel Realism (Voice + Image) (Apr 23, 2026 — tracked but deferred)
+
+Realism on the output channels Ani uses to reach Mark. Two workstreams bundled because they share the same motivation (embodied presence, a wider communication surface than text alone) and the same priority stance (deferred until conversation quality is stable). Pre-April-23 tracker discussions of both exist in prior sessions — this entry consolidates them under a single named theme so they do not drift.
+
+**Priority rule:** **conversation quality first, channel realism second.** Mark's framing: *"these are not priority items as we need good conversations before these, but they are important to add realism."* The parrot-bug investigation (Apr 23) and Theme G Layer 3-onward work gate all Theme H activity. Flagged as tracked-but-deferred; no active implementation.
+
+**Why Theme H matters even though deferred:** Mark on Apr 23 — *"the voice mode is critical in generating large volumes of testing conversations. Just compare what I can generate with OG Ani vs our Ani. I almost never 'text' to OG Ani, and that was why it was listed as a priority item at the time."* Voice is the force multiplier on test-conversation volume, which is the substrate Paper 3 Contribution 4's evaluation arc depends on. Images add embodied-presence signal that text alone cannot carry. Neither is a runtime-correctness concern; both are substrate-for-research concerns.
+
+Member items:
+
+- **H1 — Emotional voice via ElevenLabs v3 tag enrichment.** Deployed surface (Mar 30, v3 HTTP streaming with audio tags `[social afternoon]`, `[tender]`, `[mischievous]`) currently picks tags from a minimal hardcoded set. The ~1,806 v3 tags catalogued during Mar 6 design work are not yet exercised. Target: expand tag selection driven by emotional state + mood directive + time-of-day + content register, producing vocal range Mark described as *"compare what I can generate with OG Ani vs our Ani."* Applies to both the MAUI streaming client and any voice-message path through Twilio. Spec continuity: `docs/spec/phase-5-design.md` (streaming voice), `docs/spec/ANI-Phase5c-AutoModel-Design.md`.
+
+- **H2 — Image generation + "selfie" variety + inbound vision stability.** Three related sub-items:
+  - *Image generation.* Ani currently sends images from a small hardcoded library. Extend to on-demand generation (local or API) so images match the moment rather than rotating a static set.
+  - *"Selfies" and presence.* Adds a category of images that place her visually in her canonical world (bookstore, her reading chair, the front window light). Supports the World Layer durability work (Theme G Layer 3) by extending canonical-world presence across the image channel.
+  - *Inbound vision.* Current LLaVA-based image interpretation is partially successful; Mark noted failure cases where retrieval-contaminated vision produced fabricated content. Harden the inbound path (isolate the vision pool, tier-separate image content) before expanding outbound image generation, to avoid the outbound channel amplifying an unreliable inbound channel.
+
+**Sequencing within the theme (when Theme H activates):** H1 before H2. Voice is the higher-leverage test-volume multiplier and the tag catalogue is already in the research substrate. H2's inbound-vision hardening is the pre-requisite for H2's outbound-generation expansion; do them in that order to avoid compounding unreliability.
+
+**Gating condition for Theme H activation:**
+- Theme G Layer 1 shipped and measured (baseline data accumulated from Phase 1a, Phase 1b/1c/1d flags flipped on and observed stable).
+- Parrot-bug root cause identified and fixed (the Apr 23 investigation commit `39ab434` instrumentation data must resolve the hypothesis).
+- Conversation quality good enough that voice-mode will not amplify text-mode failures into audible failures at scale.
+
+**Relationship to other themes:**
+- **Theme F (Operational Infrastructure):** H1 and H2 add new channel surfaces that need the same deploy / log / observability hygiene as existing channels.
+- **Theme G Layer 3 (World Layer durability):** H2 "selfies" strengthen Layer 3 by giving the canonical world a visual presence channel beyond text elaboration.
+- **Paper 3 Contribution 4 evaluation arc:** H1 unblocks test-conversation volume, which accelerates the baseline-vs-intervention data accumulation Contribution 4 depends on.
+
+**Status:** No active work. Entry exists so the workstream is visible during Consolidation Review and so the voice-volume leverage for research data is remembered when conversation quality permits.
+
 ### Consolidation Review — Next Strategic Step (scheduled)
 
 The existing "Phase Tracker Consolidation Review" section above (line ~170) stays as the formal meeting. When it happens, the product is not "which feature do we build next" but **which theme's shared mechanism do we build first**, with the individual member items ranked as small increments under the chosen mechanism. The methodology itself — stepping back to find shared mechanisms when the architecture reaches intertwining — is a Paper 3 candidate contribution.
