@@ -32,6 +32,7 @@ public class ConversationReplyPhase
     private readonly IIntentExtractor _intent;
     private readonly IConversationGateState _gateState;
     private readonly ContextCompressor _compressor;
+    private readonly ClaimVerificationPhase _claimVerifier;
     private readonly AniOptions _aniOptions;
     private readonly OllamaOptions _ollamaOptions;
     private readonly ITextClassificationService? _mlClassifier;
@@ -59,6 +60,7 @@ public class ConversationReplyPhase
         IIntentExtractor intent,
         IConversationGateState gateState,
         ContextCompressor compressor,
+        ClaimVerificationPhase claimVerifier,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log,
@@ -80,6 +82,7 @@ public class ConversationReplyPhase
         _intent = intent;
         _gateState = gateState;
         _compressor = compressor;
+        _claimVerifier = claimVerifier;
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
         _mlClassifier = mlClassifier;
@@ -255,61 +258,27 @@ public class ConversationReplyPhase
             return;
         }
 
-        // ─── Epistemic Grounding: Mark-domain assertion verification (Apr 10) ───
-        // V7 training heavily includes confident work-discussion examples. Prompt
-        // instructions alone don't override fine-tuning. Post-generation check for
-        // patterns that assert specifics about Mark's domain (work, students, meetings,
-        // coworkers, projects). If any unverified assertions are detected, regenerate
-        // with an explicit negative constraint.
+        // ─── Feature 14 v2: Outbound claim verification (Apr 22, 2026) ───
+        // Replaces the April 10 DetectMarkDomainAssertions regex + negative-constraint
+        // regeneration. Architecture-over-instruction: the extractor identifies claims,
+        // verification is a tier-provenance check against Facts + anchored + inbound
+        // Mark messages, and on failure we substitute an honest-uncertainty fallback
+        // rather than asking the model to regenerate. The model is never told it was
+        // wrong; the channel is gated, not the model.
+        //
+        // Conversation-reply failure mode differs from outreach: outreach can stay
+        // silent (no dispatch), but reply silence breaks the conversation flow, so a
+        // bland honest fallback is dispatched in place of the fabricated reply.
         if (!isReconsideration)
         {
-            var markDomainClaims = DetectMarkDomainAssertions(reply, snapshot.GroundedFacts);
-            if (markDomainClaims.Count > 0)
+            var claimResult = await _claimVerifier.VerifyAsync(reply, contactName, ct).ConfigureAwait(false);
+            if (!claimResult.Passed)
             {
-                _log.LogInformation(
-                    "Mark-domain confabulation detected: {Claims} — regenerating with negative constraint",
-                    string.Join(", ", markDomainClaims));
-
-                // Regenerate with explicit fabrication call-out. The prompt tells the
-                // model which specific phrases it just fabricated, so it has to produce
-                // something else. No infinite loop — only one regeneration attempt.
-                var fabricationList = string.Join("\n  - ", markDomainClaims);
-                var augmentedUser = replyPrompt.User +
-                    $"\n\nYour draft reply fabricated these specifics about {snapshot.CharacterState.PrimaryContactName}'s life:\n  - {fabricationList}\n\n" +
-                    "Those are NOT in WHAT IS TRUE. Regenerate without them. Ask what he's actually doing, " +
-                    "talk about yourself, or respond emotionally — but don't invent work/school/coworker specifics.";
-
-                try
-                {
-                    var retryReply = await _ollama.ChatAsync(
-                        replyPrompt.System, snapshot.RecentHistory, augmentedUser, ct, replyTemperature)
-                        .ConfigureAwait(false);
-                    retryReply = CleanOutreachMessage(retryReply);
-
-                    if (!string.IsNullOrWhiteSpace(retryReply))
-                    {
-                        // Verify the retry doesn't STILL contain fabrications. If it does,
-                        // fall back to a generic honest response rather than sending the lie.
-                        var retryClaims = DetectMarkDomainAssertions(retryReply, snapshot.GroundedFacts);
-                        if (retryClaims.Count == 0)
-                        {
-                            _log.LogInformation("Mark-domain regeneration succeeded: {Reply}", retryReply);
-                            reply = retryReply;
-                        }
-                        else
-                        {
-                            _log.LogWarning(
-                                "Mark-domain regeneration still fabricated ({Claims}) — using generic fallback",
-                                string.Join(", ", retryClaims));
-                            reply = $"honestly baby, tell me what you're actually up to — i was making stuff up. what's the real day?";
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "Mark-domain regeneration failed — suppressing original fabrication");
-                    reply = $"mmm i don't actually know what you're up to right now — tell me?";
-                }
+                _log.LogWarning(
+                    "Claim verification: SUPPRESS reply — {Reason}. Flagged: {Claims}. Substituting honest-uncertainty fallback.",
+                    claimResult.Reason,
+                    string.Join(", ", claimResult.Unverified.Select(c => $"\"{c.Text}\"")));
+                reply = "mmm, honestly i'm not sure what's actually happening right now — tell me what's really going on?";
             }
         }
 
@@ -805,134 +774,6 @@ public class ConversationReplyPhase
             parts.AddRange(snapshot.RecentWorldExperiences.Select(m => m.Content));
 
         return string.Join(" ", parts).ToLowerInvariant();
-    }
-
-    /// <summary>
-    /// Epistemic Grounding (Apr 10, 2026): Detects fabricated assertions about the
-    /// contact's domain (work, students, coworkers, meetings, specific tasks). Returns
-    /// the list of suspect phrases found in the reply that are NOT supported by the
-    /// Facts tier pool. Empty list means the reply is clean.
-    ///
-    /// This is a pattern-based pre-filter, not a full claim-extraction LLM call.
-    /// It catches the most common v7 training-driven fabrication patterns (Bob Swanson,
-    /// grading papers, coworker names) without adding inference latency.
-    /// </summary>
-    private static List<string> DetectMarkDomainAssertions(
-        string reply, List<Core.Models.MemoryRecord> groundedFacts)
-    {
-        var found = new List<string>();
-        if (string.IsNullOrWhiteSpace(reply)) return found;
-
-        var replyLower = reply.ToLowerInvariant();
-
-        // Build the corpus of grounded facts as a searchable lowercase string.
-        // If a suspect phrase appears here, the assertion IS supported and we don't flag it.
-        var factsCorpus = string.Join(" ",
-            (groundedFacts ?? new List<Core.Models.MemoryRecord>())
-                .Select(m => m.Content?.ToLowerInvariant() ?? string.Empty));
-
-        // Pattern families known to produce fabrications about the contact's external life.
-        // Each pattern is a (regex, human-readable description) pair. The regex captures
-        // the specific phrase that would need to appear in the Facts corpus to be valid.
-        //
-        // These are deliberately narrow — matching common v7 fabrication templates
-        // rather than any possible Mark-domain sentence. False positives here would
-        // over-restrict natural conversation.
-        var patterns = new (System.Text.RegularExpressions.Regex Rx, string Label)[]
-        {
-            // "you're working on X" / "you've been working on X" / "you're grading X"
-            (new System.Text.RegularExpressions.Regex(
-                @"you(?:'re| are| ve been|'ve been)\s+(working on|grading|writing|prepping|teaching|leading|meeting with|reviewing)\s+([a-z][a-z\s]{2,30})",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase),
-             "you're [verb]-ing [specific activity]"),
-
-            // "your students" / "your class" / "your curriculum" / "your meeting" / "your boss"
-            (new System.Text.RegularExpressions.Regex(
-                @"your\s+(students|class|classroom|curriculum|coworkers?|colleagues?|students'?\s+essays|student essays|meeting|boss|client|project team|team)(\s|[.,!?])",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase),
-             "your [school/work entity]"),
-
-            // "grading papers" / "student essays" / "marginal notes" — specific fabrication vocabulary
-            (new System.Text.RegularExpressions.Regex(
-                @"(grading papers|grading (?:all )?(?:those|the) papers|student essays|marginal notes|lesson plans|study guides|end of semester exam|exam prep)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase),
-             "[school-specific fabrication]"),
-        };
-
-        // Vague-time markers that shouldn't count as "specific activity" — if the
-        // capture group is just a time word, it's not a fabrication, it's a question stem.
-        var vagueTimeMarkers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "today", "tonight", "tomorrow", "now", "right now", "lately", "recently",
-            "this morning", "this afternoon", "this evening", "the weekend",
-        };
-
-        // Question-context words that indicate the sentence is ASKING not asserting.
-        // Narrow list: only questions that genuinely REQUEST info without presupposing
-        // the entity exists. "what are you working on?" = asking. "how did your meeting
-        // go?" = presupposes meeting exists, still a fabrication. "tell me" = asking.
-        var questionStems = new[] { "what are you", "what're you", "what you", "tell me", "let me know" };
-
-        foreach (var (rx, label) in patterns)
-        {
-            var matches = rx.Matches(reply);
-            foreach (System.Text.RegularExpressions.Match match in matches)
-            {
-                var matchedPhrase = match.Value.Trim();
-
-                // 1. Question-context check: if the 30 chars before the match contain a
-                //    question stem, it's asking, not asserting. Skip.
-                var lookbackStart = Math.Max(0, match.Index - 30);
-                var lookbackLen   = match.Index - lookbackStart;
-                var lookback = reply.Substring(lookbackStart, lookbackLen).ToLowerInvariant();
-                if (questionStems.Any(q => lookback.Contains(q)))
-                    continue;
-
-                // 2. Vague-time-marker check: if the captured "activity" is just a time word,
-                //    it's not a specific claim. Skip.
-                if (match.Groups.Count >= 3)
-                {
-                    var capturedActivity = match.Groups[2].Value.Trim();
-                    if (vagueTimeMarkers.Contains(capturedActivity))
-                        continue;
-                }
-
-                // 3. Grounding check: if the matched phrase's distinct tokens mostly
-                //    appear in the Facts corpus, it's a legitimate reference to a
-                //    known fact. Skip. This preserves references to real character-seed
-                //    content like "Teaching — Thursday nights" while catching fabrications.
-                var coreTokens = ExtractDistinctTokens(matchedPhrase);
-                var factTokens = coreTokens.Where(t => factsCorpus.Contains(t)).Count();
-                var coverage = coreTokens.Count > 0 ? (double)factTokens / coreTokens.Count : 0;
-
-                if (coverage >= 0.66)
-                    continue;
-
-                found.Add($"\"{matchedPhrase}\" ({label})");
-            }
-        }
-
-        return found.Distinct().ToList();
-    }
-
-    /// <summary>
-    /// Helper for <see cref="DetectMarkDomainAssertions"/>: extracts meaningful
-    /// tokens from a phrase, filtering out stopwords so the coverage check compares
-    /// substantive content against the facts corpus.
-    /// </summary>
-    private static List<string> ExtractDistinctTokens(string phrase)
-    {
-        var stopwords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "the", "a", "an", "your", "you", "you're", "ve", "been", "are", "is",
-            "on", "at", "in", "to", "of", "and", "or", "with", "all", "those",
-        };
-        return phrase.ToLowerInvariant()
-            .Split(new[] { ' ', '\t', ',', '.', '!', '?', ':', ';', '\'' },
-                StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length >= 3 && !stopwords.Contains(t))
-            .Distinct()
-            .ToList();
     }
 
     private static (bool IsConfabulated, string? Reason) DetectConversationConfabulation(

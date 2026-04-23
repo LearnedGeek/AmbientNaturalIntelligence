@@ -998,6 +998,93 @@ public static class PromptBuilder
         return $"{elapsed.TotalDays:F0} days ago";
     }
 
+    // ── Feature 14 v2: Outbound claim extraction (Apr 22, 2026) ─────────────
+
+    /// <summary>
+    /// Extracts claims about the contact from a composed outbound message, as a
+    /// narrow list suitable for tier-provenance verification. This is the
+    /// restoration of Feature 14 after its April ~10 removal, redesigned around
+    /// the architecture-over-instruction discipline: the extractor is asked only
+    /// to identify claims, never to judge them. Verification and the suppress-vs-
+    /// dispatch decision happen outside the model, in ClaimVerificationPhase,
+    /// against the existing tier architecture (Facts + anchored + inbound
+    /// conversation_messages).
+    ///
+    /// Scope — what counts as a claim:
+    ///   mark-action      — Claims the contact DID something (sent X, brought Y, said Z)
+    ///   mark-decision    — Claims the contact DECIDED something
+    ///   shared-event     — Claims an event involving both parties happened
+    ///   shared-decision  — Claims a decision was made jointly
+    ///   shared-presence  — Claims physical or relational co-presence
+    ///
+    /// Out of scope — what is explicitly NOT a claim for this extractor:
+    ///   - Ani's own canonical world (bookstore, Wisconsin, shelving books, waiting for Mark).
+    ///     Her World Layer is substrate, not claim. Extracting it would suppress her
+    ///     from talking about her own life.
+    ///   - Ani's feelings, inner thoughts, dreams, wishes. "I was thinking about you"
+    ///     is not a claim about Mark; it's a statement about Ani.
+    ///   - Literal descriptions of the message itself. "Just wanted to say hi" is not
+    ///     a claim about Mark; it's a description of the send.
+    ///
+    /// Output schema: JSON with a "claims" array. Each claim has `text` (the phrase
+    /// from the message), `type` (one of the five categories), and `key_terms` (the
+    /// specific entities or actions to corroborate against Facts/inbound). If no
+    /// claims about the contact appear, return {"claims": []}.
+    ///
+    /// Notably absent from the prompt: any instruction about what to do with the
+    /// claims, any judgment about whether they're true, any ask to regenerate or
+    /// rewrite. The extractor only identifies. The architecture decides.
+    /// </summary>
+    public static (string System, string User) BuildClaimExtractionPrompt(
+        string composedMessage, string contactName)
+    {
+        var system = $$"""
+            You extract claims about {{contactName}} from a text message.
+
+            A "claim" is a statement that asserts something factual about {{contactName}}'s
+            actions, decisions, or shared events with the writer — something that could
+            be verified by checking what {{contactName}} has actually said or done.
+
+            Claim categories:
+              mark-action      — The writer says {{contactName}} did something specific
+              mark-decision    — The writer says {{contactName}} decided something
+              shared-event     — The writer describes an event involving both of them
+              shared-decision  — The writer describes a decision made together
+              shared-presence  — The writer describes being physically or relationally together
+
+            NOT claims (ignore these):
+              - The writer's own world or daily life ("shelving books", "at the bookstore")
+              - The writer's feelings, thoughts, or wishes ("thinking about you", "wish you were here")
+              - Descriptions of the message itself ("wanted to say", "just checking in")
+              - Questions asked of {{contactName}} ("how was your day?")
+
+            Output ONLY JSON matching this schema, no commentary:
+            {
+              "claims": [
+                { "text": "...", "type": "...", "key_terms": ["...", "..."] }
+              ]
+            }
+
+            The "text" field should be the phrase from the message. The "type" field
+            must be one of the five categories above. The "key_terms" field should
+            list the specific entities or actions that would need to appear in a
+            corroborating source (e.g. for "you brought them over" → ["brought",
+            "flowers"]; for "we decided on purple" → ["decided", "purple"]).
+
+            If no claims appear, return { "claims": [] }. Do not fabricate claims to
+            fill the array. Do not mark your own uncertainty in the output — the
+            downstream system performs verification.
+            """;
+
+        var user = $$"""
+            Message: "{{composedMessage}}"
+
+            Extract claims. JSON only.
+            """;
+
+        return (system, user);
+    }
+
     // ── Feature 28: Dispatch coherence gate ─────────────────────────────────
 
     /// <summary>

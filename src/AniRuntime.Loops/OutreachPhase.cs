@@ -23,6 +23,7 @@ public class OutreachPhase
     private readonly IOllamaClient _ollama;
     private readonly AniActionDispatcher _dispatcher;
     private readonly DesireEngine _desire;
+    private readonly ClaimVerificationPhase _claimVerifier;
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
     private readonly AniOptions _aniOptions;
@@ -43,6 +44,7 @@ public class OutreachPhase
         IOllamaClient ollama,
         AniActionDispatcher dispatcher,
         DesireEngine desire,
+        ClaimVerificationPhase claimVerifier,
         IOptions<AniOptions> aniOptions,
         ILogger<OutreachPhase> log,
         ITextClassificationService? mlClassifier = null,
@@ -54,6 +56,7 @@ public class OutreachPhase
         _ollama = ollama;
         _dispatcher = dispatcher;
         _desire = desire;
+        _claimVerifier = claimVerifier;
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
         _aniOptions = aniOptions.Value;
@@ -189,9 +192,27 @@ public class OutreachPhase
         var rewritten = await FixPronounsIfNeeded(message, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
 
-        // Step 4: Feature 28 — Dispatch Coherence Gate (Three-Door Evaluation)
+        // Step 3b: Feature 14 v2 — Outbound claim verification (Apr 22, 2026).
+        // Extracts claims about the contact from the composed message and corroborates
+        // each against Facts tier + anchored + inbound Mark messages. On failure the
+        // dispatch is suppressed; the model is never told it was wrong. See
+        // ClaimVerificationPhase.cs for the full discipline.
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
+        var claimResult = await _claimVerifier.VerifyAsync(rewritten, contact, ct).ConfigureAwait(false);
+        if (!claimResult.Passed)
+        {
+            _log.LogWarning(
+                "Claim verification: SUPPRESS outreach — {Reason}. Flagged: {Claims}",
+                claimResult.Reason,
+                string.Join(", ", claimResult.Unverified.Select(c => $"\"{c.Text}\"")));
+            await _desire.DecayDesireAsync(0.30f, "claim verification suppression", ct)
+                .ConfigureAwait(false);
+            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Step 4: Feature 28 — Dispatch Coherence Gate (Three-Door Evaluation)
         if (!await EvaluateCoherenceAsync(rewritten, recentThought, contact, ct).ConfigureAwait(false))
         {
             _log.LogInformation("Coherence gate: SUPPRESS — message only makes sense in Ani's head");

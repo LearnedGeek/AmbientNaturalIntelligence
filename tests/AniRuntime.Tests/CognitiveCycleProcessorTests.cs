@@ -114,14 +114,17 @@ public class CognitiveCycleProcessorTests : AniTestBase
             MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();
         var compressor = new ContextCompressor(MockOllama.Object, NullLogger<ContextCompressor>.Instance);
+        var claimVerifier = new ClaimVerificationPhase(
+            MockMemory.Object, MockOllama.Object, DefaultOptions,
+            NullLogger<ClaimVerificationPhase>.Instance);
         var conversationReply = new ConversationReplyPhase(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
             _mockChannelResolver.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            _mockIntent.Object, gateState, compressor, DefaultOptions, DefaultOllamaOptions,
+            _mockIntent.Object, gateState, compressor, claimVerifier, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, DefaultOptions,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, claimVerifier, DefaultOptions,
             NullLogger<OutreachPhase>.Instance);
         var perception = new PerceptionPhase(
             sources, MockMemory.Object, NullLogger<PerceptionPhase>.Instance);
