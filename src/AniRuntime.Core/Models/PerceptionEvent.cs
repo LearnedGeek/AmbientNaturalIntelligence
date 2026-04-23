@@ -24,5 +24,14 @@ public enum PerceptionCategory
     Calendar,
     Content,
     Communication,
-    Social
+    Social,
+
+    /// <summary>
+    /// Agentic Lens Layer 1 Phase 1d (Apr 2026): a perception about the agent's
+    /// own cognitive state rather than an external event. Emitted by sources like
+    /// <c>RetrievalSelfDominancePerceptionSource</c> that observe patterns in
+    /// recent cognition (e.g. own-output retrieval share) and surface them as
+    /// interior-legible signals.
+    /// </summary>
+    Internal,
 }

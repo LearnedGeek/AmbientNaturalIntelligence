@@ -164,6 +164,14 @@ try
     builder.Services.AddSingleton<TwilioInboundPerceptionSource>();
     builder.Services.AddSingleton<IPerceptionSource>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
     builder.Services.AddSingleton<IChatInbound>(sp => sp.GetRequiredService<TwilioInboundPerceptionSource>());
+
+    // Agentic Lens Layer 1 Phase 1d: rolling-window tracker for retrieval origin
+    // distributions + self-dominance perception source. The tracker is always
+    // registered (writer lifetime tied to ContextBuilder); the perception source
+    // is gated at runtime by AniOptions.RetrievalDominancePerceptionEnabled.
+    builder.Services.AddSingleton<IRetrievalOriginTracker, RetrievalOriginTracker>();
+    builder.Services.AddSingleton<IPerceptionSource, RetrievalSelfDominancePerceptionSource>();
+
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 

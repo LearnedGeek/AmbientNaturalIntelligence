@@ -21,6 +21,7 @@ public class ContextBuilder
     private readonly IOllamaClient _ollama;
     private readonly DesireEngine _desire;
     private readonly IDiagnosticService _diagnostic;
+    private readonly IRetrievalOriginTracker? _originTracker;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<ContextBuilder> _log;
 
@@ -33,7 +34,8 @@ public class ContextBuilder
         DesireEngine desire,
         IDiagnosticService diagnostic,
         IOptions<AniOptions> aniOptions,
-        ILogger<ContextBuilder> log)
+        ILogger<ContextBuilder> log,
+        IRetrievalOriginTracker? originTracker = null)
     {
         _state = state;
         _search = search;
@@ -42,6 +44,7 @@ public class ContextBuilder
         _ollama = ollama;
         _desire = desire;
         _diagnostic = diagnostic;
+        _originTracker = originTracker;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -319,6 +322,11 @@ public class ContextBuilder
                     histogram.GetValueOrDefault(RetrievalOrigin.External,  0),
                     histogram.GetValueOrDefault(RetrievalOrigin.Anchored,  0),
                     histogram.GetValueOrDefault(RetrievalOrigin.Unknown,   0));
+
+                // Phase 1d: feed the rolling-window tracker consumed by the
+                // RetrievalSelfDominancePerceptionSource. Tracker is optional
+                // so tests without DI wiring still construct ContextBuilder.
+                _originTracker?.RecordCycle(histogram);
             }
         }
 

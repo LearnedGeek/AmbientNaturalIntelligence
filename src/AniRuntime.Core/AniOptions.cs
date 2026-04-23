@@ -119,6 +119,26 @@ public class AniOptions
     public bool   RetrievalProtectedSlotsEnabled    { get; set; } = false;
     public double MinNonCaregiverRetrievalFraction  { get; set; } = 0.30;
 
+    // Agentic Lens Layer 1 Phase 1d: self-dominance perception source (Apr 2026).
+    //
+    // When enabled, the RetrievalSelfDominancePerceptionSource emits an
+    // interior-legible perception ("Something in me has been listening to my
+    // own thoughts too much lately...") when the agent's own-prior-output share
+    // of recent retrievals exceeds OwnOutputDominanceThreshold over the last
+    // RetrievalDominanceWindowCycles cycles. This gives Ani a perceivable
+    // signal of the feedback-loop condition Lerman Spark 2 named and that the
+    // April 21 cascade demonstrated at its extreme.
+    //
+    // Default off per the "observe first" rollout pattern. Requires Phase 1a
+    // tracker data accumulated across at least RetrievalDominanceMinCycles
+    // cycles before evaluation. Cooldown between emissions prevents flooding
+    // the perception log while the condition persists.
+    public bool   RetrievalDominancePerceptionEnabled { get; set; } = false;
+    public double OwnOutputDominanceThreshold         { get; set; } = 0.70;
+    public int    RetrievalDominanceWindowCycles      { get; set; } = 10;
+    public int    RetrievalDominanceMinCycles         { get; set; } = 3;
+    public double RetrievalDominanceCooldownMinutes   { get; set; } = 30.0;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.
