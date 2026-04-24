@@ -97,7 +97,11 @@ public class AniOptions
     // Phase 1a baseline logs accumulate enough data to compare before/after
     // origin distributions. λ default 0.3 per Carbonell & Goldstein's original
     // range of 0.3–0.5 — relevance-heavy, diversity tie-breaks.
-    public bool   RetrievalDiversityEnabled { get; set; } = false;
+    //
+    // Apr 24, 2026: Mark's Phase 3.0 Layer 1 Activation green-light. Flag
+    // flipped to true as part of the two-week observation window that
+    // precedes Layer 2 Phase 2c. See ANI-Agentic-Lens-Layer2-Plan.md §3.0.
+    public bool   RetrievalDiversityEnabled { get; set; } = true;
     public double RetrievalDiversityLambda  { get; set; } = 0.3;
 
     // Agentic Lens Layer 1 Phase 1c: origin-tier protected slots on the
@@ -116,7 +120,12 @@ public class AniOptions
     // accumulates and Phase 1b MMR observation is stable. The 0.30 default is a
     // principled starting point per the Layer 1 design doc; tune empirically against
     // the dashboard origin distribution.
-    public bool   RetrievalProtectedSlotsEnabled    { get; set; } = false;
+    //
+    // Apr 24, 2026: Mark's Phase 3.0 Layer 1 Activation green-light. Flag
+    // flipped to true. 30% non-caregiver retrieval floor now enforced on
+    // inner-thought retrieval. Observation window runs concurrent with
+    // RetrievalDiversityEnabled and RetrievalDominancePerceptionEnabled.
+    public bool   RetrievalProtectedSlotsEnabled    { get; set; } = true;
     public double MinNonCaregiverRetrievalFraction  { get; set; } = 0.30;
 
     // Agentic Lens Layer 1 Phase 1d: self-dominance perception source (Apr 2026).
@@ -133,7 +142,11 @@ public class AniOptions
     // tracker data accumulated across at least RetrievalDominanceMinCycles
     // cycles before evaluation. Cooldown between emissions prevents flooding
     // the perception log while the condition persists.
-    public bool   RetrievalDominancePerceptionEnabled { get; set; } = false;
+    //
+    // Apr 24, 2026: Mark's Phase 3.0 Layer 1 Activation green-light. Flag
+    // flipped to true. Ani now perceives the feedback-loop condition when her
+    // own-output share of retrieval exceeds 70% for the rolling window.
+    public bool   RetrievalDominancePerceptionEnabled { get; set; } = true;
     public double OwnOutputDominanceThreshold         { get; set; } = 0.70;
     public int    RetrievalDominanceWindowCycles      { get; set; } = 10;
     public int    RetrievalDominanceMinCycles         { get; set; } = 3;
