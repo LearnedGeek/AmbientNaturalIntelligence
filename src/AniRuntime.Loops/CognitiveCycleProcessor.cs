@@ -347,8 +347,36 @@ public class CognitiveCycleProcessor
         await _reflection.TryRunAsync(snapshot.CharacterState, ct).ConfigureAwait(false);
 
         // Phase 5: Desire update
-        // Feature 33 (Liu et al.): Motivation score modulates desire drift
-        var motivation = MotivationScorer.Score(valence, obs.Severity, postShift);
+        // Feature 33 (Liu et al.): Motivation score modulates desire drift.
+        // Feature 42 Phase 2a (Apr 2026, Ryan & Deci SDT): compute three-axis
+        // motivation vector alongside the scalar. Phase 2a is measurement-only —
+        // DesireEngine drift still consumes .Relatedness; autonomy and
+        // competence are logged for baseline distribution. See
+        // docs/spec/ANI-Agentic-Lens-Layer2-Plan.md §3 Phase 2a.
+        var worldOriginFraction = 0f;
+        if (snapshot.RelevantMemory.Count > 0)
+        {
+            var worldCount = 0;
+            for (var i = 0; i < snapshot.RelevantMemory.Count; i++)
+            {
+                if (RetrievalOriginClassifier.Classify(snapshot.RelevantMemory[i]) == RetrievalOrigin.World)
+                    worldCount++;
+            }
+            worldOriginFraction = worldCount / (float)snapshot.RelevantMemory.Count;
+        }
+
+        var motivationVec = MotivationScorer.ScoreVector(valence, obs.Severity, postShift, worldOriginFraction);
+        var motivation    = motivationVec.Relatedness;
+
+        if (_aniOptions.MotivationVectorLoggingEnabled)
+        {
+            _log.LogInformation(
+                "motivation vector: relatedness={Relatedness:F2} autonomy={Autonomy:F2} competence={Competence:F2} " +
+                "(valence={Valence:F2} severity={Severity:F2} worldFrac={WorldFrac:F2})",
+                motivationVec.Relatedness, motivationVec.Autonomy, motivationVec.Competence,
+                valence, obs.Severity, worldOriginFraction);
+        }
+
         await _desire.ApplyDriftAsync(motivation, ct).ConfigureAwait(false);
 
         if (valence > (float)_aniOptions.ValenceTriggerThreshold)

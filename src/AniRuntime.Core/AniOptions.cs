@@ -139,6 +139,17 @@ public class AniOptions
     public int    RetrievalDominanceMinCycles         { get; set; } = 3;
     public double RetrievalDominanceCooldownMinutes   { get; set; } = 30.0;
 
+    // Agentic Lens Layer 2 Phase 2a (Apr 2026): three-axis motivation vector
+    // logging. When enabled, CognitiveCycleProcessor computes the
+    // MotivationVector (relatedness / autonomy / competence per Ryan & Deci
+    // SDT) alongside the existing scalar and emits a per-cycle log line with
+    // the three axis scores. Phase 2a is measurement-only — the scalar
+    // .Relatedness still drives DesireEngine drift, behaviour is unchanged.
+    // Default on because Phase 2a's whole purpose is the baseline
+    // distribution it produces; set false only if journal-log volume becomes
+    // a concern. Phase 2b/2c/2d introduce their own separate flags.
+    public bool MotivationVectorLoggingEnabled { get; set; } = true;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.
