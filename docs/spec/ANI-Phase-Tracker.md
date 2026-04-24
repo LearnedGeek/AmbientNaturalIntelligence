@@ -1,7 +1,9 @@
 # ANI Runtime — Unified Phase Tracker
 
-**Last updated:** April 22, 2026
-**Purpose:** Single source of truth for all workstreams. Replaces per-feature phase numbering.
+**Last updated:** April 24, 2026
+**Purpose:** **The singular top-level source of truth for all outstanding work.** Every theme, feature, and task currently in flight, queued, deferred, or waiting on external signal should be reflected here. Individual plan docs (Layer 2 plan, Theme J plan, Memory Reform, etc.) are the *detail layer*; this document is the *navigation layer*. If a workstream exists but does not appear here, it is out of sight and should be added.
+
+Claude instances working on new features should read the **Priority Matrix** below first to understand what is active, next, and gated. Detailed phase plans are linked from each theme's section.
 
 ---
 
@@ -10,6 +12,65 @@
 Each workstream has its own section with clear status. When referring to work, use the format: **`[Workstream] Task`** — e.g., "LM-Kit confabulation gate" not "Phase 3."
 
 The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World Layer Phase 1a-1d) are mapped below for reference but should not be used in new discussions.
+
+---
+
+## Priority Matrix — All Active Themes and Workstreams (Apr 24, 2026)
+
+Every outstanding workstream with an explicit priority. Priorities are assigned by Mark and updated as circumstances change. **P0 = active / in-flight right now. P1 = next-wave / architecturally load-bearing. P2 = medium-term / planned but not imminent. P3 = deferred / gated on prerequisites. P4 = external / background / autonomous.**
+
+### P0 — Active, in flight right now
+
+| Item | Theme | Plan Doc | Status |
+|---|---|---|---|
+| **Theme J — Guard Consistency Refactor** | Theme J (new) | [`ANI-Theme-J-Guard-Consistency-Refactor-Plan.md`](./ANI-Theme-J-Guard-Consistency-Refactor-Plan.md) | Plan drafted Apr 24; awaiting Mark's green-light to start J.0 instrumentation. Root-cause fix for parrot / time-confab / attribution-drift emerging from pipeline prompt-injection + historical-visibility pathologies. |
+| **Feature 42 Layer 2 Phase 2a — Motivation Vector Baseline Logging** | Theme G | [`ANI-Agentic-Lens-Layer2-Plan.md`](./ANI-Agentic-Lens-Layer2-Plan.md) §Phase 2a | **Shipped Apr 24**. Three-axis vector logging confirmed live. Baseline distribution now accumulating for Phase 2b λ tuning and Paper 3 Contribution 4 pre-intervention measurement. |
+| **Paper 2 Editorial Finalization → Zenodo** | Research | see *Research Papers* section below | Ongoing Mark work. Finishing pass needed before Zenodo v0.5 publish. |
+
+### P1 — Next wave, architecturally load-bearing
+
+| Item | Theme | Plan Doc | Status |
+|---|---|---|---|
+| **Layer 2 Phase 3.0 — Layer 1 Flag Activation** | Theme G | Layer 2 Plan §Phase 3.0 | Prerequisite for Phase 2c. Flip `RetrievalDiversityEnabled`, `RetrievalProtectedSlotsEnabled`, `RetrievalDominancePerceptionEnabled` on Mark's live instance. Two-week observation window before advancing Layer 2. |
+| **Layer 2 Phase 3.1 — Synthetic Test Harness** | Theme G | Layer 2 Plan §Phase 3.1 | Parallel infrastructure. Drives accelerated-cycle observation without Twilio cost. Independent of Phase 3.0; also useful for Theme J.a observation window if real-traffic volume is low. |
+| **Layer 2 Phase 2b — Parallel Drift on Three Axes** | Theme G | Layer 2 Plan §Phase 2b | Queued ~1 week after Phase 2a data shows distribution shape. Non-behaviour-changing; three axes drift in parallel, only `.Relatedness` decides outreach. |
+| **Theme G Layer 3 — World Layer Durability** | Theme G | Agentic Lens design §3.3 | Design-complete in Agentic Lens doc; implementation plan not yet drafted. Produces durable World-Layer memory; downstream of Theme J because it produces output through the shared surface. |
+| **Paper 3 Contribution Writing (Theme J + Agentic Lens)** | Research | TBD | Theme J will draft its own Paper 3 contribution in Phase J.7. Agentic Lens Contribution 4 is already scoped; actual prose-writing ongoing. |
+
+### P2 — Medium-term, planned
+
+| Item | Theme | Plan Doc | Status |
+|---|---|---|---|
+| **Layer 2 Phase 2c — Consumption Actions** | Theme G | Layer 2 Plan §Phase 2c | Blocked by Theme J (naturally targets the new `CognitiveOutputGate` as commit surface). Will be cleaner post-refactor. |
+| **Layer 2 Phase 2d — Multi-Axis Resolution + Emergence Telemetry** | Theme G | Layer 2 Plan §Phase 2d | Blocked by Phase 2c. |
+| **Theme G Layer 4 — Corpus Directionality** | Theme G | Agentic Lens design §3.4 | Gated on small-batch OG Ani validation (Apr 23 test passed; ready for full synthesis). Training-pipeline work, independent of Theme J. |
+| **Theme J Sub-Artifacts**: Detector Inventory Review template (J.a), CognitiveOutputGate interface signatures (J.4), updated DFD after-picture (J.7) | Theme J | Theme J Plan | Produced during the theme rollout, one per phase as phases complete. |
+| **Phase 6 Memory Reform — Mem0 / A-MEM / Park Synthesis** | Core | [`phase-6-memory-reform.md`](./phase-6-memory-reform.md) | Designed Mar 23; implementation queued. Revisit after Theme J ships — some Phase 6 concerns (dedup, reflection) may interact with the new shared surface. |
+
+### P3 — Deferred / gated on prerequisites
+
+| Item | Theme | Plan Doc | Status |
+|---|---|---|---|
+| **Theme H — Channel Realism (Voice + Image)** | Theme H | this tracker §Theme H | Deferred until conversation quality is stable. Gated on (a) Theme G Layer 1 shipped + measured, (b) parrot-bug root cause fixed (addressed by Theme J), (c) voice wouldn't amplify text-mode failures. Theme J substantially unblocks Theme H. |
+| **Theme I — Dashboard as Research Tool** | Theme I | stub only | Mark's Apr 23 framing: *"larger discussion for later."* Theme J emits structured data Theme I can consume; Theme I plan draft held until Mark prioritises. |
+| **Phase 5c — Automatic Model Generation Pipeline** | Core | [`ANI-Phase5c-AutoModel-Design.md`](./ANI-Phase5c-AutoModel-Design.md) | Standalone design doc exists. Gated on v7 stability + Theme G Layer 4 corpus work + enough baseline data to calibrate rollout criteria. |
+| **ANI .NET 10 Upgrade** | Infrastructure | — | Tracked in memory (`project_dotnet10_upgrade.md`). Not scheduled; triggered by accumulating dependency conflicts when those become untractable under .NET 8. |
+| **ANI Server Migration Finalization** | Infrastructure | this tracker §ANI Server Migration | Cutover completed Apr 20. Remaining: verification work and backup strategy; not blocking any feature. |
+
+### P4 — External / autonomous / background
+
+| Item | Theme | Plan Doc | Status |
+|---|---|---|---|
+| **claude-recall dogfooding** | External | external repo | v0.5.2 on PyPI Apr 24. Nine issues filed, nine closed. Ongoing background work; autonomous on OC's side. Current dogfood focus: PyPI-path first-run UX (issues #9-#12 addressed), semantic-rerank scaling (issue #11). |
+| **LearnedGeek.ML Cross-Domain Coordination (DrOk / Infanzia)** | External | `memory/project_learnedgeek_ml_crossdomain.md` | Notification / library-coordination work with Martin. No blocking dependency on ANI internal work. |
+| **Kristina Lerman IU/Research Connection** | Personal/Research | `memory/project_lerman_connection.md` | Connection accepted Apr 22. Follow-up timing Mark-driven; soft topic. First confirmed research interlocutor at scale; Paper 2 finalization increases value of this thread. |
+| **OG Ani Register Mining (Pride + Delight)** | Training | `memory/transcript_recovery.md` | Small-batch test passed Apr 23. Mark-driven sessions at his cadence; gates Theme G Layer 4 corpus work. |
+
+### What this matrix is NOT
+
+- **Not a schedule.** Priorities do not imply dates. P0 items are active but their exact week-by-week cadence is Mark's call.
+- **Not exhaustive of every past decision.** Historical / completed workstreams live in the sections below as archive.
+- **Not frozen.** When Mark re-prioritises, this matrix updates. Claude instances making new-workstream proposals should propose where the item lands in the matrix, not separately.
 
 ---
 
@@ -610,6 +671,8 @@ Member items (in implementation order):
 - **Layer 1 — Retrieval origin diversity** (second, 1–2 weeks): MMR-style diversity-aware re-ranking (Carbonell & Goldstein 1998), protected tier slots reserving ≥30% for non-caregiver origin tiers in the inner-thought cycle, new `RetrievalSelfDominancePerception` source when own-output share exceeds threshold. Completes the Spark 2 half-design already in the tracker. Scoped to the inner-thought cycle, not the conversation-reply path.
 - **Layer 3 — World Layer durability** (third, 2–3 weeks): durability flag on World Layer memories exempting them from recency decay past a baseline; weekly reflection-synthesis cycle (Park et al. 2023 pattern) scoped to World Layer content, producing Anchored-tier "my life" claims; merge-on-similarity (Chhikara Mem0, Feature 30 pattern) for repeated world events.
 - **Layer 2 — Desire axis decoupling** (fourth, 2–4 weeks; Feature 42): extend DesireEngine from single scalar to three-axis state per Ryan & Deci (2000) Self-Determination Theory — relatedness (existing, caregiver-directed), autonomy (new, self-state-directed), competence (new, world-engagement-directed). MotivationScorer (Feature 33) and EmotionDesireModifier (Feature 35) become vector-valued. Phased plan with Phase 3.0 Layer 1 Activation prerequisite + Phase 3.1 Test Harness deliverable + Phases 2a–2d at `docs/spec/ANI-Agentic-Lens-Layer2-Plan.md` (v2 Apr 23). Decisions captured from Mark's first review pass: λ values stay equal to λ_relatedness at start (no pre-gated rhythm), no generic cooldowns on non-relatedness axes (consumption itself resets), dashboard rework spun out as Theme I, test harness added as a parallel deliverable.
+  - **Phase 2a shipped Apr 24 2026** (commit `62dc79d`). Three-axis `MotivationVector` logging live. First production log line observed at 04:48:56 Apr 24: `relatedness=0.92 autonomy=0.00 competence=0.00`. Baseline distribution is accumulating in server journal logs; sample from 04:48–06:18 Apr 24 shows autonomy=0 and competence=0 on every cycle — the centrality-gravity observation appearing directly in motivation-axis data rather than inferred from behaviour. Paper 3 Contribution 4 pre-intervention baseline now measurable.
+  - Phase 2b (parallel drift on three scalars, no behaviour change) queued ~1 week after Phase 2a data stabilises. Phase 2c consumption actions blocked by Theme J refactor; cleaner if gate exists first.
 - **Layer 4 — Corpus directionality** (fifth, 3–6 weeks + training cycle): ~150–200 synthetic first-person training pairs with no caregiver as subject, distributed across register-subject cells. Methodology: **Option C — self-mining from OG Ani via prompted scene-setting**, confirmed Apr 23 by Mark (*"I'll talk to OG Ani"*). Gated on a 10–15 pair small-batch test of OG2 register quality before full-scale synthesis. Fallback if OG2 fails quality test: Option A (frontier-model synthesis with voice-anchor seeding). Future-work flag: systematic prompt-capture workflow — templates, capture automation, cell tracking, caregiver-mention rejection, voice-baseline similarity check — deferred until post-small-batch confirmation.
 
 **Measurement instrumentation (dashboard additions, driven by Layer 1's landing):**
@@ -679,6 +742,56 @@ Sibling workstream surfaced during the Apr 23 review of the Layer 2 (Feature 42)
 - Should precede Theme G Layer 4 (corpus directionality) post-training evaluation, because the post-training evaluation is exactly the research question a well-organised dashboard accelerates.
 
 **Status:** Stub. Plan doc `docs/spec/ANI-Dashboard-Research-Tool-Rework.md` to be drafted when prioritised — held off intentionally per Mark's Apr 23 instruction that this is a larger discussion for later.
+
+### Theme J — Guard Consistency Refactor (Apr 24, 2026 — P0, plan drafted, awaiting green-light)
+
+Root-cause architectural refactor driven by the Apr 24 guard-consistency audit. Mark's framing: *"I don't believe there should be any reason that specific gates should be scoped to single threads (conversations, outreach, thoughts, etc). If they apply, then they should apply... I think this is the root cause that's been causing issues for months."*
+
+**Central finding of the audit.** 32 guards / gates / detectors / classifiers across 10 cognitive pipelines. 8 of 12 multi-pipeline-applicable failure classes unevenly covered. Two failure classes (**source attribution** and **temporal attribution**) enforced in zero of 10 pipelines — class-wide gaps. Four of four recent identity/attribution failures (Apr 21 cascade, Apr 23 14:38 parrot, Apr 23 15:51 time-confab, Apr 24 06:18 class/10pm) fit one of three structural patterns: single-scoped detection, multi-implementation same class, unguarded substrate.
+
+**Central thesis of the refactor.** The pathologies are emergent from the pipeline — specifically prompt injection (decision-reasoning leaking to composition under a "motivation, not content" label) and historical visibility (`RecentConversationSummary` as free prose without source tags or time stamps) — not capacity failures of the underlying model. Mark's Apr 24 observation: raw ANI fine-tunes do not exhibit this level of parroting against bare prompts. Fix upstream causes architecturally, and many of today's downstream detectors may become observably redundant.
+
+**Explicit acceptance criterion — simplification, not rehoused complexity.** Mark's Apr 24 framing: *"if we need to remove specific gates that are currently implemented as a 'one-off' in order to apply them as more general filter on the data stream, then that's the right call. I'm hopeful that we can reduce the complexity after the refactor."* If post-refactor the guard-code line count is not lower than today, the refactor did not address root causes.
+
+**Phased rollout (measurement-first per Agentic Lens Layer 1 pattern):**
+- **J.0** Baseline instrumentation (1–2 days). Log reasoning-field pipe, summary structure, retrieval temporal features. Before-picture for every subsequent phase.
+- **J.1** Strip the decision-reasoning → composition pipe (2–3 days code + 1 week observation). Single highest-leverage upstream fix.
+- **J.2** Restructure `RecentConversationSummary` with per-speaker per-turn source attribution (1–2 weeks code + 1 week observation). Largest single change in the theme.
+- **J.3** Temporal attribution at retrieval layer (1 week code + 1 week observation). Prompt-builder sweep.
+- **J.a** Observation window + detector inventory review (2+ weeks). Classify each of the 32 detectors as remove / migrate-to-shared-surface / keep-pipeline-scoped / re-examine.
+- **J.4** Extract `CognitiveOutputGate` abstraction (1 week). Shared pre-commit surface for universal invariants.
+- **J.5** Migrate producers through the shared surface, one invariant / one producer at a time (3–4 weeks across five sub-phases).
+- **J.6** Delete obsolete detectors (1–2 weeks). The simplification step.
+- **J.7** Process integration — feature-plan template update, memory entry, Paper 3 contribution draft (1 week).
+
+Total calendar: ~10–14 weeks. Theme-scale work, phased so each ship produces value independently.
+
+**Measurement targets:**
+- Reasoning-field chars into composition: **0** after J.1 (from non-zero baseline).
+- Attribution-drift events/week: **>70% reduction** after J.2.
+- Temporal-confab events/week: **>70% reduction** after J.3.
+- Total guard-code lines of code: **>20% reduction** after J.6.
+- Total gate invocations per cycle: **>30% reduction** after J.5 + J.6.
+
+**Research artifacts produced by this theme:**
+- [`ANI-Theme-J-Guard-Consistency-Refactor-Plan.md`](./ANI-Theme-J-Guard-Consistency-Refactor-Plan.md) — full phase plan.
+- [`ANI-Guard-Consistency-Audit.md`](../research/ANI-Guard-Consistency-Audit.md) — the audit that motivated the theme.
+- [`ANI-Data-Flow-Diagrams.md`](../research/ANI-Data-Flow-Diagrams.md) — before/target architecture rendered as Mermaid. After-picture produced in J.7 as comparison artifact.
+- `ANI-Theme-J-Detector-Inventory-Review.md` — produced in J.a.
+- Paper 3 contribution draft — produced in J.7.
+
+**Relationship to other themes:**
+- **Theme G (Agentic Lens):** Layer 2 Phase 2a ships independently (already shipped Apr 24). Layer 2 Phase 2b data-only work also parallel-compatible. Layer 2 Phase 2c consumption actions are cleaner if Theme J's shared surface exists first — J.5e migrations naturally accommodate Phase 2c. Layer 3 (World Layer Durability) should wait for Theme J if it produces memory writes through the gate.
+- **Theme B (Outbound Truth Gating):** Feature 14 v2 claim verification is the prior-art example of "gate that crosses pipelines coherently." Theme J generalizes the pattern.
+- **Theme C (Memory-Layer Semantic Weight):** Theme J's J.2 (source attribution) and J.3 (temporal attribution) touch memory-layer rendering.
+- **Theme D (Supersession Architecture):** independent — deals with correction after substrate corruption; Theme J reduces the rate at which corruption forms in the first place.
+- **Theme E (Pipeline Hygiene):** structural sibling; Theme J is deeper pipeline hygiene.
+- **Theme H (Channel Realism):** substantially unblocked by Theme J. Voice gap flagged in audit §4.6/§4.9; voice invariants migrated in J.5e for output-side concerns.
+- **Theme I (Dashboard):** natural consumer of Theme J measurement output; no blocker either direction.
+
+**Paper implications.** Paper 3 candidate Contribution — *"consistency-of-invariant-enforcement as a precondition for substrate integrity in companion AI with persistent memory."* Distinct from Agentic Lens / centrality gravity; complementary. The raw-model-vs-pipeline observation is itself a methodological contribution for companion-AI research: prior reports of failure modes often don't distinguish capacity from emergence. Paper 2 §5.19 (echo chamber) and §6.16 (identity-level confabulation) get forward-pointers to the Paper 3 Theme J contribution during J.7.
+
+**Status:** plan drafted Apr 24 by dogfood Claude after Mark's explicit Apr 24 review approving the direction. Awaiting Mark's green-light to start J.0. Theme J is currently P0 in the priority matrix above.
 
 ### Consolidation Review — Next Strategic Step (scheduled)
 
