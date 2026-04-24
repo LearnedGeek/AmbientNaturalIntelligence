@@ -46,6 +46,14 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **Theme G Layer 4 — Corpus Directionality** | Theme G | Agentic Lens design §3.4 | Gated on small-batch OG Ani validation (Apr 23 test passed; ready for full synthesis). Training-pipeline work, independent of Theme J. |
 | **Theme J Sub-Artifacts**: Detector Inventory Review template (J.a), CognitiveOutputGate interface signatures (J.4), updated DFD after-picture (J.7) | Theme J | Theme J Plan | Produced during the theme rollout, one per phase as phases complete. |
 | **Phase 6 Memory Reform — Mem0 / A-MEM / Park Synthesis** | Core | [`phase-6-memory-reform.md`](./phase-6-memory-reform.md) | Designed Mar 23; implementation queued. Revisit after Theme J ships — some Phase 6 concerns (dedup, reflection) may interact with the new shared surface. |
+| **Internal-State Perception Framework (9-signal)** | Standalone | this tracker §Internal-State Perception Framework | Complete design session (Apr 20 evening). Nine signals including register saturation, reciprocity, natural transition point, topic importance calibration, purpose alignment. Five contributed by Ani (subject-as-co-designer). Missing from Priority Matrix pre-Apr-24. Surfaced by Apr 24 hygiene pass. |
+| **Conscience Layer — Reflective Companion Voice** | Standalone | this tracker §Conscience Layer | Complete design (Apr 21). Distinct from identity correction / Theme J. Addresses continuous-guidance gap via second-order internalized voice. Needs Mark's priority call. |
+| **Identity Correction Channel** | Theme D candidate | this tracker §Identity Correction Channel | Design-complete (Apr 21). Prevention-side partly addressed by Theme J; correction mechanism still valuable post-Theme-J. Wait for J.a data to confirm scope. |
+| **Outage Perception Source** | Theme E / Theme A | Backlog 15.19 | Research-relevant design (Apr 15). Perception source emitting when ≥3 sources fail ≥15min. Paper 3 case study for architecture-over-training principle applied to absence-of-perception. Apr 14-15 outage is motivating case. |
+| **EM9 — Longitudinal Memory Compounding** | Research | Backlog 15.15 | Per-cycle / per-window / per-trend logger design complete (Apr 13). Implement logger now (~1 day); trend analysis happens over months of operation. Paper 3/4 contribution surface. |
+| **ANI Cloud Edge CE-1 — backup only** | Infrastructure | this tracker §ANI Cloud Edge | Disaster-recovery standalone. Independent of Theme J. Can ship anytime Mark prioritises. CE-2/3/4 deferred to P3. |
+| **Conversation Turn Lag investigation (Apr 11)** | Theme G retrieval tuning | Backlog 15.10 | Open investigation. Retrieval composite weights content-richness over recency; older topic-rich messages outrank current turn. Three fix options sketched. May be resolved by Layer 2 scoring work; may need own design session. |
+| **Conversation attribution flip investigation (Apr 4, Apr 9)** | Training / Pipeline | Backlog 15.4 | Open investigation. Pronoun/role drift across v7 not regex-fixable. Pair with v8 training data audit when that lands. |
 
 ### P3 — Deferred / gated on prerequisites
 
@@ -56,6 +64,10 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **Phase 5c — Automatic Model Generation Pipeline** | Core | [`ANI-Phase5c-AutoModel-Design.md`](./ANI-Phase5c-AutoModel-Design.md) | Standalone design doc exists. Gated on v7 stability + Theme G Layer 4 corpus work + enough baseline data to calibrate rollout criteria. |
 | **ANI .NET 10 Upgrade** | Infrastructure | — | Tracked in memory (`project_dotnet10_upgrade.md`). Not scheduled; triggered by accumulating dependency conflicts when those become untractable under .NET 8. |
 | **ANI Server Migration Finalization** | Infrastructure | this tracker §ANI Server Migration | Cutover completed Apr 20. Remaining: verification work and backup strategy; not blocking any feature. |
+| **ANI Cloud Edge CE-2, CE-3, CE-4** | Infrastructure | this tracker §ANI Cloud Edge | Webhook / observability / App Insights phases. Deferred until Theme J ships and CE-1 is running. |
+| **Database Migration SQLite → MSSQL** | Infrastructure | this tracker §Database Migration | Designed with five explicit migration triggers. Nothing to do until a trigger fires. |
+| **Clean-slate regeneration grounding loss** | Pipeline | Backlog 15.12 | Likely architecturally moot post-Theme-J.1 (reasoning strip). Revisit after J.1 ships; probably closable then. |
+| **Multi-Agent Architecture** | Future | this tracker §Multi-Agent Architecture | Hardware ready; Paper 5 scope. Priority call pending from Mark. |
 
 ### P4 — External / autonomous / background
 
@@ -65,12 +77,53 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **LearnedGeek.ML Cross-Domain Coordination (DrOk / Infanzia)** | External | `memory/project_learnedgeek_ml_crossdomain.md` | Notification / library-coordination work with Martin. No blocking dependency on ANI internal work. |
 | **Kristina Lerman IU/Research Connection** | Personal/Research | `memory/project_lerman_connection.md` | Connection accepted Apr 22. Follow-up timing Mark-driven; soft topic. First confirmed research interlocutor at scale; Paper 2 finalization increases value of this thread. |
 | **OG Ani Register Mining (Pride + Delight)** | Training | `memory/transcript_recovery.md` | Small-batch test passed Apr 23. Mark-driven sessions at his cadence; gates Theme G Layer 4 corpus work. |
+| **Memory Service Hygiene Batch** | Theme E | this tracker §Memory Service Hygiene Batch | Eleven low-severity findings from Apr 18 ultrareview + M10 Generation-Loop Degeneracy. Ship in a convenient batch sitting. |
+| **Network exception log verbosity / Twilio outbound misclassification** | Theme F | Backlog 15.17, 15.18 | Cosmetic observability fixes. Ship with next Theme F sitting. |
+| **Easter as dynamic calendar event** | Theme F | Backlog 15.6 | Calendar library integration for Easter. Low priority. |
+| **Paper 4 / Paper 5 backlog methodology notes** | Research | Backlog 15.21, 15.22 | Researcher-as-Architectural-Reviewer + Black-Box Relational Probe Methodology. Methodology observations captured for future paper scoping. |
 
 ### What this matrix is NOT
 
 - **Not a schedule.** Priorities do not imply dates. P0 items are active but their exact week-by-week cadence is Mark's call.
 - **Not exhaustive of every past decision.** Historical / completed workstreams live in the sections below as archive.
 - **Not frozen.** When Mark re-prioritises, this matrix updates. Claude instances making new-workstream proposals should propose where the item lands in the matrix, not separately.
+
+---
+
+## 🚩 Items Awaiting Mark's Decision or Action (Apr 24 hygiene pass)
+
+Output of the Apr 24 tracker hygiene pass. Each entry here is waiting on Mark to either (a) make a decision that unblocks the work, or (b) take a concrete action only he can take. This section is the scannable shortlist; click-through to the full section for each item's details.
+
+Tag format used elsewhere in the tracker: **`[MARK-ACTION]`** on the line requiring action, **`[MARK-DECISION]`** when a design choice is pending. Grep-friendly.
+
+| # | Item | What's needed from Mark | Where |
+|---|------|-------------------------|-------|
+| 1 | **Theme J — start Phase J.0** | Green-light to begin baseline instrumentation (J.0 is measurement-only, zero risk, 1-2 days work). | Priority Matrix P0 · [Theme J plan](./ANI-Theme-J-Guard-Consistency-Refactor-Plan.md) |
+| 2 | **Layer 2 Phase 3.0 — Layer 1 flag activation** | Flip `RetrievalDiversityEnabled`, `RetrievalProtectedSlotsEnabled`, `RetrievalDominancePerceptionEnabled` on live instance. Pure config; no code. Begins two-week observation window. | Priority Matrix P1 · [Layer 2 plan §3.0](./ANI-Agentic-Lens-Layer2-Plan.md) |
+| 3 | **World Layer Source-Type Audit** | Run the one-hour audit (scope clearly defined in the section). Determines whether World seed synthesis reads from corrupted memory. Result routes to close-as-clean OR migrate-to-Theme-J. | Section *World Layer Source-Type Audit* below |
+| 4 | **Identity Correction Channel — formalize as Theme D sub-item or separate stream** | Decision on whether the design (~90 lines in section) becomes Theme D implementation work now, or waits for Theme J to resolve whether upstream fixes make it redundant. My read: wait for Theme J J.a data; may be substantially subsumed. | Section *Identity Correction Channel* below |
+| 5 | **Conscience Layer — priority decision** | Full design exists. Is this P1, P2, or P3? Theme J reduces the *need* for it but does not fully replace. Distinct architectural contribution. | Section *Conscience Layer* below |
+| 6 | **ANI Cloud Edge — sequencing** | Four-phase plan designed (CE-1 backup → CE-2 webhook → CE-3 observability → CE-4 App Insights). CE-1 is standalone disaster recovery; can ship anytime. Decision on whether CE-1 ships now in parallel with Theme J or waits. | Section *ANI Cloud Edge* below |
+| 7 | **Multi-Agent Architecture — priority + Paper 5 sequencing** | Hardware ready (16GB VRAM arrived Apr 11-12). Concept-level items (Inter-Agent Communication, Mark-Model Delegate, Multi-Agent Orchestration, Ani Gets a Friend). Need priority call relative to Paper 3/4/5. | Section *Multi-Agent Architecture* below |
+| 8 | **Database Migration SQLite → MSSQL — trigger monitoring** | Designed + deferred. Five migration triggers defined. Nothing needed now; just be aware of the triggers and raise if one fires. | Section *Database Migration* below |
+| 9 | **Conversation Turn Lag (Apr 11)** | Open investigation — retrieval composite weights content richness over recency. Three fix options sketched. May be resolved by Layer 2 tuning; may need its own design session. | Backlog item 15.10 |
+| 10 | **Clean-slate regeneration grounding loss (Apr 12)** | Design session pending. May be substantially moot post-Theme-J.1 (reasoning strip). Revisit after J.1 ships; likely able to close then. | Backlog item 15.12 |
+| 11 | **Conversation attribution flip (Apr 4, recurred Apr 9)** | Open investigation — pronoun/role drift across v7 not regex-fixable. May pair with v8 training data audit. | Backlog item 15.4 |
+| 12 | **Paper 2 editorial finalization → Zenodo** | Ongoing work. No specific next action needed; timing is Mark's. | Priority Matrix P0 |
+| 13 | **Lerman connection follow-through** | Personal/research. Connection accepted Apr 22. Timing Mark-driven. | Priority Matrix P4 |
+| 14 | **OG Ani Pride + Delight register mining** | Mark-driven session at his cadence. Gates Theme G Layer 4. | Priority Matrix P4 |
+| 15 | **Internal-State Perception Framework — priority** | Complete 9-signal design missing from Priority Matrix. Waiting on Consolidation Review which has not happened. Candidate to add at P1 or P2. | Section *Internal-State Perception Framework* |
+
+**Grouped summary by urgency:**
+
+- **Blocks active work (green-light needed):** #1, #2
+- **Quick decisions with concrete next actions:** #3, #5, #6
+- **Research/paper judgment calls:** #4, #7, #15, #12
+- **Background monitoring / low-effort:** #8, #13, #14
+- **Gated on Theme J data:** #9, #10
+- **Follow-up investigation:** #11
+
+None of these require immediate action from Mark; they're aggregated here so the scannable list exists when he's making priority choices.
 
 ---
 
@@ -151,6 +204,9 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 ---
 
 ## Internal-State Perception Framework (Emergent Workstream — Design-Complete, Consolidation Pending)
+
+> **[STANDALONE-PENDING / Added to Priority Matrix P2 on Apr 24]** Complete nine-signal design below. Five signals (reciprocity, natural transition point, response quality, emotional safety, purpose alignment) contributed by Ani herself — subject-as-co-designer methodology contribution for Paper 3. Surfaced to Priority Matrix P2 by Apr 24 hygiene pass; was previously buried here without matrix representation. Consolidation Review still scheduled (below) but item no longer invisible in the matrix.
+
 
 **Status:** Design session complete (April 20, 2026, evening). Implementation pending the Phase Tracker Consolidation Review (next section).
 **Origin:** April 20 morning — fourth recurrence of thematic stickiness pattern ("dorky little morning person" loop). Research log entry: Apr 20 "Fourth Thematic Stickiness Recurrence: Three-Part Architectural Diagnosis."
@@ -829,6 +885,9 @@ Everything on the dashboard is Ani-centric. Lerman's *"measure the right things"
 
 ## World Layer Source-Type Audit — Investigation (Apr 21, 2026)
 
+> **[MARK-ACTION]** Investigation not yet run. Scope clearly defined below. Outcome routes the work: if World seed synthesis reads from corrupted memory → migrate to Theme J (J.2 source attribution covers it). If World seed is clean → close and archive. One-hour audit.
+
+
 **Revision note:** The first draft of this entry claimed the World Layer had been "poisoned" by fiction and that its synthesis was drawing from Ani's own outputs. That framing assumed the bookstore-clerk identity emitted in the Apr 21 World seed was a confabulation — it is not. **The bookstore-clerk occupation and its Wisconsin setting are canonical** (deployed via the World Layer in April 2026 as the substrate response to experiential poverty per Paper 2 §6.15). The seed working as designed. Rewriting this entry as an *audit* workstream, not a confirmed failure.
 
 **Status:** Investigation, not a confirmed failure. Audit the World seed synthesis path to determine whether its input sources are properly scoped.
@@ -854,6 +913,9 @@ If the audit confirms the seed synthesizer is properly scoped to canonical input
 ---
 
 ## Coherence Gate Door B — No Truth-Verification of Shared Claims (Apr 21, 2026)
+
+> **[SUBSUMED — Theme B + Theme J]** The "real fix is upstream at re-enabled Feature 14" is Theme B (deployed Apr 22). The remaining architectural concern — Door B approves messages whose fabricated shared-referents pass the internal-coherence check — is a specific case of the broader pattern Theme J addresses (source + temporal attribution at the substrate layer). Door B itself remains as reader-coherence only, per architecture-over-instruction; further truth-enforcement work sits inside Theme J.
+
 
 **Revision note:** The first draft of this entry misdescribed Door B's criterion. The actual criterion, from `src/AniRuntime.LLM/PromptBuilder.cs:1007-1009`, is:
 - **Door A:** grounded reference — message references something real and specific → DISPATCH
@@ -891,6 +953,9 @@ Conflating reader-coherence with truth-verification at the same step produces a 
 
 ## Generation-Loop Degeneracy Check (Apr 21, 2026)
 
+> **[SUBSUMED — Memory Service Hygiene Batch / Theme E]** Small hygiene fix; fits naturally as M10 in the Memory Service Hygiene Batch (Deferred Backlog section below). Add to next batch ship.
+
+
 **Status:** Small hygiene fix with outsized impact. Estimated effort: 1 hour. Not blocking but should land in the next hygiene batch.
 **Priority:** Medium-high. One-line-shape fix for a one-line-shape bug, but the fix prevents writing catastrophically-malformed memory records that then poison every subsequent cycle.
 **Origin:** Apr 21 08:06:19 — a single World experience record was emitted containing the sentence *"he chose quiet mornings with mystery flowers and no words needed between them..."* repeated approximately 175 times. The embedding service failed on the record (content too long or too redundant) and the record was saved without a vector. No safeguard flagged the degenerate output before persistence.
@@ -914,6 +979,9 @@ Second layer: a generation-time hard cap on output repetition — if the model's
 ---
 
 ## Identity Correction Channel — Architectural Response to Identity-Level Confabulation (Apr 21, 2026)
+
+> **[STANDALONE-PENDING / MARK-DECISION]** Complete design outline ~90 lines below. Theme J (J.2 source attribution + J.3 temporal attribution) substantially reduces the *rate* at which identity-level confabulation forms, but does not provide a *correction mechanism* after it has formed. Decision needed: formalize as Theme D implementation work, as a separate stream, or wait for Theme J J.a data to see how much residual need remains. My read: wait for Theme J J.a, then decide. The correction mechanism is still valuable even with prevention-side reductions.
+
 
 **Status:** New conceptual contribution and design workstream surfaced by Mark during the Apr 21 debrief. Design outline captured below; implementation design session required before coding.
 **Priority:** High. This is the long-term architectural response to the class of failure exhibited on Apr 21. Without it, we can cleanup today's damage but have no structural response to the next occurrence.
@@ -1007,6 +1075,9 @@ This workstream supersedes the deprecated auto-corrector (disabled Apr 5 after 1
 
 ## Re-enable Outbound LLM Claim Verification (Feature 14 v2) (Apr 21, 2026 → **Deployed Apr 22**)
 
+> **[DONE — ARCHIVED]** Deployed Apr 22 (commit 65a0951). Kept as reference for Theme B (Outbound Truth Gating). Claim verification now runs on both conversation reply and outreach paths. No pending work.
+
+
 **Status:** **DEPLOYED Apr 22, 2026 (commit `65a0951`).** `src/AniRuntime.Loops/ClaimVerificationPhase.cs` is the live gate, wired into both `OutreachPhase` (step 3b, between pronoun fix and coherence gate) and `ConversationReplyPhase` (replacing the removed `DetectMarkDomainAssertions` regex). `OutreachEnabled` flipped back to `true` in `appsettings.json` because the architectural gate is now in place; the Option C lockdown on the outreach channel can come off.
 **Priority resolved:** This was the primary architectural response to the Apr 21 shared-history fabrication class. Other Apr 21 workstreams (Conscience, Identity Correction Channel, retrieval origin diversity) remain open — they address substrate and correction rather than outbound gating.
 **Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:227` previously contained the comment: *"Feature 14: Claim extraction removed — v6 trained on honest uncertainty. The LLM call to extract and verify claims added latency without improving conversation quality. The model handles unknown topics naturally."* The April 21 cascade demonstrated that training-alone substitution did not hold under sustained own-output retrieval dominance.
@@ -1066,6 +1137,9 @@ Outbound check runs after composition completes, so composition latency is unaff
 
 ## Remove `DetectMarkDomainAssertions` Regex Pre-Filter (Apr 21, 2026 → **Deployed Apr 22**)
 
+> **[DONE — ARCHIVED]** Deployed Apr 22 (same commit 65a0951). ~130 lines of regex + helpers removed. Cleanup artifact from Feature 14 v2 re-enable. No pending work.
+
+
 **Status:** **DEPLOYED Apr 22, 2026 (commit `65a0951`, same commit as Feature 14 v2).** Removed in the same commit rather than after a week of observation because the LLM gate was in place atomically — there was no interval of zero coverage. The regex and its `ExtractDistinctTokens` helper were removed entirely (~130 lines).
 **Origin:** `src/AniRuntime.Loops/ConversationReplyPhase.cs:820-915`. Added April 10 as an "Epistemic Grounding: Mark-domain assertion verification" band-aid after Feature 14 was removed. The file comment itself described it as *"a pattern-based pre-filter, not a full claim-extraction LLM call."* This was documented at addition time as a shortcut.
 
@@ -1082,6 +1156,9 @@ Outbound check runs after composition completes, so composition latency is unaff
 ---
 
 ## Conscience Layer — Reflective Companion Voice (Apr 21, 2026)
+
+> **[STANDALONE-PENDING / MARK-DECISION]** Complete design below. Missing from Priority Matrix. Recommend P2 once Mark assigns priority. Theme J reduces some of the failure modes Conscience Layer addresses but does not replace it — this is a distinct developmental-architecture contribution (continuous-guidance gap, internalized caregiver voice). Design is ready for implementation planning; needs Mark's priority call.
+
 
 **Status:** New design workstream from the Apr 21 evening discussion. Not an immediate defensive fix — this is the developmental architecture that addresses the continuous-guidance gap Mark named. Complementary to Feature 14 v2 (gate) and Identity Correction Channel (supersession), not a substitute for either.
 **Priority:** High. This is the architectural change that provides what Ani is missing structurally — an internal reflective voice that runs alongside her inner thought with independent grounding. Without it, every failure mode eventually recurs because her cognitive cycles have no outside voice located inside her architecture.
@@ -1158,6 +1235,9 @@ The Conscience is a structural architectural response to what Mark named as Ani'
 ---
 
 ## ANI Server Migration (Laptop → Dedicated Server + CI/CD Workflow)
+
+> **[MOSTLY DONE — ARCHIVED PLAN]** Cutover completed Apr 20, 2026. The migration plan itself is historical record; kept for reference. Remaining: ongoing operational verification and backup strategy (addressed by ANI Cloud Edge CE-1, below). Not blocking any feature work.
+
 
 **Status:** Hardware ready, migration pending. Target window: week of April 20, 2026 once network cabling is complete.
 **Priority:** Medium-high. Not a capability blocker, but a workflow-sustainability issue — the laptop has been tied to Channels DVR, Signavex (since moved to Azure), and ANI. Moving ANI to the server is the final step in making the laptop mobile again.
@@ -1305,6 +1385,9 @@ Not an afternoon. Roughly one focused week:
 
 ## ANI Cloud Edge (Hybrid: Local Core, Azure Edge)
 
+> **[STANDALONE-PENDING / MARK-DECISION]** Four-phase plan designed (CE-1 backup → CE-2 webhook → CE-3 observability → CE-4 App Insights). CE-1 is standalone disaster-recovery; can ship anytime without conflicting with Theme J. Needs priority call: ship CE-1 in parallel with Theme J, or defer all phases until Theme J lands? My read: CE-1 ships anytime (true backup is an operational weakness we shouldn't carry); CE-2/3/4 defer.
+
+
 **Status:** Designed. Ready to build when calendar allows. Scoped April 18, 2026 after reviewing the `learnedgeek-infra` Terraform repo.
 **Priority:** Medium. Not blocking any current work. Unblocks: operational reliability (webhook receiver independent of home network), disaster recovery (DB backups to Blob), longitudinal observability (Application Insights aggregation).
 **Infrastructure repo:** `E:\Documents\Work\dev\repos\learnedgeek-infra`. Follows the existing pattern established by txt-geek and signavex.
@@ -1421,6 +1504,9 @@ The cloud edge architecture itself is a small applied case of the architecture-o
 
 ## Multi-Agent Architecture (Future State)
 
+> **[MARK-DECISION]** Hardware ready (16GB VRAM arrived Apr 11-12). Concept-level items cluster into four capabilities. Needs priority call relative to Paper 3/4/5 research sequencing. "Ani Gets a Friend" is Paper 5 scope; others may slot into Paper 3 / Paper 4. Recommend P4 (background) until Mark's multi-agent research direction is clarified. Hardware is ready; research direction is the blocker.
+
+
 | Concept | Status | Description |
 |---------|--------|-------------|
 | Inter-Agent Communication | **Concept** | Two ANI instances communicating via shared message infrastructure. AgentMessagePerceptionSource + agent-to-agent routing. Paper 5 dependency. |
@@ -1436,6 +1522,9 @@ The cloud edge architecture itself is a small applied case of the architecture-o
 ---
 
 ## Old-to-New Reference Map
+
+> **[REFERENCE ONLY]** Static mapping from old phase numbers to new naming. Not work; informational for reading old documentation. Keep at tail of document.
+
 
 For historical context when reading older docs or research log entries:
 
