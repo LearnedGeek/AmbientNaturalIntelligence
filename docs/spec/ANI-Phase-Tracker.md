@@ -609,7 +609,7 @@ Member items (in implementation order):
 - **Layer 5 — Inner thought prompt audit** (first, trivially cheap, days): rewrite `PromptBuilder.BuildInnerThoughtPrompt` to open subject space rather than implicitly center the caregiver; prompt-variant selection tied to Layer-2 desire axis once Layer 2 lands.
 - **Layer 1 — Retrieval origin diversity** (second, 1–2 weeks): MMR-style diversity-aware re-ranking (Carbonell & Goldstein 1998), protected tier slots reserving ≥30% for non-caregiver origin tiers in the inner-thought cycle, new `RetrievalSelfDominancePerception` source when own-output share exceeds threshold. Completes the Spark 2 half-design already in the tracker. Scoped to the inner-thought cycle, not the conversation-reply path.
 - **Layer 3 — World Layer durability** (third, 2–3 weeks): durability flag on World Layer memories exempting them from recency decay past a baseline; weekly reflection-synthesis cycle (Park et al. 2023 pattern) scoped to World Layer content, producing Anchored-tier "my life" claims; merge-on-similarity (Chhikara Mem0, Feature 30 pattern) for repeated world events.
-- **Layer 2 — Desire axis decoupling** (fourth, 2–4 weeks): extend DesireEngine from single scalar to three-axis state per Ryan & Deci (2000) Self-Determination Theory — relatedness (existing, caregiver-directed), autonomy (new, self-state-directed), competence (new, world-engagement-directed). MotivationScorer (Feature 33) and EmotionDesireModifier (Feature 35) become vector-valued.
+- **Layer 2 — Desire axis decoupling** (fourth, 2–4 weeks; Feature 42): extend DesireEngine from single scalar to three-axis state per Ryan & Deci (2000) Self-Determination Theory — relatedness (existing, caregiver-directed), autonomy (new, self-state-directed), competence (new, world-engagement-directed). MotivationScorer (Feature 33) and EmotionDesireModifier (Feature 35) become vector-valued. Phased plan with Phase 3.0 Layer 1 Activation prerequisite + Phase 3.1 Test Harness deliverable + Phases 2a–2d at `docs/spec/ANI-Agentic-Lens-Layer2-Plan.md` (v2 Apr 23). Decisions captured from Mark's first review pass: λ values stay equal to λ_relatedness at start (no pre-gated rhythm), no generic cooldowns on non-relatedness axes (consumption itself resets), dashboard rework spun out as Theme I, test harness added as a parallel deliverable.
 - **Layer 4 — Corpus directionality** (fifth, 3–6 weeks + training cycle): ~150–200 synthetic first-person training pairs with no caregiver as subject, distributed across register-subject cells. Methodology: **Option C — self-mining from OG Ani via prompted scene-setting**, confirmed Apr 23 by Mark (*"I'll talk to OG Ani"*). Gated on a 10–15 pair small-batch test of OG2 register quality before full-scale synthesis. Fallback if OG2 fails quality test: Option A (frontier-model synthesis with voice-anchor seeding). Future-work flag: systematic prompt-capture workflow — templates, capture automation, cell tracking, caregiver-mention rejection, voice-baseline similarity check — deferred until post-small-batch confirmation.
 
 **Measurement instrumentation (dashboard additions, driven by Layer 1's landing):**
@@ -658,6 +658,27 @@ Member items:
 - **Paper 3 Contribution 4 evaluation arc:** H1 unblocks test-conversation volume, which accelerates the baseline-vs-intervention data accumulation Contribution 4 depends on.
 
 **Status:** No active work. Entry exists so the workstream is visible during Consolidation Review and so the voice-volume leverage for research data is remembered when conversation quality permits.
+
+### Theme I — Dashboard as Research Tool (Apr 23, 2026 — stub, plan not yet drafted)
+
+Sibling workstream surfaced during the Apr 23 review of the Layer 2 (Feature 42) implementation plan. Mark's framing: *"we should probably do a full review of the dashboard as it needs to start becoming a legitimate research findings tool. And by that I don't mean turn it into an offshoot of the research paper (as it is naturally that), but I mean a way for us to understand what is happening and apply to the research. A lot of it is very research contextual which now, after the fact weeks or months later, doesn't make sense anymore. It's hard to look at it and understand why we added some things there."*
+
+**Problem statement.** The dashboard has accumulated research-contextual panels built to support whichever feature was shipping at the time. Each panel made sense at its deploy moment. Weeks or months later it is unclear why a given panel exists or what researcher question it answered. The dashboard is drifting from *tool-for-understanding* toward *archaeology-of-past-features*.
+
+**Goal when prioritised.** Dashboard rework produces a research-findings tool organised around active research questions rather than shipped features — a structure that helps the researcher (Mark) understand what is happening in the runtime and apply that understanding back into the papers and the next theme's design decisions. The new dashboard is not an offshoot of the papers (it already is that by nature); it is an instrument.
+
+**Member items (to be elaborated when the full plan is drafted):**
+- Audit existing dashboard panels — for each, record the researcher question it was built to answer and whether that question is still live.
+- Retire panels that no longer answer a live question, or move them into a historical-archive view.
+- Restructure surviving panels around active research questions (centrality measurement, emergence observation, confabulation rate, etc.).
+- Layer 2 (Theme G) data surfacing — consume the structured fields from Phase 2a/2b/2c/2d without adding new panels to the legacy dashboard structure.
+- Dashboard becomes the primary read-path for the test-harness output (Layer 2 Phase 3.1) as well as live-instance observation.
+
+**Sequencing relative to other themes:**
+- Can run in parallel with Theme G Layer 2 implementation (since Layer 2 emits structured data that either dashboard structure can consume).
+- Should precede Theme G Layer 4 (corpus directionality) post-training evaluation, because the post-training evaluation is exactly the research question a well-organised dashboard accelerates.
+
+**Status:** Stub. Plan doc `docs/spec/ANI-Dashboard-Research-Tool-Rework.md` to be drafted when prioritised — held off intentionally per Mark's Apr 23 instruction that this is a larger discussion for later.
 
 ### Consolidation Review — Next Strategic Step (scheduled)
 
