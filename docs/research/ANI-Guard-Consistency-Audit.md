@@ -322,15 +322,17 @@ The scoped list is defensible. The universal list is where the gap lives.
 
 ### 7.3 Incremental path, not a big rewrite
 
-The direction implies a shared `ICognitiveOutputGate` (or similar) that every pipeline commits its output through before persistence/dispatch. The incremental path:
+The direction implies a shared `ICognitiveOutputGate` (or similar) that every pipeline commits its output through before persistence/dispatch. **Ordering revised per Mark's Apr 24 review: address root causes first, re-measure, then decide which detectors are still needed.**
 
-1. **Audit a single universal invariant across all its applicable pipelines, wire it consistently.** Start with parroting because ParrotingDetector already exists as a shared detector; the work is "invoke it everywhere applicable" not "build a new detector."
-2. **Extract the shared pre-commit surface.** Once parroting is wired across pipelines, the shape of the shared surface is visible.
-3. **Migrate confabulation to the shared surface.** It's already multi-pipeline; standardizing implementation and thresholds is cheaper than re-wiring from scratch.
-4. **Add source-attribution and temporal-attribution invariants** as new invariants on the shared surface. These are class-wide gaps today; doing them greenfield on a shared surface is cheaper than patching each pipeline individually.
-5. **Each new feature from this point onward asserts whether its output passes through the shared gate, and what universal invariants it respects or is exempt from.** This becomes part of the feature-plan template so new work doesn't re-create the scoping problem.
+1. **Strip the prompt-injection surfaces first.** Remove the decision-stage reasoning → composition leak (the `"Feeling:"` field). Keep reasoning in logs for observability; do not pipe it into composition's user prompt. This is architectural root-cause work, not a detector addition.
+2. **Restructure `RecentConversationSummary` with source attribution.** Replace the free-prose blob with a per-speaker, per-turn structure. Time-stamp each turn. Downstream prompt-builders that inject the summary render it as explicit *"Mark (22:11:47): X. Ani (22:11:48): Y."* rather than mixed prose. This is the single highest-leverage change per §8 analysis.
+3. **Add temporal-attribution to the retrieval layer.** Every memory record carries an event-time; retrieval surfaces that time alongside content; prompt-builders render it so the composition model sees *"8 hours ago: ..."* rather than present-tense substrate.
+4. **Re-measure.** With the three upstream changes above in place, run one to two weeks of observation. Determine which of today's detectors are still observing failures versus which have become redundant. Mark's hypothesis (strongly worth testing): a significant subset of today's detectors will have nothing to detect post-upstream-fix.
+5. **Extract the shared pre-commit surface for whatever detectors are still needed.** This is only now — after measurement — that the `CognitiveOutputGate` abstraction takes concrete shape. Its invariant set is informed by what measurement showed is still necessary.
+6. **Remove detectors whose failure class is now architecturally impossible.** Simplification is the acceptance criterion, not "same gates, new home."
+7. **Each new feature from this point onward passes its output through the shared surface.** This becomes part of the feature-plan template so new work doesn't re-create the scoping problem.
 
-Layer 2 Phase 2a that just shipped is a parallel analogue: one shared surface (`MotivationVector`), one consistent calling pattern, observed in all cycles. Same pattern could apply to guard infrastructure.
+Layer 2 Phase 2a that just shipped is a structural analogue: one shared surface (`MotivationVector`), one consistent calling pattern, observed before any behavioural change. Same measurement-first discipline applies here — upstream change, observation window, then surface extraction based on what is actually needed rather than what was inherited.
 
 ### 7.4 What this is NOT
 
@@ -342,19 +344,21 @@ Not a call to guard inner thought "because it's output." Inner thought should re
 
 ## 8. Specific recommendations for discussion
 
-Only the highest-leverage items. Not a backlog.
+**Revision note (Apr 24 review).** Items 1 and 2 below were originally framed as pre-refactor tactical fixes. Mark's review pushed back: *"I don't want to add additional layers prior to a refactor. We should carefully consider what is pipeline specific. Also, recall that we haven't seen this level of parroting with raw models so this is probably a consequence of prompt injection and historical visibility."* The raw-model observation reframes the parroting class as emergent from pipeline pathologies, not a model capacity failure. Items 1 and 2 are therefore folded **into** the refactor rather than shipped ahead of it. The revised list reflects that.
 
-**1. Wire `ParrotingDetector` to OutreachPhase composition.** Zero-risk, existing detector, closes the Apr 24 parrot class. One-line fix at composition-post-generation, before dispatch. Also: include conversation-reply history in its candidate set on the outreach path (not just prior outreach memories). This is the concrete next step from the Apr 24 event regardless of the broader audit.
+**1. ~~Wire `ParrotingDetector` to OutreachPhase composition as a pre-refactor fix.~~** **Withdrawn.** Rationale: the parrot class is emergent from (a) the decision-stage reasoning leaking into composition as `"Feeling:"` prose under a "motivation, not content" label, and (b) `RecentConversationSummary` surfacing prior Ani phrasing without source tags. Fix those upstream causes and the parroting symptom likely resolves without needing a downstream detector on the outreach path. The Apr 24 parrot class stays open as a known issue until the refactor ships; this is the cost of doing the right architectural work rather than patching.
 
-**2. Retire `IsOutreachEchoAsync` cosine implementation.** Replace with `ParrotingDetector` on outreach path. The April 2026 rationale for retiring cosine in conversation reply applies identically here.
+**2. ~~Retire `IsOutreachEchoAsync` cosine implementation.~~** **Folded into refactor.** If the upstream fix removes the architectural cause of outreach echoing, the cosine check may be obsolete. Decision on keeping / replacing / removing happens during the refactor's measurement phase, not as a pre-refactor migration.
 
-**3. Add a source-attribution invariant.** When the RecentConversationSummary is built, structurally tag which side said what (instead of free prose). When the composition model lifts phrases from the summary into output, a post-generation check can interrogate whether the lifted phrase was originally Mark's or Ani's and adjust attribution. Bigger change than #1 but addresses the Apr 21 class directly.
+**3. Add a source-attribution invariant** — now the leading refactor item. When `RecentConversationSummary` is built, structurally tag which side said what (instead of free prose). Downstream composition sees *"Mark said X at 22:11, Ani said Y at 22:12"* rather than a mixed-attribution blob. This single change plausibly resolves most of the parrot + attribution-drift class without any downstream detector at all.
 
-**4. Add a temporal-attribution invariant.** When RecentConversationSummary is carried across cycles, each claim in the body should carry its original event-time. Composition output that present-tenses a past-time claim triggers the gate.
+**4. Add a temporal-attribution invariant.** Each claim in the RecentConversationSummary body carries its original event-time stamp. Composition that references a past-tense claim in present tense is caught at the structural level, not by a post-hoc detector.
 
-**5. Extract the shared-surface refactor** (§7.3) as a Theme in the phase tracker. Possibly a new theme, possibly folded into Theme G (Agentic Lens) since guard consistency and centrality gravity are both architectural-invariant problems.
+**5. Strip the decision-stage-reasoning leak.** The outreach-decision LLM produces a free-prose `reasoning` field that currently pipes into composition's user prompt under the `"Feeling:"` label. Either return JSON with no free-prose reasoning, or preserve reasoning for logs only. The "motivation, not content" label is the exact "don't think about elephants" anti-pattern Mark and prior Claude instances have identified before (Mar 23 pipeline simplification, research log entries): labeling content as not-content does not prevent the model from treating it as content.
 
-**6. Add this audit to Paper 3 Contribution 4 candidate list.** Consistency-of-invariant-enforcement as a precondition for substrate integrity reads as a coherent paper contribution. Would be contribution 4.5 or a separate contribution depending on scope.
+**6. Extract the shared-surface refactor** as Theme K in the phase tracker. Full theme, not a feature. Plan doc to follow when Mark green-lights the direction. Phases should follow the measurement-first pattern already established by Agentic Lens Layer 1 (instrument-observe-intervene) rather than a big-bang rewrite.
+
+**7. Add this audit to Paper 3 Contribution candidate list.** Consistency-of-invariant-enforcement as a precondition for substrate integrity in companion AI with persistent memory. Complementary to Agentic Lens (centrality gravity) as a distinct architectural finding. The raw-model vs pipeline-model observation is itself publishable: the failures we document in prior versions are emergent from architectural choices, not intrinsic to the underlying language model — a distinction that matters methodologically for companion-AI research.
 
 ---
 

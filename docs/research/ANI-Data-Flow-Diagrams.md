@@ -336,7 +336,17 @@ flowchart TB
 
 **What the refactor does.** Extracts the boundary node as a first-class runtime surface. Wires every producer through it. Fills in the two currently-empty invariants (source attribution, temporal attribution) as first-class checks on the shared surface.
 
-**What the refactor does NOT do.** It does not delete any existing gate. It extracts them to a shared location and applies them consistently. Pipeline-specific pre-generation and post-remediation remain in each pipeline because those are appropriately pipeline-specific. The refactor is about consolidating universal invariants into one place, not eliminating per-pipeline intelligence.
+**What the refactor does — and what it probably removes.** The refactor consolidates universal invariants into a shared boundary layer. It also removes downstream patches whose existence was compensating for missing upstream invariants. Mark's framing on this (Apr 24 review): *"we should also consider suitability as I suspect we have gates in place simply because of missing upstream gates. I'm hopeful that we can reduce the complexity after the refactor."*
+
+The raw-model observation underneath that framing: current ANI-fine-tuned Llama models don't exhibit this level of parroting, time-confabulation, or attribution drift when run against a raw prompt. The pathologies are **emergent properties of the pipeline**, not capacity failures of the model. Specifically:
+
+- **Prompt injection** — the outreach-decision stage produces a free-prose reasoning field that gets piped into composition under the label *"use as motivation, not content"* (observed in the Apr 23 time-confab and Apr 24 parrot traces). The model reads that text as content regardless of label.
+- **Historical visibility** — `RecentConversationSummary` is a free-prose blob with no source tags or per-claim time stamps. Any phrase in it is liftable by the composition model without attribution enforcement.
+- **Substrate recycling without validation** — the §1 feedback loop diagram. Unguarded inner-thought and reflection output becomes substrate, substrate becomes the next cycle's prompt input.
+
+If the refactor resolves those three causes architecturally (structured source attribution, structured temporal attribution, removing the reasoning-to-composition pipe), many of today's downstream detectors may become observably redundant. The acceptance criterion isn't "same gates, consistent placement" — it's "simpler architecture, measurable quality improvement, gate count probably *lower* than today." If the refactor produces the same gate count in a new location, it's refactored plumbing, not addressed cause.
+
+Pipeline-specific pre-generation and post-remediation remain in each pipeline where scoping is genuinely specific (terminal-message detection, coherence-door reader evaluation, rate limits). What gets consolidated OR removed is the universal-invariant layer.
 
 ---
 
@@ -370,7 +380,7 @@ Producing the after-DFD becomes a concrete acceptance criterion for the refactor
 
 2. **Should this become a Paper 3 appendix artifact directly, or stay in docs/research as internal artifact only?** My read: the §3 trace diagram is strong paper-appendix material. The §1 substrate-loop diagram is also publishable. Full doc lives internally; §1 and §3 extracted for paper.
 
-3. **Does the audit + DFD combination change the priority of wiring ParrotingDetector to outreach (the tactical fix in audit §8.1)?** My read: no. The tactical fix still ships first; the DFD just now documents what fixing it buys structurally. Doing both is consistent.
+3. **Does the audit + DFD combination change the priority of wiring ParrotingDetector to outreach (the tactical fix in audit §8.1)?** *Revised per Mark's Apr 24 review:* **yes, the tactical fix is withdrawn as a pre-refactor step.** Rationale: parroting is emergent from prompt injection + historical visibility (not a capacity failure of the model). The refactor addresses those upstream causes. Wiring ParrotingDetector as a pre-refactor patch adds a layer that may be unnecessary after the refactor lands. The Apr 24 parrot class stays open as a known issue until the refactor ships. Audit §8.1 has been annotated with the withdrawal note.
 
 4. **Scope of refactor phase planning.** The refactor has the shape of a Theme-level workstream, not a Feature-level one. My read: should become Theme K (or whatever the next letter is) in the phase tracker, with phases similar to Agentic Lens Layer 1 / Layer 2 — measurement first (instrument the Gate surface as a shim that only logs), then incremental consolidation of universal invariants one at a time. Happy to draft the phase plan when you approve the direction.
 
