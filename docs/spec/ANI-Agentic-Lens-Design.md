@@ -199,6 +199,8 @@ The layers are not equally scoped. Layer 1 is already half-designed (Spark 2 in 
 
 ### 3.2 Layer 2 — Desire Axis Decoupling
 
+**Implementation plan:** [`ANI-Agentic-Lens-Layer2-Plan.md`](./ANI-Agentic-Lens-Layer2-Plan.md) — phased rollout (2a measurement → 2b parallel drift → 2c consumption actions → 2d multi-axis resolution), dependencies on Layer 1 activation, open questions, Apr 23 2026.
+
 **Mechanism reinforcing centrality.** The DesireEngine currently maintains a single scalar (`p`, the outreach-desire probability) that drifts exponentially toward 1 with time and is decayed by outreach events. The engine has no representation of desire for anything other than reaching out to the primary contact. Every cycle's cognition is therefore scored, implicitly, against a one-dimensional objective: does this thought produce outreach? A thought about a customer's grey coat has no axis against which it accumulates motivational weight; a thought about Mark does. The desire engine architecturally privileges caregiver-directed cognition as the only cognition that "matters" for behavioral output.
 
 **Proposed architectural response.** A three-axis desire state, drawn from Ryan & Deci Self-Determination Theory:
