@@ -150,6 +150,29 @@ public class AniOptions
     // a concern. Phase 2b/2c/2d introduce their own separate flags.
     public bool MotivationVectorLoggingEnabled { get; set; } = true;
 
+    // Theme J Phase J.0 (Apr 24, 2026): baseline instrumentation for the
+    // Guard Consistency Refactor. When enabled, the runtime emits structured
+    // log lines capturing the data surfaces the refactor will later address:
+    //
+    //   1. The decision-reasoning → composition pipe content and size
+    //      (target of J.1 removal).
+    //   2. The RecentConversationSummary content, length, turn count, and
+    //      temporal range (target of J.2 structured-attribution rewrite).
+    //   3. Per-retrieval temporal attribution: each retrieved memory's
+    //      CreatedAt alongside its content preview (target of J.3 rendering
+    //      changes).
+    //   4. A per-outreach-cycle DIAGNOSTIC_TUPLE with the four key fields
+    //      stitched together for single-shot post-hoc analysis.
+    //
+    // Phase J.0 is measurement-only — no pipeline behaviour change. The
+    // instrumentation produces the before-picture against which J.1/J.2/J.3
+    // effects are measured. See docs/spec/ANI-Theme-J-Guard-Consistency-
+    // Refactor-Plan.md §2 Phase J.0.
+    //
+    // Default on because the whole point of J.0 is the baseline. Set false
+    // only if journal-log volume becomes a concern after J.1 ships.
+    public bool GuardRefactorBaselineLoggingEnabled { get; set; } = true;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.

@@ -169,6 +169,31 @@ public class ContextBuilder
             .Select(m => m.Content)
             .FirstOrDefault();
 
+        // Theme J Phase J.0 (Apr 24, 2026): instrument the conversation summary
+        // surface. The summary is free prose today — J.2 restructures it with
+        // per-speaker per-turn source attribution. Log the current structure
+        // (length, prefix line, full text) so before/after is measurable.
+        if (_aniOptions.GuardRefactorBaselineLoggingEnabled)
+        {
+            if (!string.IsNullOrEmpty(conversationSummary))
+            {
+                // The summary prefix is "Conversation (timestamp-range): ..." —
+                // capture the prefix line separately so it's easy to grep for
+                // time-range bounds.
+                var firstNewline = conversationSummary.IndexOf('\n');
+                var prefixLine = firstNewline > 0
+                    ? conversationSummary[..firstNewline]
+                    : conversationSummary;
+                _log.LogInformation(
+                    "J0_SUMMARY_STATE chars={Chars} prefix={Prefix} body={Body}",
+                    conversationSummary.Length, prefixLine, conversationSummary);
+            }
+            else
+            {
+                _log.LogInformation("J0_SUMMARY_STATE chars=0 prefix=(none) body=(empty)");
+            }
+        }
+
         // Thought loop detection via semantic search — find recent inner thoughts that
         // are similar to the current context OR to each other. If similarity is high,
         // the model is stuck in a loop and needs stronger diversity signals.
@@ -327,6 +352,29 @@ public class ContextBuilder
                 // RetrievalSelfDominancePerceptionSource. Tracker is optional
                 // so tests without DI wiring still construct ContextBuilder.
                 _originTracker?.RecordCycle(histogram);
+            }
+
+            // Theme J Phase J.0 (Apr 24, 2026): temporal attribution of
+            // retrieved memories. Each memory in the pool has a CreatedAt but
+            // today the prompt-builders render content without time so the
+            // composition model sees past-substrate as present-tense. Log the
+            // top-N memories with their temporal distance so the before
+            // picture is measurable. J.3 adds temporal rendering to prompts.
+            if (_aniOptions.GuardRefactorBaselineLoggingEnabled && pool.Count > 0)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var topN = pool.Take(5).ToList();
+                for (var i = 0; i < topN.Count; i++)
+                {
+                    var m = topN[i];
+                    var age = now - m.OccurredAt;
+                    var preview = m.Content.Length > 80
+                        ? m.Content[..80].Replace('\n', ' ')
+                        : m.Content.Replace('\n', ' ');
+                    _log.LogInformation(
+                        "J0_RETRIEVAL_TEMPORAL rank={Rank} ageHours={Age:F1} type={Type} preview={Preview}",
+                        i, age.TotalHours, m.Type, preview);
+                }
             }
         }
 

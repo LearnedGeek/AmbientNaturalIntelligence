@@ -136,9 +136,23 @@ public class OutreachPhase
             _log.LogDebug(ex, "Outreach grounding retrieval failed — composing without grounding");
         }
 
+        // Theme J Phase J.0 (Apr 24, 2026): instrument the decision-reasoning
+        // pipe before composition. The decision LLM's reasoning field is about
+        // to be piped into composition's user prompt under the "Feeling:"
+        // label — the exact prompt-injection surface J.1 will strip. Log the
+        // full reasoning text, its char count, and the fact that it is being
+        // piped so the before-picture is queryable.
+        var decisionReasoning = decision.Reasoning ?? string.Empty;
+        if (_aniOptions.GuardRefactorBaselineLoggingEnabled)
+        {
+            _log.LogInformation(
+                "J0_REASONING_PIPE chars={Chars} pipedToComposition=true text={Text}",
+                decisionReasoning.Length, decisionReasoning);
+        }
+
         // Step 2b: Compose — free-text message generation (no JSON constraint)
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought, decision.Reasoning ?? string.Empty);
+            snapshot, recentThought, decisionReasoning);
         var message = await _ollama.ChatAsync(
             msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct)
             .ConfigureAwait(false);
@@ -224,6 +238,35 @@ public class OutreachPhase
 
         decision.Message    = rewritten;
         decision.ActionType = "sms";
+
+        // Theme J Phase J.0 (Apr 24, 2026): DIAGNOSTIC_TUPLE pre-dispatch.
+        // Captures the four key fields stitched together in one log line per
+        // outreach-composition cycle so post-hoc analysis of a parrot /
+        // time-confab / attribution-drift event is a single grep rather than
+        // a cross-log correlation exercise. The four fields align with the
+        // J.1/J.2/J.3 upstream-fix surfaces.
+        if (_aniOptions.GuardRefactorBaselineLoggingEnabled)
+        {
+            var summaryChars = snapshot.RecentConversationSummary?.Length ?? 0;
+            var topMemoryAgeHours = -1.0;
+            if (snapshot.RelevantMemory.Count > 0)
+            {
+                topMemoryAgeHours =
+                    (DateTimeOffset.UtcNow - snapshot.RelevantMemory[0].OccurredAt).TotalHours;
+            }
+            var thoughtPreview = recentThought.Length > 160
+                ? recentThought[..160].Replace('\n', ' ')
+                : recentThought.Replace('\n', ' ');
+            var reasoningPreview = decisionReasoning.Length > 160
+                ? decisionReasoning[..160].Replace('\n', ' ')
+                : decisionReasoning.Replace('\n', ' ');
+            var compositionPreview = decision.Message.Length > 200
+                ? decision.Message[..200].Replace('\n', ' ')
+                : decision.Message.Replace('\n', ' ');
+            _log.LogInformation(
+                "J0_DIAGNOSTIC_TUPLE thought={Thought} | reasoning={Reasoning} | summaryChars={SummaryChars} | topMemAgeHrs={AgeHrs:F1} | composition={Composition}",
+                thoughtPreview, reasoningPreview, summaryChars, topMemoryAgeHours, compositionPreview);
+        }
 
         _log.LogInformation("{Name} reaching out: {Message}", cs.Name, decision.Message);
 
