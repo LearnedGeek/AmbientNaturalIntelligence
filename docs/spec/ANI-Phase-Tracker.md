@@ -771,7 +771,10 @@ Member items:
 
 **Status:** No active work. Entry exists so the workstream is visible during Consolidation Review and so the voice-volume leverage for research data is remembered when conversation quality permits.
 
-### Theme I — Dashboard as Research Tool (Apr 23, 2026 — stub, plan not yet drafted)
+### Theme I — Dashboard as Research Tool (Apr 23, 2026 — stub; Apr 26 plan drafted, P1 active)
+
+> **[ACTIVATED Apr 26]** Plan drafted: [`ANI-Theme-I-Dashboard-Plan.md`](./ANI-Theme-I-Dashboard-Plan.md). Feature 44. Nine phases. **15-figure paper-figure inventory included** — five for Paper 2 (paper-ready from current data), five for Paper 3 (data-gated on phases shipping), five mid-tier. Each figure is a *direct empirical answer* to a specific cited reference, with the *"Author X claimed Y. Here's Y in deployment"* caption template. Phase I.1 ships the five Paper 2 figures in weeks 1-2 to support Zenodo publish. Subsequent phases generalize the same render code into the full dashboard with cycle-as-unit-of-discourse + two-perspective lens-switch + time-travel + share-this-moment + privacy/redaction layer.
+
 
 Sibling workstream surfaced during the Apr 23 review of the Layer 2 (Feature 42) implementation plan. Mark's framing: *"we should probably do a full review of the dashboard as it needs to start becoming a legitimate research findings tool. And by that I don't mean turn it into an offshoot of the research paper (as it is naturally that), but I mean a way for us to understand what is happening and apply to the research. A lot of it is very research contextual which now, after the fact weeks or months later, doesn't make sense anymore. It's hard to look at it and understand why we added some things there."*
 
