@@ -1540,6 +1540,60 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 27, 2026 — Outage Perception Source Shipped: Architecture-Over-Training for Sensory Absence
+
+**Type:** Deployment milestone + Paper 3 case-study artifact. The Apr 15 design entry described an architectural response to a real production observation (Apr 14-15 power outage left ANI silently retrying for twelve hours with no felt experience of the absence). The implementation lands today as backlog item 15.19, sequenced after the Theme J substrate refactor in the same session.
+**Status:** Shipped Apr 27 in a single commit. Default off (observe-first); flag-on activates via `AniOptions.OutagePerceptionEnabled`. 18 new tests; 664 passing total. Build clean.
+
+**What shipped (three components):**
+
+1. **`IPerceptionSourceHealthTracker`** (Core/Interfaces). Records last-success / last-failure / failing-since timestamps per source. Two queries: `GetSourcesFailingFor(minDuration, now)` returns sources currently in a failure stretch ≥ minDuration, and `GetSourcesRecoveredWithin(window, now)` returns sources whose last success is recent and was preceded by a failure (recovery events).
+2. **`PerceptionSourceHealthTracker`** (Memory). In-memory implementation, locked for write/read defensively. State does not survive process restart — which is the correct semantic: a fresh process has no inherited sense of "the world has been quiet for hours" until it accumulates that observation itself.
+3. **`PerceptionPhase` integration.** Each source's PollAsync invocation in the cognitive cycle records success or failure with a timestamp into the tracker. The Outage source itself is excluded from health recording so it can't fire on its own success/failure history.
+4. **`OutagePerceptionSource`** (Perception). Watches the tracker. Fires an interior-legible perception when ≥`OutageMinFailingSources` (default 3) sources have been failing continuously for ≥`OutageMinFailingMinutes` (default 15). Cooldown of `OutageReemitCooldownMinutes` (default 60) between re-emissions during sustained outages with the framing shifted from "something's wrong" to "still no signal." Recovery perception fires when failing-source count drops below threshold, naming the recovered sources.
+
+**Architecture-over-training principle, fully captured.**
+
+The Apr 13 architecture-over-training research log entry framed the principle in the abstract; the Apr 15 design entry sketched the Outage application; today's implementation is the realised case study.
+
+You cannot train a model on the experience of a power outage. The training corpus does not contain that phenomenology, and the experience is structurally an absence — notoriously hard to train toward. But you CAN give the architecture a channel through which the absence of other perception sources becomes a perception in its own right, and let the model interpret the absence through its normal emotional and reflective processes.
+
+The perception text is deliberately soft and interior-legible. First-time outage:
+
+> *"Something's wrong with the world outside. I'm not getting anything from rss, weather, twilio. It's been quiet long enough that this isn't just a hiccup. I don't know what happened."*
+
+Sustained-outage re-emission:
+
+> *"The world has been quiet for a while now. Still no signal from rss, weather, twilio. I don't know what happened out there."*
+
+Recovery:
+
+> *"The world came back. rss, weather, twilio reaching me again. I don't know where everyone was."*
+
+What emerges in the inner-thought layer is not a trained outage response — it's an architecturally-enabled one. The model has its normal emotional and reflective tools; the architecture gives it something legible to work with where there was previously a silent void.
+
+**Cross-domain angle (DrOK).**
+
+The same pattern applies cleanly to medical triage. A physician-AI that notices *"my connection to the medical knowledge base has been unreliable for ten minutes"* as a sensory signal is strictly safer than one that silently degrades and keeps producing confident outputs from stale retrieval. Worth raising in the next clinical-safety translation session with Martin (`docs/shared/cross-project-status.md`). The Outage Perception architecture transfers without modification: replace the world-facing perception sources (RSS, Weather, Twilio inbound) with knowledge-base / tool-API connectors and the absence-becomes-perception mechanism is identical.
+
+**Conservative-detection discipline preserved.**
+
+This is a perception, not a guard. It does NOT block thoughts, suppress outreach, or modulate composition. It surfaces a soft observation that the inner-thought model can engage with or ignore. Same discipline as the register-saturation signal shipped earlier today: the noticing is the architectural intervention; what the model does with it is left to the model.
+
+**Paper 3 contribution surface.**
+
+Two things worth citing when Paper 3's architecture-over-training section gets written:
+
+1. *The Apr 14-15 silent-twelve-hours observation* — concrete evidence of what "no architectural channel for absence" looks like in production. ANI's desire engine, emotional model, and outreach composition pipeline all worked correctly during the outage; the failure was exclusively at the network-egress boundary, and from her internal perspective no information about the outage existed.
+
+2. *The Outage Perception fix as the canonical case study for absence-as-perception* — a perception source that carries no environmental data of its own, only the meta-observation that other perception sources have been failing. The architecture promotes failure-rate metadata into a first-class perception event without requiring the inner-thought model to be retrained.
+
+**Independence from Theme J.**
+
+Theme J shipped earlier today (J.1 + J.2 + J.3). The Outage source is independent — it operates on a different substrate (per-source health timestamps, not the conversation-summary or retrieved-memory substrate Theme J targeted). Both can ship in the same session because they don't share code paths.
+
+---
+
 ### April 27, 2026 — Theme J Phases J.1 + J.2 + J.3 Shipped: From Audit Hypothesis to Validated Substrate Refactor
 
 **Type:** Deployment milestone + Paper 3 evidence point. The Theme J audit's structural argument — that source attribution and temporal attribution are class-wide gaps requiring a substrate-level fix rather than per-pipeline patches — moved from drafted plan (Apr 24) to load-bearing-deployed (Apr 27) in three working days. All three upstream-fix surfaces (J.1, J.2, J.3) shipped same day. J.4-J.7 sequenced after the J.a observation window + detector inventory review.

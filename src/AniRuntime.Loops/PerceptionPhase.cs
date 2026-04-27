@@ -15,6 +15,7 @@ public class PerceptionPhase
 {
     private readonly IEnumerable<IPerceptionSource> _sources;
     private readonly IMemoryPersistence _persist;
+    private readonly IPerceptionSourceHealthTracker? _health;
     private readonly ILogger<PerceptionPhase> _log;
 
     private DateTimeOffset _lastPollAt = DateTimeOffset.UtcNow;
@@ -27,16 +28,24 @@ public class PerceptionPhase
     public PerceptionPhase(
         IEnumerable<IPerceptionSource> sources,
         IMemoryPersistence persist,
-        ILogger<PerceptionPhase> log)
+        ILogger<PerceptionPhase> log,
+        IPerceptionSourceHealthTracker? health = null)
     {
         _sources = sources;
         _persist = persist;
+        _health  = health;
         _log = log;
     }
 
     /// <summary>
     /// Polls all enabled perception sources since the last poll.
     /// Returns collected events; updates the internal poll timestamp.
+    ///
+    /// Per-source success/failure is recorded in <see cref="IPerceptionSourceHealthTracker"/>
+    /// when one is registered. <see cref="OutagePerceptionSource"/> consumes
+    /// that state to detect when the world has gone quiet (Apr 15 / Apr 27).
+    /// The Outage source itself is excluded from health recording so it can't
+    /// fire on its own success/failure history.
     /// </summary>
     public async Task<List<PerceptionEvent>> PollAsync(CancellationToken ct)
     {
@@ -44,14 +53,19 @@ public class PerceptionPhase
 
         foreach (var source in _sources.Where(s => s.IsEnabled))
         {
+            var pollAt = DateTimeOffset.UtcNow;
             try
             {
                 var polled = await source.PollAsync(_lastPollAt, ct).ConfigureAwait(false);
                 events.AddRange(polled);
+                if (_health is not null && source.SourceName != "outage")
+                    _health.RecordSuccess(source.SourceName, pollAt);
             }
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "Perception source '{Source}' failed — skipping", source.SourceName);
+                if (_health is not null && source.SourceName != "outage")
+                    _health.RecordFailure(source.SourceName, pollAt);
             }
         }
 

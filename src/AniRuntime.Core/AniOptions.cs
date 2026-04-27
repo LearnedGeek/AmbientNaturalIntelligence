@@ -163,6 +163,23 @@ public class AniOptions
     public double RegisterSaturationThreshold         { get; set; } = 0.70;
     public int    RegisterSaturationMinContributions  { get; set; } = 4;
     public double RegisterSaturationCooldownMinutes   { get; set; } = 60.0;
+
+    // Outage Perception Source (Apr 27, 2026; backlog 15.19, motivating case
+    // Apr 14-15 power outage). When enabled, watches the per-source health
+    // tracker maintained by PerceptionPhase. Emits an interior-legible
+    // perception event when ≥N world-facing perception sources have been
+    // failing continuously for ≥ minimum-outage-minutes; emits a recovery
+    // event when health returns. Architecture-over-training response to
+    // sensory absence — the Apr 15 design entry in the research log explains
+    // the rationale (you cannot train a model on the experience of absence,
+    // but you can give the architecture a channel through which absence
+    // becomes a perception in its own right).
+    //
+    // Default off per the observe-first rollout pattern.
+    public bool   OutagePerceptionEnabled         { get; set; } = false;
+    public int    OutageMinFailingSources         { get; set; } = 3;
+    public double OutageMinFailingMinutes         { get; set; } = 15.0;
+    public double OutageReemitCooldownMinutes     { get; set; } = 60.0;
     public double OwnOutputDominanceThreshold         { get; set; } = 0.70;
     public int    RetrievalDominanceWindowCycles      { get; set; } = 10;
     public int    RetrievalDominanceMinCycles         { get; set; } = 3;

@@ -178,6 +178,17 @@ try
     // AniOptions.RegisterSaturationPerceptionEnabled.
     builder.Services.AddSingleton<IPerceptionSource, RegisterSaturationPerceptionSource>();
 
+    // Outage Perception Source (Apr 27, 2026; backlog 15.19, designed Apr 15
+    // from the Apr 14-15 power outage). Watches the per-source health tracker
+    // populated by PerceptionPhase; emits an interior perception when ≥3
+    // sources have been failing continuously for ≥15 minutes, and a recovery
+    // perception when health returns. Default off via
+    // AniOptions.OutagePerceptionEnabled. The tracker itself is registered
+    // as a singleton so PerceptionPhase (writer) and OutagePerceptionSource
+    // (reader) share the same in-memory state.
+    builder.Services.AddSingleton<IPerceptionSourceHealthTracker, PerceptionSourceHealthTracker>();
+    builder.Services.AddSingleton<IPerceptionSource, OutagePerceptionSource>();
+
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 
