@@ -26,6 +26,23 @@ Build a `ConsciencePhase` that runs after `InnerThoughtPhase` and before `Compos
 
 ### Phase C.0 — Open-design-questions resolution session
 
+> **Pre-read for whenever C.0 actually runs (added Apr 27, 2026):** today's chat findings produced a fresh design input. Several outreach failures shared the same shape — the model asserted things about Mark's day or Ani's day with time-bound framing (*"this evening,"* *"after class today,"* *"the store felt quieter than usual today"*) that were grounded only in atemporal canonical facts, not in anything that actually came in today. The claim verifier passed these because canonical bookstore / class / world facts ARE in the Facts tier — they just don't carry time stamps.
+>
+> The plain implication for Conscience design: in addition to checking *what* was referenced (which the Apr 21 design already covers), the Conscience needs to check *when*. If the inner thought says "today" or "this morning" or "earlier," verify it against what actually came in today — Mark's texts, perception events, recent conversation. If nothing from today supports it, ask where it came from.
+>
+> This is fresh input for **open design question 3** (*"Conscience perception-layer access — yes or no?"*). The original lean was *Facts + Anchored only, no perception.* Today's findings argue the Conscience needs at least read access to recent perception events for the temporal-grounding check to work. Worth reconsidering when C.0 actually runs.
+>
+> Concrete failure-class taxonomy as of Apr 27 evening (five distinct substrates surfaced today, four of which Conscience could potentially address, one that needs its own phase plan):
+> 1. Prose-blob attribution flip — closed by J.2.
+> 2. Retrieved memory rendered without time — closed by J.3 except anchored-by-contract.
+> 3. Present-tense inference from atemporal canonical fact at *generation* — Conscience addresses well as designed.
+> 4. Own-output substrate dominance — Layer 3 G3.4 territory; Conscience would help but not fully cover.
+> 5. Claim-verifier passes time-bound claims using only atemporal-fact match — addressed by Conscience IF the temporal-grounding check is added per the design refinement above. Otherwise needs its own phase plan.
+>
+> Empirical anchors: see `docs/spec/ANI-Phase-Tracker.md` Research Gap Watch rows for Apr 27 13:24, 15:02, 16:09 outreaches and the Apr 27 verifier-semantics audit row.
+
+
+
 **Goal:** the Apr 21 design names four open questions. C.0 is a short design-review session with Mark to lock answers before any code lands. Output is a decision document.
 
 **The four questions, with leading recommendations:**
