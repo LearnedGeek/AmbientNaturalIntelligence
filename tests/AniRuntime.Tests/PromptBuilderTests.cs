@@ -334,4 +334,92 @@ public class PromptBuilderTests
         user.Should().Contain("Trigger:");
     }
 
+    // ── Theme J Phase J.2 step 3 — composition uses structured summary ──
+    // The Apr 27 06:54 incident: Ani's outreach opened with Mark's verbatim
+    // morning text because the prose summary blob fused both speakers.
+    // The structured form tags every line with speaker / time so source
+    // attribution is structural, not model-side.
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J2_PrefersStructuredSummary_OverProse()
+    {
+        var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1.AddMinutes(1),
+            new[]
+            {
+                new SummaryTurn(t1,                 "Mark", "Hey good morning! How is your day looking?"),
+                new SummaryTurn(t1.AddMinutes(1),   "Ani",  "your morning looks peaceful from what i can see..."),
+            });
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "thinking about pillowy potatoes",
+            reasoning: "");
+
+        user.Should().Contain("Mark (");
+        user.Should().Contain("Hey good morning! How is your day looking?");
+        user.Should().Contain("Ani (");
+        user.Should().Contain("your morning looks peaceful");
+        user.Should().NotContain("prose form should be ignored",
+            "structured form takes precedence — the prose blob must not appear when structured is present");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J2_StructuredSummary_FramesAttributionExplicitly()
+    {
+        // The framing line must be present so the composition model has an
+        // explicit instruction to keep speaker boundaries intact, not just
+        // tagged data it could still confuse.
+        var t1 = DateTimeOffset.UtcNow.AddMinutes(-2);
+        var snapshot = MinimalSnapshot();
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1,
+            new[] { new SummaryTurn(t1, "Mark", "any plans?") });
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "wandering",
+            reasoning: "");
+
+        user.Should().Contain("Each line is tagged with who said it");
+        user.Should().Contain("do not lift Mark's exact words");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J2_FallsBackToProse_WhenStructuredAbsent()
+    {
+        // During the additive deploy window or on conversation-service failure
+        // the structured form may be null. The prose form remains the
+        // load-bearing surface in that case.
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
+        snapshot.StructuredConversationSummary = null;
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "wandering",
+            reasoning: "");
+
+        user.Should().Contain("Conversation (1 messages)");
+        user.Should().Contain("Mark: hi");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J2_NoConversationSection_WhenBothNull()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = null;
+        snapshot.StructuredConversationSummary = null;
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "wandering",
+            reasoning: "");
+
+        user.Should().NotContain("You recently talked with");
+    }
+
 }

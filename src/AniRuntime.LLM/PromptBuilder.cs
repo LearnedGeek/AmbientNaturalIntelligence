@@ -812,7 +812,24 @@ public static class PromptBuilder
         // Feed recent conversation context so outreach can follow up naturally.
         // This is CRITICAL — if the contact just told you about a dentist appointment,
         // "how did it go?" is always better than a disconnected "hey you up?"
-        if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+        //
+        // Theme J Phase J.2 step 3 (Apr 27, 2026): render the conversation with
+        // explicit per-turn speaker tagging when the structured form is
+        // available. Apr 27 06:54 incident: the composition model lifted
+        // Mark's verbatim morning text into Ani's outreach because the prose
+        // summary blob fused both sides. The structured form tags every line
+        // with speaker / time, making source attribution a structural property
+        // of the prompt — not a model-side responsibility. Falls back to the
+        // prose form when the structured field is null (e.g., during the
+        // additive-deploy window or if the conversation service is unavailable).
+        var structured = snapshot.StructuredConversationSummary;
+        if (structured is { Turns.Count: > 0 })
+        {
+            sections.Add($"\nIMPORTANT — You recently talked with {contact}. Each line is tagged with who said it; do not lift {contact}'s exact words into your own message:");
+            sections.Add(structured.ToPromptString());
+            sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
+        }
+        else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
         {
             sections.Add($"\nIMPORTANT — You recently talked with {contact}:");
             sections.Add($"  {snapshot.RecentConversationSummary}");
