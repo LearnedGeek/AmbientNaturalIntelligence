@@ -75,6 +75,18 @@ periodic reflection synthesis (Feature 32, deployed Mar 14, 2026).
 **Status:** real-data extraction pending (ReflectionPhase log + Semantic-
 memory query). PLACEHOLDER JSON in use; banner renders automatically.
 
+### `mcadams-anchored-narrative`
+
+Anchored-memory tier (Feature 16) plotted as a narrative timeline. Origin
+moments through architectural-growth moments through lessons-as-history,
+visualised as the arc the runtime keeps.
+
+**Reference:** McAdams (2001) — The Psychology of Life Stories.
+
+**Status:** real-data extraction pending (server-side `ani-memory.db`
+query against `MemoryTier.Anchored`). PLACEHOLDER JSON reconstructed from
+Paper 1 + Paper 2 + Research Log; banner renders automatically.
+
 ## Adding a new figure
 
 1. Add a new branch in `Program.cs::Main` switch statement.

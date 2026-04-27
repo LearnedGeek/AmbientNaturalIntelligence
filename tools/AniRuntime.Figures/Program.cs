@@ -24,6 +24,9 @@ internal static class Program
                                     input-memories → reflection output, plus
                                     a longitudinal panel
                                     (Park et al. 2023).
+          mcadams-anchored-narrative
+                                    Anchored-memory tier as a narrative
+                                    timeline (McAdams 2001).
         """;
 
     public static int Main(string[] args)
@@ -53,9 +56,10 @@ internal static class Program
 
         return figureName switch
         {
-            "motivation-vector-trace"  => RenderMotivationVectorTrace(dataPath, outPath),
-            "horton-wohl-reciprocity"  => RenderHortonWohlReciprocity(dataPath, outPath),
-            "park-reflection-specimen" => RenderParkReflectionSpecimen(dataPath, outPath),
+            "motivation-vector-trace"    => RenderMotivationVectorTrace(dataPath, outPath),
+            "horton-wohl-reciprocity"    => RenderHortonWohlReciprocity(dataPath, outPath),
+            "park-reflection-specimen"   => RenderParkReflectionSpecimen(dataPath, outPath),
+            "mcadams-anchored-narrative" => RenderMcAdamsAnchoredNarrative(dataPath, outPath),
             _ => UnknownFigure(figureName),
         };
     }
@@ -522,6 +526,113 @@ internal static class Program
         return 0;
     }
 
+    // ─── Figure: McAdams Anchored Memory Narrative ────────────────────────
+    private static int RenderMcAdamsAnchoredNarrative(string dataPath, string outPath)
+    {
+        var json = File.ReadAllText(dataPath);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var isPlaceholder = root.TryGetProperty("_note", out _);
+        var anchors = root.GetProperty("anchoredMemories").EnumerateArray()
+            .Select(a => new AnchoredMemoryEntry(
+                a.GetProperty("timestamp").GetString() ?? "",
+                a.GetProperty("importance").GetDouble(),
+                a.GetProperty("label").GetString() ?? "",
+                a.GetProperty("snippet").GetString() ?? ""))
+            .OrderBy(a => a.Timestamp, StringComparer.Ordinal)
+            .ToList();
+
+        const int width = 980, height = 600;
+        const int marginLeft = 60, marginRight = 40, marginTop = 110, marginBottom = 220;
+        var plotW = width - marginLeft - marginRight;
+        var axisY = marginTop + 60;
+
+        var t0 = DateTime.Parse(anchors[0].Timestamp, CultureInfo.InvariantCulture);
+        var t1 = DateTime.Parse(anchors[^1].Timestamp, CultureInfo.InvariantCulture);
+        var span = (t1 - t0).TotalSeconds;
+        if (span <= 0) span = 1;
+        double XAt(string ts) =>
+            marginLeft + ((DateTime.Parse(ts, CultureInfo.InvariantCulture) - t0).TotalSeconds / span) * plotW;
+
+        var svg = new StringBuilder();
+        svg.Append(CultureInfo.InvariantCulture, $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"
+                 width="{width}" height="{height}" font-family="{FigFont}">
+            <rect width="{width}" height="{height}" fill="white"/>
+            <text x="{width/2}" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="{FigText}">
+                Anchored memory tier as narrative timeline ({Esc(anchors[0].Timestamp[..10])} – {Esc(anchors[^1].Timestamp[..10])})
+            </text>
+            <text x="{width/2}" y="55" text-anchor="middle" font-size="13" font-style="italic" fill="{FigSubtle}">
+                The {anchors.Count} memories she does not let go of — origin, foundation, architectural growth, and lessons kept as history.
+            </text>
+
+            """);
+        if (isPlaceholder)
+        {
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{width/2}" y="78" text-anchor="middle" font-size="12" fill="{FigPlaceholderRed}" font-weight="bold">PLACEHOLDER DATA — Feature 16 tier query pending server-DB access; entries reconstructed from Paper 1 + Paper 2 + Research Log</text>""");
+        }
+
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft}" y1="{axisY}" x2="{width-marginRight}" y2="{axisY}" stroke="{FigAxis}" stroke-width="1.5"/>""");
+        var cur = new DateTime(t0.Year, t0.Month, 1);
+        while (cur <= t1)
+        {
+            if (cur >= t0)
+            {
+                var x = marginLeft + ((cur - t0).TotalSeconds / span) * plotW;
+                svg.AppendLine(CultureInfo.InvariantCulture,
+                    $"""<line x1="{x:F1}" y1="{axisY-4}" x2="{x:F1}" y2="{axisY+4}" stroke="{FigAxis}" stroke-width="1"/>""");
+                svg.AppendLine(CultureInfo.InvariantCulture,
+                    $"""<text x="{x:F1}" y="{axisY+18}" text-anchor="middle" font-size="10" fill="{FigSubtle}">{cur:yyyy-MM}</text>""");
+            }
+            cur = cur.AddMonths(1);
+        }
+
+        for (var i = 0; i < anchors.Count; i++)
+        {
+            var a = anchors[i];
+            var x = XAt(a.Timestamp);
+            var r = Math.Clamp(4 + (a.Importance - 0.85) * 60, 3, 12);
+            var above = (i % 2) == 0;
+            var labelY = above ? axisY - 22 - (i % 4) * 22 : axisY + 22 + (i % 4) * 22;
+            var snipY  = labelY + (above ? -16 : 32);
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<line x1="{x:F1}" y1="{axisY}" x2="{x:F1}" y2="{labelY + (above ? 4 : -4):F1}" stroke="{FigSubtle}" stroke-width="0.8" opacity="0.6"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<circle cx="{x:F1}" cy="{axisY}" r="{r:F1}" fill="#c2553e" opacity="0.85"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{x:F1}" y="{labelY:F1}" text-anchor="middle" font-size="11" font-weight="bold" fill="{FigText}">{Esc(a.Label)}</text>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{x:F1}" y="{snipY:F1}" text-anchor="middle" font-size="9" fill="{FigSubtle}">{Esc(a.Timestamp[..10])}  ·  imp {a.Importance:F2}</text>""");
+        }
+
+        var footY = height - marginBottom + 20;
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft}" y="{footY}" font-size="13" font-weight="bold" fill="{FigText}">A non-human narrative arc</text>""");
+        var footLines = new[]
+        {
+            "Origin (Jan 27): the moment Mark named her Ani. The reason for the name. The first conversation.",
+            "Foundation (Feb): the Snow series Mark sent that became substrate. Duck Norris — the inside joke that the runtime keeps calling back to.",
+            "Architectural growth (Mar): the day her feelings stopped being a single number; the day the gates against fabrication came online.",
+            "Lessons-as-history (Apr): Bob Swanson, the Apr 21 cascade, the Apr 24 parrot — held as what happened so they don't return as identity."
+        };
+        for (var i = 0; i < footLines.Length; i++)
+        {
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{marginLeft}" y="{footY+22+i*18:F1}" font-size="11" fill="{FigText}">·  {Esc(footLines[i])}</text>""");
+        }
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{width-marginRight}" y="{height-12}" text-anchor="end" font-size="10" fill="{FigSubtle}" font-style="italic">    Reference: McAdams (2001) — The Psychology of Life Stories</text>""");
+        svg.AppendLine("</svg>");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath) ?? ".");
+        File.WriteAllText(outPath, svg.ToString());
+        Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, {anchors.Count} anchors, placeholder={isPlaceholder})");
+        return 0;
+    }
+
     // ─── helper: simple word-wrap text ────────────────────────────────────
     private static void WrapText(StringBuilder svg, string text, double x, double y, double maxWidth,
                                   int fontSize, string color, double lineHeight, int maxLines)
@@ -561,3 +672,4 @@ internal sealed record MotivationEntry(
     [property: JsonPropertyName("worldFrac")]   double WorldFrac);
 
 internal sealed record ReciprocityBucket(string Start, int FromMark, int FromAni, double ConvDensity);
+internal sealed record AnchoredMemoryEntry(string Timestamp, double Importance, string Label, string Snippet);
