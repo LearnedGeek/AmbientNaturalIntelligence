@@ -279,4 +279,59 @@ public class PromptBuilderTests
         system.Should().Contain("temporal mismatch");
     }
 
+    // ── Theme J Phase J.1 — strip reasoning pipe from outreach composition ──
+    // Default behaviour omits reasoning; rollback path preserves legacy.
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J1_OmitsReasoningByDefault()
+    {
+        // J.1 default: reasoningInComposition = false (the parameter default).
+        // Reasoning text must NOT appear in the composition user prompt.
+        var snapshot = MinimalSnapshot();
+        const string reasoningText = "missing him after a long day back from class";
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "thinking about pillowy potatoes",
+            reasoning: reasoningText);
+
+        user.Should().NotContain("Feeling:");
+        user.Should().NotContain(reasoningText);
+        user.Should().Contain("Trigger:");
+        user.Should().Contain("pillowy potatoes");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J1_IncludesReasoningWhenFlagOn_RollbackPath()
+    {
+        // Rollback path: reasoningInComposition = true preserves the pre-J.1
+        // behaviour. Tests this branch so the rollback is verified-correct,
+        // not just available.
+        var snapshot = MinimalSnapshot();
+        const string reasoningText = "missing him after a long day back from class";
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "thinking about pillowy potatoes",
+            reasoning: reasoningText,
+            reasoningInComposition: true);
+
+        user.Should().Contain("Feeling:");
+        user.Should().Contain(reasoningText);
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J1_OmitsFeelingLineWhenReasoningEmpty_FlagOn()
+    {
+        // Edge case: even with the rollback flag on, an empty reasoning
+        // string should NOT add a literal "Feeling:" line to the prompt.
+        var snapshot = MinimalSnapshot();
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot,
+            recentThought: "thinking about pillowy potatoes",
+            reasoning: string.Empty,
+            reasoningInComposition: true);
+
+        user.Should().NotContain("Feeling:");
+        user.Should().Contain("Trigger:");
+    }
+
 }

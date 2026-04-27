@@ -137,22 +137,23 @@ public class OutreachPhase
         }
 
         // Theme J Phase J.0 (Apr 24, 2026): instrument the decision-reasoning
-        // pipe before composition. The decision LLM's reasoning field is about
-        // to be piped into composition's user prompt under the "Feeling:"
-        // label — the exact prompt-injection surface J.1 will strip. Log the
-        // full reasoning text, its char count, and the fact that it is being
-        // piped so the before-picture is queryable.
+        // pipe before composition. Theme J Phase J.1 (Apr 27, 2026): the
+        // reasoning is no longer piped into composition by default; the
+        // OutreachReasoningInCompositionEnabled flag gates the legacy
+        // behaviour for rollback. The instrumentation still logs the
+        // reasoning text + its size for observability.
         var decisionReasoning = decision.Reasoning ?? string.Empty;
+        var reasoningInComposition = _aniOptions.OutreachReasoningInCompositionEnabled;
         if (_aniOptions.GuardRefactorBaselineLoggingEnabled)
         {
             _log.LogInformation(
-                "J0_REASONING_PIPE chars={Chars} pipedToComposition=true text={Text}",
-                decisionReasoning.Length, decisionReasoning);
+                "J0_REASONING_PIPE chars={Chars} pipedToComposition={Piped} text={Text}",
+                decisionReasoning.Length, reasoningInComposition, decisionReasoning);
         }
 
         // Step 2b: Compose — free-text message generation (no JSON constraint)
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought, decisionReasoning);
+            snapshot, recentThought, decisionReasoning, reasoningInComposition);
         var message = await _ollama.ChatAsync(
             msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct)
             .ConfigureAwait(false);

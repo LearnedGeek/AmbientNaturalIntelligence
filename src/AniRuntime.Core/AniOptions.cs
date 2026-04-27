@@ -163,6 +163,22 @@ public class AniOptions
     // a concern. Phase 2b/2c/2d introduce their own separate flags.
     public bool MotivationVectorLoggingEnabled { get; set; } = true;
 
+    // Theme J Phase J.1 (Apr 27, 2026): strip the decision-stage reasoning
+    // pipe from outreach composition. When this flag is FALSE (the default
+    // post-J.1), the outreach-decision LLM's free-text reasoning field is
+    // retained for logging/observability but is NOT included in the
+    // composition prompt. Apr 24 diagnostic case (the "back from class" /
+    // "10pm" / "still warm from teaching" outreach) entered through this
+    // surface; J.1 removes it.
+    //
+    // Set to true to revert (preserve the pre-J.1 leak) if conversation
+    // quality regresses unexpectedly. Rollback is a flag toggle, not a
+    // redeploy.
+    //
+    // See docs/spec/ANI-Theme-J-Guard-Consistency-Refactor-Plan.md §3
+    // Phase J.1 for the full rationale.
+    public bool OutreachReasoningInCompositionEnabled { get; set; } = false;
+
     // Theme J Phase J.0 (Apr 24, 2026): baseline instrumentation for the
     // Guard Consistency Refactor. When enabled, the runtime emits structured
     // log lines capturing the data surfaces the refactor will later address:

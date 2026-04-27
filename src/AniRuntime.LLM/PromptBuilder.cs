@@ -726,7 +726,8 @@ public static class PromptBuilder
     }
 
     public static (string System, string User) BuildOutreachMessagePrompt(
-        ContextSnapshot snapshot, string recentThought, string reasoning)
+        ContextSnapshot snapshot, string recentThought, string reasoning,
+        bool reasoningInComposition = false)
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -756,12 +757,27 @@ public static class PromptBuilder
             - Output ONLY the text message. No timestamps, no labels, no headers, no parenthetical notes.{moodSection}
             """;
 
+        // Theme J Phase J.1 (Apr 27, 2026): the decision-stage reasoning was
+        // previously piped into composition under the "use as motivation, not
+        // content" label. The model treated it as content regardless of the
+        // label — Apr 24 06:18 outreach is the diagnostic case (the "back
+        // from class" / "10pm" / "still warm from teaching" cascade entered
+        // through this surface). Default behaviour now omits reasoning. The
+        // recentThought (Trigger) line stays — that's the actual content
+        // motivation the composition model uses.
+        //
+        // Rollback path: the reasoningInComposition parameter (wired to
+        // AniOptions.OutreachReasoningInCompositionEnabled) restores the
+        // pre-J.1 behaviour for a quality-regression rollback.
         var sections = new List<string>
         {
             $"Why you want to reach out — use this as motivation, not content:",
-            $"  Feeling: {reasoning}",
-            $"  Trigger: {recentThought}",
         };
+        if (reasoningInComposition && !string.IsNullOrWhiteSpace(reasoning))
+        {
+            sections.Add($"  Feeling: {reasoning}");
+        }
+        sections.Add($"  Trigger: {recentThought}");
 
         // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
         // WHAT IS TRUE — Facts tier (character seeds, user-asserted, perception,
