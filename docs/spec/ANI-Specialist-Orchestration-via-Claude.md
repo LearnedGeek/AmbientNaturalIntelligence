@@ -43,13 +43,16 @@ The pattern only works if the routing is explicit. Below: what Claude orchestrat
 
 | Task class | Why it fits | Example |
 |---|---|---|
-| **Long-running batch specialist runs** | Claude can kick off + monitor in background; output is structured; result is interpreted in conversation | ML-Intern overnight training runs; multi-hour eval suites |
+| **Research-gap surveys** ⭐ primary use of ml-intern for this project | Survey the recent literature for open problems; cross-reference against ANI's existing workstreams; surface gaps where ANI is already addressing what the literature is asking. Output feeds the *Research Gap Watch* table in the Phase Tracker. | ml-intern arxiv-and-citation-graph surveys (~$1, 5–10 min, every 2–4 weeks). The Apr 26 scout `scout-20260426-202150` validated Theme J's source-attribution gap as an open problem in LD-Agent + Inside Out + Inner Thoughts. |
+| **Long-running batch specialist runs** | Claude can kick off + monitor in background; output is structured; result is interpreted in conversation | ML-Intern overnight training runs; multi-hour eval suites; Phase 5c harvest jobs |
 | **CLI tools with structured output** | Bash invocation + parse + summarize | claude-recall, gh, dotnet, ssh-server-probes, ML-Intern CLI |
 | **Multi-step pipelines with clear handoffs** | Claude shuttles artifacts between stages; Mark stays in curation seat | Phase 5c register-mining flow: discovery → filtering → curation → integration → eval |
 | **Diagnostic / audit work** | The dogfood-loop pattern; structured findings into structured issues | claude-recall #3-#20; Theme J audit; ANI server log probes |
 | **External content reading** | Summarization at depth Mark needs | Paper releases, conference CFPs, comparator tools, articles |
 | **Cross-cutting paper-prose work** | Memory of arguments + references in canonical place | Paper 2 figure captions, Paper 3 contribution drafting |
 | **State preservation across sessions** | Memory files + project artifacts as durable continuity | Long campaigns picked up days later via "where are we on X?" |
+
+**On the research-gap-survey pattern specifically.** Mark's recurring observation: ANI keeps arriving independently at gaps the literature is also asking about, and the overlap surfaces *after the fact*. ml-intern (or any literature-survey specialist) flips this to *proactive identification + claim of work*. The Apr 26 inaugural survey demonstrated the pattern — the agent independently identified Theme J's source-attribution architecture as an open problem across the three closest contender papers, with the exact framing the Theme J plan uses. Tracking surfaced gaps in the Phase Tracker's *Research Gap Watch* section creates a longitudinal record of *what we were working on, what the literature was asking, and when the two converged* — directly feeding Paper 3's methodology argument about specialty-respect and bespoke companion-AI architecture research.
 
 ### 2.2 Stays direct between Mark and the specialist
 

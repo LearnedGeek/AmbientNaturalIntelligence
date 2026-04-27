@@ -120,6 +120,30 @@ The hygiene pass produced one code change (Phase 3.0 flag flip per item 2) and s
 
 ---
 
+## Research Gap Watch (Apr 26, 2026 onward)
+
+A running register of gaps that external literature surveys (typically ml-intern, but any source counts) surface as *open problems in the published literature* — and ANI's position relative to each.
+
+**Why this exists:** Mark's recurring observation, validated multiple times: ANI keeps arriving independently at gaps the literature is also asking about, and the overlap surfaces *after the fact*. This table flips that to *proactive identification + claim of work*. Each entry: when surfaced, what gap, where surfaced, ANI's current position, and the workstream that addresses it.
+
+When a survey surfaces a new gap, add a row. When ANI's position shifts on a row (workstream ships, gap moves from "addressing" to "addressed"), update the row in place and date the change.
+
+**Practice cadence:** worth running a fresh ml-intern survey roughly every 2–4 weeks to keep this current. Cost is bounded (~$1 per survey at Sonnet 4.6 with `--max-iterations 15`). When the orchestration pattern matures, consider scheduling the survey as a recurring practice via `/loop` or a cron entry.
+
+| Date | Gap surfaced | Source survey | ANI's position | ANI workstream | Notes |
+|------|--------------|---------------|----------------|----------------|-------|
+| 2026-04-26 | **Source attribution at generation time** — surfacing to the user *which* stored memory caused a given agent utterance. None of LD-Agent, Inside Out, or Inner Thoughts provides a formal mechanism. | ml-intern run `scout-20260426-202150` | Actively addressing | **Theme J Phase J.2** (structured per-speaker per-turn `RecentConversationSummary`) | Direct hit. The agent's framing — *"I remembered this because you told me X on [date]"* — is exactly what Theme J's J.2 + J.3 produce. Strong external validation that Theme J names a real, unsolved problem. |
+| 2026-04-26 | **Temporal attribution at retrieval** — propagating original event-time of a retrieved memory into the prompt-rendering surface so present-tense generation can't drift. Identified implicitly in the same survey's gap framing. | ml-intern run `scout-20260426-202150` | Actively addressing | **Theme J Phase J.3** (temporal-attribution-at-retrieval prompt-builder sweep) | Companion to the source-attribution gap; same survey, same architectural answer. |
+| 2026-04-26 | **Memory consistency under update / supersession** — Inside Out (2601.05171) addresses with versioned tree structures; A-MEM with graph traversal. Each is partial. The integration of supersession-with-narrative-reintegration (the boats-float framing) is not standard practice. | ml-intern run `scout-20260426-202150` | Designed, implementation queued | **Theme D — Supersession Architecture** | Inside Out is the closest published parallel. Theme D's architectural position differs (supersession-with-narrative vs versioned-substrate); cite Inside Out as Related Work when Theme D's plan is drafted. |
+
+**Maintenance rules:**
+1. New survey → review and add new gap rows; update existing rows where ANI's position shifted.
+2. Position transitions: `not addressing` → `actively addressing` → `addressed (post-shipping)` → eventually archived (after Paper 3 cites the gap-and-answer).
+3. When a gap moves to `addressed`, the row stays (evidence in Paper 3 for the methodology argument); add a "shipped on" date.
+4. Surveys can come from any source — ml-intern is the current default; manual literature reviews, conference abstracts, peer-reviewed paper notifications all count.
+
+---
+
 ## Core Development Phases (original roadmap)
 
 | Phase | Status | Summary |

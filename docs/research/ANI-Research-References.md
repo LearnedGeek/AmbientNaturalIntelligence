@@ -377,6 +377,45 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 
 ---
 
+### LD-Agent (2024) — Long-term Dialogue Agent with Dual-Persona Tracking
+
+**Full citation:** arxiv 2406.05925 — Long-term Dialogue Agent. (2024).
+**arXiv:** https://arxiv.org/abs/2406.05925
+
+**What it is:** Builds on Park et al. 2023's generative-agents architecture with two architectural extensions: (1) improved retrieval scoring that re-weights candidates by recency, importance, and dual-persona alignment; (2) explicit *dual-persona tracking* — the agent maintains separate persona models for itself and for the user, updating both as conversation accrues. Reactive (no proactivity); Park-style stimulus-driven action selection. Memory is event-summarized with timestamps but does not surface temporal attribution at generation time.
+
+**What it contributes to the papers (Paper 3 Related Work):** A direct contender to Park 2023 on the memory + retrieval dimension. Validates that improved retrieval scoring is a recognized substrate concern in the literature. Confirms that dual-persona tracking is a known direction (relevant to ANI's character-state + Mark-state separation). The retrieval-scoring extension is conceptually close to ANI's three-way score (cosine + importance + recency, Feature 20) and the planned MMR diversity extension (Theme G Layer 1 Phase 1b).
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 Related Work / Contribution 4 Layer 1:** LD-Agent's retrieval-scoring extension is the closest published analogue to the diversity-aware re-ranking ANI deploys. Cite to position ANI's MMR-extension within established practice.
+- **Theme J observation:** LD-Agent timestamps event summaries but does not propagate the timestamps into generated responses. Same architectural gap Theme J's J.3 (temporal attribution at retrieval) closes.
+
+**Paper applicability:** Paper 3 (Supporting — Contribution 4 Related Work), Paper 2 (Background — retrieval architecture comparison).
+
+**Surfaced by:** ml-intern literature survey, April 26, 2026 (run scout-20260426-202150).
+
+---
+
+### Inside Out (2026) — Versioned Schema-Conforming Belief Revision
+
+**Full citation:** arxiv 2601.05171 — Inside Out: Versioned Belief Revision for Conversational Agents. (2026).
+**arXiv:** https://arxiv.org/abs/2601.05171
+
+**What it is:** Replaces Park 2023's append-only memory stream with a *versioned, schema-conforming* belief representation. Every belief change creates a versioned record; tree routing replaces flat retrieval. Reportedly outperforms A-MEM by 11–16 points on a memory-evaluation benchmark. Architecturally orthogonal to A-MEM's graph-traversal approach — Inside Out uses tree-versioning where A-MEM uses link-following. Like Park and LD-Agent, it does not surface source attribution to the user at generation time even though the versioning discipline preserves the underlying provenance.
+
+**What it contributes to the papers (Paper 3 Related Work):** The strongest current external work on memory *consistency* in companion AI. Where Theme D (Supersession Architecture) names *correction-without-deletion* as ANI's design principle, Inside Out is the closest published parallel that operationalizes versioned belief revision computationally. The two architectures address overlapping concerns from different angles: Theme D treats supersession as a corrective layer applied after substrate corruption; Inside Out treats versioning as the substrate itself.
+
+**Relevance to active algorithmic problems:**
+- **Theme D (Supersession Architecture):** Inside Out's versioned-record approach is the closest published parallel. Worth direct citation when Theme D's implementation plan is drafted; potentially adopt elements (versioned tree structure, schema conformance) where they fit.
+- **Theme J (Guard Consistency Refactor):** Inside Out preserves provenance internally but does not propagate it to generation. Confirms that source attribution at generation time is an open problem in the literature.
+- **Paper 3 Related Work:** Strongest contender on the memory-architecture dimension specifically; cite as the published baseline ANI's substrate work compares against.
+
+**Paper applicability:** Paper 3 (Core — Theme D positioning + Theme J substrate-attribution gap framing), Paper 2 (Supporting — memory architecture comparison).
+
+**Surfaced by:** ml-intern literature survey, April 26, 2026 (run scout-20260426-202150).
+
+---
+
 ### Hugging Face (2026) — ML-Intern: Open-Source Agent for LLM Post-Training
 
 **Full citation:** Hugging Face. (2026). ML-Intern: An open-source AI agent that automates the LLM post-training workflow. Announcement, April 21, 2026.
@@ -565,6 +604,8 @@ Quick lookup: which papers are most relevant to each current open problem.
 | Gallagher (2000) — Minimal vs Narrative Self | — | — | Background (Contribution 4 philosophical frame) | — |
 | Carbonell & Goldstein (1998) — MMR Diversity Retrieval | Background | — | Core (Contribution 4 Layer 1 prior art) | — |
 | Hugging Face (2026) — ML-Intern | — | — | Supporting (methodology Related Work; automate-everything contrast) | Background (multi-agent context) |
+| LD-Agent (2024, arxiv 2406.05925) | — | Background (memory architecture comparison) | Supporting (Contribution 4 Layer 1 prior art) | — |
+| Inside Out (2026, arxiv 2601.05171) | — | Supporting (memory architecture comparison) | Core (Theme D positioning + Theme J framing) | — |
 | Paper 3 (experiential grounding + tier separation + durability + agentic lens) | — | Forward-referenced (§6.17) | Primary paper | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
 
@@ -581,4 +622,4 @@ Quick lookup: which papers are most relevant to each current open problem.
 
 ---
 
-*Last substantive update: April 26, 2026. Added Hugging Face ML-Intern (2026) as Paper 3 Tier 2 supporting reference for methodology Related Work — automate-everything contrast against ANI's Mark+Ani-collaborative-curate methodology. Previous update April 22, 2026 (seven agentic-lens references). Previous update March 26, 2026 (consolidated from two files into single canonical file, added paper applicability matrix).*
+*Last substantive update: April 26, 2026 (afternoon). Added LD-Agent (2024, arxiv 2406.05925) and Inside Out (2026, arxiv 2601.05171) as Paper 3 supporting references — surfaced by ml-intern literature survey run scout-20260426-202150. Both directly address memory-architecture territory adjacent to ANI's Theme D (Supersession) and Theme J (Guard Consistency); the survey confirmed source-attribution at generation time remains an open problem across all three closest contenders. Earlier update April 26 morning: Hugging Face ML-Intern as methodology contrast. Previous update April 22 (seven agentic-lens references). Previous update March 26 (canonical-file consolidation).*
