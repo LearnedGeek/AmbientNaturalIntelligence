@@ -1,4 +1,5 @@
 using AniRuntime.Actions;
+using AniRuntime.Emergence;
 using Mosaik.Core;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
@@ -37,6 +38,7 @@ public class ConversationReplyPhase
     private readonly OllamaOptions _ollamaOptions;
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
+    private readonly Em9Detector? _em9;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -65,7 +67,8 @@ public class ConversationReplyPhase
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log,
         ITextClassificationService? mlClassifier = null,
-        PersonaSummaryCache? personaCache = null)
+        PersonaSummaryCache? personaCache = null,
+        Em9Detector? em9Detector = null)
     {
         _state = state;
         _persist = persist;
@@ -87,6 +90,7 @@ public class ConversationReplyPhase
         _ollamaOptions = ollamaOptions.Value;
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
+        _em9 = em9Detector;
         _log = log;
     }
 
@@ -432,6 +436,13 @@ public class ConversationReplyPhase
                 }
             }
         }
+
+        // EM9 — Longitudinal Memory Compounding (Apr 27, 2026, backlog 15.15).
+        // Scan the retrieval pool that fed this reply for >90-day-old memories
+        // surfacing via architectural mechanisms (Anchored tier or reflection
+        // synthesis). Each candidate is logged for the longitudinal trend.
+        // Pure observation — does not affect reply or dispatch.
+        _em9?.Analyze(Em9EmissionContext.ConversationReply, reply, snapshot.RelevantMemory);
 
         // Add reply to in-memory thread BEFORE echo guard so subsequent replies
         // in the same conversation cycle can see this one. Without this, the echo

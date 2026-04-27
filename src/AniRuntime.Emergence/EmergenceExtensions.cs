@@ -26,6 +26,12 @@ public static class EmergenceExtensions
             services.AddSingleton<IEmergenceObserver, NullEmergenceObserver>();
         }
 
+        // EM9 longitudinal logger registers regardless of the main emergence
+        // layer flag. It's a pure observer (logs only, never mutates) and the
+        // research value depends on continuous accumulation. See backlog
+        // item 15.15 + Active Work Plan item 4.
+        services.AddSingleton<Em9Detector>();
+
         return services;
     }
 }

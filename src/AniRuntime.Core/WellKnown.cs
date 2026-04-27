@@ -12,8 +12,9 @@ public static class Roles
 
 public static class SourceNames
 {
-    public const string CharacterSeed = "character-seed";
-    public const string WorldExperience = "world-experience";
+    public const string CharacterSeed       = "character-seed";
+    public const string WorldExperience     = "world-experience";
+    public const string ReflectionSynthesis = "reflection";
 }
 
 public static class MemoryPrefixes

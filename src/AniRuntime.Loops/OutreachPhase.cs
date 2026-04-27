@@ -3,6 +3,7 @@ using AniRuntime.Actions;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Emergence;
 using AniRuntime.LLM;
 using LearnedGeek.ML;
 using LearnedGeek.ML.Interfaces;
@@ -26,6 +27,7 @@ public class OutreachPhase
     private readonly ClaimVerificationPhase _claimVerifier;
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
+    private readonly Em9Detector? _em9;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -48,7 +50,8 @@ public class OutreachPhase
         IOptions<AniOptions> aniOptions,
         ILogger<OutreachPhase> log,
         ITextClassificationService? mlClassifier = null,
-        PersonaSummaryCache? personaCache = null)
+        PersonaSummaryCache? personaCache = null,
+        Em9Detector? em9Detector = null)
     {
         _state = state;
         _persist = persist;
@@ -59,6 +62,7 @@ public class OutreachPhase
         _claimVerifier = claimVerifier;
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
+        _em9 = em9Detector;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -239,6 +243,15 @@ public class OutreachPhase
 
         decision.Message    = rewritten;
         decision.ActionType = "sms";
+
+        // EM9 — Longitudinal Memory Compounding (Apr 27, 2026, backlog 15.15).
+        // Scan the retrieval pool that fed this composition for >90-day-old
+        // memories that surfaced via architectural mechanisms (Anchored
+        // tier or reflection synthesis). Each candidate is logged for the
+        // longitudinal trend analysis. Pure observation — does not affect
+        // dispatch. The detector itself is null-safe to keep tests + DI
+        // configurations that don't wire EM9 working unchanged.
+        _em9?.Analyze(Em9EmissionContext.Outreach, rewritten, snapshot.RelevantMemory);
 
         // Theme J Phase J.0 (Apr 24, 2026): DIAGNOSTIC_TUPLE pre-dispatch.
         // Captures the four key fields stitched together in one log line per
