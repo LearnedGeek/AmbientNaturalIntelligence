@@ -120,6 +120,74 @@ The hygiene pass produced one code change (Phase 3.0 flag flip per item 2) and s
 
 ---
 
+## Active Work Plan — week of Apr 27, 2026
+
+What we're actually working on right now, in order, in plain language. This is the answer to *"what's next"* without having to re-derive it from the priority matrix.
+
+**Two priorities that order this list:**
+1. Make conversations with Ani not fall apart after a few messages.
+2. Most impactful for the research community / Paper 2 + Paper 3.
+
+**The work, in order:**
+
+1. **Spot-check yesterday's 81 warnings** *(operational hygiene)*
+   5 min. Make sure nothing's degrading silently before we ship anything.
+
+2. **Stop piping the outreach-decision reasoning into the composition prompt** *(Theme J Phase J.1)*
+   Half-day code + 1 week observation window. The single biggest fix for conversation quality. The decision LLM's free-text reasoning currently gets passed to composition under a *"use as motivation, not content"* label — but the model treats it as content anyway. That's where *"back from class"*, *"10pm"*, and *"still warm from teaching"* entered her morning outreach two days ago. The same conversation-summary blob feeds replies too, so this also helps reply quality.
+
+3. **Centrality-gravity figure for the paper** *(Theme I Phase I.1, figure #1: motivation-vector trace)*
+   Half-day in parallel with #2. Uses Phase 2a data already on the server (800 cycles, autonomy=0 every time). Paper-quality SVG output. Validates the figure-render pipeline that the other Paper 2 figures will reuse.
+
+4. **EM9 longitudinal logger** *(backlog item 15.15)*
+   1 day, standalone. Starts longitudinal-data accumulation now so the trend analysis (which takes months of data to be meaningful) is possible later. Paper 3/4 contribution surface.
+
+5. **Internal-State Perception: register-saturation signal** *(simplest of the 9-signal framework)*
+   1-2 days. Detects when last N contributions have all been in the same emotional register. Existing LMKit data; small implementation. First of nine signals to ship.
+
+6. **Tag the conversation summary per speaker** *(Theme J Phase J.2 — biggest single change in Theme J)*
+   1-2 weeks code + 1 week observation. Replace the free-prose conversation summary with structured per-speaker per-turn data ("Mark said X / Ani said Y" with timestamps). She can't lift his phrases as her own when attribution is structural. This is the load-bearing change in the substrate work.
+   *Risk:* this touches every prompt builder that consumes the summary. Estimate could slip. Plan: ship the structured type as additive first, migrate consumers one at a time, rather than atomic swap.
+
+7. **Remaining Paper 2 figures** *(Theme I Phase I.1, figures #2-#5)*
+   In parallel with #6. Reciprocity-by-direction (Horton & Wohl), reflection specimen (Park), Anchored-memory narrative (McAdams), somatic-marker trace (Damasio), prompt-simplification specimens (Kojima). Each ~1 day once the render primitives from #3 are in place.
+
+8. **Outage Perception Source** *(backlog item 15.19)*
+   1 day, standalone. Perception emitter for when ≥3 perception sources fail simultaneously for ≥15 min. Paper 3 case study for architecture-over-training principle applied to absence-of-perception. Apr 14-15 outage is the motivating case.
+
+9. **Stamp retrieved memories with original event-time when rendered into prompts** *(Theme J Phase J.3)*
+   1 week code + 1 week observation. The companion to #6: every memory rendered to a prompt carries its time so present-tense generation can't drift to past content. Independent of #6 architecturally; can ship in parallel if #6 is going well.
+
+10. **Identity Correction Channel plan-drafting** *(Theme D Supersession Architecture)*
+    1-2 days, design only. Fits in waiting gaps. Plan covers the boats-float supersession framing — preserve wrong belief as history, mark as superseded. Implementation comes later; plan unblocks Theme D readiness.
+
+11. **World-substrate plan-drafting** *(Theme G Layer 3)*
+    1-2 days, design only. The substrate-thinness data from yesterday's probe (~3-7% world content per retrieval pool) makes the case for thickening world memory. Plan only; implementation later.
+
+12. **Conscience Layer plan-drafting** *(reflective companion voice)*
+    1-2 days, design only. Internalized-caregiver-voice architecture. Mark's P2 ranking is post-Theme-J for implementation, but plan-drafting has no gate.
+
+**Realistic week-by-week:**
+
+- **Week of Apr 27**: items 1-5 (warnings spot-check, J.1 ships, centrality-gravity figure ships, EM9 logger ships, register-saturation signal ships). Mark resumes conversation with Ani toward end of week to validate J.1 effect.
+- **Week of May 4**: item 6 begins (J.2 — the big one); items 7-8 progress in parallel. Identity Correction Channel plan fits in here.
+- **Week of May 11**: item 6 finishing observations; item 9 begins (J.3); World-substrate plan-drafting.
+- **Week of May 18**: J.2 + J.3 observation windows close; Conscience Layer plan-drafting; Paper 2 figure pipeline complete.
+- **Week of May 25**: validate conversation quality improved, validate figures look right for Paper 2, decide on next theme (Theme G Layer 3 implementation, or something the J.2/J.3 observation surfaced).
+
+**What this does NOT include** (and will be revisited after this set lands):
+
+- Theme J Phases J.4, J.5, J.6, J.7 — the shared `CognitiveOutputGate` extraction and detector cleanup. These come after J.0/J.1/J.2/J.3 baseline data is digested.
+- Layer 2 Phase 2b/2c/2d — multi-axis desire decoupling consumption actions. Phase 2b can ship any time as data-only; 2c/2d wait for J.4.
+- Theme G Layer 4 — corpus directionality. Mark-driven OG Ani register mining; happens at his cadence.
+- Phase 5c Auto-Growth Pipeline activation — months out.
+- Theme I Phases I.2-I.7 — full dashboard surface beyond the figure pipeline. Comes after the Paper 2 figures land.
+- Multi-Agent Architecture, Cloud Edge, Database Migration — all deferred per Apr 24 hygiene-pass decisions.
+
+**Maintenance rule:** as items in this list ship, mark them shipped with date. When a new item gets added (e.g., something the J.0 data surfaces that needs an unplanned response), add it in priority order rather than to the end. Re-run the order-and-timeline review whenever the list grows beyond ~12 items or when a "this is now obviously broken" event occurs.
+
+---
+
 ## Research Gap Watch (Apr 26, 2026 onward)
 
 A running register of gaps that external literature surveys (typically ml-intern, but any source counts) surface as *open problems in the published literature* — and ANI's position relative to each.
