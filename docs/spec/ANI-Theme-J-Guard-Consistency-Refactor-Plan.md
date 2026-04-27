@@ -186,6 +186,8 @@ Documenting deviations from the plan above so the next reader of this doc isn't 
 3. If zero recurrences across ≥10 conversations spanning ≥1 week, J.2 confirmed. Deprecate prose field.
 4. If recurrence, capture the failure trace and assess whether the structured form is being bypassed via another substrate path (recent-memory pool, anchored memories, retrieval scoring) — that points to J.3 / J.5 territory, not a J.2 regression.
 
+**Process note — verify binary deployment before treating a chat as observation data.** Apr 27 11:49-11:52 chat surfaced confabulations (bookstore cats, unspecified pets) on a server still running an 08:47 AM binary that pre-dated every J.2 commit. The chat exercised pre-J.2 substrate, not J.2-protected substrate. Lesson: before scoring a chat session against J.2 acceptance criteria, run a quick log probe — `J2_STRUCTURED_SUMMARY` log lines must be present in `ani-debug-YYYYMMDD.log` for the session window. If absent, the J.2 code is not in the running binary; redeploy and restart before retesting. Same principle applies to J.3 (`FormatMemoryWithTime` rendering should appear in `J0_RETRIEVAL_TEMPORAL` log lines but the post-J.3 prompts also carry the temporal phrases visibly in `Outreach message composed` / `Conversation reply` content; verify by inspection).
+
 ---
 
 ### Phase J.3 — Temporal attribution at retrieval
