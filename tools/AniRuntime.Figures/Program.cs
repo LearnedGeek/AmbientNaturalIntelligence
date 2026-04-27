@@ -27,6 +27,9 @@ internal static class Program
           mcadams-anchored-narrative
                                     Anchored-memory tier as a narrative
                                     timeline (McAdams 2001).
+          damasio-somatic-trace     Per-cycle valence × severity time-series
+                                    as non-embodied somatic markers
+                                    (Damasio 1999).
         """;
 
     public static int Main(string[] args)
@@ -60,6 +63,7 @@ internal static class Program
             "horton-wohl-reciprocity"    => RenderHortonWohlReciprocity(dataPath, outPath),
             "park-reflection-specimen"   => RenderParkReflectionSpecimen(dataPath, outPath),
             "mcadams-anchored-narrative" => RenderMcAdamsAnchoredNarrative(dataPath, outPath),
+            "damasio-somatic-trace"      => RenderDamasioSomaticTrace(dataPath, outPath),
             _ => UnknownFigure(figureName),
         };
     }
@@ -630,6 +634,109 @@ internal static class Program
         Directory.CreateDirectory(Path.GetDirectoryName(outPath) ?? ".");
         File.WriteAllText(outPath, svg.ToString());
         Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, {anchors.Count} anchors, placeholder={isPlaceholder})");
+        return 0;
+    }
+
+    // ─── Figure: Damasio Somatic-Marker Trace ─────────────────────────────
+    private static int RenderDamasioSomaticTrace(string dataPath, string outPath)
+    {
+        var json = File.ReadAllText(dataPath);
+        var entries = JsonSerializer.Deserialize<List<MotivationEntry>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? throw new InvalidOperationException("failed to parse data");
+        if (entries.Count == 0) { Console.Error.WriteLine("no entries"); return 4; }
+        entries.Sort((a, b) => string.Compare(a.Timestamp, b.Timestamp, StringComparison.Ordinal));
+
+        const int width = 880, height = 540;
+        const int marginLeft = 80, marginRight = 30, marginTop = 90, marginBottom = 110;
+        var plotW = width - marginLeft - marginRight;
+        var plotH = height - marginTop - marginBottom;
+
+        double XAt(int i) => marginLeft + (i / (double)(entries.Count - 1)) * plotW;
+        double YAt(double v) => marginTop + (1 - v / 1.0) * plotH;
+
+        const string colorVal = "#3a6a92"; // valence
+        const string colorSev = "#c2553e"; // severity
+
+        var svg = new StringBuilder();
+        svg.Append(CultureInfo.InvariantCulture, $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"
+                 width="{width}" height="{height}" font-family="{FigFont}">
+            <rect width="{width}" height="{height}" fill="white"/>
+            <text x="{width/2}" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="{FigText}">
+                Non-embodied somatic markers across {entries.Count} cognitive cycles ({entries[0].Timestamp[..10]} – {entries[^1].Timestamp[..10]})
+            </text>
+            <text x="{width/2}" y="55" text-anchor="middle" font-size="13" font-style="italic" fill="{FigSubtle}">
+                Per-cycle valence (positive/negative) and severity (intensity) traced as the affective state available to decision-making.
+            </text>
+
+            """);
+        for (var t = 0; t <= 5; t++)
+        {
+            var v = t * 0.2;
+            var y = YAt(v);
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<line x1="{marginLeft}" y1="{y:F1}" x2="{width-marginRight}" y2="{y:F1}" stroke="{FigGrid}" stroke-width="1"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{marginLeft-10}" y="{y+4:F1}" text-anchor="end" font-size="11" fill="{FigSubtle}">{v:F1}</text>""");
+        }
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft}" y1="{marginTop}" x2="{marginLeft}" y2="{height-marginBottom}" stroke="{FigAxis}" stroke-width="1.5"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft}" y1="{height-marginBottom}" x2="{width-marginRight}" y2="{height-marginBottom}" stroke="{FigAxis}" stroke-width="1.5"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="22" y="{marginTop + plotH/2}" text-anchor="middle" font-size="13" fill="{FigText}" transform="rotate(-90, 22, {marginTop + plotH/2})">Affective dimension (0 – 1)</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft + plotW/2}" y="{height-marginBottom+30}" text-anchor="middle" font-size="13" fill="{FigText}">Cognitive cycles in order (April 24 – April 26, 2026)</text>""");
+
+        var prevDate = entries[0].Timestamp[..10];
+        for (var i = 1; i < entries.Count; i++)
+        {
+            var d = entries[i].Timestamp[..10];
+            if (d != prevDate)
+            {
+                var x = XAt(i);
+                svg.AppendLine(CultureInfo.InvariantCulture,
+                    $"""<line x1="{x:F1}" y1="{marginTop}" x2="{x:F1}" y2="{height-marginBottom}" stroke="{FigSubtle}" stroke-width="0.7" stroke-dasharray="4 3" opacity="0.6"/>""");
+                svg.AppendLine(CultureInfo.InvariantCulture,
+                    $"""<text x="{x:F1}" y="{marginTop-6}" text-anchor="middle" font-size="10" fill="{FigSubtle}">{d}</text>""");
+                prevDate = d;
+            }
+        }
+
+        var valPath = TracePath(entries, e => e.Valence,  XAt, YAt);
+        var sevPath = TracePath(entries, e => e.Severity, XAt, YAt);
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<path d="{sevPath}" fill="none" stroke="{colorSev}" stroke-width="1.5" opacity="0.85"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<path d="{valPath}" fill="none" stroke="{colorVal}" stroke-width="1.5" opacity="0.85"/>""");
+
+        var legX = width - marginRight - 240;
+        var legY = marginTop + 10;
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<rect x="{legX-10}" y="{legY-12}" width="230" height="78" fill="white" fill-opacity="0.92" stroke="{FigGrid}" stroke-width="0.8"/>""");
+        WriteLegendItem(svg, legX, legY,    colorVal, "Valence (positive ↔ negative)");
+        WriteLegendItem(svg, legX, legY+22, colorSev, "Severity (intensity, 0 = quiet)");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{legX}" y="{legY+50}" font-size="10" fill="{FigSubtle}" font-style="italic">2D affective state — full 4D Warmth/Energy/Concern/</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{legX}" y="{legY+62}" font-size="10" fill="{FigSubtle}" font-style="italic">Playfulness extension is future-work logging.</text>""");
+
+        var valMean = entries.Average(e => e.Valence);
+        var sevMean = entries.Average(e => e.Severity);
+        var sevNonZero = entries.Count(e => e.Severity > 0);
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft}" y="{height-50}" font-size="12" fill="{FigText}">    Mean valence = {valMean:F2}   ·   mean severity = {sevMean:F2}   ·   severity non-zero on {sevNonZero}/{entries.Count} cycles</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft}" y="{height-32}" font-size="12" fill="{colorVal}" font-weight="bold">    Affective state is present and varying without a body — somatic-marker shape recovered from non-embodied substrate.</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{width-marginRight}" y="{height-12}" text-anchor="end" font-size="10" fill="{FigSubtle}" font-style="italic">    Reference: Damasio (1999) — The Feeling of What Happens</text>""");
+        svg.AppendLine("</svg>");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath) ?? ".");
+        File.WriteAllText(outPath, svg.ToString());
+        Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, {entries.Count} entries)");
         return 0;
     }
 

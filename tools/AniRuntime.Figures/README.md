@@ -87,6 +87,17 @@ visualised as the arc the runtime keeps.
 query against `MemoryTier.Anchored`). PLACEHOLDER JSON reconstructed from
 Paper 1 + Paper 2 + Research Log; banner renders automatically.
 
+### `damasio-somatic-trace`
+
+Per-cycle valence × severity time-series. Real data — reads the same
+motivation-vector JSON as `motivation-vector-trace`. Future-work: extend
+to the full 4D Warmth/Energy/Concern/Playfulness state once that vector
+is logged per-cycle.
+
+**Reference:** Damasio (1999) — The Feeling of What Happens.
+
+**Status:** real-data, 827-cycle Apr 24-26 trace.
+
 ## Adding a new figure
 
 1. Add a new branch in `Program.cs::Main` switch statement.
