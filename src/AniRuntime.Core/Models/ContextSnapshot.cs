@@ -23,6 +23,17 @@ public class ContextSnapshot
     public string? RecentConversationSummary { get; set; }
 
     /// <summary>
+    /// Theme J Phase J.2 (Apr 27, 2026): structured per-speaker per-turn
+    /// representation of the same recent conversation captured in
+    /// <see cref="RecentConversationSummary"/>. Populated additively alongside
+    /// the free-prose field while consumers migrate one at a time. The structured
+    /// type makes source attribution a data-structure invariant rather than a
+    /// model-side responsibility — see <see cref="StructuredConversationSummary"/>
+    /// for the rationale and the Apr 27 06:54-08:03 parrot incident that motivated it.
+    /// </summary>
+    public StructuredConversationSummary? StructuredConversationSummary { get; set; }
+
+    /// <summary>
     /// Recent inner thoughts that are semantically similar to current context.
     /// Used to detect thought loops and steer toward diversity.
     /// </summary>
