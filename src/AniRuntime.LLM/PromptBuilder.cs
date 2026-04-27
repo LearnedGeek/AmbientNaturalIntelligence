@@ -90,7 +90,20 @@ public static class PromptBuilder
         // Recent conversation context — the most important grounding signal.
         // If the contact just talked about going to the dentist, thoughts should
         // naturally drift toward that — not random food or music topics.
-        if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+        //
+        // Theme J Phase J.2 step 4 (Apr 27, 2026): prefer the structured
+        // per-speaker form so inner-thought generation can't fuse Mark's
+        // assertions with Ani's own prior thoughts. The inner-thought model
+        // is more loop-prone than the composition model, so attribution
+        // boundaries here matter for thought-loop dynamics in addition to
+        // parrot prevention. Falls back to prose when structured is null.
+        var ittStructured = snapshot.StructuredConversationSummary;
+        if (ittStructured is { Turns.Count: > 0 })
+        {
+            sections.Add("Something that just happened (each line tagged with who said it — this should color your thoughts naturally, but stay in your own voice):");
+            sections.Add(ittStructured.ToPromptString());
+        }
+        else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
         {
             sections.Add($"Something that just happened (this should color your thoughts naturally):");
             sections.Add($"  {snapshot.RecentConversationSummary}");
@@ -404,9 +417,23 @@ public static class PromptBuilder
             $"Your most recent thought: {recentThought}",
         };
 
-        // Recent conversation awareness — crucial for contextual outreach
-        if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+        // Recent conversation awareness — crucial for contextual outreach.
+        //
+        // Theme J Phase J.2 step 5 (Apr 27, 2026): the decision prompt now
+        // also reads the structured per-speaker form when available, so the
+        // shouldReach/confidence/reasoning judgement is grounded on speaker-
+        // attributed content rather than a fused prose blob. Reasoning is the
+        // input to the rollback-only path (J.1) and to logging — keeping it
+        // attribution-clean here means the audit trail stays clean too.
+        var decisionStructured = snapshot.StructuredConversationSummary;
+        if (decisionStructured is { Turns.Count: > 0 })
+        {
+            context.Add($"You recently talked with {contact} (each line tagged with who said it):\n{decisionStructured.ToPromptString()}");
+        }
+        else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
+        {
             context.Add($"You recently talked with {contact}: {snapshot.RecentConversationSummary}");
+        }
 
         if (snapshot.OpenLoops.Count > 0)
             context.Add($"Open threads: {string.Join("; ", snapshot.OpenLoops.Select(l => l.Description))}");

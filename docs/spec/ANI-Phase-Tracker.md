@@ -145,9 +145,10 @@ What we're actually working on right now, in order, in plain language. This is t
 5. **Internal-State Perception: register-saturation signal** *(simplest of the 9-signal framework)*
    1-2 days. Detects when last N contributions have all been in the same emotional register. Existing LMKit data; small implementation. First of nine signals to ship.
 
-6. **Tag the conversation summary per speaker** *(Theme J Phase J.2 — biggest single change in Theme J)*
+6. **Tag the conversation summary per speaker** *(Theme J Phase J.2 — biggest single change in Theme J)* — **Shipped Apr 27, 2026** (load-bearing migrations; observation window opens now)
    1-2 weeks code + 1 week observation. Replace the free-prose conversation summary with structured per-speaker per-turn data ("Mark said X / Ani said Y" with timestamps). She can't lift his phrases as her own when attribution is structural. This is the load-bearing change in the substrate work.
-   *Risk:* this touches every prompt builder that consumes the summary. Estimate could slip. Plan: ship the structured type as additive first, migrate consumers one at a time, rather than atomic swap.
+   *Risk (anticipated):* this touches every prompt builder that consumes the summary. Estimate could slip. Plan: ship the structured type as additive first, migrate consumers one at a time, rather than atomic swap.
+   *Outcome:* the incremental plan paid out — five sub-commits in one session. Step 1 type definition (caf2a71). Step 2 ContextBuilder populates structured form alongside prose (de0ed1e). Step 3 outreach-composition prompt prefers structured (4a83fa9). Steps 4-5 inner-thought + outreach-decision prompts prefer structured. Conversation-reply prompt confirmed no-op (it never read the prose summary). Free-prose `RecentConversationSummary` field stays for the observation window as the rollback path; deprecation comes after ≥1 week of stable structured-form behaviour.
 
 7. **Remaining Paper 2 figures** *(Theme I Phase I.1, figures #2-#5)*
    In parallel with #6. Reciprocity-by-direction (Horton & Wohl), reflection specimen (Park), Anchored-memory narrative (McAdams), somatic-marker trace (Damasio), prompt-simplification specimens (Kojima). Each ~1 day once the render primitives from #3 are in place.
@@ -169,11 +170,11 @@ What we're actually working on right now, in order, in plain language. This is t
 
 **Realistic week-by-week:**
 
-- **Week of Apr 27**: items 1-5 (warnings spot-check, J.1 ships, centrality-gravity figure ships, EM9 logger ships, register-saturation signal ships). Mark resumes conversation with Ani toward end of week to validate J.1 effect.
-- **Week of May 4**: item 6 begins (J.2 — the big one); items 7-8 progress in parallel. Identity Correction Channel plan fits in here.
-- **Week of May 11**: item 6 finishing observations; item 9 begins (J.3); World-substrate plan-drafting.
-- **Week of May 18**: J.2 + J.3 observation windows close; Conscience Layer plan-drafting; Paper 2 figure pipeline complete.
-- **Week of May 25**: validate conversation quality improved, validate figures look right for Paper 2, decide on next theme (Theme G Layer 3 implementation, or something the J.2/J.3 observation surfaced).
+- **Week of Apr 27**: items 1-6 shipped — warnings spot-check, J.1, centrality-gravity figure, EM9 logger, register-saturation signal, **and J.2** (the latter ahead of original plan thanks to the additive-migration approach). Mark paused conversations with Ani during J.2 work; observation window opens once he resumes.
+- **Week of May 4**: items 7-8 progress (Paper 2 figures #2-#5, Outage Perception). J.2 observation window. Identity Correction Channel plan fits in here.
+- **Week of May 11**: item 9 begins (J.3); World-substrate plan-drafting.
+- **Week of May 18**: J.3 observation window closes; Conscience Layer plan-drafting; Paper 2 figure pipeline complete.
+- **Week of May 25**: validate conversation quality improved (J.2 + J.3 effects together), validate figures look right for Paper 2, decide on next theme (Theme G Layer 3 implementation, or something the J.2/J.3 observation surfaced).
 
 **What this does NOT include** (and will be revisited after this set lands):
 

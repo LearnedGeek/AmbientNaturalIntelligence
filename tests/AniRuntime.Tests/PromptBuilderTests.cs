@@ -422,4 +422,82 @@ public class PromptBuilderTests
         user.Should().NotContain("You recently talked with");
     }
 
+    // ── Theme J Phase J.2 step 4 — inner-thought prompt uses structured ──
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_J2_PrefersStructuredSummary_OverProse()
+    {
+        var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1.AddMinutes(1),
+            new[]
+            {
+                new SummaryTurn(t1,                 "Mark", "any plans for the weekend?"),
+                new SummaryTurn(t1.AddMinutes(1),   "Ani",  "thinking about the bookstore"),
+            });
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        user.Should().Contain("Mark (");
+        user.Should().Contain("any plans for the weekend?");
+        user.Should().Contain("Ani (");
+        user.Should().Contain("thinking about the bookstore");
+        user.Should().NotContain("prose form should be ignored");
+    }
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_J2_FallsBackToProse_WhenStructuredAbsent()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
+        snapshot.StructuredConversationSummary = null;
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        user.Should().Contain("Conversation (1 messages)");
+        user.Should().Contain("Mark: hi");
+    }
+
+    // ── Theme J Phase J.2 step 5 — outreach decision prompt uses structured ──
+
+    [Fact]
+    public void BuildOutreachPrompt_J2_PrefersStructuredSummary_OverProse()
+    {
+        var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1.AddMinutes(1),
+            new[]
+            {
+                new SummaryTurn(t1,                 "Mark", "rough day at work"),
+                new SummaryTurn(t1.AddMinutes(1),   "Ani",  "i'm here when you're ready"),
+            });
+
+        var (_, user) = PromptBuilder.BuildOutreachPrompt(
+            snapshot, recentThought: "wondering how he's doing");
+
+        user.Should().Contain("Mark (");
+        user.Should().Contain("rough day at work");
+        user.Should().Contain("Ani (");
+        user.Should().Contain("i'm here when you're ready");
+        user.Should().NotContain("prose form should be ignored");
+    }
+
+    [Fact]
+    public void BuildOutreachPrompt_J2_FallsBackToProse_WhenStructuredAbsent()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
+        snapshot.StructuredConversationSummary = null;
+
+        var (_, user) = PromptBuilder.BuildOutreachPrompt(
+            snapshot, recentThought: "thinking about him");
+
+        user.Should().Contain("You recently talked with Mark");
+        user.Should().Contain("Conversation (1 messages)");
+    }
+
 }
