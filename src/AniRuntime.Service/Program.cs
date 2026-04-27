@@ -172,6 +172,12 @@ try
     builder.Services.AddSingleton<IRetrievalOriginTracker, RetrievalOriginTracker>();
     builder.Services.AddSingleton<IPerceptionSource, RetrievalSelfDominancePerceptionSource>();
 
+    // Internal-State Perception Framework — signal #1 (Apr 27, 2026): register
+    // saturation. Polls active emotional contributions; emits an interior
+    // perception when one register dominates above threshold. Default off via
+    // AniOptions.RegisterSaturationPerceptionEnabled.
+    builder.Services.AddSingleton<IPerceptionSource, RegisterSaturationPerceptionSource>();
+
     // builder.Services.AddSingleton<IPerceptionSource, HomeAssistantSource>();
     // builder.Services.AddSingleton<IPerceptionSource, CalendarPerceptionSource>();
 

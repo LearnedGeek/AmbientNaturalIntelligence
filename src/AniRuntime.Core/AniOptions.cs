@@ -147,6 +147,22 @@ public class AniOptions
     // flipped to true. Ani now perceives the feedback-loop condition when her
     // own-output share of retrieval exceeds 70% for the rolling window.
     public bool   RetrievalDominancePerceptionEnabled { get; set; } = true;
+
+    // Internal-State Perception Framework — signal #1 of nine: Register
+    // Saturation. (Apr 27, 2026.) When enabled, polls the active emotional
+    // contributions each cycle; when one register's share crosses the
+    // threshold AND there are at least the minimum number of contributions
+    // to evaluate, emits a soft interior-legible perception so the inner-
+    // thought model has a chance to notice the saturation. Pure observation
+    // — does not gate or modulate composition.
+    //
+    // Default off per the observe-first rollout pattern. Threshold 0.70
+    // matches the Phase 1d self-dominance default; both are "dominant
+    // signal" detectors and the share-of-substrate framing is the same.
+    public bool   RegisterSaturationPerceptionEnabled { get; set; } = false;
+    public double RegisterSaturationThreshold         { get; set; } = 0.70;
+    public int    RegisterSaturationMinContributions  { get; set; } = 4;
+    public double RegisterSaturationCooldownMinutes   { get; set; } = 60.0;
     public double OwnOutputDominanceThreshold         { get; set; } = 0.70;
     public int    RetrievalDominanceWindowCycles      { get; set; } = 10;
     public int    RetrievalDominanceMinCycles         { get; set; } = 3;
