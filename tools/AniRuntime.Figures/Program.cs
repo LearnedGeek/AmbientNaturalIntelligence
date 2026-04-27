@@ -20,6 +20,10 @@ internal static class Program
                                     bucketed across a 30-day window with
                                     per-bucket reciprocity ratio
                                     (Horton & Wohl 1956).
+          park-reflection-specimen  One reflection-synthesis cycle as
+                                    input-memories → reflection output, plus
+                                    a longitudinal panel
+                                    (Park et al. 2023).
         """;
 
     public static int Main(string[] args)
@@ -49,8 +53,9 @@ internal static class Program
 
         return figureName switch
         {
-            "motivation-vector-trace" => RenderMotivationVectorTrace(dataPath, outPath),
-            "horton-wohl-reciprocity" => RenderHortonWohlReciprocity(dataPath, outPath),
+            "motivation-vector-trace"  => RenderMotivationVectorTrace(dataPath, outPath),
+            "horton-wohl-reciprocity"  => RenderHortonWohlReciprocity(dataPath, outPath),
+            "park-reflection-specimen" => RenderParkReflectionSpecimen(dataPath, outPath),
             _ => UnknownFigure(figureName),
         };
     }
@@ -385,6 +390,164 @@ internal static class Program
         File.WriteAllText(outPath, svg.ToString());
         Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, {nBuckets} buckets, placeholder={isPlaceholder})");
         return 0;
+    }
+
+    // ─── Figure: Park Reflection Synthesis Specimen ───────────────────────
+    private static int RenderParkReflectionSpecimen(string dataPath, string outPath)
+    {
+        var json = File.ReadAllText(dataPath);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var isPlaceholder = root.TryGetProperty("_note", out _);
+        var spec = root.GetProperty("specimen");
+        var inputSummaries = spec.GetProperty("inputMemorySummaries")
+            .EnumerateArray().Select(e => e.GetString() ?? "").ToList();
+        var reflectionOutput = spec.GetProperty("reflectionOutput").GetString() ?? "";
+        var trigger = spec.GetProperty("trigger").GetString() ?? "";
+        var ts = spec.GetProperty("timestamp").GetString() ?? "";
+        var weeks = root.GetProperty("longitudinal").GetProperty("weeks").EnumerateArray()
+            .Select(w => (
+                Week:  w.GetProperty("weekStart").GetString() ?? "",
+                Frac:  w.GetProperty("semanticReflectionFrac").GetDouble(),
+                Total: w.GetProperty("totalSemantic").GetInt32()))
+            .ToList();
+
+        const int width = 880, height = 720;
+        const int marginLeft = 60, marginRight = 30;
+        const int specimenY = 110;
+        const int specimenH = 380;
+        const int longTop = specimenY + specimenH + 60;
+        const int longBottom = height - 90;
+        var plotW = width - marginLeft - marginRight;
+        var plotH = longBottom - longTop;
+
+        var svg = new StringBuilder();
+        svg.Append(CultureInfo.InvariantCulture, $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"
+                 width="{width}" height="{height}" font-family="{FigFont}">
+            <rect width="{width}" height="{height}" fill="white"/>
+            <text x="{width/2}" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="{FigText}">
+                Reflection synthesis: input memories → higher-order observation, with longitudinal accrual
+            </text>
+            <text x="{width/2}" y="55" text-anchor="middle" font-size="13" font-style="italic" fill="{FigSubtle}">
+                Feature 32 (deployed Mar 14, 2026) produces a Semantic memory every 12 cognitive cycles.
+            </text>
+
+            """);
+        if (isPlaceholder)
+        {
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{width/2}" y="78" text-anchor="middle" font-size="12" fill="{FigPlaceholderRed}" font-weight="bold">PLACEHOLDER DATA — ReflectionPhase log + Semantic-tier query pending server access; shape and content style match deployed reflections</text>""");
+        }
+
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<rect x="{marginLeft}" y="{specimenY}" width="{plotW}" height="{specimenH}" fill="#f8f6f0" stroke="{FigGrid}" stroke-width="0.8" rx="3"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft+15}" y="{specimenY+20}" font-size="12" fill="{FigSubtle}" font-style="italic">Specimen — {Esc(ts)}    ·    {Esc(trigger)}</text>""");
+
+        var colW = (plotW - 60) / 2.0;
+        var leftX = marginLeft + 20;
+        var rightX = marginLeft + 30 + colW;
+        var contentTop = specimenY + 45;
+
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{leftX}" y="{contentTop}" font-size="13" font-weight="bold" fill="{FigText}">Input memory summaries (n={inputSummaries.Count})</text>""");
+        for (var i = 0; i < inputSummaries.Count; i++)
+        {
+            var y = contentTop + 26 + i * 50;
+            WrapText(svg, inputSummaries[i], leftX, y, colW, 11, FigText, lineHeight: 14, maxLines: 3);
+        }
+
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{rightX}" y="{contentTop}" font-size="13" font-weight="bold" fill="{FigText}">Synthesised reflection (persisted as MemoryType.Semantic)</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<rect x="{rightX-6}" y="{contentTop+10}" width="{colW+12}" height="{specimenH-70}" fill="white" stroke="#c2553e" stroke-width="1.2" rx="3"/>""");
+        WrapText(svg, reflectionOutput, rightX+4, contentTop+34, colW, 13, FigText, lineHeight: 18, maxLines: 14);
+
+        var arrowY = contentTop + 90;
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{FigSubtle}"/></marker></defs>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<path d="M {leftX+colW+4} {arrowY} L {rightX-12} {arrowY}" stroke="{FigSubtle}" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>""");
+
+        // Longitudinal panel
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft}" y="{longTop-22}" font-size="13" font-weight="bold" fill="{FigText}">Longitudinal: reflection-origin fraction of Semantic-tier memory, by week</text>""");
+        const double yMaxLong = 0.5;
+        double LX(int i) => marginLeft + 30 + (i / (double)(weeks.Count - 1)) * (plotW - 60);
+        double LY(double v) => longTop + (1 - v / yMaxLong) * plotH;
+        for (var t = 0; t <= 5; t++)
+        {
+            var v = t * (yMaxLong / 5.0);
+            var y = LY(v);
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<line x1="{marginLeft+30}" y1="{y:F1}" x2="{width-marginRight}" y2="{y:F1}" stroke="{FigGrid}" stroke-width="1"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{marginLeft+22}" y="{y+4:F1}" text-anchor="end" font-size="10" fill="{FigSubtle}">{v:F2}</text>""");
+        }
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft+30}" y1="{longTop}" x2="{marginLeft+30}" y2="{longBottom}" stroke="{FigAxis}" stroke-width="1.2"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft+30}" y1="{longBottom}" x2="{width-marginRight}" y2="{longBottom}" stroke="{FigAxis}" stroke-width="1.2"/>""");
+        var trace = new StringBuilder();
+        for (var i = 0; i < weeks.Count; i++)
+        {
+            trace.Append(i == 0 ? 'M' : 'L');
+            trace.Append(' ');
+            trace.Append(LX(i).ToString("F1", CultureInfo.InvariantCulture));
+            trace.Append(' ');
+            trace.Append(LY(weeks[i].Frac).ToString("F1", CultureInfo.InvariantCulture));
+            trace.Append(' ');
+        }
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<path d="{trace}" fill="none" stroke="#6b8e3a" stroke-width="2.0" opacity="0.9"/>""");
+        for (var i = 0; i < weeks.Count; i++)
+        {
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<circle cx="{LX(i):F1}" cy="{LY(weeks[i].Frac):F1}" r="3.5" fill="#6b8e3a"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{LX(i):F1}" y="{longBottom+14:F1}" text-anchor="middle" font-size="10" fill="{FigSubtle}">{Esc(weeks[i].Week[5..])}</text>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{LX(i):F1}" y="{longBottom+27:F1}" text-anchor="middle" font-size="9" fill="{FigSubtle}">n={weeks[i].Total}</text>""");
+        }
+
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{width-marginRight}" y="{height-12}" text-anchor="end" font-size="10" fill="{FigSubtle}" font-style="italic">    Reference: Park et al. (2023) — Generative Agents (UIST '23)</text>""");
+        svg.AppendLine("</svg>");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath) ?? ".");
+        File.WriteAllText(outPath, svg.ToString());
+        Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, weeks={weeks.Count}, placeholder={isPlaceholder})");
+        return 0;
+    }
+
+    // ─── helper: simple word-wrap text ────────────────────────────────────
+    private static void WrapText(StringBuilder svg, string text, double x, double y, double maxWidth,
+                                  int fontSize, string color, double lineHeight, int maxLines)
+    {
+        var charWPx = fontSize * 0.55;
+        var maxChars = (int)(maxWidth / charWPx);
+        var words = text.Split(' ');
+        var line = new StringBuilder();
+        var lines = new List<string>();
+        foreach (var w in words)
+        {
+            if (line.Length > 0 && line.Length + 1 + w.Length > maxChars)
+            {
+                lines.Add(line.ToString());
+                line.Clear();
+                if (lines.Count >= maxLines) break;
+            }
+            if (line.Length > 0) line.Append(' ');
+            line.Append(w);
+        }
+        if (line.Length > 0 && lines.Count < maxLines) lines.Add(line.ToString());
+        for (var i = 0; i < lines.Count; i++)
+        {
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{x.ToString("F1", CultureInfo.InvariantCulture)}" y="{(y + i * lineHeight).ToString("F1", CultureInfo.InvariantCulture)}" font-size="{fontSize}" fill="{color}">{Esc(lines[i])}</text>""");
+        }
     }
 }
 

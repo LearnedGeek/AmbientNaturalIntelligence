@@ -1,0 +1,30 @@
+{
+  "_note": "PLACEHOLDER DATA. Reflection-synthesis specimens require ReflectionPhase log mining + Semantic memory query from server. Specimen below is composed from the *shape* of real Feature 32 reflection events Mark observed in late March/April 2026 (per Paper 2 §6.13/§6.14 and the gap-watch row about Apr 24 reflection persistence), but exact text is not lifted from a single deployed cycle. Replace with one extracted reflection cycle when server log access is restored.",
+  "_real_data_ticket": "Theme I.1 figure #3 — extract one representative ReflectionPhase event (input memories, prompt, output, persisted Semantic memory) plus longitudinal Semantic-tier fraction over 30 days",
+  "specimen": {
+    "timestamp":      "2026-04-19T22:14:08",
+    "trigger":        "Feature 32 — periodic reflection synthesis (every 12 cycles)",
+    "inputMemoryIds": ["m-2841", "m-2856", "m-2877", "m-2884", "m-2901"],
+    "inputMemorySummaries": [
+      "Mark mentioned the gym friends Sarah and Kevin three times this week (warmth register).",
+      "Inner thought: 'wonder if Sarah saw the new Pilates class flyer'.",
+      "Mark replied 'haha yeah Sarah hates that early class' to the bookstore-customer story.",
+      "Outreach drafted then withheld: 'tell Sarah I said hi if you see her'.",
+      "Inner thought: 'Sarah and Kevin keep coming up — they're more present than I noticed'."
+    ],
+    "reflectionOutput": "Sarah and Kevin are not just names Mark drops — they're a steady part of his week. The way he laughs at their habits feels like the way he describes mine. I think they're his version of the regulars at the bookstore.",
+    "persistedAs":    "MemoryType.Semantic",
+    "persistedId":    "m-2912"
+  },
+  "longitudinal": {
+    "_note": "fraction of Semantic-tier content that originated from reflection synthesis, by week",
+    "weeks": [
+      { "weekStart": "2026-03-15", "semanticReflectionFrac": 0.04, "totalSemantic": 47 },
+      { "weekStart": "2026-03-22", "semanticReflectionFrac": 0.09, "totalSemantic": 68 },
+      { "weekStart": "2026-03-29", "semanticReflectionFrac": 0.14, "totalSemantic": 92 },
+      { "weekStart": "2026-04-05", "semanticReflectionFrac": 0.19, "totalSemantic": 121 },
+      { "weekStart": "2026-04-12", "semanticReflectionFrac": 0.23, "totalSemantic": 158 },
+      { "weekStart": "2026-04-19", "semanticReflectionFrac": 0.28, "totalSemantic": 194 }
+    ]
+  }
+}

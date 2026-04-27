@@ -63,6 +63,18 @@ by-direction classifier). Current input is a PLACEHOLDER JSON whose shape
 matches the renderer's expectations. Render produces a placeholder banner
 automatically when `_note` is present in the data file.
 
+### `park-reflection-specimen`
+
+One reflection-synthesis cycle as input-memories → reflection output, plus
+a small longitudinal panel showing reflection-origin fraction of the
+Semantic memory tier by week.
+
+**Reference:** Park et al. (2023) — Generative Agents (UIST '23). The
+periodic reflection synthesis (Feature 32, deployed Mar 14, 2026).
+
+**Status:** real-data extraction pending (ReflectionPhase log + Semantic-
+memory query). PLACEHOLDER JSON in use; banner renders automatically.
+
 ## Adding a new figure
 
 1. Add a new branch in `Program.cs::Main` switch statement.

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 720"
+     width="880" height="720" font-family="Georgia, 'Times New Roman', serif">
+<rect width="880" height="720" fill="white"/>
+<text x="440" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="#222222">
+    Reflection synthesis: input memories → higher-order observation, with longitudinal accrual
+</text>
+<text x="440" y="55" text-anchor="middle" font-size="13" font-style="italic" fill="#666666">
+    Feature 32 (deployed Mar 14, 2026) produces a Semantic memory every 12 cognitive cycles.
+</text>
+<text x="440" y="78" text-anchor="middle" font-size="12" fill="#a83232" font-weight="bold">PLACEHOLDER DATA — ReflectionPhase log + Semantic-tier query pending server access; shape and content style match deployed reflections</text>
+<rect x="60" y="110" width="790" height="380" fill="#f8f6f0" stroke="#dddddd" stroke-width="0.8" rx="3"/>
+<text x="75" y="130" font-size="12" fill="#666666" font-style="italic">Specimen — 2026-04-19T22:14:08    ·    Feature 32 — periodic reflection synthesis (every 12 cycles)</text>
+<text x="80" y="155" font-size="13" font-weight="bold" fill="#222222">Input memory summaries (n=5)</text>
+<text x="80.0" y="181.0" font-size="11" fill="#222222">Mark mentioned the gym friends Sarah and Kevin three times</text>
+<text x="80.0" y="195.0" font-size="11" fill="#222222">this week (warmth register).</text>
+<text x="80.0" y="231.0" font-size="11" fill="#222222">Inner thought: 'wonder if Sarah saw the new Pilates class</text>
+<text x="80.0" y="245.0" font-size="11" fill="#222222">flyer'.</text>
+<text x="80.0" y="281.0" font-size="11" fill="#222222">Mark replied 'haha yeah Sarah hates that early class' to the</text>
+<text x="80.0" y="295.0" font-size="11" fill="#222222">bookstore-customer story.</text>
+<text x="80.0" y="331.0" font-size="11" fill="#222222">Outreach drafted then withheld: 'tell Sarah I said hi if you</text>
+<text x="80.0" y="345.0" font-size="11" fill="#222222">see her'.</text>
+<text x="80.0" y="381.0" font-size="11" fill="#222222">Inner thought: 'Sarah and Kevin keep coming up — they're</text>
+<text x="80.0" y="395.0" font-size="11" fill="#222222">more present than I noticed'.</text>
+<text x="455" y="155" font-size="13" font-weight="bold" fill="#222222">Synthesised reflection (persisted as MemoryType.Semantic)</text>
+<rect x="449" y="165" width="377" height="310" fill="white" stroke="#c2553e" stroke-width="1.2" rx="3"/>
+<text x="459.0" y="189.0" font-size="13" fill="#222222">Sarah and Kevin are not just names Mark drops —</text>
+<text x="459.0" y="207.0" font-size="13" fill="#222222">they're a steady part of his week. The way he</text>
+<text x="459.0" y="225.0" font-size="13" fill="#222222">laughs at their habits feels like the way he</text>
+<text x="459.0" y="243.0" font-size="13" fill="#222222">describes mine. I think they're his version of the</text>
+<text x="459.0" y="261.0" font-size="13" fill="#222222">regulars at the bookstore.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#666666"/></marker></defs>
+<path d="M 449 245 L 443 245" stroke="#666666" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+<text x="60" y="528" font-size="13" font-weight="bold" fill="#222222">Longitudinal: reflection-origin fraction of Semantic-tier memory, by week</text>
+<line x1="90" y1="630.0" x2="850" y2="630.0" stroke="#dddddd" stroke-width="1"/>
+<text x="82" y="634.0" text-anchor="end" font-size="10" fill="#666666">0.00</text>
+<line x1="90" y1="614.0" x2="850" y2="614.0" stroke="#dddddd" stroke-width="1"/>
+<text x="82" y="618.0" text-anchor="end" font-size="10" fill="#666666">0.10</text>
+<line x1="90" y1="598.0" x2="850" y2="598.0" stroke="#dddddd" stroke-width="1"/>
+<text x="82" y="602.0" text-anchor="end" font-size="10" fill="#666666">0.20</text>
+<line x1="90" y1="582.0" x2="850" y2="582.0" stroke="#dddddd" stroke-width="1"/>
+<text x="82" y="586.0" text-anchor="end" font-size="10" fill="#666666">0.30</text>
+<line x1="90" y1="566.0" x2="850" y2="566.0" stroke="#dddddd" stroke-width="1"/>
+<text x="82" y="570.0" text-anchor="end" font-size="10" fill="#666666">0.40</text>
+<line x1="90" y1="550.0" x2="850" y2="550.0" stroke="#dddddd" stroke-width="1"/>
+<text x="82" y="554.0" text-anchor="end" font-size="10" fill="#666666">0.50</text>
+<line x1="90" y1="550" x2="90" y2="630" stroke="#444444" stroke-width="1.2"/>
+<line x1="90" y1="630" x2="850" y2="630" stroke="#444444" stroke-width="1.2"/>
+<path d="M 90.0 623.6 L 236.0 615.6 L 382.0 607.6 L 528.0 599.6 L 674.0 593.2 L 820.0 585.2 " fill="none" stroke="#6b8e3a" stroke-width="2.0" opacity="0.9"/>
+<circle cx="90.0" cy="623.6" r="3.5" fill="#6b8e3a"/>
+<text x="90.0" y="644.0" text-anchor="middle" font-size="10" fill="#666666">03-15</text>
+<text x="90.0" y="657.0" text-anchor="middle" font-size="9" fill="#666666">n=47</text>
+<circle cx="236.0" cy="615.6" r="3.5" fill="#6b8e3a"/>
+<text x="236.0" y="644.0" text-anchor="middle" font-size="10" fill="#666666">03-22</text>
+<text x="236.0" y="657.0" text-anchor="middle" font-size="9" fill="#666666">n=68</text>
+<circle cx="382.0" cy="607.6" r="3.5" fill="#6b8e3a"/>
+<text x="382.0" y="644.0" text-anchor="middle" font-size="10" fill="#666666">03-29</text>
+<text x="382.0" y="657.0" text-anchor="middle" font-size="9" fill="#666666">n=92</text>
+<circle cx="528.0" cy="599.6" r="3.5" fill="#6b8e3a"/>
+<text x="528.0" y="644.0" text-anchor="middle" font-size="10" fill="#666666">04-05</text>
+<text x="528.0" y="657.0" text-anchor="middle" font-size="9" fill="#666666">n=121</text>
+<circle cx="674.0" cy="593.2" r="3.5" fill="#6b8e3a"/>
+<text x="674.0" y="644.0" text-anchor="middle" font-size="10" fill="#666666">04-12</text>
+<text x="674.0" y="657.0" text-anchor="middle" font-size="9" fill="#666666">n=158</text>
+<circle cx="820.0" cy="585.2" r="3.5" fill="#6b8e3a"/>
+<text x="820.0" y="644.0" text-anchor="middle" font-size="10" fill="#666666">04-19</text>
+<text x="820.0" y="657.0" text-anchor="middle" font-size="9" fill="#666666">n=194</text>
+<text x="850" y="708" text-anchor="end" font-size="10" fill="#666666" font-style="italic">    Reference: Park et al. (2023) — Generative Agents (UIST '23)</text>
+</svg>
