@@ -238,11 +238,30 @@ The novel element is the scalar metric. Autoresearch optimizes training loss. AN
 
 ---
 
+## Related Work
+
+### ML-Intern (Hugging Face, Apr 2026) — reference implementation candidate
+
+**External agent that automates the end-to-end LLM post-training workflow.** Continuous loop: arXiv / Hugging Face Papers browse → dataset discovery on HF Hub → training script execution (local or via HF Jobs) → evaluation reading + failure diagnosis (e.g. "reward collapse in RLHF") → retrain. Built on smolagents framework with native Trackio (W&B alternative) integration. Demonstrated on Qwen3-1.7B, achieving 32% on PostTrainBench (10-hour H100 budget, vs Claude Code 22.99% on the same task).
+
+**Why this matters here:** ML-Intern is the closest external implementation to the Phase 5c Auto-Growth Pipeline's harvest → train → evaluate → rollout architecture. When Phase 5c activates, ML-Intern is the leading external option to evaluate the bespoke ANI pipeline against — either as a replacement (unlikely; methodology contribution requires the curation surface to remain Mark-driven) or as a *gate / option-evaluator* layer that produces candidate dataset additions, eval reports, or training-config recommendations that Mark's curation accepts or rejects.
+
+**Limitations w.r.t. ANI specifically:**
+- Article doesn't document LoRA / QLoRA support; demonstrated on full fine-tunes.
+- Demonstrated on Qwen3 family, not Llama 3.2.
+- Optimised for benchmark-driven post-training; ANI's evaluation surface is register coverage + failure-mode rates + relational quality, not standard benchmarks.
+- License terms not explicitly stated in the announcement; verify before adoption.
+
+**Adoption path if Phase 5c proceeds with ML-Intern:** treat ML-Intern as a sub-agent that ANI's autoresearch loop calls into for specific phases (dataset discovery, training execution, eval reading), with Mark's curation gating its outputs. NOT a replacement for the curation surface. Aligns with the broader architecture-over-instruction principle: the methodology contribution lives in what humans + Ani decide to keep, not in what gets generated.
+
+**Reference:** https://www.marktechpost.com/2026/04/21/hugging-face-releases-ml-intern-an-open-source-ai-agent-that-automates-the-llm-post-training-workflow/
+
 ## References
 
 - Karpathy, A. (2026). autoresearch. GitHub. https://github.com/karpathy/autoresearch
 - Park et al. (2023). Generative Agents: Interactive Simulacra of Human Behavior. Stanford.
 - Kirk et al. (2024). The Benefits, Risks, and Bounds of Personalizing the Alignment of LLMs to Individuals. Nature Machine Intelligence.
+- Hugging Face (2026). ML-Intern: Open-Source AI Agent for LLM Post-Training. Apr 21, 2026 announcement (see Related Work above).
 - Phase 5 design: `docs/spec/phase-5-design.md`
 - Emergence layer design: `docs/spec/emergence/ANI-Emergence-Layer-Design.md`
 - Emergence research framing: `docs/spec/emergence/ANI-Emergence-Research-Framing.md`

@@ -377,6 +377,30 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 
 ---
 
+### Hugging Face (2026) — ML-Intern: Open-Source Agent for LLM Post-Training
+
+**Full citation:** Hugging Face. (2026). ML-Intern: An open-source AI agent that automates the LLM post-training workflow. Announcement, April 21, 2026.
+**Source:** https://www.marktechpost.com/2026/04/21/hugging-face-releases-ml-intern-an-open-source-ai-agent-that-automates-the-llm-post-training-workflow/
+**Project:** Open-source via Hugging Face (license terms not explicitly stated in announcement; verify before adoption).
+
+**What it is:** End-to-end automation agent for LLM post-training workflows. Continuous research-loop architecture: arXiv / Hugging Face Papers browsing (methodology section parsing + citation graph traversal) → dataset discovery on Hugging Face Hub → quality assessment + reformatting → training execution (local or via Hugging Face Jobs) → evaluation reading + failure diagnosis (e.g., "reward collapse in RLHF pipelines") → retrain. Built on Hugging Face's `smolagents` framework with native Trackio integration (open-source W&B alternative). Demonstrated on Qwen3-1.7B, achieving 32% on PostTrainBench (10-hour H100 budget) versus Claude Code's 22.99% on the identical task.
+
+**What it contributes to the papers (Paper 3 methodology contrast):** ML-Intern is the *opposite framing* of ANI's methodology contribution. ML-Intern automates the entire research-and-training loop, treating curation as a generic optimization problem solvable by an autonomous agent. ANI's methodology contribution argues the inverse: *Mark + Ani collaborative design* is the load-bearing mechanism (Ani contributed five of the nine Internal-State Perception signals; Mar 23 prompt simplification was a hand-curated architecture-over-instruction decision; Apr 21 cascade analysis required Mark's relational interpretation; Apr 24 Theme J audit required Mark's "if they apply, they should apply" architectural intuition). Citing ML-Intern in Paper 3 lets ANI argue *against* the "automate-everything" baseline rather than ignoring it — strengthening the paper-bearing methodology argument by explicitly naming the alternative.
+
+The PostTrainBench result also validates an architectural-decision-space ANI lives inside: specialized agents outperform generalist agents on their specialty (ML-Intern's 32% vs Claude Code's 22.99%). Paper 3 can extend the same argument: companion-AI architecture research is its own specialty too, deserving its own bespoke methodology and tooling rather than being subsumed under generic agent benchmarks.
+
+**Relevance to active algorithmic problems:**
+- **Paper 3 methodology section (Related Work):** Cite as the closest published external system to ANI's Phase 5c Auto-Growth Pipeline. Explicit contrast between automate-everything vs Mark+Ani-collaborative-curate-everything frames the methodology contribution.
+- **Phase 5c Auto-Growth Pipeline (`docs/spec/design/ANI-AutoModel-Design.md`):** Reference implementation candidate. When Phase 5c activates, ML-Intern is the leading external option to evaluate. Adoption path likely as a sub-agent that handles routine grind (dataset discovery, training execution, eval reading) with Mark's curation gating its outputs — *option-evaluator* rather than *replacement*.
+- **Theme G Layer 4 (Corpus Directionality):** ML-Intern's synthetic data generation capability could automate the register-by-subject cell synthesis Mark has been pondering. Same caveat: outputs gate through curation; ML-Intern proposes, Mark + Ani dispose.
+- **Limitations to flag in any Paper 3 citation:** Article does not document LoRA / QLoRA support; demonstrated on Qwen3, not Llama 3.2; optimised for benchmark-driven post-training rather than register-coverage / failure-mode-rate / relational-quality evaluation; license terms not stated.
+
+**Paper applicability:** Paper 3 (Core — methodology contrast in Related Work; argument scaffolding for "specialized agents and specialized methodologies"), Paper 5 (Background — multi-agent architecture context where specialized agents compose into larger systems).
+
+**Tier:** Supporting (Paper 3 Tier 2). Not core to any specific contribution but load-bearing for the methodology Related Work argument.
+
+---
+
 ## Tier 3 — Background Context
 
 ---
@@ -540,6 +564,7 @@ Quick lookup: which papers are most relevant to each current open problem.
 | Damasio (1999) — Layered Self | — | Supporting (§6.17) | Core (Contribution 4 framing) | — |
 | Gallagher (2000) — Minimal vs Narrative Self | — | — | Background (Contribution 4 philosophical frame) | — |
 | Carbonell & Goldstein (1998) — MMR Diversity Retrieval | Background | — | Core (Contribution 4 Layer 1 prior art) | — |
+| Hugging Face (2026) — ML-Intern | — | — | Supporting (methodology Related Work; automate-everything contrast) | Background (multi-agent context) |
 | Paper 3 (experiential grounding + tier separation + durability + agentic lens) | — | Forward-referenced (§6.17) | Primary paper | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
 
@@ -556,4 +581,4 @@ Quick lookup: which papers are most relevant to each current open problem.
 
 ---
 
-*Last substantive update: April 22, 2026. Added seven agentic-lens references (Horton & Wohl, Ryan & Deci, Oudeyer & Kaplan, McAdams, Damasio, Gallagher, Carbonell & Goldstein) supporting Paper 3 Contribution 4 (centrality gravity and the five-layer agentic-lens architecture). Previous update March 26, 2026 (consolidated from two files into single canonical file, added paper applicability matrix).*
+*Last substantive update: April 26, 2026. Added Hugging Face ML-Intern (2026) as Paper 3 Tier 2 supporting reference for methodology Related Work — automate-everything contrast against ANI's Mark+Ani-collaborative-curate methodology. Previous update April 22, 2026 (seven agentic-lens references). Previous update March 26, 2026 (consolidated from two files into single canonical file, added paper applicability matrix).*
