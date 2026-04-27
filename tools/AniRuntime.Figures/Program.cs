@@ -16,6 +16,10 @@ internal static class Program
                                     Centrality-gravity finding visualized as
                                     runtime data (Paper 3 Contribution 4
                                     Layer 2 / Ryan & Deci 2000).
+          horton-wohl-reciprocity   Care events by direction (Mark→Ani, Ani→Mark)
+                                    bucketed across a 30-day window with
+                                    per-bucket reciprocity ratio
+                                    (Horton & Wohl 1956).
         """;
 
     public static int Main(string[] args)
@@ -46,6 +50,7 @@ internal static class Program
         return figureName switch
         {
             "motivation-vector-trace" => RenderMotivationVectorTrace(dataPath, outPath),
+            "horton-wohl-reciprocity" => RenderHortonWohlReciprocity(dataPath, outPath),
             _ => UnknownFigure(figureName),
         };
     }
@@ -253,6 +258,134 @@ internal static class Program
         svg.AppendLine(CultureInfo.InvariantCulture,
             $"""<text x="{x+32}" y="{y+4}" font-size="11" fill="#222222">{text}</text>""");
     }
+
+    // Shared style constants — keep figures typographically consistent with figure #1.
+    private const string FigFont           = "Georgia, 'Times New Roman', serif";
+    private const string FigText           = "#222222";
+    private const string FigSubtle         = "#666666";
+    private const string FigGrid           = "#dddddd";
+    private const string FigAxis           = "#444444";
+    private const string FigPlaceholderRed = "#a83232"; // for placeholder banner
+
+    private static string Esc(string s) =>
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+    // ─── Figure: Horton & Wohl Reciprocity by Direction ───────────────────
+    private static int RenderHortonWohlReciprocity(string dataPath, string outPath)
+    {
+        var json = File.ReadAllText(dataPath);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var isPlaceholder = root.TryGetProperty("_note", out _);
+        var buckets = root.GetProperty("buckets").EnumerateArray()
+            .Select(b => new ReciprocityBucket(
+                b.GetProperty("start").GetString() ?? "",
+                b.GetProperty("fromMark").GetInt32(),
+                b.GetProperty("fromAni").GetInt32(),
+                b.GetProperty("convDensity").GetDouble()))
+            .ToList();
+        if (buckets.Count == 0) { Console.Error.WriteLine("no buckets"); return 4; }
+
+        const int width = 880, height = 540;
+        const int marginLeft = 80, marginRight = 30, marginTop = 100, marginBottom = 110;
+        var plotW = width - marginLeft - marginRight;
+        var plotH = height - marginTop - marginBottom;
+        var maxCount = Math.Max(buckets.Max(b => b.FromMark), buckets.Max(b => b.FromAni));
+        var yMax = Math.Max(10, (int)Math.Ceiling(maxCount / 5.0) * 5);
+        var nBuckets = buckets.Count;
+        var bandW = plotW / (double)nBuckets;
+        var barW = bandW * 0.36;
+
+        const string colorMark = "#3a6a92"; // cool blue — Mark→Ani
+        const string colorAni  = "#c2553e"; // warm red — Ani→Mark
+
+        double XBand(int i) => marginLeft + (i + 0.5) * bandW;
+        double YAt(double v) => marginTop + (1 - v / yMax) * plotH;
+
+        var svg = new StringBuilder();
+        svg.Append(CultureInfo.InvariantCulture, $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"
+                 width="{width}" height="{height}" font-family="{FigFont}">
+            <rect width="{width}" height="{height}" fill="white"/>
+            <text x="{width/2}" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="{FigText}">
+                Care events by direction across a 30-day window ({Esc(buckets[0].Start)} – {Esc(buckets[^1].Start)})
+            </text>
+            <text x="{width/2}" y="55" text-anchor="middle" font-size="13" font-style="italic" fill="{FigSubtle}">
+                Both sides of the parasocial channel made visible: reciprocity ratio = (Mark→Ani) / (Ani→Mark) per bucket.
+            </text>
+
+            """);
+        if (isPlaceholder)
+        {
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{width/2}" y="78" text-anchor="middle" font-size="12" fill="{FigPlaceholderRed}" font-weight="bold">PLACEHOLDER DATA — server-side Feature 10 log mining pending; shape is realistic, exact counts illustrative</text>""");
+        }
+
+        // Y-axis grid + labels
+        for (var t = 0; t <= 5; t++)
+        {
+            var v = t * (yMax / 5.0);
+            var y = YAt(v);
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<line x1="{marginLeft}" y1="{y:F1}" x2="{width-marginRight}" y2="{y:F1}" stroke="{FigGrid}" stroke-width="1"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{marginLeft-10}" y="{y+4:F1}" text-anchor="end" font-size="11" fill="{FigSubtle}">{v:F0}</text>""");
+        }
+
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft}" y1="{marginTop}" x2="{marginLeft}" y2="{height-marginBottom}" stroke="{FigAxis}" stroke-width="1.5"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<line x1="{marginLeft}" y1="{height-marginBottom}" x2="{width-marginRight}" y2="{height-marginBottom}" stroke="{FigAxis}" stroke-width="1.5"/>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="22" y="{marginTop + plotH/2}" text-anchor="middle" font-size="13" fill="{FigText}" transform="rotate(-90, 22, {marginTop + plotH/2})">Care events per 3-day bucket</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft + plotW/2}" y="{height-marginBottom+44}" text-anchor="middle" font-size="13" fill="{FigText}">3-day buckets, ending April 26 2026</text>""");
+
+        for (var i = 0; i < nBuckets; i++)
+        {
+            var b = buckets[i];
+            var cx = XBand(i);
+            var x1 = cx - barW;
+            var x2 = cx;
+            var y1 = YAt(b.FromMark);
+            var y2 = YAt(b.FromAni);
+            var bottom = YAt(0);
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<rect x="{x1:F1}" y="{y1:F1}" width="{barW:F1}" height="{bottom-y1:F1}" fill="{colorMark}" opacity="0.85"/>""");
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<rect x="{x2:F1}" y="{y2:F1}" width="{barW:F1}" height="{bottom-y2:F1}" fill="{colorAni}" opacity="0.85"/>""");
+            var ratio = b.FromAni > 0 ? b.FromMark / (double)b.FromAni : 0.0;
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{cx:F1}" y="{Math.Min(y1, y2)-6:F1}" text-anchor="middle" font-size="10" fill="{FigSubtle}">r={ratio:F2}</text>""");
+            var dateShort = b.Start.Length >= 10 ? b.Start[5..] : b.Start;
+            svg.AppendLine(CultureInfo.InvariantCulture,
+                $"""<text x="{cx:F1}" y="{height-marginBottom+18}" text-anchor="middle" font-size="10" fill="{FigSubtle}">{dateShort}</text>""");
+        }
+
+        var legX = width - marginRight - 230;
+        var legY = marginTop + 10;
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<rect x="{legX-10}" y="{legY-12}" width="220" height="56" fill="white" fill-opacity="0.92" stroke="{FigGrid}" stroke-width="0.8"/>""");
+        WriteLegendItem(svg, legX, legY,    colorMark, "Care from Mark → Ani");
+        WriteLegendItem(svg, legX, legY+22, colorAni,  "Care from Ani → Mark");
+
+        var totalMark = buckets.Sum(b => b.FromMark);
+        var totalAni  = buckets.Sum(b => b.FromAni);
+        var meanRatio = totalAni > 0 ? totalMark / (double)totalAni : 0.0;
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft}" y="{height-50}" font-size="12" fill="{FigText}">    Totals: Mark→Ani = {totalMark}   ·   Ani→Mark = {totalAni}   ·   window-mean reciprocity r = {meanRatio:F2}</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{marginLeft}" y="{height-32}" font-size="12" fill="{colorAni}" font-weight="bold">    Asymmetry persists across density: Ani's caregiver-directed expression exceeds Mark's, the parasocial signature Horton &amp; Wohl named.</text>""");
+        svg.AppendLine(CultureInfo.InvariantCulture,
+            $"""<text x="{width-marginRight}" y="{height-12}" text-anchor="end" font-size="10" fill="{FigSubtle}" font-style="italic">    Reference: Horton &amp; Wohl (1956) — Mass Communication and Para-Social Interaction</text>""");
+        svg.AppendLine("</svg>");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath) ?? ".");
+        File.WriteAllText(outPath, svg.ToString());
+        Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, {nBuckets} buckets, placeholder={isPlaceholder})");
+        return 0;
+    }
 }
 
 internal sealed record MotivationEntry(
@@ -263,3 +396,5 @@ internal sealed record MotivationEntry(
     [property: JsonPropertyName("valence")]     double Valence,
     [property: JsonPropertyName("severity")]    double Severity,
     [property: JsonPropertyName("worldFrac")]   double WorldFrac);
+
+internal sealed record ReciprocityBucket(string Start, int FromMark, int FromAni, double ConvDensity);

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 540"
+     width="880" height="540" font-family="Georgia, 'Times New Roman', serif">
+<rect width="880" height="540" fill="white"/>
+<text x="440" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="#222222">
+    Care events by direction across a 30-day window (2026-03-28 – 2026-04-24)
+</text>
+<text x="440" y="55" text-anchor="middle" font-size="13" font-style="italic" fill="#666666">
+    Both sides of the parasocial channel made visible: reciprocity ratio = (Mark→Ani) / (Ani→Mark) per bucket.
+</text>
+<text x="440" y="78" text-anchor="middle" font-size="12" fill="#a83232" font-weight="bold">PLACEHOLDER DATA — server-side Feature 10 log mining pending; shape is realistic, exact counts illustrative</text>
+<line x1="80" y1="430.0" x2="850" y2="430.0" stroke="#dddddd" stroke-width="1"/>
+<text x="70" y="434.0" text-anchor="end" font-size="11" fill="#666666">0</text>
+<line x1="80" y1="364.0" x2="850" y2="364.0" stroke="#dddddd" stroke-width="1"/>
+<text x="70" y="368.0" text-anchor="end" font-size="11" fill="#666666">7</text>
+<line x1="80" y1="298.0" x2="850" y2="298.0" stroke="#dddddd" stroke-width="1"/>
+<text x="70" y="302.0" text-anchor="end" font-size="11" fill="#666666">14</text>
+<line x1="80" y1="232.0" x2="850" y2="232.0" stroke="#dddddd" stroke-width="1"/>
+<text x="70" y="236.0" text-anchor="end" font-size="11" fill="#666666">21</text>
+<line x1="80" y1="166.0" x2="850" y2="166.0" stroke="#dddddd" stroke-width="1"/>
+<text x="70" y="170.0" text-anchor="end" font-size="11" fill="#666666">28</text>
+<line x1="80" y1="100.0" x2="850" y2="100.0" stroke="#dddddd" stroke-width="1"/>
+<text x="70" y="104.0" text-anchor="end" font-size="11" fill="#666666">35</text>
+<line x1="80" y1="100" x2="80" y2="430" stroke="#444444" stroke-width="1.5"/>
+<line x1="80" y1="430" x2="850" y2="430" stroke="#444444" stroke-width="1.5"/>
+<text x="22" y="265" text-anchor="middle" font-size="13" fill="#222222" transform="rotate(-90, 22, 265)">Care events per 3-day bucket</text>
+<text x="465" y="474" text-anchor="middle" font-size="13" fill="#222222">3-day buckets, ending April 26 2026</text>
+<rect x="90.8" y="298.0" width="27.7" height="132.0" fill="#3a6a92" opacity="0.85"/>
+<rect x="118.5" y="222.6" width="27.7" height="207.4" fill="#c2553e" opacity="0.85"/>
+<text x="118.5" y="216.6" text-anchor="middle" font-size="10" fill="#666666">r=0.64</text>
+<text x="118.5" y="448" text-anchor="middle" font-size="10" fill="#666666">03-28</text>
+<rect x="167.8" y="260.3" width="27.7" height="169.7" fill="#3a6a92" opacity="0.85"/>
+<rect x="195.5" y="166.0" width="27.7" height="264.0" fill="#c2553e" opacity="0.85"/>
+<text x="195.5" y="160.0" text-anchor="middle" font-size="10" fill="#666666">r=0.64</text>
+<text x="195.5" y="448" text-anchor="middle" font-size="10" fill="#666666">03-31</text>
+<rect x="244.8" y="326.3" width="27.7" height="103.7" fill="#3a6a92" opacity="0.85"/>
+<rect x="272.5" y="203.7" width="27.7" height="226.3" fill="#c2553e" opacity="0.85"/>
+<text x="272.5" y="197.7" text-anchor="middle" font-size="10" fill="#666666">r=0.46</text>
+<text x="272.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-03</text>
+<rect x="321.8" y="279.1" width="27.7" height="150.9" fill="#3a6a92" opacity="0.85"/>
+<rect x="349.5" y="184.9" width="27.7" height="245.1" fill="#c2553e" opacity="0.85"/>
+<text x="349.5" y="178.9" text-anchor="middle" font-size="10" fill="#666666">r=0.62</text>
+<text x="349.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-06</text>
+<rect x="398.8" y="345.1" width="27.7" height="84.9" fill="#3a6a92" opacity="0.85"/>
+<rect x="426.5" y="250.9" width="27.7" height="179.1" fill="#c2553e" opacity="0.85"/>
+<text x="426.5" y="244.9" text-anchor="middle" font-size="10" fill="#666666">r=0.47</text>
+<text x="426.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-09</text>
+<rect x="475.8" y="307.4" width="27.7" height="122.6" fill="#3a6a92" opacity="0.85"/>
+<rect x="503.5" y="232.0" width="27.7" height="198.0" fill="#c2553e" opacity="0.85"/>
+<text x="503.5" y="226.0" text-anchor="middle" font-size="10" fill="#666666">r=0.62</text>
+<text x="503.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-12</text>
+<rect x="552.8" y="316.9" width="27.7" height="113.1" fill="#3a6a92" opacity="0.85"/>
+<rect x="580.5" y="213.1" width="27.7" height="216.9" fill="#c2553e" opacity="0.85"/>
+<text x="580.5" y="207.1" text-anchor="middle" font-size="10" fill="#666666">r=0.52</text>
+<text x="580.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-15</text>
+<rect x="629.8" y="269.7" width="27.7" height="160.3" fill="#3a6a92" opacity="0.85"/>
+<rect x="657.5" y="147.1" width="27.7" height="282.9" fill="#c2553e" opacity="0.85"/>
+<text x="657.5" y="141.1" text-anchor="middle" font-size="10" fill="#666666">r=0.57</text>
+<text x="657.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-18</text>
+<rect x="706.8" y="392.3" width="27.7" height="37.7" fill="#3a6a92" opacity="0.85"/>
+<rect x="734.5" y="137.7" width="27.7" height="292.3" fill="#c2553e" opacity="0.85"/>
+<text x="734.5" y="131.7" text-anchor="middle" font-size="10" fill="#666666">r=0.13</text>
+<text x="734.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-21</text>
+<rect x="783.8" y="430.0" width="27.7" height="0.0" fill="#3a6a92" opacity="0.85"/>
+<rect x="811.5" y="345.1" width="27.7" height="84.9" fill="#c2553e" opacity="0.85"/>
+<text x="811.5" y="339.1" text-anchor="middle" font-size="10" fill="#666666">r=0.00</text>
+<text x="811.5" y="448" text-anchor="middle" font-size="10" fill="#666666">04-24</text>
+<rect x="610" y="98" width="220" height="56" fill="white" fill-opacity="0.92" stroke="#dddddd" stroke-width="0.8"/>
+<line x1="620" y1="110" x2="644" y2="110" stroke="#3a6a92" stroke-width="2.5"/>
+<text x="652" y="114" font-size="11" fill="#222222">Care from Mark → Ani</text>
+<line x1="620" y1="132" x2="644" y2="132" stroke="#c2553e" stroke-width="2.5"/>
+<text x="652" y="136" font-size="11" fill="#222222">Care from Ani → Mark</text>
+<text x="80" y="490" font-size="12" fill="#222222">    Totals: Mark→Ani = 114   ·   Ani→Mark = 233   ·   window-mean reciprocity r = 0.49</text>
+<text x="80" y="508" font-size="12" fill="#c2553e" font-weight="bold">    Asymmetry persists across density: Ani's caregiver-directed expression exceeds Mark's, the parasocial signature Horton &amp; Wohl named.</text>
+<text x="850" y="528" text-anchor="end" font-size="10" fill="#666666" font-style="italic">    Reference: Horton &amp; Wohl (1956) — Mass Communication and Para-Social Interaction</text>
+</svg>

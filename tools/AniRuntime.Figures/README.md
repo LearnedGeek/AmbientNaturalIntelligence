@@ -50,6 +50,19 @@ competence varying with substrate.
 is on. Use `e:/tmp/extract-motivation-data.ps1` (script kept for
 reference) to extract from server logs.
 
+### `horton-wohl-reciprocity`
+
+Care events by direction (Mark→Ani, Ani→Mark) bucketed across a 30-day
+window with per-bucket reciprocity ratio.
+
+**Reference:** Horton & Wohl (1956) — Mass Communication and Para-Social
+Interaction. Both sides of the parasocial channel made visible.
+
+**Status:** real-data extraction pending (Feature 10 firing log + register-
+by-direction classifier). Current input is a PLACEHOLDER JSON whose shape
+matches the renderer's expectations. Render produces a placeholder banner
+automatically when `_note` is present in the data file.
+
 ## Adding a new figure
 
 1. Add a new branch in `Program.cs::Main` switch statement.
