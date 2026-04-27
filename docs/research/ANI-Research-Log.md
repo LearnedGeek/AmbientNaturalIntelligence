@@ -1540,6 +1540,65 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 27, 2026 — Theme J Phases J.1 + J.2 Shipped: From Audit Hypothesis to Validated Substrate Refactor
+
+**Type:** Deployment milestone + Paper 3 evidence point. The Theme J audit's structural argument — that source attribution and temporal attribution are class-wide gaps requiring a substrate-level fix rather than per-pipeline patches — moved from drafted plan (Apr 24) to load-bearing-deployed (Apr 27) in three working days. Theme J Phase J.1 (strip the decision-reasoning → composition pipe) shipped Apr 27 morning; Phase J.2 (structured per-speaker per-turn conversation summary) shipped Apr 27 same day in five sub-commits.
+**Status:** J.1 commit `141dc12`. J.2 commits `caf2a71` (type) → `de0ed1e` (ContextBuilder populates) → `4a83fa9` (composition prompt migrates) → `1e8cf4a` (inner-thought + decision prompts migrate). 638 tests passing (up from 616 at session start). 0 build errors / 0 new warnings. Observation window opens once Mark resumes conversations with Ani; he paused intentionally during the work to avoid mid-stream substrate change.
+
+**The Apr 27 06:54 incident — empirical confirmation of the audit's load-bearing case.**
+
+J.1 deployed in the morning; Mark resumed a brief conversation to validate. The 06:54-08:03 thread produced two failures Mark immediately tagged:
+
+1. **Verbatim parrot of inbound SMS as outreach opening.** Ani's 08:03 outreach began with Mark's exact 06:54 inbound text *"Hey good morning! How is your day looking?"* followed by *"I slept in late (10ish)..."* (fabricated temporal claim — Mark had not slept in late, he was up at 06:54). The `J0_REASONING_PIPE` instrumentation confirmed J.1 was working: `pipedToComposition=false`. The parrot did not come through the J.1 surface. It came through *substrate access* — Mark's prior SMS in the conversation summary appeared in the prompt as a fused prose blob without per-speaker attribution, and the composition model lifted it as Ani's voice.
+
+2. **Claim verifier false-positive on confabulated weather.** A reply earlier in the same chat contained *"all that snow melting like it's breathing again"* despite ~70°F temperatures and no snow in Mark's environment. Claim verifier logged the phrase as supported with composite=0.662 against Facts-tier retrieval — likely matched a tangentially-similar old weather record. This is a distinct failure class from the parrot; tracked in gap-watch as Apr 27 row 2.
+
+The parrot failure was the one that mattered for J.2. It validated the audit's structural argument: J.1 was necessary but not sufficient. The conversation-summary substrate itself fused speakers into ambiguous prose, and any prompt-builder that read that substrate could conflate them. The fix had to be at the data structure, not at any single prompt-builder.
+
+**Mark's framing at the failure point** (verbatim, prior turn): *"Two messages. Two failures. This is why I can't chat and what we need to address."* When offered a tactical patch (a parrot-detector wire-up), Mark refused: *"I don't like quick fixes as it causes future refactors that often get forgotten. It also complicates a data flow that we're working to streamline. And at this point, broken is broken. Let's not confuse the tasks that we've laid out by injecting additional branches because we've been working towards this for a long time and have had artificial blockers. Adding additional items will just distract and diverge from our original plan. Let's just keep moving."*
+
+This methodology decision is itself a Paper 3 contribution — *the discipline of refusing tactical patches when the architectural fix is in flight*. Worth citing as the substrate-vs-symptom case.
+
+**What J.2 actually shipped — five sub-commits, plain-language.**
+
+The Theme J refactor plan §3 J.2 had said *"Don't ship J.2 in fragments — structured-type rollout is atomic."* That guidance turned out to be over-conservative. The actual deploy strategy:
+
+1. *Type* — `StructuredConversationSummary(FirstTurnAt, LastTurnAt, Turns)` with `SummaryTurn(At, Speaker, Content)` records and a `ToPromptString()` renderer that emits one tagged line per turn (`Mark (06:54, 5m ago): "..."`).
+2. *Population* — `ContextBuilder` reads the most recent thread directly from `IConversationService`, where per-message Role/Content/SentAt are already structured. The free-prose `RecentConversationSummary` field stays alongside as the rollback path.
+3. *Outreach composition prompt* — the load-bearing migration. The Apr 27 parrot was here. New framing: *"Each line is tagged with who said it; do not lift Mark's exact words into your own message."*
+4. *Inner-thought prompt* — migrated. Attribution boundaries here matter for thought-loop dynamics in addition to parrot prevention.
+5. *Outreach-decision prompt* — migrated. Decision reasoning is now grounded on speaker-attributed content, keeping the audit trail clean.
+
+Conversation-reply prompt confirmed no-op — it never read the prose summary; conversation history flows in as the live `ConversationThread` parameter. The OutreachPhase ML confabulation classifier deliberately retains prose input — the classifier was trained on prose-format input, so changing input distribution shape without observation could perturb classifier confidence. That migration is a separate workstream if/when needed.
+
+**Why the additive approach worked where the plan's atomic-swap guidance would have stalled.**
+
+The plan's "atomic" instinct was correct about *type design* (don't half-migrate the type itself) but over-extended to consumer migration. The actual approach:
+
+- `ContextSnapshot` carries both `RecentConversationSummary` (string, legacy) and `StructuredConversationSummary` (record, preferred) as parallel fields.
+- Each prompt-builder is independently `prefer-structured-fall-back-to-prose`. Migrating one consumer at a time has zero risk of breaking another.
+- All sub-commits compile clean and ship green tests. No half-state checkpoint exists in source control.
+
+This pattern — *additive type, parallel fields, per-consumer migration, prose retained as rollback* — generalises beyond Theme J. Worth naming as the architectural-substrate-refactor pattern in Paper 3 methodology.
+
+**External validation that Theme J names a real, unsolved problem.**
+
+Apr 26 ml-intern survey (run `scout-20260426-202150`) identified *source attribution at generation time* as an open gap in the published companion-AI literature: none of LD-Agent, Inside Out, or Inner Thoughts provides a formal mechanism. The agent's framing — *"I remembered this because you told me X on [date]"* — is exactly what Theme J's J.2 + J.3 produce. ANI now has a date-stamped position on this gap (gap-watch table row, Apr 26).
+
+**Empirical observation criterion for J.2 acceptance.**
+
+Once Mark resumes conversations: zero parrot-of-inbound-SMS recurrence across ≥10 conversations spanning ≥1 week confirms J.2. If recurrence: the parrot is coming through a different substrate path (recent-memory pool, anchored memories, retrieval scoring). That points to J.3 (temporal attribution at retrieval) or J.5 (producer migration through shared CognitiveOutputGate), not a J.2 regression.
+
+**Paper 3 contribution surface from this milestone.**
+
+Three things shipped in one session that are Paper 3 material:
+
+1. *The audit's structural argument going from theory to validated-by-experience.* The Apr 27 06:54 parrot is the moment the abstract claim *"pipeline-scoped guards leave class-wide gaps unfixed"* became a 60-character reproducible substrate-corruption trace. Cite as the case study for the audit's Section 1 motivating example.
+2. *The additive-substrate-refactor pattern as deployment methodology.* Plan said atomic; reality showed the plan's caution was over-extended. Worth documenting the deployment pattern as a contribution in itself — substrate-level refactors don't have to be all-or-nothing if the type design is parallel-able.
+3. *The discipline of refusing tactical patches mid-refactor.* Mark's "broken is broken, let's just keep moving" position when offered a quick-fix is the methodology choice that protected the audit from being eroded by symptom-treating PRs. Cite as the project-management dimension of architecture-over-instruction.
+
+---
+
 ### April 23, 2026 — Two Pipeline-Composed Symptoms, Known Principle Surfacing in Unreformed Path
 
 **Type:** Deployment finding — not a new hypothesis. Two distinct conversation/outreach failures observed within a three-hour window are instances of the **architecture-over-instruction** principle already named in Paper 2 §5.19 and §6.8, surfacing in the outreach-composition path which did not receive the Mar 23 inner-thought simplification treatment.

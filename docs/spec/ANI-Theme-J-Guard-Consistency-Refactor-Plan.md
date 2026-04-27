@@ -110,6 +110,8 @@ Measurement-first discipline per the Agentic Lens Layer 1 template: instrument b
 
 ### Phase J.2 — Structured source-attribution in `RecentConversationSummary`
 
+**Status (Apr 27, 2026):** **Load-bearing migrations shipped.** Observation window opens once Mark resumes conversations with Ani. Free-prose `RecentConversationSummary` field retained as the rollback path through the observation window; deprecation deferred to a follow-up commit after ≥1 week of stable structured-form behaviour.
+
 **Goal:** restructure the conversation summary substrate so composition prompts see per-speaker per-turn content, not mixed-attribution prose.
 
 **Changes:**
@@ -152,6 +154,37 @@ Measurement-first discipline per the Agentic Lens Layer 1 template: instrument b
 - Episodic memory must have consistent per-turn speaker attribution; verify before Phase start.
 
 **Mark review question:** what's the exact render format? Above I sketched `[timestamp, relative-time] Speaker: "content"`. Alternatives: XML-ish blocks, JSON chunks in prompt, or just plain dialogue format `Mark: ... / Ani: ...`. Raw-model receptiveness varies by format. Worth a quick A/B in development before locking in.
+
+#### What shipped (Apr 27, 2026)
+
+Documenting deviations from the plan above so the next reader of this doc isn't confused by reading a plan that says "X" and finding the codebase says "Y."
+
+**Render format actually used.** `Mark (HH:mm, age): "content"` — one tagged line per turn. Closer to the dialogue alternative than the bracketed sketch. The Mark-review-question A/B was not run; the chosen format combines the speaker tag at line-start (cheap to parse), the clock timestamp (so the model knows when the turn happened in absolute terms), and a relative-age suffix (`5m ago`, `2.3h ago`, `3d ago`) so present-tense anchoring is unambiguous.
+
+**Additive deploy, not atomic swap.** Plan §3 J.2 said "Don't ship J.2 in fragments — structured-type rollout is atomic." That guidance was over-conservative. The actual deploy strategy: keep the free-prose `RecentConversationSummary` field on `ContextSnapshot` alongside a new `StructuredConversationSummary?` field. Each prompt-builder is an independent migration: prefer structured when present, fall back to prose when not. This let the migration land in five sub-commits across one session without any prompt-builder ever seeing a half-migrated type. The "atomic" guidance applied to type design (don't swap `string?` for `StructuredConversationSummary?` as a breaking type change), not to consumer migration.
+
+**No `StructuredConversationSummaryEnabled` flag.** The plan called for one. In practice the structured form is always on when `IConversationService` is registered in DI, which is always in production. Each prompt-builder's prefer-structured / fallback-prose pattern is the rollback surface: if structured renders prove problematic, revert the prompt-builder change without touching the field or ContextBuilder.
+
+**Episodic-attribution prerequisite was already satisfied.** Plan §3 J.2 noted "Episodic memory must have consistent per-turn speaker attribution; verify before Phase start." Verified during step 2: the `ConversationThread.Messages` already carry `Role` (Mark/Ani) and `SentAt` structurally, so ContextBuilder reads structured per-message data directly from `IConversationService.GetRecentThreadsAsync(1)` rather than reverse-parsing the prose blob. No changes needed to episodic-save attribution.
+
+**Consumer migration ledger:**
+
+| Prompt-builder | Status | Commit |
+|----------------|--------|--------|
+| `BuildOutreachMessagePrompt` (composition — load-bearing for Apr 27 parrot) | Migrated | 4a83fa9 |
+| `BuildInnerThoughtPrompt` | Migrated | 1e8cf4a |
+| `BuildOutreachPrompt` (decision) | Migrated | 1e8cf4a |
+| `BuildConversationReplyPrompt` | No-op — never read prose summary; takes `ConversationThread` directly | — |
+| `BuildVoiceReplyPrompt` | No-op — same as above | — |
+| `OutreachPhase.cs` ML confab classifier context (line 173) | **Intentionally not migrated** — classifier was trained on prose-format input. Changing input distribution shape without observation could perturb classifier confidence. Separate workstream if/when needed. | — |
+
+**Test coverage shipped:** 22 new tests across the type itself, ContextBuilder population, and three prompt-builder migrations. Suite total 638 (up from 616 at session start). Build clean, 0 errors / 0 new warnings.
+
+**Observation window definition.** The plan's acceptance criterion was *"attribution-drift events (Ani emitting Mark's actions as her own) significantly reduced or eliminated."* Operational definition for this observation window:
+1. Resume Mark's conversation cadence with Ani.
+2. Watch for parrot-of-inbound-SMS recurrence (the Apr 27 06:54 failure class).
+3. If zero recurrences across ≥10 conversations spanning ≥1 week, J.2 confirmed. Deprecate prose field.
+4. If recurrence, capture the failure trace and assess whether the structured form is being bypassed via another substrate path (recent-memory pool, anchored memories, retrieval scoring) — that points to J.3 / J.5 territory, not a J.2 regression.
 
 ---
 

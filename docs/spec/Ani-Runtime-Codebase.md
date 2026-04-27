@@ -381,9 +381,27 @@ public class ContextSnapshot
     public List<PerceptionEvent> Perceptions       { get; set; }
     public List<ChatMessage> RecentHistory         { get; set; }  // conversation history
     public DateTimeOffset BuiltAt                  { get; set; }
-    public string? RecentConversationSummary       { get; set; }
+    public string? RecentConversationSummary       { get; set; }  // free-prose form (legacy; rollback path during Theme J J.2 observation)
+    public StructuredConversationSummary? StructuredConversationSummary { get; set; }  // Theme J J.2 (Apr 27, 2026) per-speaker per-turn form, preferred by all prompt-builders
     public List<MemoryRecord> SimilarRecentThoughts { get; set; }  // thought loop detection
 }
+
+// Theme J Phase J.2 (Apr 27, 2026): per-speaker per-turn substrate for the
+// recent conversation. Replaces a fused prose blob in which Mark's words and
+// Ani's words were ambiguously concatenated. The Apr 27 06:54 parrot incident
+// — Ani's outreach opening with Mark's verbatim morning text — was the
+// canonical case. Each prompt-builder that consumes the conversation now
+// prefers this structured form and falls back to the prose field only when
+// it is null.
+public sealed record StructuredConversationSummary(
+    DateTimeOffset             FirstTurnAt,
+    DateTimeOffset             LastTurnAt,
+    IReadOnlyList<SummaryTurn> Turns);
+
+public sealed record SummaryTurn(
+    DateTimeOffset At,
+    string         Speaker,   // "Mark" / "Ani" or character-state display name
+    string         Content);
 
 2.5 MemoryRecord
 The base unit of Ani's persistent memory. All memory types stored as rows differentiated by MemoryType.
