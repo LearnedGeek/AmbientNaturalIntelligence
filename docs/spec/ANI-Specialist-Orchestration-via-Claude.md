@@ -97,11 +97,29 @@ Specialists may emit outputs containing personal / sensitive content (e.g., a re
 
 ---
 
-## 4. State / continuity / cross-session resumption
+## 4. State, continuity, and notification
 
-Claude doesn't run when Mark isn't in a session. Multi-day specialist campaigns work via state-file discipline.
+Two distinct patterns matter: **within-session** (fire-and-forget specialist runs that finish during the same conversation) and **cross-session** (multi-day campaigns that span Claude sessions).
 
-### 4.1 State file conventions
+### 4.1 Within-session fire-and-forget
+
+Within a live session, the harness has a notification system that lets Claude launch long-running specialist work without polling.
+
+**`Bash` with `run_in_background: true`** — when a backgrounded process exits, a system event lands in the conversation with task-id, output-file location, and exit code. Claude reads the output file and continues. This is what the dogfood-loop pattern used for every claude-recall release verification, and what the Apr 26 ml-intern test query is using right now.
+
+**`Monitor` tool** — emits one notification per stdout line from a watched command. Useful for "tell me each time X happens": error-tail watches, CI-step results as they land, file-change events. Per-line, not per-completion.
+
+**Scheduled wakes** (`ScheduleWakeup`, `CronCreate`) — fire at specific times. Used for `/loop` recurring tasks or autonomous-loop patterns. Lets Claude defer a check ("wake me in 20 minutes when the soak metric should have stabilised") without consuming context in the meantime.
+
+**Practical implication for specialist orchestration:** Claude can launch a 10-hour ML-Intern training run (or any other long-running specialist task), do nothing for those 10 hours, and pick up the moment the process exits. No session needs to stay actively engaged with the running task; no polling overhead. Mark stays in the conversational register while the specialist work happens in the background. This is the within-session manifestation of the orchestration pattern's "fire-and-forget specialist runs" routing rule (§2.1).
+
+**What this is NOT:** these notifications stop landing when the Claude Code session itself ends. If Mark closes the session before the background task completes, the harness can't deliver the notification. That case is what §4.2 cross-session resumption handles.
+
+### 4.2 Cross-session resumption — Claude doesn't run when Mark isn't in a session
+
+Multi-day specialist campaigns work via state-file discipline.
+
+### 4.3 State file conventions
 
 For any specialist campaign expected to span sessions, Claude writes:
 
@@ -119,7 +137,7 @@ docs/research/specialist-campaigns/<YYYY-MM-DD>-<campaign-name>/
 
 When Mark opens a new session and asks *"where are we on the v8 ML-Intern campaign?"*, Claude reads `next-steps.md` and continues. Continuity is durable; the relational surface is unbroken.
 
-### 4.2 Session-handoff register
+### 4.4 Session-handoff register
 
 End of session, Claude writes `next-steps.md` with:
 - What ran
@@ -129,7 +147,7 @@ End of session, Claude writes `next-steps.md` with:
 
 Beginning of session, Claude reads `next-steps.md` first thing on a campaign-related prompt and confirms continuity before proceeding.
 
-### 4.3 Memory integration
+### 4.5 Memory integration
 
 Major campaign findings (e.g., *"ML-Intern's Pride-register synthesis tends to over-index on dramatic emotional content; curation rejection rate ~60%"*) get saved to Claude's project memory so future instances default to the right curation discipline rather than rediscovering the pattern.
 
