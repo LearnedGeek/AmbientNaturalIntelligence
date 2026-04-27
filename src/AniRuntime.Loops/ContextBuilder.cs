@@ -22,6 +22,7 @@ public class ContextBuilder
     private readonly DesireEngine _desire;
     private readonly IDiagnosticService _diagnostic;
     private readonly IRetrievalOriginTracker? _originTracker;
+    private readonly IConversationService? _conversation;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<ContextBuilder> _log;
 
@@ -35,7 +36,8 @@ public class ContextBuilder
         IDiagnosticService diagnostic,
         IOptions<AniOptions> aniOptions,
         ILogger<ContextBuilder> log,
-        IRetrievalOriginTracker? originTracker = null)
+        IRetrievalOriginTracker? originTracker = null,
+        IConversationService? conversation = null)
     {
         _state = state;
         _search = search;
@@ -45,6 +47,7 @@ public class ContextBuilder
         _desire = desire;
         _diagnostic = diagnostic;
         _originTracker = originTracker;
+        _conversation = conversation;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -169,6 +172,48 @@ public class ContextBuilder
             .Select(m => m.Content)
             .FirstOrDefault();
 
+        // Theme J Phase J.2 step 2 (Apr 27, 2026): build the structured
+        // per-speaker summary alongside the free-prose form. Reads the most
+        // recent thread (active or closed) from the conversation service and
+        // converts each ConversationMessage to a SummaryTurn. The thread
+        // already carries Role/Content/SentAt structurally, so this is a
+        // direct map — no fragile parsing of the prose form. Consumers will
+        // migrate to the structured field one at a time in J.2 step 3+.
+        StructuredConversationSummary? structuredSummary = null;
+        if (_conversation is not null)
+        {
+            try
+            {
+                var recentThreads = await _conversation
+                    .GetRecentThreadsAsync(limit: 1, ct).ConfigureAwait(false);
+                var thread = recentThreads.FirstOrDefault();
+                if (thread is { Messages.Count: > 0 })
+                {
+                    var contactName = charState.PrimaryContactName ?? Roles.Mark;
+                    var companionName = string.IsNullOrWhiteSpace(charState.Name)
+                        ? Roles.Ani
+                        : charState.Name;
+
+                    var turns = thread.Messages
+                        .Select(m => new SummaryTurn(
+                            At: m.SentAt,
+                            Speaker: m.Role == Roles.Ani ? companionName : contactName,
+                            Content: m.Content))
+                        .ToList();
+
+                    structuredSummary = new StructuredConversationSummary(
+                        FirstTurnAt: turns[0].At,
+                        LastTurnAt:  turns[^1].At,
+                        Turns:       turns);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "J.2: failed to load structured conversation summary — falling back to prose-only");
+            }
+        }
+
         // Theme J Phase J.0 (Apr 24, 2026): instrument the conversation summary
         // surface. The summary is free prose today — J.2 restructures it with
         // per-speaker per-turn source attribution. Log the current structure
@@ -191,6 +236,23 @@ public class ContextBuilder
             else
             {
                 _log.LogInformation("J0_SUMMARY_STATE chars=0 prefix=(none) body=(empty)");
+            }
+
+            // J.2 step 2 visibility: report whether the structured form is
+            // available alongside the prose. Once consumers migrate (J.2 step
+            // 3+), we expect this to be present for every cycle that has a
+            // recent conversation.
+            if (structuredSummary is null)
+            {
+                _log.LogInformation("J2_STRUCTURED_SUMMARY present=false turns=0");
+            }
+            else
+            {
+                _log.LogInformation(
+                    "J2_STRUCTURED_SUMMARY present=true turns={Turns} firstAt={First:o} lastAt={Last:o}",
+                    structuredSummary.Turns.Count,
+                    structuredSummary.FirstTurnAt,
+                    structuredSummary.LastTurnAt);
             }
         }
 
@@ -389,6 +451,7 @@ public class ContextBuilder
             Perceptions              = perceptions,
             BuiltAt                  = DateTimeOffset.UtcNow,
             RecentConversationSummary = conversationSummary,
+            StructuredConversationSummary = structuredSummary,
             SimilarRecentThoughts    = similarThoughts,
             OutreachContext          = outreachContext,
             AnchoredMemories        = anchoredMemories,
