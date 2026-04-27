@@ -1540,10 +1540,10 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
-### April 27, 2026 — Theme J Phases J.1 + J.2 Shipped: From Audit Hypothesis to Validated Substrate Refactor
+### April 27, 2026 — Theme J Phases J.1 + J.2 + J.3 Shipped: From Audit Hypothesis to Validated Substrate Refactor
 
-**Type:** Deployment milestone + Paper 3 evidence point. The Theme J audit's structural argument — that source attribution and temporal attribution are class-wide gaps requiring a substrate-level fix rather than per-pipeline patches — moved from drafted plan (Apr 24) to load-bearing-deployed (Apr 27) in three working days. Theme J Phase J.1 (strip the decision-reasoning → composition pipe) shipped Apr 27 morning; Phase J.2 (structured per-speaker per-turn conversation summary) shipped Apr 27 same day in five sub-commits.
-**Status:** J.1 commit `141dc12`. J.2 commits `caf2a71` (type) → `de0ed1e` (ContextBuilder populates) → `4a83fa9` (composition prompt migrates) → `1e8cf4a` (inner-thought + decision prompts migrate). 638 tests passing (up from 616 at session start). 0 build errors / 0 new warnings. Observation window opens once Mark resumes conversations with Ani; he paused intentionally during the work to avoid mid-stream substrate change.
+**Type:** Deployment milestone + Paper 3 evidence point. The Theme J audit's structural argument — that source attribution and temporal attribution are class-wide gaps requiring a substrate-level fix rather than per-pipeline patches — moved from drafted plan (Apr 24) to load-bearing-deployed (Apr 27) in three working days. All three upstream-fix surfaces (J.1, J.2, J.3) shipped same day. J.4-J.7 sequenced after the J.a observation window + detector inventory review.
+**Status:** J.1 commit `141dc12`. J.2 commits `caf2a71` (type) → `de0ed1e` (ContextBuilder populates) → `4a83fa9` (composition prompt migrates) → `1e8cf4a` (inner-thought + decision prompts migrate). J.3 ships in a single follow-up commit (mostly mechanical — applying the existing `FormatMemoryWithTime` helper at every untimed `MemoryRecord` render site). 646 tests passing (up from 616 at session start). 0 build errors / 0 new warnings. Observation window opens once Mark resumes conversations with Ani; he paused intentionally during the work to avoid mid-stream substrate change.
 
 **The Apr 27 06:54 incident — empirical confirmation of the audit's load-bearing case.**
 
@@ -1588,6 +1588,18 @@ Apr 26 ml-intern survey (run `scout-20260426-202150`) identified *source attribu
 **Empirical observation criterion for J.2 acceptance.**
 
 Once Mark resumes conversations: zero parrot-of-inbound-SMS recurrence across ≥10 conversations spanning ≥1 week confirms J.2. If recurrence: the parrot is coming through a different substrate path (recent-memory pool, anchored memories, retrieval scoring). That points to J.3 (temporal attribution at retrieval) or J.5 (producer migration through shared CognitiveOutputGate), not a J.2 regression.
+
+**J.3 — temporal attribution at retrieval, shipped same day.**
+
+The plan budgeted J.3 at one week (1 week code + 1 week observation). Actual landed in the same session as J.2 because the audit at phase-start showed every untimed render site was a single-line edit applying `FormatMemoryWithTime`, a helper that already existed in production-grade form.
+
+What changed: every `List<MemoryRecord>` render in `PromptBuilder.cs` that was previously emitting bare `m.Content` now emits `FormatMemoryWithTime(m)`, with the rendered phrases coming from the existing relative-time grammar (*just now*, *a little while ago*, *earlier this morning*, *N days ago*, *N weeks ago*).
+
+**Atemporal-by-contract exception.** Anchored foundation memories — *"Kathy's middle name was Ann,"* *"Mark's daughter's name is Mia"* — are deliberately kept untimed. Adding *"(2 years ago)"* to identity facts would erode their foundational quality; tests now ASSERT this contract so a future refactor doesn't accidentally time-stamp anchors. This is the architectural surface where atemporality is a feature, not a gap.
+
+**Profile-memory rendering decision.** Semantic-tier memories about Mark in the voice path (job title, coffee preference, etc.) get time stamps. *"(months ago) Salted caramel cold brew is his favorite"* reads to the model as "established preference" rather than "stale claim" — which is the correct semantic. The risk of confusing the model with anchor-like atemporality on stale claims was greater than the risk of rendering an established preference with a timestamp.
+
+**The Apr 24 06:18 confabulation cascade was the motivating case for J.3.** *"Back from class at 10pm"* / *"still warm from teaching"* — the outreach lifted past-substrate (class memories from days prior) and rendered it present-tense. With J.3 stamping every retrieval, the equivalent rendering is now *"(3 days ago) Mark mentioned class until 10pm"* — the temporal frame protects the model from drifting to past content as present.
 
 **Paper 3 contribution surface from this milestone.**
 

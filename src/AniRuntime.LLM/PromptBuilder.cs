@@ -497,7 +497,7 @@ public static class PromptBuilder
         {
             user.AppendLine($"WHAT IS TRUE about {contact} (the ONLY specific facts you may assert about {contact}'s life):");
             foreach (var m in facts)
-                user.AppendLine($"  - {m.Content}");
+                user.AppendLine($"  - {FormatMemoryWithTime(m)}");
             user.AppendLine();
         }
         else
@@ -583,7 +583,7 @@ public static class PromptBuilder
         if (facts.Count > 0)
         {
             sections.Add("WHAT IS TRUE (about " + contact + " and the world — the only facts you may assert):");
-            sections.AddRange(facts.Select(m => $"  - {m.Content}"));
+            sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
         else
         {
@@ -678,7 +678,7 @@ public static class PromptBuilder
             if (profileMemories.Count > 0)
             {
                 sections.Add($"Things you know about {contact}:");
-                sections.AddRange(profileMemories.Select(m => $"  - {m.Content}"));
+                sections.AddRange(profileMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
             }
             if (relevantMemories.Count > 0)
             {
@@ -734,12 +734,11 @@ public static class PromptBuilder
         var recentThoughts = snapshot.RecentMemory
             .Where(m => m.Type == MemoryType.InnerThought)
             .Take(2)
-            .Select(m => m.Content)
             .ToList();
         if (recentThoughts.Count > 0)
         {
             sections.Add("What's been on your mind lately:");
-            sections.AddRange(recentThoughts.Select(t => $"  - {t}"));
+            sections.AddRange(recentThoughts.Select(t => $"  - {FormatMemoryWithTime(t)}"));
         }
 
         var mood = snapshot.EmotionalState.Describe();
@@ -817,7 +816,7 @@ public static class PromptBuilder
         if (facts.Count > 0)
         {
             sections.Add($"\nWHAT IS TRUE (about {contact} and the world — the only facts you may assert):");
-            sections.AddRange(facts.Select(m => $"  - {m.Content}"));
+            sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
         else
         {
@@ -882,7 +881,22 @@ public static class PromptBuilder
             if (recentOutreach.Count > 0)
             {
                 sections.Add($"\nMessages you already sent recently (do NOT repeat these topics or phrases):");
-                sections.AddRange(recentOutreach.Select(m => $"  - {m.Content[outreachPrefix.Length..].Trim()}"));
+                sections.AddRange(recentOutreach.Select(m =>
+                {
+                    // Theme J Phase J.3 (Apr 27, 2026): per-line temporal
+                    // attribution. The section header says "recently" but the
+                    // model needs to know whether "recently" was 5 minutes ago
+                    // (cooldown territory) or 5 hours ago (same-day pattern).
+                    // Render via FormatMemoryWithTime over a content-stripped
+                    // copy so the prefix-noise stays out of the display.
+                    var stripped = new MemoryRecord
+                    {
+                        Content    = m.Content[outreachPrefix.Length..].Trim(),
+                        OccurredAt = m.OccurredAt,
+                        Type       = m.Type,
+                    };
+                    return $"  - {FormatMemoryWithTime(stripped)}";
+                }));
             }
         }
 

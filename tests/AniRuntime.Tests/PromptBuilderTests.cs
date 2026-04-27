@@ -500,4 +500,179 @@ public class PromptBuilderTests
         user.Should().Contain("Conversation (1 messages)");
     }
 
+    // ── Theme J Phase J.3 — temporal attribution at retrieval ──
+    // Goal: every retrieved memory rendered to a prompt carries its origin
+    // time so the composition model can't drift to past content as present.
+    // The rendered phrase comes from FormatMemoryWithTime ("just now",
+    // "earlier today", "yesterday evening", "N days ago"). Anchored
+    // foundation memories are explicitly atemporal — those tests ensure we
+    // do NOT add time to anchored content.
+
+    private static MemoryRecord FactWithAge(string content, TimeSpan age)
+        => new()
+        {
+            Content    = content,
+            Type       = MemoryType.Episodic,
+            OccurredAt = DateTimeOffset.Now - age,
+        };
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_J3_GroundedFacts_IncludeTemporalAttribution()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.GroundedFacts.Add(FactWithAge("Mark mentioned a class until 10pm", TimeSpan.FromDays(3)));
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, recentThought: "wandering", reasoning: "");
+
+        user.Should().Contain("Mark mentioned a class until 10pm");
+        user.Should().Contain("3 days ago",
+            "GroundedFacts must render with temporal attribution so the composition model can't treat a 3-day-old assertion as present.");
+    }
+
+    [Fact]
+    public void BuildConversationReplyPrompt_J3_GroundedFacts_IncludeTemporalAttribution()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.GroundedFacts.Add(FactWithAge("Mark mentioned snow yesterday", TimeSpan.FromDays(2)));
+        var thread = new ConversationThread
+        {
+            Messages = new List<ConversationMessage>
+            {
+                new() { Role = "Mark", Content = "hey", SentAt = DateTimeOffset.Now },
+            },
+        };
+
+        var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+
+        user.Should().Contain("Mark mentioned snow yesterday");
+        user.Should().Contain("2 days ago",
+            "Conversation-reply facts must render with time so the model knows weather assertions aren't current.");
+    }
+
+    [Fact]
+    public void BuildLeanConversationPrompt_J3_GroundedFacts_IncludeTemporalAttribution()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.GroundedFacts.Add(FactWithAge("Mark works as a developer", TimeSpan.FromDays(45)));
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        user.Should().Contain("Mark works as a developer");
+        // 45 days ≈ 6 weeks → "6 weeks ago" via FormatMemoryWithTime
+        user.Should().Contain("weeks ago");
+    }
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_J3_AnchoredMemories_StayAtemporal()
+    {
+        // Anchored foundation memories are explicitly designed to be
+        // always-present. They must NOT receive a temporal prefix — that
+        // would erode their foundational quality (e.g., "(2 years ago)
+        // Kathy's middle name was Ann" reads wrong).
+        var snapshot = MinimalSnapshot();
+        snapshot.AnchoredMemories.Add(new MemoryRecord
+        {
+            Content    = "Kathy's middle name was Ann",
+            Type       = MemoryType.Semantic,
+            OccurredAt = DateTimeOffset.Now.AddYears(-2),
+        });
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        user.Should().Contain("Kathy's middle name was Ann");
+        user.Should().NotContain("years ago) Kathy",
+            "Anchored memories are atemporal by design — adding temporal attribution would erode their foundational quality.");
+    }
+
+    [Fact]
+    public void BuildVoiceReplyPrompt_J3_AnchoredMemories_StayAtemporal()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.AnchoredMemories.Add(new MemoryRecord
+        {
+            Content    = "Mark's daughter's name is Mia",
+            Type       = MemoryType.Semantic,
+            OccurredAt = DateTimeOffset.Now.AddMonths(-6),
+        });
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (_, user) = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread);
+
+        user.Should().Contain("Mark's daughter's name is Mia");
+        user.Should().NotContain("ago) Mark's daughter");
+    }
+
+    [Fact]
+    public void BuildVoiceReplyPrompt_J3_ProfileMemories_IncludeTemporalAttribution()
+    {
+        // Semantic memories about Mark in the voice path render via the
+        // profileMemories pool. These are NOT anchored (different code path).
+        // Some are quasi-atemporal (job title); others are time-relevant
+        // (current project). Conservative rule: render them all with time —
+        // "(months ago)" reads as "established fact" not as "stale claim."
+        var snapshot = MinimalSnapshot();
+        var profileFact = new MemoryRecord
+        {
+            Content    = "About Mark: Salted caramel cold brew is his favorite",
+            Type       = MemoryType.Semantic,
+            OccurredAt = DateTimeOffset.Now.AddDays(-4),
+        };
+        snapshot.RelevantMemory.Add(profileFact);
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (_, user) = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread);
+
+        user.Should().Contain("Salted caramel cold brew is his favorite");
+        user.Should().Contain("4 days ago",
+            "Profile memories rendered in voice path must carry time so the model can distinguish established preferences from recent claims.");
+    }
+
+    [Fact]
+    public void BuildReconsiderationReplyPrompt_J3_RecentThoughts_IncludeTemporalAttribution()
+    {
+        var snapshot = MinimalSnapshot();
+        var oldThought = new MemoryRecord
+        {
+            Content    = "wondering about the bookstore corner",
+            Type       = MemoryType.InnerThought,
+            OccurredAt = DateTimeOffset.Now.AddHours(-3),
+        };
+        snapshot.RecentMemory.Add(oldThought);
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (_, user) = PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread);
+
+        user.Should().Contain("wondering about the bookstore corner");
+        // 3h ago on the same day → "earlier this {timeOfDay}" or "this {timeOfDay}"
+        // — either way the temporal prefix appears.
+        var hasTemporalPrefix = user.Contains("earlier this") || user.Contains("this morning") ||
+                                user.Contains("this afternoon") || user.Contains("this evening") ||
+                                user.Contains("this late") || user.Contains("a little while ago");
+        hasTemporalPrefix.Should().BeTrue(
+            "Recent thoughts in the reconsideration prompt should carry time so the 'one more thing' framing is anchored.");
+    }
+
+    [Fact]
+    public void FormatMemoryWithTime_J3_ProducesExpectedTemporalPhrases()
+    {
+        // Pin the canonical FormatMemoryWithTime behaviour so future changes
+        // to the function are detected by test failure rather than silent
+        // drift in prompt-builder output.
+        var now = new DateTimeOffset(2026, 04, 27, 12, 0, 0, TimeSpan.Zero);
+
+        var justNow = new MemoryRecord { Content = "test", OccurredAt = now.AddMinutes(-10) };
+        PromptBuilder.FormatMemoryWithTime(justNow, now).Should().StartWith("(just now)");
+
+        var aLittleWhileAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddMinutes(-45) };
+        PromptBuilder.FormatMemoryWithTime(aLittleWhileAgo, now).Should().StartWith("(a little while ago)");
+
+        var fourDaysAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddDays(-4) };
+        PromptBuilder.FormatMemoryWithTime(fourDaysAgo, now).Should().StartWith("(4 days ago)");
+
+        var twoWeeksAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddDays(-15) };
+        PromptBuilder.FormatMemoryWithTime(twoWeeksAgo, now).Should().StartWith("(2 weeks ago)");
+    }
+
 }

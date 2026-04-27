@@ -190,6 +190,8 @@ Documenting deviations from the plan above so the next reader of this doc isn't 
 
 ### Phase J.3 — Temporal attribution at retrieval
 
+**Status (Apr 27, 2026):** **Shipped same day as J.2.** The audit at phase-start showed every untimed render site was a single-line edit — applying the existing `FormatMemoryWithTime` helper. Mostly mechanical work; observation window opens once Mark resumes conversations.
+
 **Goal:** every retrieved memory surfaced in a prompt carries its origin time explicitly, so the composition model sees "8 hours ago" not present-tense substrate.
 
 **Changes:**
@@ -209,6 +211,50 @@ Documenting deviations from the plan above so the next reader of this doc isn't 
 **Effort estimate:** 1 week. Mostly prompt-builder work; `FormatMemoryWithTime` already exists, the work is extending its use consistently.
 
 **Dependencies:** J.0 baseline.
+
+#### What shipped (Apr 27, 2026)
+
+The same additive-deploy pattern as J.2: no flag, no breaking type change, single-line edits at each render site. The estimate over-shot — what the plan budgeted at one week landed in one short session because `FormatMemoryWithTime` was already production-grade and the only work was extending its use.
+
+**Audit findings — render sites in `PromptBuilder.cs` for `MemoryRecord`-bearing pools:**
+
+| Prompt-builder | Memory pool | Pre-J.3 | Post-J.3 |
+|----------------|-------------|---------|----------|
+| `BuildInnerThoughtPrompt` | `RecentMemory` (filtered) | Already used `FormatMemoryWithTime` | Unchanged |
+| `BuildInnerThoughtPrompt` | `RelevantMemory` | Already used `FormatMemoryWithTime` | Unchanged |
+| `BuildInnerThoughtPrompt` | `RecentWorldExperiences` | Already used `FormatMemoryWithTime` | Unchanged |
+| `BuildInnerThoughtPrompt` | `AnchoredMemories` | Untimed | **Atemporal exception — left untimed** |
+| `BuildLeanConversationPrompt` | `GroundedFacts` | Untimed | Migrated to `FormatMemoryWithTime` |
+| `BuildConversationReplyPrompt` | `GroundedFacts` | Untimed | Migrated to `FormatMemoryWithTime` |
+| `BuildConversationReplyPrompt` | `InteriorContext` | Already used `FormatMemoryWithTime` | Unchanged |
+| `BuildVoiceReplyPrompt` | `AnchoredMemories` | Untimed | **Atemporal exception — left untimed** |
+| `BuildVoiceReplyPrompt` | `RelevantMemory` Semantic-filter (profile) | Untimed | Migrated to `FormatMemoryWithTime` |
+| `BuildVoiceReplyPrompt` | `RelevantMemory` non-Semantic | Already used `FormatMemoryWithTime` | Unchanged |
+| `BuildReconsiderationReplyPrompt` | recent inner thoughts | Untimed | Migrated to `FormatMemoryWithTime` |
+| `BuildOutreachMessagePrompt` | `GroundedFacts` | Untimed | Migrated to `FormatMemoryWithTime` |
+| `BuildOutreachMessagePrompt` | `InteriorContext` | Already used `FormatMemoryWithTime` | Unchanged |
+| `BuildOutreachMessagePrompt` | recent outreach dedup | Untimed | Migrated to `FormatMemoryWithTime` (with content-prefix stripping preserved) |
+
+**Atemporal exception explained.** Anchored foundation memories — *"Kathy's middle name was Ann,"* *"Mark's daughter's name is Mia"* — are explicitly designed to be always-present, not historical. Adding *"(2 years ago) Kathy's middle name was Ann"* would erode their foundational quality and read as if facts about identity were aging. Left untimed; tests added that ASSERT this contract so a future refactor doesn't accidentally time-stamp anchors.
+
+**Profile-memory rendering decision.** Semantic-tier memories about Mark in the voice path (line 681 in `PromptBuilder.cs`) come from `RelevantMemory` filtered to `MemoryType.Semantic`. Some are quasi-atemporal (job title, coffee preference) and some are time-relevant (current project state). Conservative rule: render them all with time. *"(months ago) Salted caramel cold brew is his favorite"* reads to the model as "established preference" rather than "stale claim" — which is the correct semantic. The risk of confusing the model with anchor-like atemporality on stale claims is greater than the risk of rendering an established preference with a timestamp.
+
+**No `TemporalAttributionInPromptsEnabled` flag.** The plan called for one. Same reasoning as J.2: the change is content-additive (prefixes a phrase like *"(this morning)"*), there's no breaking surface change, and the rollback path is per-render-site commit revert. Skipping the flag avoids one more knob without adding one more code path.
+
+**Test coverage shipped:** 8 new tests against `PromptBuilderTests.cs`:
+- `GroundedFacts` includes temporal attribution in outreach message, conversation reply, and lean conversation prompts.
+- `AnchoredMemories` stay atemporal in inner-thought and voice-reply prompts (the contract that protects foundation facts).
+- Profile memories include temporal attribution in voice-reply prompt.
+- Recent thoughts include temporal attribution in reconsideration-reply prompt.
+- `FormatMemoryWithTime` canonical phrase pinning (*just now*, *a little while ago*, *N days ago*, *N weeks ago*) — locks in the rendering grammar so future helper changes are detected by test failure rather than silent prompt drift.
+
+Suite total: 646 passing (up from 638 after J.2). Build clean, 0 errors / 0 new warnings.
+
+**Observation window definition.** The plan's acceptance criterion was *"time-confabulation event rate significantly reduced vs J.0 baseline."* Operational definition for this observation window:
+1. Resume Mark's conversation cadence with Ani.
+2. Watch for time-confabulation events (Apr 24's *"back from class at 10pm"* class — outreach producing temporal claims unsupported by perception or memory).
+3. The Apr 27 morning chat included one such event (*"I slept in late (10ish)"* in the parrot outreach). With J.2 closing the conversation-summary substrate and J.3 stamping every retrieved memory, that pathway should be closed.
+4. If recurrence: capture the trace and identify which substrate path bypassed the temporal stamp (most likely candidates: `OutreachContext` recent-message rendering, or `WorldSeed`/`PerceptionEvent.Summary` content that was already pre-rendered before the prompt-builder saw it).
 
 ---
 
