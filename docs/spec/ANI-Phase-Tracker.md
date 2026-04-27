@@ -34,7 +34,7 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **Layer 2 Phase 3.0 — Layer 1 Flag Activation** | Theme G | Layer 2 Plan §Phase 3.0 | Prerequisite for Phase 2c. Flip `RetrievalDiversityEnabled`, `RetrievalProtectedSlotsEnabled`, `RetrievalDominancePerceptionEnabled` on Mark's live instance. Two-week observation window before advancing Layer 2. |
 | **Layer 2 Phase 3.1 — Synthetic Test Harness** | Theme G | Layer 2 Plan §Phase 3.1 | Parallel infrastructure. Drives accelerated-cycle observation without Twilio cost. Independent of Phase 3.0; also useful for Theme J.a observation window if real-traffic volume is low. |
 | **Layer 2 Phase 2b — Parallel Drift on Three Axes** | Theme G | Layer 2 Plan §Phase 2b | Queued ~1 week after Phase 2a data shows distribution shape. Non-behaviour-changing; three axes drift in parallel, only `.Relatedness` decides outreach. |
-| **Theme G Layer 3 — World Layer Durability** | Theme G | Agentic Lens design §3.3 | Design-complete in Agentic Lens doc; implementation plan not yet drafted. Produces durable World-Layer memory; downstream of Theme J because it produces output through the shared surface. |
+| **Theme G Layer 3 — World Layer Durability** | Theme G | [`ANI-Theme-G-Layer3-World-Substrate-Durability-Plan.md`](./ANI-Theme-G-Layer3-World-Substrate-Durability-Plan.md) (drafted Apr 27); design source at Agentic Lens design §3.3 | Design-complete in Agentic Lens doc; **Apr 27: phased implementation plan drafted (G3.0 → G3.5)**. Produces durable World-Layer memory; downstream of Theme J because it produces output through the shared surface. Sequenced after Layer 1's Apr 24 Phase 3.0 Activation observation window closes (~mid May). |
 | **Paper 3 Contribution Writing (Theme J + Agentic Lens)** | Research | TBD | Theme J will draft its own Paper 3 contribution in Phase J.7. Agentic Lens Contribution 4 is already scoped; actual prose-writing ongoing. |
 
 ### P2 — Medium-term, planned
@@ -166,8 +166,9 @@ What we're actually working on right now, in order, in plain language. This is t
     1-2 days, design only. Fits in waiting gaps. Plan covers the boats-float supersession framing — preserve wrong belief as history, mark as superseded. Implementation comes later; plan unblocks Theme D readiness.
     *Outcome:* phased plan at `docs/spec/ANI-Theme-D-Identity-Correction-Channel-Plan.md` — phases D.0 (baseline instrumentation, ships in parallel with Theme J J.a) → D.1 (`SupersededMemory` + retrieval down-weighting) → D.2 (privileged correction ingress) → D.3 (belief-graph propagation) → D.4 (Park-style reflection reintegration) → D.5 (correction-time dashboard view) → D.6 (replace the Apr 5 auto-corrector under supersession semantics). 6-9 week calendar. Five Mark review questions named at the end of the plan for green-lighting D.0 start.
 
-11. **World-substrate plan-drafting** *(Theme G Layer 3)*
+11. **World-substrate plan-drafting** *(Theme G Layer 3)* — **Drafted Apr 27, 2026**
     1-2 days, design only. The substrate-thinness data from yesterday's probe (~3-7% world content per retrieval pool) makes the case for thickening world memory. Plan only; implementation later.
+    *Outcome:* phased plan at `docs/spec/ANI-Theme-G-Layer3-World-Substrate-Durability-Plan.md` — phases G3.0 (provenance audit + baseline) → G3.1 (durability flag + recency-decay exemption) → G3.2 (Park-style reflection scoped to World-Layer) → G3.3 (merge-on-similarity for repeated elaborations) → G3.4 (bidirectional retrieval tier quota — extends Layer 1's protected slots to be symmetric) → G3.5 (dashboard *"her life"* view). 4-6 week calendar. Seven Mark review questions named at the end of the plan for green-lighting G3.0 start.
 
 12. **Conscience Layer plan-drafting** *(reflective companion voice)*
     1-2 days, design only. Internalized-caregiver-voice architecture. Mark's P2 ranking is post-Theme-J for implementation, but plan-drafting has no gate.
