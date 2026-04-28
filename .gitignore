@@ -448,3 +448,7 @@ NOTES.md
 docs/conversations/classify/*.txt
 # Classifier results (generated data)
 src/AniRuntime.Service/data/conversation-classifier-results.json
+
+# Audit snapshots — DB files + audit results contain personal communications;
+# regenerable from tools/audits/snapshot-and-pull.ps1 + generate-purge-candidates.sh
+tools/audits/snapshots/
