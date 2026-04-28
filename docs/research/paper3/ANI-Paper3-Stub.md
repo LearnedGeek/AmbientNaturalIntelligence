@@ -160,6 +160,30 @@ This section should expand into a standalone subsection of the final paper's Dis
 
 ---
 
+## Mixture of Models, Not Mixture of Experts (April 27, 2026)
+
+*Methodological observation. Lands in §6 or §7 of the final paper depending on how Discussion is structured.*
+
+ANI runs a 3B fine-tune for inner thought, a different fine-tune for conversation, LM-Kit for emotional classification, `nomic-embed-text` for embeddings, ml-intern for research orchestration, and the planned Conscience Layer as another model with its own retrieval scope. Each component has a clear cognitive role, an independently-tunable persona, and a logged output channel.
+
+That is mixture-of-experts at a different granularity. Token-level MoE — Mixtral 8×7B, Qwen3-MoE, DeepSeek-V3, the architecture rumoured to underlie GPT-4 — routes per-token between expert subnetworks inside one forward pass. ANI routes per-cognitive-task between distinct fine-tuned models. The trade-offs flip:
+
+| | Token-level MoE | Component-level (ANI) |
+|---|---|---|
+| Memory | One model, sparse activation | Multiple models, all resident |
+| Latency | One forward pass | Sequential calls per cycle |
+| Observability | Opaque routing | Every component logs distinct output |
+| Tunability | Retrain whole model | Fine-tune each component independently |
+| Identity | One persona | Composition of personas |
+
+The observability difference is what makes this paper's failure-class taxonomy possible. The April 27 bookstore-projection trace — *"inner thought at 14:42 fused world-layer with caregiver-day; composition retrieved both at 16:09 and collapsed them"* — is decomposable because inner-thought generation and composition are distinct architectural surfaces with distinct logs. Monolithic MoE buries that decomposition inside the routing matrix; the same failure on a Mixtral-style system produces only an output and no per-stage trace.
+
+Liu et al. (2025) "Inner Thoughts: Leveraging AI for Real-Time Communication of Internal Mental States in Conversational Agents" (CHI '25) accepted *Trigger / Retrieval / Thought Formation / Evaluation / Participation* as a defensible architectural naming pattern. ANI's component composition extends that direction with an additional empirical claim: **named cognitive components are not only aesthetically defensible — they are a load-bearing research instrument, because failures can be traced across named stages in a way that monolithic MoE precludes by construction**. The observability that lets this paper's failure-class taxonomy exist is itself a property of the architecture, not of the specific failures.
+
+This observation pairs with the Unifying Principle above. Architecture-over-training is the methodological stance for *what gets enforced where*; component-level composition is the methodological stance for *what gets named where*. Both bias toward decomposability over opacity, both make research instrumentation possible at runtime rather than in retrospect, and both produce empirical traces a token-level architecture cannot.
+
+---
+
 ---
 
 ## Core Research Question
