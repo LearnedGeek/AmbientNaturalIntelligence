@@ -155,13 +155,19 @@ public class CognitiveCycleProcessor
 
         if (hasUnreadFromContact)
         {
-            await _desire.RecordInboundContactAsync(ct).ConfigureAwait(false);
-
             var lastMsg = activeThread!.Messages[^1];
             obs.ContactMessage = lastMsg.Content;
             obs.WasConversationCycle = true;
 
-            // Admin commands bypass conversation entirely
+            // Admin commands bypass conversation entirely AND must not update
+            // LastContactInbound. Apr 28, 2026 regression: admin tags were
+            // updating the inbound-contact timestamp before this check, which
+            // caused BuildOutreachContext to incorrectly mark all prior
+            // unanswered outreaches as "answered" — defeating the
+            // unanswered-count hard gate AND the silence-as-active-choice
+            // model-level behavior. Tags are administrative metadata, not
+            // relational events; the inbound-contact timestamp is a
+            // relational signal only.
             if (AdminCommandHandler.IsAdminCommand(lastMsg.Content))
             {
                 _log.LogInformation("Admin command detected: {Content}", lastMsg.Content);
@@ -169,6 +175,11 @@ public class CognitiveCycleProcessor
                 await _adminCommands.HandleAsync(lastMsg.Content, ct).ConfigureAwait(false);
                 return;
             }
+
+            // Genuine inbound from the contact — record it as a relational
+            // event so unanswered-count math + desire-drift use the correct
+            // last-contact timestamp.
+            await _desire.RecordInboundContactAsync(ct).ConfigureAwait(false);
 
             // If we already evaluated this exact message and decided NO, don't re-ask.
             if (_gateState.LastEvaluatedMessageAt.HasValue && lastMsg.SentAt == _gateState.LastEvaluatedMessageAt.Value)
