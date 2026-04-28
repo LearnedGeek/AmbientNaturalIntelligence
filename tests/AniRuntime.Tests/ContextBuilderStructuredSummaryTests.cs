@@ -17,7 +17,10 @@ namespace AniRuntime.Tests;
 /// </summary>
 public class ContextBuilderStructuredSummaryTests : AniTestBase
 {
-    private readonly Mock<IConversationService> _mockConversations = new();
+    // Theme K Phase K.1 (Apr 28, 2026): strict mock — every call must be
+    // explicitly set up. ContextBuilder only calls GetRecentThreadsAsync(1, ct)
+    // on this surface, so each test sets that one up.
+    private readonly Mock<IConversationService> _mockConversations = new(MockBehavior.Strict);
 
     private ContextBuilder Build(IConversationService? conversation = null)
     {

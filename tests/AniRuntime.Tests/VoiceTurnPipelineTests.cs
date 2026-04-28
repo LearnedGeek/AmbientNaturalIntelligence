@@ -13,7 +13,9 @@ namespace AniRuntime.Tests;
 public class VoiceTurnPipelineTests
 {
     private readonly Mock<IMemoryService> _mockMemory = new();
-    private readonly Mock<IConversationService> _mockConversations = new();
+    // Theme K Phase K.1 (Apr 28, 2026): IConversationService is strict.
+    // VoiceTurnPipeline only calls GetThreadAsync — declare it once in CreatePipeline.
+    private readonly Mock<IConversationService> _mockConversations = new(MockBehavior.Strict);
     private readonly Mock<IOllamaClient> _mockOllama = new();
     private readonly Mock<IStreamingTextToSpeechService> _mockTts = new();
 

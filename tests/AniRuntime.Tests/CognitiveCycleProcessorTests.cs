@@ -18,7 +18,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
 {
     private readonly Mock<IPerceptionSource>    _mockSource        = new();
     private readonly Mock<IAniAction>           _mockSmsAction     = new();
-    private readonly Mock<IConversationService> _mockConversations = new();
+    // Theme K Phase K.1 (Apr 28, 2026): IConversationService is strict.
+    // CreateProcessor declares the calls every cognitive cycle makes;
+    // individual tests add per-test setups when they enter conversation paths.
+    private readonly Mock<IConversationService> _mockConversations = new(MockBehavior.Strict);
     private readonly Mock<IIntentExtractor>     _mockIntent        = new();
     private readonly Mock<IReplyChannelResolver> _mockChannelResolver = new();
 
