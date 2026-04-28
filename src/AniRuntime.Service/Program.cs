@@ -209,7 +209,11 @@ try
     builder.Services.AddSingleton<WorldSeedService>();
 
     // ── Cognitive cycle ───────────────────────────────────────────────────────
+    // Apr 28, 2026 architectural fix: AdminCommandHandler now also exposed as
+    // IAdminCommandHandler (Core interface) so the perception layer can route
+    // admin commands directly without depending on Loops.
     builder.Services.AddSingleton<AdminCommandHandler>();
+    builder.Services.AddSingleton<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
     builder.Services.AddSingleton<EmotionalProcessor>();
     builder.Services.AddSingleton<ContextBuilder>();
     builder.Services.AddSingleton<AniRuntime.LLM.ContextCompressor>();

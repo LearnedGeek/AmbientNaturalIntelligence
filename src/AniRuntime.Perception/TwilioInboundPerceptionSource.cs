@@ -26,6 +26,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
 {
     private readonly IConversationService                     _conversations;
     private readonly IMemoryService                           _memory;
+    private readonly IAdminCommandHandler                     _adminCommands;
     private readonly TwilioOptions                            _twilioOptions;
     private readonly AniOptions                               _aniOptions;
     private readonly IHttpClientFactory                       _httpFactory;
@@ -49,6 +50,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
     public TwilioInboundPerceptionSource(
         IConversationService conversations,
         IMemoryService memory,
+        IAdminCommandHandler adminCommands,
         IOptions<TwilioOptions> twilioOptions,
         IOptions<AniOptions> aniOptions,
         IHttpClientFactory httpFactory,
@@ -57,6 +59,7 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
     {
         _conversations = conversations;
         _memory        = memory;
+        _adminCommands = adminCommands;
         _twilioOptions = twilioOptions.Value;
         _aniOptions    = aniOptions.Value;
         _httpFactory   = httpFactory;
@@ -123,6 +126,35 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
             foreach (var msg in messages)
             {
                 _log.LogInformation("Inbound SMS from {Contact}: {Body}", contactName, msg.Body);
+
+                // Admin command short-circuit (Apr 28, 2026 architectural fix):
+                // commands starting with "///" are administrative metadata, not
+                // relational events. Route them DIRECTLY to the handler — skip
+                // thread creation, skip message persistence, skip perception
+                // emission, skip everything that would otherwise pull the
+                // command into Ani's substrate. The pre-existing per-table
+                // short-circuits (in AddMessageAsync, in the perception event
+                // emission below) were defending the substrate at the wrong
+                // layer — by the time those fired, the thread row already
+                // existed and would surface in CloseThreadAsync's summary.
+                // Detecting + routing here keeps the conversation pipeline
+                // entirely free of admin-command artifacts.
+                if (IAdminCommandHandler.IsAdminCommand(msg.Body))
+                {
+                    var adminBody = msg.Body ?? string.Empty;
+                    _log.LogInformation("Admin command detected at perception source — routing directly: {Preview}",
+                        adminBody.Length > 80 ? adminBody[..80] : adminBody);
+                    try
+                    {
+                        await _adminCommands.HandleAsync(adminBody, ct).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning(ex, "Admin command handler failed: {Preview}",
+                            adminBody.Length > 80 ? adminBody[..80] : adminBody);
+                    }
+                    continue;
+                }
 
                 // Get or create a conversation thread
                 var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
@@ -208,24 +240,6 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
                     Content = body,
                     SentAt  = msg.DateSent,
                 }, ct).ConfigureAwait(false);
-
-                // Admin command short-circuit (Apr 12): commands starting with "///"
-                // are processed via the conversation thread path (CognitiveCycleProcessor
-                // reads the last thread message and dispatches to AdminCommandHandler).
-                // We deliberately do NOT emit a PerceptionEvent for admin commands —
-                // the perception path would store them as Facts-tier memories via
-                // PerceptionPhase, polluting semantic retrieval with command text.
-                //
-                // The thread message (via AddMessageAsync above) is REQUIRED for the
-                // admin handler to see the command. The perception event is NOT.
-                // Database review on Apr 11 found 27+ polluted "Mark texted: '///...'"
-                // Facts-tier records; manual cleanup was performed.
-                if (body.TrimStart().StartsWith("///"))
-                {
-                    _log.LogDebug("Admin command detected in inbound — skipping PerceptionEvent emission: {Preview}",
-                        body.Length > 60 ? body[..60] : body);
-                    continue;
-                }
 
                 events.Add(new PerceptionEvent
                 {

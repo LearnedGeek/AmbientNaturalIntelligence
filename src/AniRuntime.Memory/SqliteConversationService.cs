@@ -150,6 +150,31 @@ public class SqliteConversationService : IConversationService, IDisposable
 
     public async Task AddMessageAsync(Guid threadId, ConversationMessage message, CancellationToken ct = default)
     {
+        // Admin command defense-in-depth (Apr 28, 2026): commands starting with
+        // "///" are administrative metadata, not relational events. They MUST NOT
+        // enter conversation_messages — doing so causes downstream leaks
+        // (CloseThreadAsync includes them in the summary; structured per-speaker
+        // summary surfaces them into prompt-builders; cognitive cycle reads
+        // them and treats the relational state as having received a reply). The
+        // primary defense is at TwilioInboundPerceptionSource (route directly,
+        // skip thread ops). This guard is defense-in-depth: if any future code
+        // path calls AddMessageAsync with admin content (test injection,
+        // dashboard direct-write, etc.), the row is rejected at the data layer
+        // and the substrate stays clean.
+        //
+        // Pre-Apr-28 history: an earlier short-circuit only skipped the Episodic
+        // memory save AFTER the INSERT — that left the thread-message row in
+        // place and produced the leak vector this fix closes. See Apr 28
+        // gap-watch row "Architectural concern: conversation_messages misused
+        // as a delivery channel for non-conversation events."
+        var content = message.Content ?? string.Empty;
+        if (content.TrimStart().StartsWith("///"))
+        {
+            _log.LogDebug("Admin command detected in AddMessageAsync — rejecting at data layer (defense-in-depth): {Preview}",
+                content.Length > 60 ? content[..60] : content);
+            return;
+        }
+
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
 
         // Insert the message
@@ -176,24 +201,6 @@ public class SqliteConversationService : IConversationService, IDisposable
         updateCmd.Parameters.AddWithValue("$sent_at",   message.SentAt.ToString("o"));
 
         await updateCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-
-        // Admin command short-circuit (Apr 12): commands starting with "///" are
-        // processed by AdminCommandHandler via the conversation thread (CognitiveCycleProcessor
-        // reads the last thread message and dispatches). The conversation_messages table
-        // record above is REQUIRED so the admin handler can see the command. But the
-        // Episodic memory save below is NOT — it just pollutes semantic retrieval with
-        // command text that Ani shouldn't ever retrieve as "something Mark said."
-        //
-        // Database review on Apr 11 found 27+ polluted records from "Mark said: '///tag ...'"
-        // entries plus 2 inner thoughts that misread admin commands as emotional content.
-        // Manual cleanup was performed; this guard prevents recurrence.
-        var content = message.Content ?? string.Empty;
-        if (content.TrimStart().StartsWith("///"))
-        {
-            _log.LogDebug("Admin command detected in AddMessageAsync — thread record written, skipping memory save: {Preview}",
-                content.Length > 60 ? content[..60] : content);
-            return;
-        }
 
         // Save each message as episodic memory with auto-embedding so it survives
         // thread expiration and is findable via semantic search. Fixes BUG-010:

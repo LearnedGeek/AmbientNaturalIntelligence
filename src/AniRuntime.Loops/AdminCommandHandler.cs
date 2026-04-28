@@ -19,7 +19,7 @@ namespace AniRuntime.Loops;
 ///   ///live   — Purge test-mode memories and return to live operation
 ///   ///status — Reply with current emotional state, desire level, memory stats
 /// </summary>
-public class AdminCommandHandler
+public class AdminCommandHandler : IAdminCommandHandler
 {
     private readonly IStateStore          _state;
     private readonly IMemoryPersistence  _persist;

@@ -33,7 +33,6 @@ public class CognitiveCycleProcessor
     private readonly IMemoryMaintenance                _maintenance;
     private readonly DesireEngine                      _desire;
     private readonly IConversationService              _conversations;
-    private readonly AdminCommandHandler               _adminCommands;
     private readonly IEmergenceObserver                _emergence;
     private readonly EmotionalProcessor                _emotional;
     private readonly ContextBuilder                    _contextBuilder;
@@ -58,7 +57,6 @@ public class CognitiveCycleProcessor
         IMemoryMaintenance             maintenance,
         DesireEngine                   desire,
         IConversationService           conversations,
-        AdminCommandHandler            adminCommands,
         IEmergenceObserver             emergence,
         EmotionalProcessor             emotional,
         ContextBuilder                 contextBuilder,
@@ -80,7 +78,6 @@ public class CognitiveCycleProcessor
         _maintenance       = maintenance;
         _desire            = desire;
         _conversations     = conversations;
-        _adminCommands     = adminCommands;
         _emergence         = emergence;
         _emotional         = emotional;
         _contextBuilder    = contextBuilder;
@@ -159,23 +156,15 @@ public class CognitiveCycleProcessor
             obs.ContactMessage = lastMsg.Content;
             obs.WasConversationCycle = true;
 
-            // Admin commands bypass conversation entirely AND must not update
-            // LastContactInbound. Apr 28, 2026 regression: admin tags were
-            // updating the inbound-contact timestamp before this check, which
-            // caused BuildOutreachContext to incorrectly mark all prior
-            // unanswered outreaches as "answered" — defeating the
-            // unanswered-count hard gate AND the silence-as-active-choice
-            // model-level behavior. Tags are administrative metadata, not
-            // relational events; the inbound-contact timestamp is a
-            // relational signal only.
-            if (AdminCommandHandler.IsAdminCommand(lastMsg.Content))
-            {
-                _log.LogInformation("Admin command detected: {Content}", lastMsg.Content);
-                await _conversations.CloseThreadAsync(activeThread.Id, ct).ConfigureAwait(false);
-                await _adminCommands.HandleAsync(lastMsg.Content, ct).ConfigureAwait(false);
-                return;
-            }
-
+            // Apr 28, 2026 architectural fix: admin commands no longer reach
+            // this code path. Detection + routing now happen at the perception
+            // source (TwilioInboundPerceptionSource), so admin commands never
+            // enter the conversation thread. The previous admin-detection
+            // block here became dead code and was removed; the LastContactInbound
+            // ordering bug it carried (admin tags incorrectly marking prior
+            // outreaches as "answered") cannot recur because admin commands
+            // are now dispatched before any relational signal updates.
+            //
             // Genuine inbound from the contact — record it as a relational
             // event so unanswered-count math + desire-drift use the correct
             // last-contact timestamp.

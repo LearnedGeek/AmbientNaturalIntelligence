@@ -92,16 +92,6 @@ public class CognitiveCycleProcessorTests : AniTestBase
         mockDiagnostic.Setup(d => d.RunDiagnosticAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DiagnosticReport());
 
-        var adminHandler = new AdminCommandHandler(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object,
-            _mockConversations.Object,
-            desire,
-            dispatcher,
-            emergenceStore,
-            mockDiagnostic.Object,
-            DefaultOptions,
-            NullLogger<AdminCommandHandler>.Instance);
-
         var emotional = new EmotionalProcessor(
             MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, DefaultOptions,
@@ -141,7 +131,6 @@ public class CognitiveCycleProcessorTests : AniTestBase
             MockMemory.Object,
             desire,
             _mockConversations.Object,
-            adminHandler,
             new NullEmergenceObserver(),
             emotional,
             contextBuilder,
@@ -723,117 +712,12 @@ public class CognitiveCycleProcessorTests : AniTestBase
             .Should().Be(expected, $"message: \"{message}\"");
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // SPEC TESTS — LastContactInbound semantics on inbound message arrival
-    //
-    // Mark Apr 28, 2026: regression discovered where admin tag commands
-    // (`///tag ...`) were updating LastContactInbound, which caused
-    // BuildOutreachContext to mark all prior unanswered outreaches as
-    // "answered" and disabled the unanswered-count gate. Production logs
-    // showed 1,261 prior instances of the gate working correctly across
-    // 14 days; today: 0. Root cause: in CognitiveCycleProcessor, the
-    // RecordInboundContactAsync call fired BEFORE the admin-command check
-    // — so admin tags updated the relational timestamp.
-    //
-    // The spec these tests capture: **LastContactInbound is a relational
-    // signal, not a raw inbound-event signal. Admin commands are
-    // administrative metadata, not relational events. Therefore admin
-    // commands MUST NOT update LastContactInbound.**
-    //
-    // Pre-existing test gap: NO test in this file (or anywhere in the
-    // suite) asserted this invariant. The tests covered "what the code
-    // does" not "what the spec requires." That gap is exactly the TDD
-    // critique Mark named on Apr 28 as the bigger methodology shift the
-    // project needs.
-    // ────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task RunAsync_AdminTagCommand_DoesNotUpdateLastContactInbound()
-    {
-        // Spec: admin tag commands are administrative metadata, NOT
-        // relational events. They MUST NOT update LastContactInbound.
-        // (Apr 28, 2026 regression: this was happening; bug in the order
-        // of operations in the inbound branch of CognitiveCycleProcessor.)
-        var staleTimestamp = DateTimeOffset.UtcNow.AddHours(-12);  // last real reply 12h ago
-        var processor = CreateProcessor();
-
-        // IMPORTANT: setup AFTER CreateProcessor() because CreateProcessor's
-        // default mock setups overwrite ours otherwise. (This setup-order
-        // fragility is exactly what MockBehavior.Strict would catch.)
-        MockMemory.Setup(m => m.GetDesireStateAsync(It.IsAny<CancellationToken>()))
-                  .ReturnsAsync(FreshDesireState() with { LastContactInbound = staleTimestamp });
-
-        var thread = new ConversationThread
-        {
-            Id = Guid.NewGuid(),
-            IsActive = true,
-            Messages = new List<ConversationMessage>
-            {
-                new() { Role = Roles.Mark, Content = "///tag 6:21 outreach was garbage", SentAt = DateTimeOffset.UtcNow },
-            },
-        };
-        _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
-                          .ReturnsAsync(thread);
-        _mockConversations.Setup(c => c.CloseThreadAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                          .Returns(Task.CompletedTask);
-        // ///tag handler queries GetRecentThreadsAsync; return empty so it
-        // takes the "no recent conversation pair found" branch and returns
-        // cleanly without crashing the test on null deref.
-        _mockConversations.Setup(c => c.GetRecentThreadsAsync(1, It.IsAny<CancellationToken>()))
-                          .ReturnsAsync(new List<ConversationThread>());
-
-        await processor.RunAsync(CancellationToken.None);
-
-        // Verify the desire-state save NEVER fires with an updated
-        // LastContactInbound when the inbound is an admin command.
-        MockMemory.Verify(m => m.SaveDesireStateAsync(
-            It.Is<DesireState>(s => s.LastContactInbound > staleTimestamp.AddSeconds(1)),
-            It.IsAny<CancellationToken>()), Times.Never,
-            "admin tag commands must NOT update LastContactInbound — they are administrative metadata, not relational events");
-    }
-
-    [Theory]
-    [InlineData("///tag 6:21 outreach was garbage")]
-    [InlineData("///flag last reply")]
-    [InlineData("///correct memory abc-123 was wrong")]
-    [InlineData("///temporal 2026-04-21")]
-    public async Task RunAsync_AnyAdminCommand_DoesNotUpdateLastContactInbound(string adminCommandText)
-    {
-        // Spec: ALL admin command prefixes are administrative metadata,
-        // not relational events. The /// prefix family MUST NOT update
-        // LastContactInbound regardless of which subcommand is invoked.
-        var staleTimestamp = DateTimeOffset.UtcNow.AddHours(-8);
-        var processor = CreateProcessor();
-
-        // Setup AFTER CreateProcessor — see comment in the sibling test.
-        MockMemory.Setup(m => m.GetDesireStateAsync(It.IsAny<CancellationToken>()))
-                  .ReturnsAsync(FreshDesireState() with { LastContactInbound = staleTimestamp });
-
-        var thread = new ConversationThread
-        {
-            Id = Guid.NewGuid(),
-            IsActive = true,
-            Messages = new List<ConversationMessage>
-            {
-                new() { Role = Roles.Mark, Content = adminCommandText, SentAt = DateTimeOffset.UtcNow },
-            },
-        };
-        _mockConversations.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
-                          .ReturnsAsync(thread);
-        _mockConversations.Setup(c => c.CloseThreadAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                          .Returns(Task.CompletedTask);
-        // ///tag handler queries GetRecentThreadsAsync; return empty so it
-        // takes the "no recent conversation pair found" branch and returns
-        // cleanly without crashing the test on null deref.
-        _mockConversations.Setup(c => c.GetRecentThreadsAsync(1, It.IsAny<CancellationToken>()))
-                          .ReturnsAsync(new List<ConversationThread>());
-
-        await processor.RunAsync(CancellationToken.None);
-
-        MockMemory.Verify(m => m.SaveDesireStateAsync(
-            It.Is<DesireState>(s => s.LastContactInbound > staleTimestamp.AddSeconds(1)),
-            It.IsAny<CancellationToken>()), Times.Never,
-            $"admin command \"{adminCommandText}\" must not update LastContactInbound");
-    }
-
+    // Note (Apr 28, 2026): Spec tests for "admin tag commands do NOT update LastContactInbound"
+    // were removed when admin command routing was moved out of CognitiveCycleProcessor entirely.
+    // The architectural invariant is now pinned at two upstream layers:
+    //   1. TwilioInboundPerceptionSource: detects /// commands and routes them directly to the
+    //      handler — they never become PerceptionEvents and never reach the conversation pipeline.
+    //   2. SqliteConversationService.AddMessageAsync: defense-in-depth short-circuit that rejects
+    //      admin content before INSERT, in case any future producer leaks past the perception gate.
+    // Tests for both layers live in their respective test files.
 }
