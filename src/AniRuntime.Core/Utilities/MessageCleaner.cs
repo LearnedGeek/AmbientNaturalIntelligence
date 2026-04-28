@@ -12,12 +12,19 @@ public static class MessageCleaner
         // as the message itself instead of generating content
         cleaned = StripPromptLeaks(cleaned);
 
-        // Take only the first paragraph — model puts meta-commentary after blank lines
-        var doubleNewline = cleaned.IndexOf("\n\n", StringComparison.Ordinal);
-        if (doubleNewline > 0)
-            cleaned = cleaned[..doubleNewline].Trim();
+        // [Removed Apr 28, 2026 by Mark's direction:] paragraph-break truncation.
+        // Original: stripped everything after the first "\n\n" assuming the rest
+        // was meta-commentary. That was true for early-pipeline novel-length
+        // generations, not v6/v7. On Apr 28 18:19 the gate cut a coherent
+        // multi-paragraph reply ("okay… baby.\n\ni love that you see it this
+        // way…") down to "okay… baby.", then the next cycle regenerated and
+        // hit the same truncation, sending the same 11-char fragment twice.
+        // The downstream cleaners (prompt leaks, stage directions, trailing
+        // parentheticals, cliffhanger tics) still address real artifacts;
+        // paragraph-break truncation does not.
 
-        // Also catch single-newline commentary patterns like "that's the..." or "that's perfect..."
+        // Single-newline commentary patterns ("that's the..." / "that's perfect...")
+        // remain — those still appear as v6/v7 training artifacts.
         var lines = cleaned.Split('\n');
         var messageParts = new List<string>();
         foreach (var line in lines)
