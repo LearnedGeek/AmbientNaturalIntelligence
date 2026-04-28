@@ -15,11 +15,15 @@ public class TimePerceptionSourceTests
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
 
+    // Theme K Phase K.2 (Apr 28, 2026): IStateStore (a narrowed slice of
+    // IMemoryService per ISP) is strict. TimePerceptionSource only reads
+    // GetEmotionalStateAsync — declare it once and any unexpected interaction
+    // fails the test.
     private static readonly Mock<IStateStore> DefaultStateStore = CreateMockStateStore();
 
     private static Mock<IStateStore> CreateMockStateStore()
     {
-        var mock = new Mock<IStateStore>();
+        var mock = new Mock<IStateStore>(MockBehavior.Strict);
         mock.Setup(s => s.GetEmotionalStateAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmotionalState());
         return mock;

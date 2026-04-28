@@ -1,7 +1,7 @@
 # Theme K — Test Spec-Coverage Migration (TDD + Strict Mocks)
 
 **Drafted:** April 28, 2026
-**Status:** Phase K.1 in progress (IConversationService strict-mock migration)
+**Status:** Phase K.2 shipped (IMemoryService strict-mock migration). K.3 queued.
 **Origin:** Apr 28 silence-policy regression diagnosis. NO test in the suite covered the LastContactInbound invariant; the bug was latent for weeks. Mark's framing: *"I think we're acting like junior developers here and writing code, then writing tests to match. We should be taking a TDD approach... we should also be using mockbehavior strict on all tests."*
 **Companion doc:** `~/.claude/TESTING-STRATEGY.md` §20 (Tests Pin the Spec, Not the Code)
 
@@ -51,15 +51,30 @@ The Apr 28 architectural fix (admin commands routed at perception source) was th
 
 **K.1 result (Apr 28):** Inventory found 4 sites — `TwilioInboundPerceptionSourceAdminTests` (already strict from K.0), `SqliteConversationServiceTests` (uses real SQLite, no mock), `ContextBuilderStructuredSummaryTests`, `VoiceTurnPipelineTests`, and `CognitiveCycleProcessorTests`. All three loose mocks converted; all 675 tests pass on the first run. No spec gaps surfaced (every call site already had its setup declared) — outcome consistent with the K.1 hypothesis that the smallest mock surface would be the easiest first migration. Confidence-builder for K.2 (`IMemoryService`).
 
-### Phase K.2 — `IMemoryService` strict-mock migration ⏳
-**Status:** Queued. Largest surface; do it after K.1 patterns are validated.
+### Phase K.2 — `IMemoryService` strict-mock migration ✅
+**Status:** Shipped Apr 28, 2026.
 
-`IMemoryService` is the most-mocked interface in the project (used by virtually every cognitive-cycle test). Migration is more invasive than K.1, but the Apr 28 spec-test methodology will already be muscle-memory by then.
+`IMemoryService` is the most-mocked interface in the project (used by virtually every cognitive-cycle test).
 
-Substeps:
-1. Convert one test file at a time (start with `DesireEngineTests` or `EmotionalStateTests` — small).
-2. As each file converts, audit its assertions for spec-coverage gaps.
-3. When all files for a single test class are clean, mark it migrated in this doc.
+**Migration strategy chosen — base-class strict + per-class factories already declare every call.** The alternative (leave the base loose, convert each consumer to a local strict mock) was considered but rejected: the loose `MockMemory` in `AniTestBase` is shared across ~every cognitive-cycle test, and converting per-class would have meant introducing a parallel local `Mock<IMemoryService>` next to the base mock in three files — duplicate plumbing for no contract win. Making the base strict in one edit, with the existing per-class `CreateProcessor()`/`Build()`/`CreateEngine()` factories already declaring the calls each test path needs, was the smaller and more uniform change. The K.1 result (no spec gaps surfaced in `IConversationService` because every call site was already declared) gave high confidence the same would be true here, and it was — every memory call site the cycle reaches was already explicit in some test factory. The win was not a cascade of broken tests, but the strictness itself: every interaction is now a documented contract, and any *future* call added to a cycle phase will fail every test that touches it until the test author explicitly declares whether the new call is a spec interaction or a regression.
+
+**K.2 result (Apr 28):**
+
+*Sites inventoried (`Mock<IMemoryService>` and narrower-interface variants):*
+- `tests/AniRuntime.Tests/Infrastructure/AniTestBase.cs` — `MockMemory` (shared across `CognitiveCycleProcessorTests`, `ContextBuilderStructuredSummaryTests`, `DesireEngineTests`, `SqliteMemoryServiceTests` [inherits but does not use], `CognitiveCyclePersistenceContractTests` [new])
+- `tests/AniRuntime.Tests/VoiceTurnPipelineTests.cs` — local `_mockMemory`
+- `tests/AniRuntime.Tests/TimePerceptionSourceTests.cs` — `Mock<IStateStore>` (narrowed slice of `IMemoryService`)
+- `tests/AniRuntime.Tests/SqliteConversationServiceTests.cs`, `tests/AniRuntime.Tests/TwilioInboundPerceptionSourceAdminTests.cs` — already strict from K.0.
+
+*Conversions:* 3 mocks flipped to `MockBehavior.Strict` (the base + the two file-local mocks). All 675 baseline tests pass on first run with no setup additions required — every memory call the cycle reaches was already explicit in some test's factory helper, so strict surfaced no missing setups.
+
+*Spec gaps surfaced + tests added:* The migration *did* surface a previously-uncovered architectural invariant declared in `DesireEngine.cs` source comments — *"All DesireState writes go through this class. CognitiveCycleProcessor must never call IMemoryService.SaveDesireStateAsync() directly."* No test pinned that contract. New file `tests/AniRuntime.Tests/CognitiveCyclePersistenceContractTests.cs` adds 3 TDD-style spec tests using a *separate* strict `IMemoryPersistence` mock for the processor's `persist` slot (distinct from the persistence handle injected into `DesireEngine`):
+
+1. `RunAsync_DesireStateWrites_RoutedExclusivelyThroughDesireEngine` — pins the load-bearing invariant. The cognitive cycle's `_persist` mock has NO `SaveDesireStateAsync` setup; if the processor ever reaches around `DesireEngine`, strict mode raises.
+2. `RunAsync_PersistsEmotionalState_ExactlyOncePerCycle` — pins Phase 0's emotional-state write count.
+3. `RunAsync_InnerThought_PersistedThroughProcessorPersistence` — pins inner-thought persistence on the processor's persistence channel directly (the existing `RunAsync_AlwaysSavesInnerThought` test asserts the call lands on the composite `MockMemory`; this one asserts it lands on the *processor's* `IMemoryPersistence` slot specifically, which is a stronger architectural claim).
+
+*Total tests after K.2:* 678 passing, 0 skipped, 0 failures, 0 warnings (test project).
 
 ### Phase K.3 — `IOllamaClient` strict-mock migration ⏳
 **Status:** Queued.
@@ -89,7 +104,7 @@ Output: a list of invariants currently un-tested. Each becomes a spec test in su
 
 ## Sequencing & Dependencies
 
-- K.0 ✅ → K.1 (in progress) → K.2 → K.3 → K.4 → K.5
+- K.0 ✅ → K.1 ✅ → K.2 ✅ → K.3 (next) → K.4 → K.5
 - **No cross-theme dependencies.** Test migration is isolated infrastructure work; doesn't block or get blocked by Theme J / G / etc.
 - **Cadence is Mark's call.** Each phase is independently reviewable and shippable.
 
@@ -120,3 +135,4 @@ Worth holding the methodology observation through K.5 and writing it up with the
 | 2026-04-28 | K.0 | Policy documented in `~/.claude/TESTING-STRATEGY.md` §20. First two test files written under the new policy: `TwilioInboundPerceptionSourceAdminTests` (5 strict tests), `SqliteConversationServiceTests` (6 strict tests). Both shipped with the architectural fix in commit `2437b8c`. |
 | 2026-04-28 | K.1 | Phase started. Inventory + conversion + spec-gap pass on `IConversationService`. |
 | 2026-04-28 | K.1 | Phase shipped. 4 sites inventoried, 3 conversions (1 already strict). All 675 tests pass. No spec gaps surfaced. |
+| 2026-04-28 | K.2 | Phase shipped. `IMemoryService` mocks flipped to `MockBehavior.Strict` at the base-class level (`AniTestBase.MockMemory`) plus two local mocks (`VoiceTurnPipelineTests._mockMemory`, `TimePerceptionSourceTests.DefaultStateStore`). All 675 baseline tests pass with strict mode — every memory call the cycle reaches was already explicit in test factories. Migration surfaced one previously-unpinned architectural invariant from `DesireEngine.cs` source ("CognitiveCycleProcessor must never call SaveDesireStateAsync directly"); 3 new TDD-style spec tests added in `CognitiveCyclePersistenceContractTests.cs` using a separate strict `IMemoryPersistence` mock for the processor's `persist` slot. Total: 678 tests, 0 failures, 0 warnings. |

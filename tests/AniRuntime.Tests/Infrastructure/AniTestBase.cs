@@ -9,16 +9,26 @@ namespace AniRuntime.Tests.Infrastructure;
 /// <summary>
 /// Base class for all ANI Runtime tests.
 /// Provides pre-built mocks and default options matching appsettings.json defaults.
+///
+/// Theme K Phase K.2 (Apr 28, 2026): <see cref="MockMemory"/> is now
+/// <see cref="MockBehavior.Strict"/> per the strict-mock migration policy
+/// (`~/.claude/TESTING-STRATEGY.md` §20). Every interaction with the memory
+/// surface must be explicitly declared by the test (or the test's factory
+/// helper). Loose-mock defaults silently returned null/empty values that
+/// allowed contract regressions through; strict mode forces each call site
+/// to be a documented spec interaction.
 /// </summary>
 public abstract class AniTestBase
 {
-    protected readonly Mock<IMemoryService>  MockMemory  = new();
+    protected readonly Mock<IMemoryService>  MockMemory  = new(MockBehavior.Strict);
     protected readonly Mock<IOllamaClient>   MockOllama  = new();
     protected readonly Mock<IAniAction>      MockAction  = new();
 
     protected AniTestBase()
     {
-        // Default emotional state mock — many tests need this since DesireEngine reads it
+        // Default emotional state mock — many tests need this since DesireEngine reads it.
+        // This is the only universal default; everything else belongs to the test class's
+        // factory helper so each class controls which calls it expects.
         MockMemory.Setup(m => m.GetEmotionalStateAsync(It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new EmotionalState());
     }

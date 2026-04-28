@@ -36,7 +36,7 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **Layer 2 Phase 2b — Parallel Drift on Three Axes** | Theme G | Layer 2 Plan §Phase 2b | Queued ~1 week after Phase 2a data shows distribution shape. Non-behaviour-changing; three axes drift in parallel, only `.Relatedness` decides outreach. |
 | **Theme G Layer 3 — World Layer Durability** | Theme G | [`ANI-Theme-G-Layer3-World-Substrate-Durability-Plan.md`](./ANI-Theme-G-Layer3-World-Substrate-Durability-Plan.md) (drafted Apr 27); design source at Agentic Lens design §3.3 | Design-complete in Agentic Lens doc; **Apr 27: phased implementation plan drafted (G3.0 → G3.5)**. Produces durable World-Layer memory; downstream of Theme J because it produces output through the shared surface. Sequenced after Layer 1's Apr 24 Phase 3.0 Activation observation window closes (~mid May). |
 | **Paper 3 Contribution Writing (Theme J + Agentic Lens)** | Research | TBD | Theme J will draft its own Paper 3 contribution in Phase J.7. Agentic Lens Contribution 4 is already scoped; actual prose-writing ongoing. |
-| **Theme K — Test Spec-Coverage Migration (TDD + Strict Mocks)** | Theme K (new) | [`ANI-Theme-K-Test-Spec-Coverage-Plan.md`](./ANI-Theme-K-Test-Spec-Coverage-Plan.md) | **K.0 policy doc shipped Apr 28** (`~/.claude/TESTING-STRATEGY.md` §20). **K.1 IConversationService strict-mock migration shipped Apr 28** (4 sites inventoried, 3 converted, 675 tests passing, no spec gaps surfaced). Next: K.2 IMemoryService → K.3 IOllamaClient → K.4 remaining surfaces → K.5 invariant audit. No cross-theme dependencies; cadence is Mark's call. |
+| **Theme K — Test Spec-Coverage Migration (TDD + Strict Mocks)** | Theme K (new) | [`ANI-Theme-K-Test-Spec-Coverage-Plan.md`](./ANI-Theme-K-Test-Spec-Coverage-Plan.md) | **K.0 policy doc shipped Apr 28** (`~/.claude/TESTING-STRATEGY.md` §20). **K.1 IConversationService strict-mock migration shipped Apr 28** (4 sites, 3 conversions, no gaps). **K.2 IMemoryService strict-mock migration shipped Apr 28** (3 conversions including base-class `MockMemory`; surfaced one previously-unpinned architectural invariant — *"CognitiveCycleProcessor must never call SaveDesireStateAsync directly"* — and added 3 TDD-style spec tests in new `CognitiveCyclePersistenceContractTests.cs`. 678 tests passing). Next: K.3 IOllamaClient → K.4 remaining surfaces → K.5 invariant audit. No cross-theme dependencies; cadence is Mark's call. |
 
 ### P2 — Medium-term, planned
 
@@ -963,7 +963,7 @@ Total calendar: ~10–14 weeks. Theme-scale work, phased so each ship produces v
 
 **Status:** plan drafted Apr 24 by dogfood Claude after Mark's explicit Apr 24 review approving the direction. Awaiting Mark's green-light to start J.0. Theme J is currently P0 in the priority matrix above.
 
-### Theme K — Test Spec-Coverage Migration (Apr 28, 2026 — P1, K.0 shipped, K.1 active)
+### Theme K — Test Spec-Coverage Migration (Apr 28, 2026 — P1, K.0–K.2 shipped, K.3 next)
 
 Methodology theme born from the Apr 28 silence-policy regression diagnosis. Mark's framing, verbatim: *"I think we're acting like junior developers here and writing code, then writing tests to match. We should be taking a TDD approach and ensuring that our code correctly resolves the test... we should also be using mockbehavior strict on all tests."*
 
@@ -972,14 +972,14 @@ Methodology theme born from the Apr 28 silence-policy regression diagnosis. Mark
 **Phased migration:**
 - **K.0** Policy documented (✅ Apr 28). `~/.claude/TESTING-STRATEGY.md` §20 added with the policy, the Apr 28 canonical case, the setup-order trap, and naming conventions.
 - **K.1** `IConversationService` strict-mock migration (✅ Apr 28). 4 sites inventoried, 3 converted. All 675 tests pass. No spec gaps surfaced — confidence-builder for K.2.
-- **K.2** `IMemoryService` strict-mock migration. Largest surface; do it after K.1 patterns are validated.
+- **K.2** `IMemoryService` strict-mock migration (✅ Apr 28). Base-class `AniTestBase.MockMemory` flipped to strict, plus two file-local mocks (`VoiceTurnPipelineTests`, `TimePerceptionSourceTests`'s `IStateStore` slice). All 675 baseline tests pass — every memory call site was already explicit in test factories. Surfaced one previously-unpinned architectural invariant from `DesireEngine.cs` source — *"CognitiveCycleProcessor must never call SaveDesireStateAsync directly"* — and added 3 TDD-style spec tests in new `tests/AniRuntime.Tests/CognitiveCyclePersistenceContractTests.cs` using a separate strict `IMemoryPersistence` mock for the processor's `persist` slot, distinct from `DesireEngine`'s. Total: 678 tests passing, 0 warnings.
 - **K.3** `IOllamaClient` strict-mock migration. LLM mock surface; subtle setups (chat vs. inner monologue vs. JSON modes).
 - **K.4** Remaining mock surfaces (sweep). `IConversationGateState`, `IDiagnosticService`, `IIntentRouter`, `IChannelResolver`, `IAniAction`, `ISessionNotifier`, `IPerceptionSource`, `IHttpClientFactory`, `IClaimVerification`, etc.
 - **K.5** Invariant audit. Walk Paper 1 invariants, gates / phases / detectors, and `// Apr X, YYYY:` regression comments — confirm each is pinned by a test. Output: list of un-tested invariants → spec tests in subsequent commits.
 
 **Acceptance criterion.** All `Mock<T>` instantiations in the suite carry `MockBehavior.Strict`. Every load-bearing invariant has a spec test naming what the system MUST do (not what the code currently does).
 
-**Sequencing.** No cross-theme dependencies. Each phase ships independently. Cadence is Mark's call. K.0 ✅ → K.1 in progress → K.2 → K.3 → K.4 → K.5.
+**Sequencing.** No cross-theme dependencies. Each phase ships independently. Cadence is Mark's call. K.0 ✅ → K.1 ✅ → K.2 ✅ → K.3 (next) → K.4 → K.5.
 
 **Paper 3 candidate contribution.** *"Test methodology drift in long-lived AI-pipeline projects: how loose-mock + code-first testing produces a suite that passes while the system regresses."* The Apr 28 regression is the canonical instance — caught only because Mark tagged a single outreach as garbage and the trace happened to be archaeologically reachable. Migration log + K.5 audit results form the empirical backing.
 
