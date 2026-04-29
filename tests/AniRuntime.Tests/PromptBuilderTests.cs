@@ -564,6 +564,74 @@ public class PromptBuilderTests
         user.Should().Contain("weeks ago");
     }
 
+    // ─── Theme E #4: canonical occupation anchoring (Apr 28 foam/printer drift fix) ───
+
+    /// <summary>
+    /// SPEC: the lean conversation system prompt MUST include `cs.Occupation`
+    /// text when set, so the model has explicit grounding for Ani's canonical
+    /// world. Apr 28 18:28 case (foam orders / 3D printer repair instead of
+    /// bookstore canon) traced to the lean prompt previously having ZERO
+    /// occupational grounding — `cs.Occupation` was in the inner-thought
+    /// prompt only.
+    /// </summary>
+    [Fact]
+    public void BuildLeanConversationPrompt_System_IncludesOccupation()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.CharacterState.Occupation = "small-town bookstore clerk who shelves romance novels";
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (system, _) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        system.Should().Contain("small-town bookstore clerk who shelves romance novels",
+            "the lean prompt must anchor canonical occupation so the model doesn't drift to training-register fabrications (foam, printer repair, etc.)");
+    }
+
+    /// <summary>
+    /// SPEC: NatureGrounding entries are appended to the system prompt when
+    /// present, capped at 2 to preserve lean-prompt discipline.
+    /// </summary>
+    [Fact]
+    public void BuildLeanConversationPrompt_System_IncludesFirstTwoNatureGroundingEntries()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.CharacterState.NatureGrounding =
+        [
+            "you sneak reads in the back when it's slow",
+            "you keep a glass of vanilla cream soda on the counter",
+            "third entry that should NOT appear",
+            "fourth entry that should NOT appear",
+        ];
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (system, _) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        system.Should().Contain("you sneak reads in the back when it's slow");
+        system.Should().Contain("you keep a glass of vanilla cream soda on the counter");
+        system.Should().NotContain("third entry that should NOT appear",
+            "NatureGrounding is capped at 2 entries to preserve lean-prompt discipline");
+        system.Should().NotContain("fourth entry that should NOT appear");
+    }
+
+    /// <summary>
+    /// CONTROL: when Occupation is empty AND NatureGrounding is empty, the
+    /// system prompt simply omits the world line — no empty placeholder, no
+    /// stray punctuation.
+    /// </summary>
+    [Fact]
+    public void BuildLeanConversationPrompt_System_OmitsWorldLineWhenEmpty()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.CharacterState.Occupation = string.Empty;
+        snapshot.CharacterState.NatureGrounding = [];
+        var thread = new ConversationThread { Messages = new List<ConversationMessage>() };
+
+        var (system, _) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        system.Should().NotContain("Your world:",
+            "with no occupation and no nature grounding there's nothing to anchor; omit the line entirely");
+    }
+
     [Fact]
     public void BuildInnerThoughtPrompt_J3_AnchoredMemories_StayAtemporal()
     {

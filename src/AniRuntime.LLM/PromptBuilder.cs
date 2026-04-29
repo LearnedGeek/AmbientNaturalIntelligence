@@ -470,10 +470,27 @@ public static class PromptBuilder
 
         // Minimal persona: name, core traits (first 3 only), time. That's it.
         var traits = cs.CoreTraits.Take(3);
+
+        // Apr 29, 2026 (Theme E #4): canonical occupation anchor in the conversation
+        // system prompt. The Apr 28 18:28 case ("foam orders / 3D printer repair")
+        // showed Type 1 occupational drift — model fabricates job vocabulary when
+        // asked about her work because the lean prompt previously had ZERO
+        // occupational grounding. Adding cs.Occupation as a single line keeps the
+        // prompt minimal while anchoring her canonical world. NatureGrounding
+        // entries (typically 1-3 short phrases about her bookstore world) are
+        // appended when present; capped at 2 to preserve lean-prompt discipline.
+        var worldLine = string.IsNullOrWhiteSpace(cs.Occupation)
+            ? string.Empty
+            : $"Your world: {cs.Occupation}.";
+        var natureSeed = cs.NatureGrounding.Count > 0
+            ? " " + string.Join(" ", cs.NatureGrounding.Take(2))
+            : string.Empty;
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
             It is {now:h:mm tt} on {now:dddd, MMMM d}.
             Your personality: {string.Join("; ", traits)}.
+            {worldLine}{natureSeed}
 
             RULES:
             - Match the energy and length of the conversation.
