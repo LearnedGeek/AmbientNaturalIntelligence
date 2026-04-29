@@ -25,6 +25,7 @@ public class OutreachPhase
     private readonly AniActionDispatcher _dispatcher;
     private readonly DesireEngine _desire;
     private readonly ClaimVerificationPhase _claimVerifier;
+    private readonly IConversationService _conversations;
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
     private readonly Em9Detector? _em9;
@@ -47,6 +48,7 @@ public class OutreachPhase
         AniActionDispatcher dispatcher,
         DesireEngine desire,
         ClaimVerificationPhase claimVerifier,
+        IConversationService conversations,
         IOptions<AniOptions> aniOptions,
         ILogger<OutreachPhase> log,
         ITextClassificationService? mlClassifier = null,
@@ -60,11 +62,57 @@ public class OutreachPhase
         _dispatcher = dispatcher;
         _desire = desire;
         _claimVerifier = claimVerifier;
+        _conversations = conversations;
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
         _em9 = em9Detector;
         _aniOptions = aniOptions.Value;
         _log = log;
+    }
+
+    /// <summary>
+    /// Apr 29, 2026 (Theme E): outbound conversation_messages invariant fix.
+    /// Every Ani-outbound — outreach OR reactive share — must enter the active
+    /// conversation thread so subsequent cycles' structured per-speaker summary
+    /// (Theme J.2) sees what Ani sent. Without this, follow-up questions from
+    /// Mark land in cycles where Ani has no thread-context for her own outbound
+    /// and confabulates *"you made that up"* responses (Apr 29 09:04 Anxietyland
+    /// trace + Apr 29 10:24 compounding instance).
+    ///
+    /// Get-or-create semantics: if an active thread exists, use it; if not,
+    /// create one with InitiatedBy=Ani (this outbound IS the thread initiation).
+    /// Failures in this path log a warning and continue — the dispatch already
+    /// succeeded and we don't want a thread-write hiccup to bubble up as a
+    /// cycle failure.
+    /// </summary>
+    internal async Task RecordOutboundInThreadAsync(string content, CancellationToken ct)
+    {
+        try
+        {
+            var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
+            if (thread is null)
+            {
+                thread = new ConversationThread
+                {
+                    InitiatedBy   = Roles.Ani,
+                    StartedAt     = DateTimeOffset.UtcNow,
+                    LastMessageAt = DateTimeOffset.UtcNow,
+                };
+                await _conversations.SaveThreadAsync(thread, ct).ConfigureAwait(false);
+                _log.LogDebug("Outbound created new conversation thread: {ThreadId}", thread.Id);
+            }
+
+            await _conversations.AddMessageAsync(thread.Id, new ConversationMessage
+            {
+                Role    = Roles.Ani,
+                Content = content,
+                SentAt  = DateTimeOffset.UtcNow,
+            }, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to record outbound in conversation thread — dispatch already succeeded, continuing");
+        }
     }
 
     public async Task RunOutreachAsync(
@@ -287,6 +335,10 @@ public class OutreachPhase
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
 
+        // Apr 29, 2026 (Theme E): record outbound in conversation thread so
+        // subsequent cycles see it in the structured per-speaker summary.
+        await RecordOutboundInThreadAsync(decision.Message, ct).ConfigureAwait(false);
+
         await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
@@ -379,6 +431,11 @@ public class OutreachPhase
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
 
         _reactiveShareCount++;
+
+        // Apr 29, 2026 (Theme E): record reactive share in conversation thread
+        // so Mark's follow-up question (e.g. "where did you see that?") lands
+        // in a cycle that has thread-context for what Ani just shared.
+        await RecordOutboundInThreadAsync(message, ct).ConfigureAwait(false);
 
         await _persist.SaveAsync(new MemoryRecord
         {

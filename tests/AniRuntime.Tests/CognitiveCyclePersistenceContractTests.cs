@@ -152,7 +152,7 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
             _mockIntent.Object, gateState, compressor, claimVerifier, DefaultOptions, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance);
         var outreach = new OutreachPhase(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, claimVerifier, DefaultOptions,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockOllama.Object, dispatcher, desire, claimVerifier, _mockConversations.Object, DefaultOptions,
             NullLogger<OutreachPhase>.Instance);
         var perception = new PerceptionPhase(
             new[] { _mockSource.Object }, MockMemory.Object, NullLogger<PerceptionPhase>.Instance);
