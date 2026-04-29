@@ -838,6 +838,9 @@ Member items:
 - Generation-loop degeneracy check (one-line N-gram uniqueness pre-save)
 - World Layer source-type audit (investigate, not a confirmed failure)
 - `ContainsNovelSpecifics` regex gate removal (memory-service hygiene batch)
+- **Outbound conversation_messages invariant fix (Apr 29, slotted by Mark Apr 29 10:25)** — `OutreachPhase` dispatches reactive shares + outreaches via `_dispatcher.DispatchAsync` and saves an Episodic memory record but never calls `_conversations.AddMessageAsync` on the active thread. Result: when Mark replies to a share/outreach, the structured per-speaker summary (J.2) doesn't include what Ani sent — Ani has no thread-context for her own outbound and confabulates *"you made that up"* on follow-ups. Apr 29 09:04 Anxietyland share is the canonical instance. **Right fix:** at OutreachPhase dispatch, call `AddMessageAsync` on the active thread (or create one if none exists) with `Role=Roles.Ani` and the dispatched content. Same shape as `ConversationReplyPhase.cs:582`. Resolves both the missing-thread-write and the prefix-mismatch on inbound seeding. ~half-day + spec tests. Inverse of yesterday's admin-tag finding (same `conversation_messages` invariant, two opposite ways to break it). See Apr 29 gap-watch row.
+- Character-seed occupational anchoring in WHAT IS TRUE prompt section (Apr 28 finding — Type 1 occupational drift, foam/printer instead of bookstore canon)
+- `StripCliffhangerTic` position-bug — currently end-only, leaks mid-message (Apr 28 finding)
 
 ### Theme F — Operational Infrastructure
 Largely complete. Scheduling theme now.
