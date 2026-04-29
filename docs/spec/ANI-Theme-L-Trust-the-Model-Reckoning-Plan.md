@@ -1,9 +1,11 @@
 # Theme L — Trust-the-Model Reckoning
 
 **Drafted:** April 28, 2026
-**Status:** L.0 (inventory) starting
-**Origin:** Apr 28 conversation-quality regression. Mark's framing: *"previously I was able to have 5-10 messages before she went off the rails, now it's 0-1 before she's non-sensical."*
+**Status:** L.0 (inventory) — priority dropped Apr 28 evening after empirical reversal of the founding diagnosis.
+**Origin:** Apr 28 morning conversation-quality regression. Mark's framing: *"previously I was able to have 5-10 messages before she went off the rails, now it's 0-1 before she's non-sensical."*
 **Theme owner:** Mark (he named it; I'll do the legwork).
+
+> **Apr 28 evening update (~20:00 CDT):** the founding diagnosis was wrong, or at least mis-prioritized. After (a) tactical substrate purge (178 memory records + 22 `///tag` conv messages removed, seeds preserved per the cross-phrase preservation logic) and (b) removing the obsolete paragraph-break truncation gate in `MessageCleaner` (commit `82c193a` — was cutting multi-paragraph replies down to 11 chars), conversation quality recovered to ~90 minutes of sustained coherent exchange WITHOUT re-introducing a single stripped scaffold. The 5-10 → 0-1 regression turned out to be **substrate pollution + obsolete output-side gate**, not the Apr 1 strip-echo bet breaking. L.0 inventory still worth completing for the record. L.1 paired ablation **priority dropped** — the empirical answer is "those Apr 1 strips were probably right; the substrate was the issue." The methodological contribution stays: re-evaluation gates ARE useful even when the conclusion turns out to validate the original decision, because the alternative is suspecting the wrong cause indefinitely.
 
 ---
 
@@ -99,6 +101,7 @@ Theme L is its own theme because *"prompt-side scaffolding decisions"* is a cohe
 | Date | Phase | Note |
 |------|-------|------|
 | 2026-04-28 | L.0 | Theme drafted by Mark + dogfood Claude after Apr 28 conversation-quality regression diagnosis. Snapshot audit confirmed stuck-thought repetition severity. Phased plan landed. L.0 inventory work starting. |
+| 2026-04-28 evening | L.0 | **Priority dropped.** Founding diagnosis empirically reversed: substrate purge + MessageCleaner paragraph-truncation removal restored conversation quality (~90 min sustained at 20:00 CDT) without re-introducing any stripped scaffold. Working hypothesis flipped: Apr 1 strips were probably right; substrate was the issue. L.0 inventory still completes for the record; L.1 paired ablation deprioritized but not cancelled — methodological contribution stands. Three-paths-to-same-conclusion methodology pattern (Mar 22 Mistral A/B → Apr 1 inner thought reform → Apr 28 substrate cleanup) is itself a Paper 3 process-note. |
 
 ---
 
