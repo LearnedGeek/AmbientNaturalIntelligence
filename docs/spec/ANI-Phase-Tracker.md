@@ -83,11 +83,14 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **Easter as dynamic calendar event** | Theme F | Backlog 15.6 | Calendar library integration for Easter. Low priority. |
 | **Paper 4 / Paper 5 backlog methodology notes** | Research | Backlog 15.21, 15.22 | Researcher-as-Architectural-Reviewer + Black-Box Relational Probe Methodology. Methodology observations captured for future paper scoping. |
 
-### What this matrix is NOT
+### What this matrix IS and is NOT
+
+**IS:** the tracker's representation of every active workstream. Per Mark's Apr 28 21:00 directive: *"that doesn't mean we don't add things to our task tracker and track them. perhaps they're lower priority but they still need to remain visible."* If a workstream has a design section, plan doc, or other content in this tracker, it MUST also appear in the matrix at the appropriate priority tier (P0-P4). Lower priority is fine; absent from the matrix is not. Out-of-sight = effectively shelved, even when documentation exists deeper in the tracker.
 
 - **Not a schedule.** Priorities do not imply dates. P0 items are active but their exact week-by-week cadence is Mark's call.
 - **Not exhaustive of every past decision.** Historical / completed workstreams live in the sections below as archive.
 - **Not frozen.** When Mark re-prioritises, this matrix updates. Claude instances making new-workstream proposals should propose where the item lands in the matrix, not separately.
+- **Not a place where standalone design sections live without a matrix entry.** If you find a workstream with content elsewhere in the tracker but no matrix row (Vibe Loop was the canonical instance — drafted Apr 17, fell out of sight until Apr 28 21:00), the correction is: promote it into the matrix at its honest priority tier, not leave it as a deeper section nobody finds. Tracker hygiene is the visibility floor; the matrix is the ceiling.
 
 ---
 
