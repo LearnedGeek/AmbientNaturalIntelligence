@@ -265,6 +265,33 @@ public class CognitiveCycleProcessor
             catch { /* confab check failure is non-critical — store anyway */ }
         }
 
+        // Theme E #5 (Apr 29, 2026): generation-loop degeneracy check. If the
+        // new thought is a near-duplicate of recent InnerThoughts already in
+        // the snapshot's recent-memory pool (Jaccard ≥ 0.50 over token
+        // trigrams), skip persistence. This interrupts the duck-norris-77x /
+        // vanilla-cream-soda-30x recurrence pattern at the persistence
+        // boundary so the next cycle's retrieval pool isn't re-fed by yet
+        // another copy of the same thought shape. Uses snapshot.RecentMemory
+        // (already populated by ContextBuilder with the 5 most recent inner
+        // thoughts) rather than re-querying — keeps the processor's
+        // dependency surface narrow.
+        if (shouldPersist)
+        {
+            try
+            {
+                var recentThoughtContents = snapshot.RecentMemory
+                    .Where(m => m.Type == MemoryType.InnerThought)
+                    .Select(m => m.Content)
+                    .Where(c => !string.IsNullOrWhiteSpace(c));
+                if (Core.Utilities.NGramSimilarity.IsNearDuplicate(contentForStorage, recentThoughtContents))
+                {
+                    _log.LogInformation("Inner thought near-duplicate of recent thought (trigram Jaccard ≥0.50). Not storing — generation-loop degeneracy guard fired.");
+                    shouldPersist = false;
+                }
+            }
+            catch { /* degeneracy check failure is non-critical — store anyway */ }
+        }
+
         if (shouldPersist)
         {
             await _persist.SaveAsync(new MemoryRecord
