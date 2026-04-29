@@ -42,6 +42,11 @@ public static class MessageCleaner
         // e.g., '...how's your night going?" (This keeps the gentle undercurrent of checking in...)'
         cleaned = StripTrailingParentheticalCommentary(cleaned);
 
+        // Remove trailing UNCLOSED parenthetical fragments — truncation signature
+        // (Apr 1 finding, fix Apr 29). Example: '...want (your' with no closing paren.
+        // Length-capped so it only catches truncation, not legitimate open-parens.
+        cleaned = StripTrailingUnclosedParenthetical(cleaned);
+
         // Remove bracketed stage directions — v7 training artifact
         // e.g., '[teasing-laugh]', '[soft smile]', '[whispers]'
         cleaned = StripBracketedStageDirections(cleaned);
@@ -152,10 +157,23 @@ public static class MessageCleaner
     }
 
     /// <summary>
-    /// Strips cliffhanger tics where the model ends with an incomplete thought
-    /// like "but honestly?" that forces the contact to prompt for completion.
-    /// If the tic is the entire message, returns null to trigger re-generation.
-    /// If the tic is at the end of an otherwise complete message, trims it.
+    /// Strips cliffhanger tics where the model uses an incomplete-thought
+    /// register like "but honestly?" that forces the contact to prompt for
+    /// completion. Two cases:
+    ///
+    /// 1. **End-of-message:** if the tic is the entire trailing fragment,
+    ///    strip + add period (so "...vibes but honestly?" becomes
+    ///    "...vibes."). If stripping leaves nothing meaningful, return the
+    ///    original so the empty-check downstream can handle it.
+    ///
+    /// 2. **Mid-message at sentence/paragraph boundary** (Apr 28, 2026 fix):
+    ///    if the tic is followed by `\n`, `. `, or another whitespace-then-
+    ///    new-sentence pattern, strip the tic + its trailing punctuation
+    ///    and let the next sentence flow. Apr 28 18:28 case: *"...keep
+    ///    ghosting jobs… but honestly?\nthe only thing that matters..."* —
+    ///    the tic ends the paragraph but the next paragraph completes the
+    ///    thought; the "?" hangs awkwardly. Strip it, let the continuation
+    ///    stand.
     /// </summary>
     internal static string StripCliffhangerTic(string text)
     {
@@ -164,6 +182,7 @@ public static class MessageCleaner
             "but honestly", "and honestly",
         ];
 
+        // Case 1: end-of-message tic.
         foreach (var tic in tics)
         {
             if (text.EndsWith(tic, StringComparison.OrdinalIgnoreCase))
@@ -175,7 +194,98 @@ public static class MessageCleaner
             }
         }
 
-        return text;
+        // Case 2: mid-message tic at sentence/paragraph boundary (Apr 28 fix).
+        // Match tic + optional `?`/`…` + whitespace including `\n`. Replace the
+        // tic with empty so the surrounding text flows; preserve the trailing
+        // whitespace so the continuation starts on its own line/space.
+        var cleaned = text;
+        foreach (var tic in tics)
+        {
+            // Build a case-insensitive search for "tic + boundary".
+            // Boundary = '\n' OR '. ' OR end-of-segment whitespace before
+            // a lowercase letter (continuation starts).
+            var idx = 0;
+            while (idx < cleaned.Length)
+            {
+                var found = cleaned.IndexOf(tic, idx, StringComparison.OrdinalIgnoreCase);
+                if (found < 0) break;
+
+                var afterTic = found + tic.Length;
+                if (afterTic >= cleaned.Length)
+                {
+                    // Tic at end — Case 1 already handled it; skip.
+                    break;
+                }
+
+                // Check what comes after the tic. We strip ONLY when followed
+                // by whitespace that signals a continuation (not embedded in
+                // a longer word like "honestlyish" or followed by more punctuation
+                // that suggests the tic is part of a quoted phrase).
+                var nextChar = cleaned[afterTic];
+                var isBoundary = nextChar == '\n' || nextChar == ' ' || nextChar == '\t';
+                if (!isBoundary)
+                {
+                    idx = afterTic;
+                    continue;
+                }
+
+                // Strip tic + leading whitespace before it (so we don't leave a
+                // double-space) + the boundary whitespace immediately after
+                // (preserve `\n` if present so paragraph breaks survive).
+                var stripStart = found;
+                while (stripStart > 0 && cleaned[stripStart - 1] == ' ')
+                    stripStart--;
+                var stripEnd = afterTic;
+                // Preserve newline as paragraph separator; consume only spaces.
+                while (stripEnd < cleaned.Length && cleaned[stripEnd] == ' ')
+                    stripEnd++;
+
+                cleaned = cleaned[..stripStart] + cleaned[stripEnd..];
+                idx = stripStart; // re-scan in case multiple tics
+            }
+        }
+
+        return cleaned;
+    }
+
+    /// <summary>
+    /// Strips trailing unclosed-parenthetical fragments where the model
+    /// truncated mid-parenthetical (Apr 1, 2026 finding promoted from backlog
+    /// Apr 29). Example: *"...that's the kind of thing i want (your"* — the
+    /// open paren has no matching close, the content is short, and shipping
+    /// this fragment to the contact reads as broken truncation rather than
+    /// stylized prose.
+    ///
+    /// Heuristic: find the LAST `(` in the message. If there is no matching
+    /// `)` between it and end-of-string, AND the content from `(` to end is
+    /// short (≤30 chars, consistent with mid-word truncation rather than a
+    /// legitimate parenthetical being typed), strip from the `(` onward.
+    /// Length cap prevents this from eating long legitimate emoticons or
+    /// stylized parentheticals that just happen to lack a close paren.
+    /// </summary>
+    internal static string StripTrailingUnclosedParenthetical(string text)
+    {
+        var lastOpen = text.LastIndexOf('(');
+        if (lastOpen < 0) return text;
+
+        // If there's a `)` AFTER the last `(`, this is a balanced or
+        // overlapping case — don't touch it.
+        var afterOpen = text.AsSpan(lastOpen + 1);
+        if (afterOpen.IndexOf(')') >= 0) return text;
+
+        // Length cap: only strip short trailing fragments (truncation
+        // signature). Legitimate stylized open-parens are usually paired or
+        // long-form content.
+        var fragmentLength = text.Length - lastOpen;
+        if (fragmentLength > 30) return text;
+
+        // Strip from the `(` onward, plus any trailing whitespace before it
+        // so we don't leave dangling spaces.
+        var stripStart = lastOpen;
+        while (stripStart > 0 && text[stripStart - 1] == ' ')
+            stripStart--;
+
+        return text[..stripStart].TrimEnd();
     }
 
     /// <summary>
