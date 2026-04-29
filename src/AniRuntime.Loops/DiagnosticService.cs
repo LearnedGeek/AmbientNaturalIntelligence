@@ -258,7 +258,7 @@ public class DiagnosticService : IDiagnosticService
             Description = $"Memory {kv.Key[..8]}... merged {kv.Value}x in scan window",
             Severity = DiagnosticSeverity.Warning,
             Evidence = $"Same record merged {kv.Value} times",
-            SuggestedAction = "Quality gate may not be catching iterative rewrites. Check ContainsNovelSpecifics.",
+            SuggestedAction = "Iterative same-record rewrites detected. Investigate the merge prompt + 0.85 similarity floor; ContainsNovelSpecifics regex gate removed Apr 29 (Theme E #6) so this finding is now diagnostic-only.",
         }).ToList();
     }
 

@@ -120,9 +120,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
     // Merge quality gate: regex patterns for detecting confabulated specifics
     // in merged output that weren't present in either source.
-    private static readonly Regex NumberPattern = new(@"\b\d+\b", RegexOptions.Compiled);
-    private static readonly Regex TimePattern = new(@"\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(am|pm|AM|PM)\b", RegexOptions.Compiled);
-    private static readonly Regex NamePattern = new(@"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)\b", RegexOptions.Compiled);
+    // NumberPattern / TimePattern / NamePattern regexes removed Apr 29, 2026
+    // (Theme E #6) — only ContainsNovelSpecifics used them, and that gate
+    // was removed with this batch. If a future feature needs these patterns,
+    // restore from git history rather than re-deriving.
 
     public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
     {
@@ -1000,15 +1001,26 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
             merged = merged.Trim().Trim('"');
 
-            // Quality gate: reject merges that introduce confabulated specifics.
-            // If the merged output contains numbers, times, or proper nouns that
-            // weren't in either source, the LLM invented them during rewrite.
-            // Good drift adds depth. Bad drift adds noise. Gate by quality, not time.
-            if (ContainsNovelSpecifics(merged, existingContent, newContent))
-            {
-                _log.LogDebug("Merge quality gate: rejected — merged content introduces novel specifics not in either source");
-                return null;
-            }
+            // Theme E #6 (Apr 29, 2026): ContainsNovelSpecifics regex gate
+            // removed. The gate previously rejected any merged output that
+            // introduced numbers/times/proper-nouns absent from either source.
+            // Three reasons for removal:
+            //   1. Architecture over instruction — regex post-hoc rejection
+            //      of LLM output is the wrong shape for confabulation defense
+            //      (Mar 22 / Apr 1 / Apr 28 finding pattern). The merge prompt
+            //      and the 0.85 similarity floor (Apr 12 fix `0e7f199`) carry
+            //      the load now.
+            //   2. False-positive rate. Reasonable merge interpolations
+            //      ("3pm + 4pm → 3:30pm" or "Sarah and Kevin → friends") would
+            //      trigger the gate even though they were correct reconciliations
+            //      of the two sources.
+            //   3. Empirical: 1,113 merges in the Apr 28 snapshot indicate the
+            //      merge path is actively useful and not currently producing
+            //      visible confabulation cascades — the substrate audit
+            //      pollution surfaced from inner-thought saves and admin-tag
+            //      leaks, not from merges.
+            // Reversible: if observation shows merge-introduced confabulation
+            // climbing, restore via git history.
 
             // Re-embed the merged content
             var newEmbedding = await _ollama.EmbedAsync(merged, ct).ConfigureAwait(false);
@@ -1053,39 +1065,9 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         }
     }
 
-    /// <summary>
-    /// Quality gate for merge output. Checks whether the merged content introduces
-    /// specific factual claims (numbers, times, proper nouns) that weren't present
-    /// in either source. This distinguishes good drift (adding depth/emotional nuance)
-    /// from bad drift (confabulating details during rewrite).
-    ///
-    /// Design principle: don't gate emergence by time, gate it by quality.
-    /// </summary>
-    private static bool ContainsNovelSpecifics(string merged, string source1, string source2)
-    {
-        var sources = $"{source1} {source2}";
-
-        // Check for numbers in merged output that aren't in either source
-        var mergedNumbers = NumberPattern.Matches(merged).Select(m => m.Value).ToHashSet();
-        var sourceNumbers = NumberPattern.Matches(sources).Select(m => m.Value).ToHashSet();
-        var novelNumbers = mergedNumbers.Except(sourceNumbers).ToList();
-        if (novelNumbers.Count > 0)
-            return true;
-
-        // Check for specific times invented during merge
-        var mergedTimes = TimePattern.Matches(merged).Select(m => m.Value).ToHashSet();
-        var sourceTimes = TimePattern.Matches(sources).Select(m => m.Value).ToHashSet();
-        if (mergedTimes.Except(sourceTimes).Any())
-            return true;
-
-        // Check for proper nouns (capitalized multi-word names) not in sources
-        var mergedNames = NamePattern.Matches(merged).Select(m => m.Value).ToHashSet();
-        var sourceNames = NamePattern.Matches(sources).Select(m => m.Value).ToHashSet();
-        if (mergedNames.Except(sourceNames).Any())
-            return true;
-
-        return false;
-    }
+    // ContainsNovelSpecifics removed Apr 29, 2026 (Theme E #6) along with the
+    // NumberPattern / TimePattern / NamePattern regexes that only it used.
+    // See the comment block at the merge site above for reasoning.
 
     /// <summary>
     /// Cross-type profile correction: when a Perception/Episodic record about the contact
