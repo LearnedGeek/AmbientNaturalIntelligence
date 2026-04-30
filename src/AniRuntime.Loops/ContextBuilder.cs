@@ -121,46 +121,68 @@ public class ContextBuilder
         var interiorContext = new List<MemoryRecord>();
         try
         {
-            if (!conversationMode)
+            // Apr 30, 2026 — Facts-tier retrieval is now live in BOTH modes.
+            // Previously, conversation mode bypassed all tier-scoped retrieval
+            // and only anchored memories flowed. That was the upstream cause
+            // of the Apr 30 *"she doesn't remember what I teach"* tag class:
+            // Mark-asserted facts about his life (WCTC, profession, schedule)
+            // exist in the Facts tier with importance 1.0 from prior
+            // perception writes, but were structurally invisible during a
+            // live conversation, so the model filled the gap with invention
+            // (Western Career Technical College / Academy / welding /
+            // snow / tea / kids / not teaching). Re-enabling Facts in
+            // conversation mode gives the composition prompt access to the
+            // grounding it needs.
+            //
+            // Interior remains gated on !conversationMode — interior
+            // content (inner thoughts, mood reflections) can pollute
+            // conversation composition with stale mood drift; the
+            // conversation provides its own emotional context inline.
+            if (perceptions.Count > 0)
             {
-                if (perceptions.Count > 0)
+                var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
+
+                // Facts: tier-scoped semantic search for grounded claims.
+                // Always run — see comment above.
+                var factResults = await _search.SearchByTierAsync(
+                    searchQuery, EpistemicTier.Facts, 5, ct).ConfigureAwait(false);
+                groundedFacts = factResults.Select(s => s.Record).ToList();
+
+                if (!conversationMode)
                 {
-                    var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
-
-                    // Facts: tier-scoped semantic search for grounded claims
-                    var factResults = await _search.SearchByTierAsync(
-                        searchQuery, EpistemicTier.Facts, 5, ct).ConfigureAwait(false);
-                    groundedFacts = factResults.Select(s => s.Record).ToList();
-
-                    // Interior: tier-scoped semantic search for voice/mood continuity
+                    // Interior: tier-scoped semantic search for voice/mood continuity.
+                    // Skipped in conversation mode (see comment above).
                     var interiorResults = await _search.SearchByTierAsync(
                         searchQuery, EpistemicTier.Interior, 5, ct).ConfigureAwait(false);
                     interiorContext = interiorResults.Select(s => s.Record).ToList();
                 }
-                else
+            }
+            else
+            {
+                // No perceptions — fall back to recent memories.
+                groundedFacts = (await _search.GetByTierAsync(
+                    EpistemicTier.Facts, 8, ct).ConfigureAwait(false)).ToList();
+
+                if (!conversationMode)
                 {
-                    // No perceptions — fall back to recent memories from each pool
-                    groundedFacts = (await _search.GetByTierAsync(
-                        EpistemicTier.Facts, 8, ct).ConfigureAwait(false)).ToList();
                     interiorContext = (await _search.GetByTierAsync(
                         EpistemicTier.Interior, 5, ct).ConfigureAwait(false)).ToList();
                 }
             }
 
             // Anchored memories are always facts — ensure they're in the Facts pool
-            // even when semantic search didn't surface them (or when skipped in
-            // conversation mode). Anchored foundation facts are stable and never
-            // produce echoes; they are retained in both modes. Dedup by id.
+            // even when semantic search didn't surface them. Anchored foundation
+            // facts are stable and never produce echoes; they are retained in both
+            // modes. Dedup by id.
             var missingAnchors = anchoredMemories
                 .Where(m => !groundedFacts.Any(g => g.Id == m.Id));
             groundedFacts.InsertRange(0, missingAnchors);
 
             _log.LogDebug(
-                "Tier retrieval: {Facts} facts, {Interior} interior (from {Source})",
+                "Tier retrieval: {Facts} facts, {Interior} interior (mode={Mode}, source={Source})",
                 groundedFacts.Count, interiorContext.Count,
-                conversationMode
-                    ? "conversation mode — anchored only"
-                    : (perceptions.Count > 0 ? "perception query" : "recent fallback"));
+                conversationMode ? "conversation" : "ambient",
+                perceptions.Count > 0 ? "perception query" : "recent fallback");
         }
         catch (Exception ex)
         {
