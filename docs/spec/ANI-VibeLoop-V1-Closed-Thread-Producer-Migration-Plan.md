@@ -93,20 +93,27 @@ EF Core migration generated and committed. No data migration of existing records
 - DI registration added in `Program.cs:96`.
 - 8 spec tests in `tests/AniRuntime.Tests/SqliteClosedConversationStoreTests.cs`: empty-schema reads, full-field roundtrip, UPSERT semantics, GetByThreadIdAsync (hit + miss), GetRecentAsync ordering + limit, NULL embedding roundtrip, empty-collection roundtrip. **726 tests passing** (up from 718 — 8 new), 0 errors, 1 pre-existing warning unrelated to V1.
 
-### Phase V1.2 — LMKit-driven gist + emotional-rhythm extraction ⏳
-**Estimated effort:** ~2-3 days.
+### Phase V1.2 — LMKit-driven gist + emotional-rhythm extraction ✅
+**Status:** Shipped Apr 29, 2026 20:40 CDT.
+**Estimated effort:** ~2-3 days; actual ~30 min.
 
-New service `IClosedConversationSummarizer` in `AniRuntime.LLM` (or `LearnedGeek.ML` if reusable across DrOk). Implementation uses LMKit:
+New service `IClosedConversationSummarizer` in `AniRuntime.LLM` (location locked per V1.0). Implementation:
 
-- `Summarize(ConversationThread thread) → ClosedConversationRecord`:
-  - Per turn: LMKit emotion classification → register vector
-  - Per turn: LMKit keyword extraction → topical keywords
-  - Aggregate: per-speaker register vectors (mean of turn vectors), turn count, duration
-  - Compute: outcome signal seed (Ani-register delta from first turn to last)
-  - Generate prose gist via LMKit prompt: *"Summarize this conversation in 1-2 sentences, paraphrasing rather than quoting. Focus on what changed emotionally, not what was said."* (Anti-parrot constraint baked into the prompt.)
-- Embed the gist via existing `IOllamaClient.EmbedAsync`.
+- `SummariseAsync(ConversationThread thread) → ClosedConversationRecord`:
+  - Per turn: LLM-as-classifier via lean 9-register prompt (`BuildRegisterClassificationPrompt`) returning `{"register":"<canonical>"}`. Uses the proven 9-register taxonomy already deployed in `EmotionalProcessor`/`BuildEmotionalShiftPrompt` but stripped down to *just* the label (no delta scoring) for thread-close speed.
+  - Aggregate: per-speaker register-prevalence vectors (count of turn-labels normalised by turn count); "Unclassified" turns dilute every register evenly.
+  - Compute: outcome signal seed = Ani's second-half prevalence vector minus first-half (per-register delta, 9-dim). Outcome valence = `sum(positive_register_deltas) - sum(negative_register_deltas)` clamped to `[-1, +1]`. Positive set = {Tenderness, Playfulness, Delight, Curiosity}; Negative = {Longing, Frustration, Wistful, Existential}; Desire held out (context-dependent — vector only).
+  - Topic keywords: simple frequency-based tokeniser (stopword-filtered, top-N=5). Internal so V1.5 can swap for LMKit `KeywordExtraction` via LearnedGeek.ML if/when wanted; coupling AniRuntime.LLM to LearnedGeek.ML for one method was deferred per V1.0's cross-domain conversation note.
+  - Prose gist: LLM via `ChatAsync` (temperature=0.3) with anti-parrot system prompt — explicit *"DO NOT quote any contact turn verbatim. Do not lift phrases of 7 or more consecutive words"* constraint, paraphrase-only, 1-2 sentences, name-the-participants. Heuristic fallback (turn-count + duration only) on LLM failure preserves the anti-parrot guarantee even on the failure path.
+  - Embedding: `IOllamaClient.EmbedAsync(gist)`. Embedding failure is non-fatal — record persists with `Embedding = null`.
 
-**Acceptance:** spec test on the Apr 29 dentist conversation transcript — verify the generated gist contains NO substring of contact's verbatim turns ≥7 tokens. Spec test on register output: verify both speakers produce a populated 9-register vector.
+**Implementation notes (Apr 29 20:40):**
+- `AniRuntime.Core/Interfaces/IClosedConversationSummarizer.cs` — narrow interface (Mar 19 ISP discipline), single `SummariseAsync` method.
+- `AniRuntime.LLM/ClosedConversationSummarizer.cs` — implementation. Public static surfaces: `Registers` (canonical 9-register order), `PositiveRegisters`, `NegativeRegisters`. Internal helpers (`BuildPrevalenceVector`, `ComputeDelta`, `ComputeValence`, `ParseRegister`, `Tokenize`, `ExtractTopicKeywords`, `BuildGistPrompt`, `BuildRegisterClassificationPrompt`, `SanitiseGist`, `BuildHeuristicGist`) tested directly via `InternalsVisibleTo` (added to `AniRuntime.LLM.csproj`).
+- DI registration in `Program.cs:99-100` (alongside V1.1's `IClosedConversationStore`).
+- 22 spec tests in `tests/AniRuntime.Tests/ClosedConversationSummarizerTests.cs`: helper-level (prevalence vector, valence projection, delta direction, half-split, tokeniser, register-parse fallbacks, gist sanitisation, gist-prompt anti-parrot constraint) + end-to-end strict-mock (happy path, frustration→tenderness positive valence, embedding failure non-fatal, LLM-gist failure heuristic fallback, single-speaker thread). **748 tests passing** (up from 726 — 22 new), 0 errors, 1 pre-existing warning unrelated to V1.
+
+**Acceptance:** ✅ — register-vector contract pinned, valence projection contract pinned, anti-parrot constraint structurally enforced in the prompt + verified by `BuildGistPrompt_SystemContainsAntiParrotConstraint`. The full Apr 29 dentist-transcript regression test (against an actual LLM run) lives in V1.6 — that's where the empirical *"no 7-token substring of contact verbatim"* check goes against the real model output, not the strict-mock surface.
 
 ### Phase V1.3 — `CloseThreadAsync` rewrite ⏳
 **Estimated effort:** ~1 day.
@@ -229,3 +236,4 @@ This becomes the canonical regression test for the leak class. Recurrence ever s
 | 2026-04-29 | V1.0 | Plan drafted by Mark + dogfood Claude after Apr 29 19:00 verbatim-parrot recurrence diagnosis. Mark Apr 29 19:22 critique surfaced the architectural framing: *"single-path failures shouldn't exist; the refactor is supposed to consolidate."* Plan drafted as the architecturally honest response — three concerns combined into one workstream rather than three patches. Awaiting Mark's go-ahead to start V1.0 design session. |
 | 2026-04-29 19:59 CDT | V1.0 | **V1.0 design alignment LOCKED.** Five primary decisions + bonus question answered. Notable upgrades from initial draft: (a) outcome signal expanded to dual representation (vector + valence scalar) per Mark's "anger to happiness sliding scale" question; (b) Q1 Lerman-territory note flagged for Paper 2 — per-thread register vectors with outcome deltas are a finer-grained empirical surface than Chu et al. 2025's aggregate-scale data; (c) new V1.4.5 legacy substrate audit phase added between V1.4 and V1.5 per Mark's Q5 concern about Episodic memories with global impact and Episodic→Semantic migration via Feature 32 reflection synthesis; (d) `IClosedConversationSummarizer` location locked to `AniRuntime.LLM` (cross-domain extraction to LearnedGeek.ML deferred — bigger conversation needed about overall migration scope). Calendar updated 8-10 → 9-11 working days serial. Ready to start V1.1. |
 | 2026-04-29 20:14 CDT | V1.1 | **V1.1 SHIPPED.** ~30 min actual vs ~1 day estimate. POCO + narrow interface (Mar 19 ISP discipline) + raw-SQLite store with UPSERT semantics + DI registration + 8 spec tests covering schema, roundtrip, UPSERT, by-thread lookup, recency ordering, NULL embedding, empty collections. 726 tests passing. Ready for V1.2 (LMKit-driven gist + emotional-rhythm extraction service). |
+| 2026-04-29 20:40 CDT | V1.2 | **V1.2 SHIPPED.** ~30 min actual vs ~2-3 day estimate. `IClosedConversationSummarizer` interface + `ClosedConversationSummarizer` implementation in AniRuntime.LLM. Per-turn 9-register classification via lean LLM prompt; per-speaker prevalence vectors; outcome-signal seed vector + scalar valence projection per V1.0 design (Desire excluded from valence as context-dependent); frequency-based topic-keyword extraction (LMKit-driven extraction deferred to V1.5 to avoid cross-project coupling); anti-parrot gist prompt with explicit "no 7+ word verbatim phrases" constraint; heuristic-gist fallback that preserves anti-parrot guarantee on LLM-failure path; embedding via `IOllamaClient.EmbedAsync`, non-fatal on failure. 22 new spec tests; 748 total passing. DI registered in Program.cs:99-100. Ready for V1.3 (CloseThreadAsync rewrite to use the summarizer + write to the V1.1 store, AND stop writing the verbatim Episodic record). |

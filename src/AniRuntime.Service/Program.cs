@@ -95,6 +95,9 @@ try
     // Vibe Loop V1 (Apr 29, 2026) — closed-thread structured-record store.
     // See docs/spec/ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md.
     builder.Services.AddSingleton<IClosedConversationStore, SqliteClosedConversationStore>();
+    // Vibe Loop V1.2 — produces ClosedConversationRecord from a closed thread.
+    // V1.3 wires this into SqliteConversationService.CloseThreadAsync.
+    builder.Services.AddSingleton<IClosedConversationSummarizer, ClosedConversationSummarizer>();
 
     builder.Services.AddSingleton<DesireEngine>();
 
