@@ -39,6 +39,7 @@ public class ConversationReplyPhase
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
     private readonly Em9Detector? _em9;
+    private readonly ICognitiveOutputGate? _outputGate;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -68,7 +69,8 @@ public class ConversationReplyPhase
         ILogger<ConversationReplyPhase> log,
         ITextClassificationService? mlClassifier = null,
         PersonaSummaryCache? personaCache = null,
-        Em9Detector? em9Detector = null)
+        Em9Detector? em9Detector = null,
+        ICognitiveOutputGate? outputGate = null)
     {
         _state = state;
         _persist = persist;
@@ -91,6 +93,7 @@ public class ConversationReplyPhase
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
         _em9 = em9Detector;
+        _outputGate = outputGate;
         _log = log;
     }
 
@@ -552,6 +555,13 @@ public class ConversationReplyPhase
             }
         }
 
+        // Theme J Phase J.5a (Apr 30, 2026) — universal output gate.
+        // See EvaluateAndRemediateReplyAsync. No-op when flag is off OR
+        // gate isn't registered.
+        reply = await EvaluateAndRemediateReplyAsync(
+            reply, thread, snapshot, replyMessage, replyPrompt, replyTemperature, ct)
+            .ConfigureAwait(false);
+
         // Step 3: Natural reply delay — real people don't reply in 4 seconds
         var minDelay = _aniOptions.ConversationMinReplySeconds;
         var maxDelay = _aniOptions.ConversationMaxReplySeconds;
@@ -958,6 +968,127 @@ public class ConversationReplyPhase
     {
         var trimmed = message.Trim().TrimEnd('.', '!').Trim();
         return trimmed.Split(' ').Length <= 5 && ContinuationPatterns.Contains(trimmed);
+    }
+
+    /// <summary>
+    /// Theme J Phase J.5a (Apr 30, 2026) — route the composed reply
+    /// through <see cref="ICognitiveOutputGate"/> at the dispatch
+    /// boundary. Returns the final reply text (possibly regenerated,
+    /// possibly the original, possibly a safe acknowledgement on hard
+    /// fail).
+    ///
+    /// **No-op when**: the gate isn't registered (pre-J.4 code paths,
+    /// most tests), OR the
+    /// <see cref="AniOptions.ConversationReplyOutputGateEnabled"/>
+    /// flag is false.
+    ///
+    /// **Verdict handling**:
+    /// - <see cref="OutputGateVerdict.Pass"/>: return original.
+    /// - <see cref="OutputGateVerdict.Remediate"/>: regenerate ONCE
+    ///   with the gate's hint baked into the user prompt. If the
+    ///   regeneration produces empty content or fails, fall back to
+    ///   the original (the gate's hint is a "could be better" signal,
+    ///   not a hard block).
+    /// - <see cref="OutputGateVerdict.Fail"/>: drop the reply,
+    ///   substitute a safe acknowledgement so the conversation
+    ///   doesn't go silent.
+    ///
+    /// **Failure containment**: a gate exception logs and falls
+    /// through to dispatch the original reply uncovered. Observability
+    /// bugs in the gate must NOT block the conversation pipeline.
+    /// </summary>
+    internal async Task<string> EvaluateAndRemediateReplyAsync(
+        string reply,
+        ConversationThread thread,
+        ContextSnapshot snapshot,
+        ConversationMessage replyMessage,
+        (string System, string User) replyPrompt,
+        float replyTemperature,
+        CancellationToken ct)
+    {
+        if (_outputGate is null || !_aniOptions.ConversationReplyOutputGateEnabled)
+            return reply;
+
+        var contactRecent = thread.Messages
+            .Where(m => m.Role == Roles.Mark)
+            .Select(m => m.Content)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .TakeLast(8)
+            .ToList();
+        var priorAni = thread.Messages
+            .Where(m => m.Role == Roles.Ani && m != replyMessage)
+            .Select(m => m.Content)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .TakeLast(8)
+            .ToList();
+
+        var artifact = new CognitiveArtifact
+        {
+            Content                 = reply,
+            ProducerKind            = CognitiveProducerKind.ConversationReply,
+            IntendedSink            = CognitiveOutputSink.Dispatch,
+            ContactName             = snapshot.CharacterState.PrimaryContactName ?? Roles.Mark,
+            ContactRecentMessages   = contactRecent,
+            PriorAniMessages        = priorAni,
+        };
+
+        OutputGateResult gateResult;
+        try
+        {
+            gateResult = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "J.5a gate evaluation threw — dispatching original reply uncovered.");
+            return reply;
+        }
+
+        switch (gateResult.Verdict)
+        {
+            case OutputGateVerdict.Pass:
+                return reply;
+
+            case OutputGateVerdict.Remediate:
+                _log.LogWarning(
+                    "J.5a gate Remediate on reply [{Fired}]: {Hint}",
+                    string.Join(",", gateResult.FiredInvariants), gateResult.RemediationHint);
+
+                var remediationUser =
+                    $"Your previous reply tripped a gate check ({string.Join(", ", gateResult.FiredInvariants)}). " +
+                    $"Hint: {gateResult.RemediationHint}\n\n" +
+                    $"Rewrite your reply to fix this. Same tone, same length, just clear of the issue. " +
+                    $"Do NOT acknowledge or reference the gate or hint in the reply itself.\n\n" +
+                    $"Original prompt that produced the bad reply:\n{replyPrompt.User}";
+
+                try
+                {
+                    var regenerated = await _ollama.ChatAsync(
+                        replyPrompt.System, snapshot.RecentHistory, remediationUser, ct, replyTemperature)
+                        .ConfigureAwait(false);
+                    regenerated = CleanOutreachMessage(regenerated);
+                    if (!string.IsNullOrWhiteSpace(regenerated))
+                    {
+                        _log.LogInformation("J.5a gate remediation succeeded — using regenerated reply.");
+                        return regenerated;
+                    }
+                    _log.LogWarning("J.5a gate remediation produced empty reply — keeping original.");
+                    return reply;
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "J.5a gate remediation regeneration failed — keeping original reply.");
+                    return reply;
+                }
+
+            case OutputGateVerdict.Fail:
+                _log.LogWarning(
+                    "J.5a gate Fail on reply [{Fired}]: {Hint} — dropping reply, using safe acknowledgement.",
+                    string.Join(",", gateResult.FiredInvariants), gateResult.RemediationHint);
+                return "mmm, sorry — give me a second to gather my thoughts.";
+
+            default:
+                return reply;
+        }
     }
 
     private static string Truncate(string text, int maxLength)

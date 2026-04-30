@@ -235,6 +235,21 @@ public class AniOptions
     // only if journal-log volume becomes a concern after J.1 ships.
     public bool GuardRefactorBaselineLoggingEnabled { get; set; } = true;
 
+    // Theme J Phase J.5a (Apr 30, 2026): route ConversationReplyPhase
+    // composed replies through CognitiveOutputGate before dispatch.
+    // When the gate returns Remediate the reply gets ONE regeneration
+    // attempt with the gate's hint baked into the user prompt; on
+    // hard Fail the reply is dropped and a safe acknowledgement is
+    // sent instead.
+    //
+    // Default ON for production rollout, but a flag flip is the
+    // rollback path if the gate produces too many false-positive
+    // remediations. The 1-week observation window post-J.5a deploy
+    // is gated on Mark's subjective "I can talk to her without
+    // parsing" cognitive-load criterion (see
+    // docs/research/ANI-Theme-J-Detector-Inventory-Review.md).
+    public bool ConversationReplyOutputGateEnabled { get; set; } = true;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.
