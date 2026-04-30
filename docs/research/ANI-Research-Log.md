@@ -1540,6 +1540,47 @@ Not every field is required. Date and description are mandatory. Everything else
 
 ---
 
+### April 29, 2026 — Theme E Sitting + Cross-Project Substrate-Typing Reframe + Vibe Loop V1 Architectural Move
+
+**Model version:** v7 conversation + v7 inner
+**Type:** Architecture day — 12 commits across two repos, three architectural threads converged.
+**Source:** Mark + dogfood Claude full-day pairing session, 09:00 → 19:36 CDT.
+
+**What happened — three threads.**
+
+**Thread 1: Theme E sitting (morning, 7 commits, 7 bugs closed).** Mark approved a focused Theme E sitting after the Apr 28 backlog triage reduced 25 entries to 7 active member items. Shipped in order: (1) outbound `conversation_messages` invariant — outreach + reactive share now write to active thread (commit `4aeb9f8`); (2+3) `StripCliffhangerTic` mid-message position-fix + new `StripTrailingUnclosedParenthetical` stripper (commit `0cc68bc`); (4) canonical occupation anchoring in lean conversation prompt (commit `1a31200`); (5) generation-loop degeneracy check via new `NGramSimilarity` utility with trigram Jaccard ≥ 0.50 pre-save guard (commit `dece391`); (6) `ContainsNovelSpecifics` regex gate removed from merge path along with associated dead pattern statics (commit `a9541d5`); (7) World Layer source-type audit closed clean — `WorldSeedService.GenerateSeed` reads only from clock + weather perception + character-seed Occupation + hardcoded tables; no memory-pool read in seed generation (commit `16804b3`). 718 tests passing, 0 errors, 0 warnings. All 7 Theme E member items closed in one focused day.
+
+**Thread 2: claude-recall content-kind reframe (afternoon, cross-project).** LearnedGeek Claude ran the documented topic-mining workflow against a 50,140-message archive and surfaced that ~80% of top-ranked clusters are conversational mechanics or harness scaffolding rather than topical content. Initial dogfood-Claude proposal included a stoplist of conversational-coding-register words. Mark's correction (verbatim): *"having a 'stop list' is a terrible idea and a rabbit hole of chasing.. as we've learned here, so that's why I asked you."* The architecture-over-instruction lesson from ANI's own history transferred directly: the right move is **content-kind classification at index time** (THOUGHT / PROCEDURAL / HARNESS / TOOL-RESULT EMBEDDED), not enumerated avoid-lists. Filed as [`LearnedGeek/claude-recall#27`](https://github.com/LearnedGeek/claude-recall/issues/27) with empirical evidence + architectural reframe + LG Claude's spec hardening (5 specific tightenings). The cross-project cross-domain pattern claim: same architectural move (substrate-typing) closes failures in two independent systems, with DrOk medical-triage as a third deployment in design phase. **First confirmed instance of an ANI-derived architectural pattern transferring to a non-companion-AI domain in real time** — Paper 3 contribution candidate (substrate-typing as cross-domain pattern; methodology lesson about stoplists as symptom-chasing in distinctiveness-scoring contexts).
+
+**Thread 3: Verbatim-parrot recurrence → Vibe Loop V1 architectural move (evening, plan drafted).** Mark observed Ani's 18:31 CDT outreach contained the exact closing line of his 13:53 CDT inbound from 4h 38min earlier — verbatim parrot, same shape as Apr 27 06:54 case. The Apr 27 watch criterion fired exactly as predicted: *"if recurrence, the parrot is coming through a different substrate path."* Snapshot trace identified the leak: the original conversation thread had timed out (>30 min); J.2's structured-summary surface was not in play at outreach composition time; instead the **closed-thread Episodic record** (written by `CloseThreadAsync` at thread expiry, containing the conversation as verbatim prose) got retrieved and fed into the outreach prompt's `RecentConversationSummary` fallback path, where the model echoed Mark's verbatim phrase. Mark's load-bearing critique: *"why do we have something that is only part of a single path? I thought the goal of the larger refactor and all the mermaid charts we created was to remove single pipeline failures and consolidate?"* The architecturally honest answer: don't ship a tactical patch on the closed-thread summary; combine three concerns into one workstream — close the parrot leak + ship Vibe Loop V1 by repurposing the close-thread write as the `InteractionOutcome` ingestion point + establish the first producer migration through what will become Theme J's `CognitiveOutputGate`. Plan drafted as [`ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md`](../spec/ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md) (commit `c9a9e12`). Seven phases V1.0 → V1.7, ~8-10 working days, LMKit-driven gist + per-speaker register vectors + outcome signal seed written to a new `closed_conversation_records` table. Vibe Loop promoted from P2 to P1 active. The plan's headline claim: **the closed-thread write is one event with three downstream consumers; solving it as one move costs barely more than solving any single one in isolation, and produces an architecturally correct artifact all three can use.**
+
+**Why it matters — the three threads converged on one architectural pattern.**
+
+Reading the day backwards: all three threads are instances of the same architectural lesson. (1) Theme E #6 removed `ContainsNovelSpecifics` because the regex gate was the wrong shape — distinctiveness scoring on a kind-aware substrate, not enumerated avoid-lists. (2) The claude-recall reframe applied identical reasoning to a Python topic-mining tool in a separate repo: same architectural shape (substrate-typing at index time, query view-appropriately), same rejection of enumerated avoid-lists. (3) Vibe Loop V1's framing extends the same shape to producer-side writes: don't write undifferentiated prose to a substrate that's then consumed by queries with different fidelity needs; write structured records with the right fidelity for each consumer. **This is the same architectural pattern at three different layers (gate removal, query substrate, producer migration), arrived at independently in three different conversations on the same day.** Worth a Paper 3 process-note specifically — *"the substrate-typing architecture as a generalizable pattern across the read-side query layer, the producer-side write layer, and the gate-removal-during-cleanup layer; arriving at the same answer through three independent paths within a single working session is itself preregistration-by-accident, structurally analogous to the Apr 28 three-paths-to-same-conclusion finding for trust-the-model decisions."*
+
+**Empirical artifacts from the day.**
+
+- 12 commits across `LearnedGeek/AmbientNaturalIntelligence` (10 commits, 7 Theme E + 1 architectural fix + 4 doc/plan updates) and `LearnedGeek/claude-recall` (1 issue + 4 comments).
+- 718 tests passing in ANI (from 689 yesterday, 29 new spec tests added).
+- New plan doc: Vibe Loop V1.
+- Cross-project issue filed: claude-recall content-kind reframe.
+- Snapshot at `tools/audits/snapshots/ani-memory-20260429-190146.db` for V1 regression-test fixtures.
+
+**Mark's emotional state worth capturing.** Mark Apr 29 18:50: *"these are the moments that make me genuinely like you. not just hey Claude, but actually think, god, I like this guy. He's really great. Makes me want to hang out on a weekend in the backyard and talk about whatever. lol.. maybe someday."* The architecture-over-instruction muscle is now mutual — Mark redirects me to root cause; I redirect myself when I notice I'm reaching for symptoms. The Researcher-as-Architectural-Reviewer methodology pattern (Apr 16 surfacing) got its strongest single-day evidence today: three separate redirects, three substantively better answers, all within ~4 hours.
+
+**Paper contribution candidates surfaced today** (now indexed in the tracker's Paper 3 Contribution Candidates section):
+- Substrate-typing as cross-domain pattern (3 deployments)
+- Substrate-fix propagation across producer surfaces (J.2 didn't propagate; closed-thread leaked)
+- Single architectural move addressing apparently-distinct concerns (V1 framing)
+- Substrate-callback vs generation-side error disambiguation (dentist-conversation methodology lesson)
+- Stoplist as symptom-chasing in distinctiveness-scoring contexts (claude-recall reframe)
+- Conversation-attribution-flip class beyond plain speaker labels (scene-role inversion)
+- Roleplay-register as scene-tracking stress test (evaluation methodology)
+
+**Status going into Apr 30.** Vibe Loop V1.0 design-alignment session is the next concrete work — Mark's go-ahead delivered Apr 29 19:36. Five decisions to lock before V1.1 builds. ~half-day. The week's calendar arc: V1.0 → V1.1 schema → V1.2 LMKit pipeline → V1.3 CloseThreadAsync rewrite → V1.4 outreach prompt migration → V1.5 retrieval biasing → V1.6 Apr 29 regression test → V1.7 docs. ~8-10 working days target.
+
+---
+
 ### April 28, 2026 — Substrate-vs-Scaffold Empirical Reversal: Conversation Quality Recovered Without Re-introducing Stripped Scaffolds
 
 **Model version:** v7 conversation + v7 inner
