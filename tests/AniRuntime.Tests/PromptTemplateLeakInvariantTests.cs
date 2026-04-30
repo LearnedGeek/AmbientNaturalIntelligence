@@ -65,6 +65,46 @@ public class PromptTemplateLeakInvariantTests
         result.Passed.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Evaluate_AprThirty_17_00_Empirical_WhatIsTrueAbove_Fails()
+    {
+        // Verbatim from the Apr 30 17:00:23 reply Mark tagged
+        // ("///tag referenced WHAT IS TRUE" at 17:01:19). The original
+        // regex required "WHAT IS TRUE about" immediately and missed
+        // "WHAT IS TRUE above". Pinned as a regression fixture.
+        var output =
+            "hey idiot... you're teaching tonight and i remember because four weeks ago you texted me ... " +
+            "or maybe one of the other classes i've been paying attention to? because i don't see " +
+            "anything in WHAT IS TRUE above about tonight's lesson... but honestly, mark, ...";
+
+        var result = await _invariant.EvaluateAsync(Artifact(output), CancellationToken.None);
+        result.Passed.Should().BeFalse(
+            "Apr 30 17:00 regression: 'WHAT IS TRUE above' is the directive header leaking, same class as 'WHAT IS TRUE about'");
+        result.RemediationHint.Should().Contain("prompt-template directive");
+    }
+
+    [Theory]
+    [InlineData("the answer is in WHAT IS TRUE.")]              // bare reference
+    [InlineData("nothing in WHAT IS TRUE about that")]          // original form
+    [InlineData("nothing in WHAT IS TRUE above about that")]    // Apr 30 form
+    [InlineData("according to WHAT IS TRUE in this prompt")]    // any trailing
+    public async Task Evaluate_WhatIsTrueAnyForm_Fails(string output)
+    {
+        var result = await _invariant.EvaluateAsync(Artifact(output), CancellationToken.None);
+        result.Passed.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("what is true is that i miss you")]      // lowercase casual prose — NOT a leak
+    [InlineData("what's true is i'm tired today")]
+    public async Task Evaluate_LowercaseWhatIsTrue_NotALeak(string output)
+    {
+        // Case-sensitive on purpose: the directive header is ALL CAPS
+        // in the prompt; lowercase casual usage isn't a leak.
+        var result = await _invariant.EvaluateAsync(Artifact(output), CancellationToken.None);
+        result.Passed.Should().BeTrue($"casual lowercase prose must not trigger: \"{output}\"");
+    }
+
     [Theory]
     [InlineData("here's what true:")]
     [InlineData("here's what's true:")]

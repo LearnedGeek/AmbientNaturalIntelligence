@@ -87,7 +87,14 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
 
     // ── Pattern definitions (compile-time-generated regex for perf) ──────
 
-    [GeneratedRegex(@"WHAT\s+IS\s+TRUE\s+about", RegexOptions.IgnoreCase)]
+    // Broadened Apr 30 17:01 after Mark's regression tag: Ani's 17:00:23
+    // reply contained "i don't see anything in WHAT IS TRUE above about
+    // tonight's lesson" — the prior regex required "WHAT IS TRUE about"
+    // immediately, missed "WHAT IS TRUE above". Both forms are the
+    // directive section header leaking. Case-sensitive on purpose: the
+    // directive is rendered in ALL CAPS in the prompt; lowercase "what
+    // is true" in casual prose is not a leak (e.g. "what is true is...").
+    [GeneratedRegex(@"\bWHAT\s+IS\s+TRUE\b")]
     private static partial Regex WhatIsTrueDirective();
 
     [GeneratedRegex(@"(?:so\s+)?here'?s?\s+what(?:'?s)?\s+true", RegexOptions.IgnoreCase)]
