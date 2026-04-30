@@ -23,6 +23,8 @@ public class SqliteConversationService : IConversationService, IDisposable
 {
     private readonly string                                _connectionString;
     private readonly IMemoryService                        _memory;
+    private readonly IClosedConversationSummarizer         _summarizer;
+    private readonly IClosedConversationStore              _closedStore;
     private readonly ILogger<SqliteConversationService>    _log;
     private readonly SqliteConnection                      _keepAlive;
 
@@ -31,10 +33,14 @@ public class SqliteConversationService : IConversationService, IDisposable
     public SqliteConversationService(
         IOptions<AniOptions> options,
         IMemoryService memory,
+        IClosedConversationSummarizer summarizer,
+        IClosedConversationStore closedStore,
         ILogger<SqliteConversationService> log)
     {
-        _memory = memory;
-        _log    = log;
+        _memory      = memory;
+        _summarizer  = summarizer;
+        _closedStore = closedStore;
+        _log         = log;
 
         var dbPath = options.Value.MemoryDbPath;
 
@@ -233,11 +239,31 @@ public class SqliteConversationService : IConversationService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Vibe Loop V1.3 (Apr 29, 2026) — closing a thread now produces a
+    /// structured <see cref="ClosedConversationRecord"/> via the V1.2
+    /// summarizer and persists it through the V1.1 store. The pre-V1
+    /// verbatim "Conversation (N messages):" Episodic write is GONE —
+    /// that was the producer-side leak surface that fed the Apr 29
+    /// outreach-prompt parrot recurrence.
+    ///
+    /// Per-message <c>conversation_messages</c> rows stay intact;
+    /// verbatim fidelity-when-needed lives there. The
+    /// <c>ClosedConversationRecord</c> is the gist surface for retrieval.
+    /// Two surfaces, two purposes — substrate-typing pattern.
+    ///
+    /// Failure handling: if summarization fails (LLM unreachable, etc.)
+    /// the thread is STILL marked inactive — relational state advances
+    /// regardless of whether the record was produced. We DO NOT fall
+    /// back to writing the verbatim Episodic record on failure; that
+    /// would re-open the leak this rewrite closes.
+    /// </summary>
     public async Task CloseThreadAsync(Guid threadId, CancellationToken ct = default)
     {
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
 
-        // Mark thread inactive
+        // Mark thread inactive — done first so relational state advances
+        // even if summarization fails downstream.
         await using var closeCmd = conn.CreateCommand();
         closeCmd.CommandText = """
             UPDATE conversation_threads SET is_active = 0 WHERE id = $id
@@ -245,29 +271,34 @@ public class SqliteConversationService : IConversationService, IDisposable
         closeCmd.Parameters.AddWithValue("$id", threadId.ToString());
         await closeCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
-        // Load the full thread to create the episodic memory
-        var messages = await LoadMessagesAsync(conn, threadId, ct).ConfigureAwait(false);
+        var threadMeta = await LoadThreadMetaAsync(conn, threadId, ct).ConfigureAwait(false);
+        var messages   = await LoadMessagesAsync(conn, threadId, ct).ConfigureAwait(false);
 
-        if (messages.Count > 0)
+        if (messages.Count == 0 || threadMeta is null)
         {
-            // Load character state for dynamic name mapping in thread summary
-            var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
-            var summary = BuildThreadSummary(messages, character.Name, character.PrimaryContactName);
-            await _memory.SaveAsync(new MemoryRecord
-            {
-                Type       = MemoryType.Episodic,
-                Content    = summary,
-                Importance = 0.8f,
-                SourceName = "conversation",
-                OccurredAt = messages[^1].SentAt,
-                // Epistemic Grounding (Apr 10): Thread summaries are compressed
-                // verbatim conversation records — Episodic tier.
-                Provenance = EpistemicTier.Episodic,
-            }, ct).ConfigureAwait(false);
+            _log.LogDebug("CloseThreadAsync {ThreadId}: empty thread; no record produced.", threadId);
+            return;
+        }
+
+        threadMeta.Messages = messages;
+
+        try
+        {
+            var record = await _summarizer.SummariseAsync(threadMeta, ct).ConfigureAwait(false);
+            await _closedStore.SaveAsync(record, ct).ConfigureAwait(false);
 
             _log.LogInformation(
-                "Conversation thread {ThreadId} closed — {MessageCount} messages saved as episodic memory",
-                threadId, messages.Count);
+                "Vibe Loop V1: thread {ThreadId} closed — {MessageCount} messages → ClosedConversationRecord {RecordId} (valence={Valence:+0.00;-0.00})",
+                threadId, messages.Count, record.Id, record.OutcomeSignalValence);
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: thread is already marked inactive. Logged and
+            // dropped — we deliberately do NOT fall back to writing a
+            // verbatim Episodic record (that's the leak this closes).
+            _log.LogWarning(ex,
+                "Vibe Loop V1: thread {ThreadId} close-time summarization failed; no ClosedConversationRecord written for this thread.",
+                threadId);
         }
     }
 
@@ -309,16 +340,20 @@ public class SqliteConversationService : IConversationService, IDisposable
         return messages;
     }
 
-    private static string BuildThreadSummary(
-        List<ConversationMessage> messages, string companionName, string contactName)
+    private async Task<ConversationThread?> LoadThreadMetaAsync(
+        SqliteConnection conn, Guid threadId, CancellationToken ct)
     {
-        var lines = messages.Select(m =>
-        {
-            var name = m.Role == Roles.Ani ? companionName : contactName;
-            return $"{name}: {m.Content}";
-        });
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, started_at, last_message_at, is_active, initiated_by
+            FROM conversation_threads
+            WHERE id = $id
+            LIMIT 1
+            """;
+        cmd.Parameters.AddWithValue("$id", threadId.ToString());
 
-        return $"Conversation ({messages.Count} messages):\n{string.Join("\n", lines)}";
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        return await reader.ReadAsync(ct).ConfigureAwait(false) ? ReadThread(reader) : null;
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken ct)

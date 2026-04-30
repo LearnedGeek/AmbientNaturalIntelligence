@@ -115,18 +115,31 @@ New service `IClosedConversationSummarizer` in `AniRuntime.LLM` (location locked
 
 **Acceptance:** ✅ — register-vector contract pinned, valence projection contract pinned, anti-parrot constraint structurally enforced in the prompt + verified by `BuildGistPrompt_SystemContainsAntiParrotConstraint`. The full Apr 29 dentist-transcript regression test (against an actual LLM run) lives in V1.6 — that's where the empirical *"no 7-token substring of contact verbatim"* check goes against the real model output, not the strict-mock surface.
 
-### Phase V1.3 — `CloseThreadAsync` rewrite ⏳
-**Estimated effort:** ~1 day.
+### Phase V1.3 — `CloseThreadAsync` rewrite ✅
+**Status:** Shipped Apr 29, 2026 20:50 CDT.
+**Estimated effort:** ~1 day; actual ~25 min.
 
-`SqliteConversationService.CloseThreadAsync` rewritten to:
+`SqliteConversationService.CloseThreadAsync` rewritten:
 
-1. Call `IClosedConversationSummarizer.Summarize(thread)` (V1.2).
-2. Persist the resulting `ClosedConversationRecord` to the new table.
-3. **Stop writing the verbatim-prose `Conversation (N messages):` Episodic record.** This is the leak surface we're closing. Existing records remain readable; new closes don't produce them.
+1. Marks thread inactive FIRST (relational state advances regardless of summarization outcome).
+2. Loads thread metadata + messages.
+3. If non-empty: calls `IClosedConversationSummarizer.SummariseAsync(thread)` (V1.2) → `IClosedConversationStore.SaveAsync(record)` (V1.1).
+4. **The verbatim `Conversation (N messages):` Episodic write is GONE.** This is the leak surface that fed Apr 29's outreach-prompt parrot recurrence; closed at the producer.
+5. Failure handling: summarization exceptions are caught, logged, and dropped. **No fallback verbatim Episodic write** — that would re-open the leak. Better to have a closed thread with no `ClosedConversationRecord` than a verbatim record back in the substrate.
 
-**Critical:** the per-message conversation_messages rows STAY. Verbatim-fidelity-when-needed lives in `conversation_messages`. The `ClosedConversationRecord` is the gist surface for retrieval. Two surfaces, two purposes — exactly the substrate-typing pattern the claude-recall reframe established this morning.
+**Implementation notes (Apr 29 20:50):**
+- `SqliteConversationService` constructor gained two deps: `IClosedConversationSummarizer` + `IClosedConversationStore`. DI auto-wires through existing Program.cs registrations (V1.1 + V1.2). Only one direct test-construction site updated (`SqliteConversationServiceTests`).
+- Removed `BuildThreadSummary` private helper (the verbatim-prose builder — pre-V1 producer of the leak surface). Removed unused character-state fetch in CloseThreadAsync. Added `LoadThreadMetaAsync` helper to materialise the `ConversationThread` POCO for the summarizer.
+- 5 new strict-mock spec tests in `SqliteConversationServiceTests`:
+  - `CloseThreadAsync_ProducesClosedConversationRecord` — happy path; thread → summarizer → store; thread is inactive afterward.
+  - `CloseThreadAsync_DoesNotWriteVerbatimEpisodicSummary` — captures every `IMemoryService.SaveAsync` call across the test and asserts none start with `"Conversation ("` and none echo Mark's verbatim text from the close path.
+  - `CloseThreadAsync_PreservesConversationMessagesRows` — `conversation_messages` rows survive close (verbatim fidelity-when-needed lives there).
+  - `CloseThreadAsync_EmptyThread_NoSummaryProduced` — empty thread closes cleanly; strict mocks verify summarizer + store are NEVER called.
+  - `CloseThreadAsync_SummarizerThrows_ThreadStillInactive_NoFallbackVerbatimWrite` — LLM failure → thread still inactive, NO fallback to verbatim Episodic write (this is the load-bearing assertion that the leak path stays closed even on the failure branch).
 
-**Acceptance:** spec test — close a thread programmatically; verify (a) `ClosedConversationRecord` row exists with valid gist + register vectors, (b) NO new Episodic record with `Conversation (N messages):` prefix appears, (c) all `conversation_messages` rows remain intact.
+**753 tests passing** (up from 748 — 5 new). 0 errors. Pre-existing warning unrelated to V1.
+
+**The Apr 29 verbatim-parrot leak path (producer side) is now closed.** Outreach prompt (V1.4) still reads the OLD `Conversation (N messages):` Episodic records that exist in the substrate from before tonight; those are what V1.4.5 audits and what V1.4 stops consuming. New closes from this commit forward write only structured records.
 
 ### Phase V1.4 — Outreach prompt path migration ⏳
 **Estimated effort:** ~1 day.
@@ -237,3 +250,4 @@ This becomes the canonical regression test for the leak class. Recurrence ever s
 | 2026-04-29 19:59 CDT | V1.0 | **V1.0 design alignment LOCKED.** Five primary decisions + bonus question answered. Notable upgrades from initial draft: (a) outcome signal expanded to dual representation (vector + valence scalar) per Mark's "anger to happiness sliding scale" question; (b) Q1 Lerman-territory note flagged for Paper 2 — per-thread register vectors with outcome deltas are a finer-grained empirical surface than Chu et al. 2025's aggregate-scale data; (c) new V1.4.5 legacy substrate audit phase added between V1.4 and V1.5 per Mark's Q5 concern about Episodic memories with global impact and Episodic→Semantic migration via Feature 32 reflection synthesis; (d) `IClosedConversationSummarizer` location locked to `AniRuntime.LLM` (cross-domain extraction to LearnedGeek.ML deferred — bigger conversation needed about overall migration scope). Calendar updated 8-10 → 9-11 working days serial. Ready to start V1.1. |
 | 2026-04-29 20:14 CDT | V1.1 | **V1.1 SHIPPED.** ~30 min actual vs ~1 day estimate. POCO + narrow interface (Mar 19 ISP discipline) + raw-SQLite store with UPSERT semantics + DI registration + 8 spec tests covering schema, roundtrip, UPSERT, by-thread lookup, recency ordering, NULL embedding, empty collections. 726 tests passing. Ready for V1.2 (LMKit-driven gist + emotional-rhythm extraction service). |
 | 2026-04-29 20:40 CDT | V1.2 | **V1.2 SHIPPED.** ~30 min actual vs ~2-3 day estimate. `IClosedConversationSummarizer` interface + `ClosedConversationSummarizer` implementation in AniRuntime.LLM. Per-turn 9-register classification via lean LLM prompt; per-speaker prevalence vectors; outcome-signal seed vector + scalar valence projection per V1.0 design (Desire excluded from valence as context-dependent); frequency-based topic-keyword extraction (LMKit-driven extraction deferred to V1.5 to avoid cross-project coupling); anti-parrot gist prompt with explicit "no 7+ word verbatim phrases" constraint; heuristic-gist fallback that preserves anti-parrot guarantee on LLM-failure path; embedding via `IOllamaClient.EmbedAsync`, non-fatal on failure. 22 new spec tests; 748 total passing. DI registered in Program.cs:99-100. Ready for V1.3 (CloseThreadAsync rewrite to use the summarizer + write to the V1.1 store, AND stop writing the verbatim Episodic record). |
+| 2026-04-29 20:50 CDT | V1.3 | **V1.3 SHIPPED — VERBATIM-PARROT PRODUCER LEAK CLOSED.** ~25 min actual vs ~1 day estimate. `SqliteConversationService.CloseThreadAsync` rewired through V1.2 summarizer → V1.1 store. Removed `BuildThreadSummary` and the verbatim `Conversation (N messages):` Episodic write entirely — that's the producer-side surface of the Apr 29 outreach-prompt parrot leak, and it is now structurally absent from the close path. Failure path verified: summarization exceptions log + drop, NO fallback verbatim write. Constructor gained `IClosedConversationSummarizer` + `IClosedConversationStore` deps; DI already wired from V1.1/V1.2. 5 new strict-mock spec tests in `SqliteConversationServiceTests`; 753 total passing. **Producer side closed; consumer side (outreach prompt path) still reads legacy substrate records — that's V1.4.** Tonight's Vibe Loop V1 work honours OG Ani by ending three commits deep with the leak path she would have wanted closed actually closed. |

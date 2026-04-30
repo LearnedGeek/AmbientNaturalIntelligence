@@ -10,21 +10,28 @@ using Moq;
 namespace AniRuntime.Tests;
 
 /// <summary>
-/// Spec tests for <see cref="SqliteConversationService"/> — focused on the
-/// Apr 28, 2026 defense-in-depth contract: admin-tag content (messages
-/// starting with "///") must be rejected at the data layer and never
-/// inserted into <c>conversation_messages</c>.
+/// Spec tests for <see cref="SqliteConversationService"/> — focused on:
+///   1. Apr 28, 2026 admin-tag defense-in-depth (messages starting with
+///      "///" rejected at the data layer; primary defense lives at
+///      <c>TwilioInboundPerceptionSource</c>).
+///   2. Apr 29, 2026 Vibe Loop V1.3 contract: <c>CloseThreadAsync</c>
+///      produces a structured <see cref="ClosedConversationRecord"/>
+///      via the summarizer + store; the pre-V1 verbatim "Conversation
+///      (N messages):" Episodic record is GONE (this is the leak surface
+///      the Vibe Loop migration closes — see
+///      <c>ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md</c>).
 ///
-/// These tests use a real in-memory SQLite database (no schema mocking) and
-/// a strict <see cref="IMemoryService"/> mock — strict so that any unexpected
-/// memory-service interaction during AddMessageAsync would fail loudly. The
-/// primary defense lives at <c>TwilioInboundPerceptionSource</c>; this layer
-/// is the safety net.
+/// Real in-memory SQLite for the data path; strict mocks for
+/// <see cref="IMemoryService"/>, <see cref="IClosedConversationSummarizer"/>,
+/// and <see cref="IClosedConversationStore"/> so any unexpected
+/// interaction fails loudly.
 /// </summary>
 public class SqliteConversationServiceTests : IDisposable
 {
-    private readonly Mock<IMemoryService>      _memory = new(MockBehavior.Strict);
-    private readonly SqliteConversationService _svc;
+    private readonly Mock<IMemoryService>                  _memory       = new(MockBehavior.Strict);
+    private readonly Mock<IClosedConversationSummarizer>   _summarizer   = new(MockBehavior.Strict);
+    private readonly Mock<IClosedConversationStore>        _closedStore  = new(MockBehavior.Strict);
+    private readonly SqliteConversationService             _svc;
 
     public SqliteConversationServiceTests()
     {
@@ -32,6 +39,7 @@ public class SqliteConversationServiceTests : IDisposable
         var options = Options.Create(new AniOptions { MemoryDbPath = dbName });
         _svc = new SqliteConversationService(
             options, _memory.Object,
+            _summarizer.Object, _closedStore.Object,
             NullLogger<SqliteConversationService>.Instance);
     }
 
@@ -136,5 +144,235 @@ public class SqliteConversationServiceTests : IDisposable
         loaded.Should().NotBeNull();
         loaded!.Messages.Should().HaveCount(2);
         loaded.Messages.Select(m => m.Content).Should().Equal("first message", "third message");
+    }
+
+    // ===== V1.3 — CloseThreadAsync new contract =====
+
+    private static ClosedConversationRecord SampleSummaryFor(Guid threadId) => new()
+    {
+        Id                      = Guid.NewGuid(),
+        ThreadId                = threadId,
+        ClosedAt                = DateTimeOffset.UtcNow,
+        Gist                    = "Mark and Ani spoke briefly; the mood stayed warm.",
+        TopicKeywords           = new() { "warm", "brief" },
+        MarkRegister            = new() { ["Curiosity"] = 1.0f },
+        AniRegister             = new() { ["Tenderness"] = 1.0f },
+        OutcomeSignalSeedVector = new() { ["Tenderness"] = 0.0f },
+        OutcomeSignalValence    = 0.0f,
+        TurnCount               = 2,
+        DurationSeconds         = 60,
+        Embedding               = null,
+    };
+
+    /// <summary>
+    /// V1.3 SPEC: closing a thread routes through the V1.2 summarizer
+    /// and persists via the V1.1 store. Thread is marked inactive even
+    /// if summarization succeeds (no surprise side-effect ordering).
+    /// </summary>
+    [Fact]
+    public async Task CloseThreadAsync_ProducesClosedConversationRecord()
+    {
+        var thread = await NewActiveThreadAsync();
+        var t = DateTimeOffset.UtcNow;
+
+        // Add two real messages (admin-tag rejection still applies — these are clean).
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Returns(Task.CompletedTask);
+
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role = Roles.Mark, Content = "hi", SentAt = t,
+        });
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role = Roles.Ani, Content = "hey you", SentAt = t.AddSeconds(30),
+        });
+
+        ConversationThread? capturedThread = null;
+        var sample = SampleSummaryFor(thread.Id);
+        _summarizer
+            .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
+            .Callback<ConversationThread, CancellationToken>((t, _) => capturedThread = t)
+            .ReturnsAsync(sample);
+
+        ClosedConversationRecord? capturedRecord = null;
+        _closedStore
+            .Setup(s => s.SaveAsync(It.IsAny<ClosedConversationRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<ClosedConversationRecord, CancellationToken>((r, _) => capturedRecord = r)
+            .Returns(Task.CompletedTask);
+
+        await _svc.CloseThreadAsync(thread.Id);
+
+        // Summariser must see the thread with both messages in order.
+        capturedThread.Should().NotBeNull();
+        capturedThread!.Id.Should().Be(thread.Id);
+        capturedThread.Messages.Should().HaveCount(2);
+        capturedThread.Messages.Select(m => m.Content).Should().Equal("hi", "hey you");
+
+        // Store must receive the exact record the summarizer produced.
+        capturedRecord.Should().BeSameAs(sample);
+
+        // Thread is inactive after close.
+        var loadedThread = await _svc.GetThreadAsync(thread.Id);
+        loadedThread.Should().NotBeNull();
+        loadedThread!.IsActive.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// V1.3 SPEC: the verbatim "Conversation (N messages):" Episodic
+    /// record write is GONE. CloseThreadAsync must NOT call
+    /// <see cref="IMemoryService.SaveAsync"/> with a summary-shaped
+    /// MemoryRecord. (Per-message Episodic writes from AddMessageAsync
+    /// are a separate producer — out of V1.3 scope, audited in V1.4.5.)
+    ///
+    /// Strict-mock enforcement: SaveAsync setup is registered ONLY for
+    /// the AddMessageAsync path during seed setup. After seeding, we
+    /// invalidate it and any further call would be unmatched and throw.
+    /// </summary>
+    [Fact]
+    public async Task CloseThreadAsync_DoesNotWriteVerbatimEpisodicSummary()
+    {
+        var thread = await NewActiveThreadAsync();
+
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Returns(Task.CompletedTask);
+
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role = Roles.Mark, Content = "i'm trying to pretend to work while being distracted by you",
+            SentAt = DateTimeOffset.UtcNow,
+        });
+
+        // Capture every MemoryRecord that flows through SaveAsync over the
+        // life of the test so we can assert NO summary-shaped record is
+        // written by CloseThreadAsync.
+        var recordedSaves = new List<MemoryRecord>();
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Callback<MemoryRecord, CancellationToken>((r, _) => recordedSaves.Add(r))
+               .Returns(Task.CompletedTask);
+
+        _summarizer
+            .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SampleSummaryFor(thread.Id));
+        _closedStore
+            .Setup(s => s.SaveAsync(It.IsAny<ClosedConversationRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await _svc.CloseThreadAsync(thread.Id);
+
+        recordedSaves.Should().NotContain(r => r.Content.StartsWith("Conversation ("),
+            "the verbatim 'Conversation (N messages):' Episodic write is the leak surface "
+          + "Vibe Loop V1.3 closes; it must never be written by CloseThreadAsync");
+        recordedSaves.Should().NotContain(r =>
+            r.Content.Contains("i'm trying to pretend to work while being distracted by you"),
+            "no Mark verbatim text may flow into MemoryService SaveAsync from the close path");
+    }
+
+    /// <summary>
+    /// V1.3 SPEC: per-message <c>conversation_messages</c> rows survive
+    /// the close. Verbatim fidelity-when-needed lives there; the gist
+    /// surface is the new <see cref="ClosedConversationRecord"/>. Two
+    /// surfaces, two purposes — substrate-typing pattern.
+    /// </summary>
+    [Fact]
+    public async Task CloseThreadAsync_PreservesConversationMessagesRows()
+    {
+        var thread = await NewActiveThreadAsync();
+        var t = DateTimeOffset.UtcNow;
+
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Returns(Task.CompletedTask);
+
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role = Roles.Mark, Content = "first", SentAt = t,
+        });
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role = Roles.Ani, Content = "second", SentAt = t.AddSeconds(15),
+        });
+
+        _summarizer
+            .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SampleSummaryFor(thread.Id));
+        _closedStore
+            .Setup(s => s.SaveAsync(It.IsAny<ClosedConversationRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await _svc.CloseThreadAsync(thread.Id);
+
+        var loaded = await _svc.GetThreadAsync(thread.Id);
+        loaded.Should().NotBeNull();
+        loaded!.Messages.Should().HaveCount(2);
+        loaded.Messages.Select(m => m.Content).Should().Equal("first", "second");
+    }
+
+    /// <summary>
+    /// V1.3 SPEC: empty thread closes cleanly — no summarizer call, no
+    /// store write. There's nothing to summarise.
+    /// </summary>
+    [Fact]
+    public async Task CloseThreadAsync_EmptyThread_NoSummaryProduced()
+    {
+        var thread = await NewActiveThreadAsync();
+
+        // No setups for summarizer / store — strict mocks would throw if called.
+        await _svc.CloseThreadAsync(thread.Id);
+
+        var loaded = await _svc.GetThreadAsync(thread.Id);
+        loaded.Should().NotBeNull();
+        loaded!.IsActive.Should().BeFalse();
+        _summarizer.VerifyNoOtherCalls();
+        _closedStore.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// V1.3 SPEC: summarization failure is non-fatal — thread is still
+    /// marked inactive. Critically, NO fallback verbatim Episodic write
+    /// happens (that would re-open the leak). Failure is logged; the
+    /// thread simply has no <see cref="ClosedConversationRecord"/>.
+    /// </summary>
+    [Fact]
+    public async Task CloseThreadAsync_SummarizerThrows_ThreadStillInactive_NoFallbackVerbatimWrite()
+    {
+        var thread = await NewActiveThreadAsync();
+
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Returns(Task.CompletedTask);
+
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role = Roles.Mark, Content = "hello", SentAt = DateTimeOffset.UtcNow,
+        });
+
+        var recordedSaves = new List<MemoryRecord>();
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Callback<MemoryRecord, CancellationToken>((r, _) => recordedSaves.Add(r))
+               .Returns(Task.CompletedTask);
+
+        _summarizer
+            .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("ollama down"));
+
+        // Do NOT register _closedStore.SaveAsync — strict mock would fail if called.
+
+        await _svc.CloseThreadAsync(thread.Id);
+
+        var loaded = await _svc.GetThreadAsync(thread.Id);
+        loaded.Should().NotBeNull();
+        loaded!.IsActive.Should().BeFalse("thread close advances even if summarization fails");
+
+        recordedSaves.Should().NotContain(r => r.Content.StartsWith("Conversation ("),
+            "summarization failure must NOT trigger a fallback verbatim Episodic write — "
+          + "that would re-open the V1.3 leak surface");
+        _closedStore.VerifyNoOtherCalls();
     }
 }
