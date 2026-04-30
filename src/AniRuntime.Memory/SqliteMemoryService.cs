@@ -820,9 +820,45 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// a routine RSS perception fades after ~3.5 days.
     /// </summary>
     private float ComputeRetrievalScore(float[] queryEmbedding, MemoryRecord record)
+        => ComputeRetrievalScore(queryEmbedding, record, includeRecency: true);
+
+    /// <summary>
+    /// Apr 30, 2026 — tier-aware overload. Facts-tier retrieval passes
+    /// <paramref name="includeRecency"/>=false because recency is the
+    /// wrong signal for "what is true about Mark." Mark-asserted facts
+    /// (profession, schedule, family) don't become less true because
+    /// they were stated long ago. Recent surface mentions of the same
+    /// topic (e.g. Ani saying *"Western Career Technical Academy"* an
+    /// hour ago) get high cosine but aren't more correct than the
+    /// March record where Mark literally told her *"WCTC = Waukesha
+    /// County Technical College."* Supersession when facts evolve
+    /// (Phase 6 Memory Reform / Theme D) is the architecturally
+    /// correct way to handle "newer info wins" — explicit merge,
+    /// not score-based decay. Until then, Facts ranks on cosine +
+    /// importance only.
+    ///
+    /// Episodic and Interior tiers keep recency in their composite —
+    /// for those tiers, "what was said recently" + "what was felt
+    /// recently" genuinely is the right signal.
+    /// </summary>
+    private float ComputeRetrievalScore(
+        float[] queryEmbedding, MemoryRecord record, bool includeRecency)
     {
         var cosine = CosineSimilarity(queryEmbedding, record.Embedding!);
         var importance = record.Importance;  // already 0.0–1.0
+
+        if (!includeRecency)
+        {
+            // Facts-tier path: cosine + importance only. Renormalised so
+            // the score still falls in roughly the same magnitude as the
+            // recency-included composite (the Cosine and Importance weights
+            // get the recency weight redistributed proportionally).
+            var totalWithoutRecency = _options.RetrievalWeightCosine + _options.RetrievalWeightImportance;
+            if (totalWithoutRecency <= 0.0) return 0f;
+            return (float)(
+                _options.RetrievalWeightCosine     / totalWithoutRecency * cosine +
+                _options.RetrievalWeightImportance / totalWithoutRecency * importance);
+        }
 
         // Feature 16: Anchored memories are decay-exempt — recency always 1.0
         float recency;
@@ -1465,12 +1501,17 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
 
+        // Apr 30, 2026 — Facts tier scores on cosine + importance ONLY (no
+        // recency). See ComputeRetrievalScore overload comment for the full
+        // rationale. Episodic + Interior keep recency in their composite.
+        var includeRecency = tier != EpistemicTier.Facts;
+
         var ranked = candidates
             .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
             .Select(r =>
             {
                 var cosine = CosineSimilarity(queryEmbedding, r.Embedding!);
-                var composite = ComputeRetrievalScore(queryEmbedding, r);
+                var composite = ComputeRetrievalScore(queryEmbedding, r, includeRecency);
                 return new ScoredMemory(r, composite, cosine);
             })
             .OrderByDescending(x => x.CompositeScore)
@@ -1478,9 +1519,9 @@ public class SqliteMemoryService : IMemoryService, IDisposable
             .ToList();
 
         _log.LogDebug(
-            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}",
+            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, includeRecency={IncludeRecency}",
             tier, candidates.Count, ranked.Count,
-            ranked.Count > 0 ? ranked[0].CompositeScore : 0f);
+            ranked.Count > 0 ? ranked[0].CompositeScore : 0f, includeRecency);
 
         return ranked;
     }

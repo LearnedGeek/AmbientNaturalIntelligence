@@ -1,10 +1,12 @@
 using AniRuntime.Core;
+using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.Memory;
 using AniRuntime.Tests.Infrastructure;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace AniRuntime.Tests;
 
@@ -878,5 +880,112 @@ public class SqliteMemoryServiceTests : AniTestBase
         var episodic = (await _svc.GetByTierAsync(EpistemicTier.Episodic)).ToList();
         episodic.Should().HaveCount(1);
         episodic[0].DecayTier.Should().Be(DecayTier.Standard);
+    }
+
+    // ── Apr 30, 2026 — Facts-tier scoring drops recency ──────────────────
+    //
+    // Mark Apr 30 16:06 critique: recency is the wrong signal for Facts
+    // about Mark's life. "Mark teaches at WCTC" doesn't become less true
+    // because it was stated 35 days ago. Today's confused exchanges
+    // ("I teach at 6pm", Ani's confabulated "Western Career Technical
+    // Academy") were out-ranking the historical correct fact via
+    // recency-weighted scoring. Phase 6 Memory Reform / Theme D handle
+    // supersession when facts evolve — that's the architecturally correct
+    // way to handle "newer info wins." Until then, Facts ranks on
+    // cosine + importance only.
+
+    private static SqliteMemoryService CreateServiceWithOllama(string dbPath, IOllamaClient ollama)
+    {
+        var options = Options.Create(new AniOptions { MemoryDbPath = dbPath });
+        return new SqliteMemoryService(options, NullLogger<SqliteMemoryService>.Instance, ollama);
+    }
+
+    [Fact]
+    public async Task SearchByTier_Facts_OldHighImportance_OutranksNewLowImportance_AtSameCosine()
+    {
+        // SPEC: with identical cosine, a 30-day-old importance-1.0 Facts
+        // record must rank ABOVE a 1-hour-old importance-0.4 record.
+        // Pre-Apr-30 the recency term tipped this the other way.
+        var dbName = $"ani-test-{Guid.NewGuid():N}";
+        var queryEmbedding = new float[] { 1.0f, 0.0f, 0.0f };
+        var ollama = new Mock<IOllamaClient>(MockBehavior.Strict);
+        ollama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(queryEmbedding);
+
+        using var svc = CreateServiceWithOllama(dbName, ollama.Object);
+
+        var oldFact = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "Mark texted: 'I teach at Waukesha County Technical College — WCTC for short.'",
+            Importance  = 1.0f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow.AddDays(-30),
+            Embedding   = queryEmbedding,  // perfect cosine
+        };
+        var newNoise = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "Mark texted: 'I have to teach tonight!'",
+            Importance  = 0.4f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow.AddHours(-1),
+            Embedding   = queryEmbedding,  // perfect cosine
+        };
+
+        await svc.SaveAsync(oldFact);
+        await svc.SaveAsync(newNoise);
+
+        var ranked = (await svc.SearchByTierAsync("teach tonight", EpistemicTier.Facts, topK: 5)).ToList();
+
+        ranked.Should().HaveCount(2);
+        ranked[0].Record.Id.Should().Be(oldFact.Id,
+            "Apr 30 fix: importance ranks ABOVE recency for Facts. The historical canonical fact must outrank recent noise.");
+        ranked[1].Record.Id.Should().Be(newNoise.Id);
+    }
+
+    [Fact]
+    public async Task SearchByTier_Episodic_StillUsesRecency()
+    {
+        // CONTROL: Episodic tier keeps recency in its composite. "What was
+        // said recently" IS the right signal for Episodic. The Apr 30
+        // change is scoped to Facts only.
+        var dbName = $"ani-test-{Guid.NewGuid():N}";
+        var queryEmbedding = new float[] { 1.0f, 0.0f, 0.0f };
+        var ollama = new Mock<IOllamaClient>(MockBehavior.Strict);
+        ollama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(queryEmbedding);
+
+        using var svc = CreateServiceWithOllama(dbName, ollama.Object);
+
+        // Two Episodic records, identical cosine + importance. Recency
+        // should be the tiebreaker.
+        var oldEpisodic = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "an old episodic record",
+            Importance  = 0.5f,
+            Provenance  = EpistemicTier.Episodic,
+            OccurredAt  = DateTimeOffset.UtcNow.AddDays(-30),
+            Embedding   = queryEmbedding,
+        };
+        var newEpisodic = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "a recent episodic record",
+            Importance  = 0.5f,
+            Provenance  = EpistemicTier.Episodic,
+            OccurredAt  = DateTimeOffset.UtcNow.AddHours(-1),
+            Embedding   = queryEmbedding,
+        };
+
+        await svc.SaveAsync(oldEpisodic);
+        await svc.SaveAsync(newEpisodic);
+
+        var ranked = (await svc.SearchByTierAsync("any query", EpistemicTier.Episodic, topK: 5)).ToList();
+
+        ranked.Should().HaveCount(2);
+        ranked[0].Record.Id.Should().Be(newEpisodic.Id,
+            "Episodic tier keeps recency — recent record wins on tied cosine + importance");
     }
 }
