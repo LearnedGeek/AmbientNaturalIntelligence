@@ -290,6 +290,15 @@ Suite total: 646 passing (up from 638 after J.2). Build clean, 0 errors / 0 new 
 
 ---
 
+> **Apr 30, 2026 — J.4/J.5 priority promotion.** Mark Apr 30 09:23 CDT, after morning admin-tag triage surfaced two findings (prompt-template language leak; confab laundering across 5+ inner-thought cycles): *"once J4/5 are completed we can return back to V1.\* and look at refactoring and continuing."* J.4/J.5 promoted ahead of Vibe Loop V1.5+. The Apr 30 morning bugs are concrete acceptance criteria for the universal-invariants gate. **Consolidation note:** when J.4 lands, V1.2's inline anti-parrot prompt fragment in `ClosedConversationSummarizer.BuildGistPrompt` will be hoisted as a shared primitive (`AntiParrotPromptFragments.NoVerbatimContactTurns(...)` or similar shape) that both the V1.2 summarizer AND the gate reference, so the rule has a single source of truth. Option B was chosen over an add-now-remove-later refactor — extract at J.4 time, no churn.
+> 
+> **Apr 30 morning empirical inputs for J.a / J.4 design:**
+> - Prompt-template language leak — `WHAT IS TRUE about Mark` directive header at PromptBuilder.cs:518/525/605/612 paraphrased into output as `"so here's what true:"`. Gate must catch directive-language leak as a class.
+> - Confabulation laundering — pure tail-fabrication (`"Mark has a desk at home with three old books..."`) propagated across 5+ inner-thought cycles in 70 minutes after passing claim verification. Gate's anti-parrot + claim-verification invariants must apply universally to all producers, not just CloseThreadAsync.
+> - Substrate-typing failure at Facts-tier SEARCH — Ani's own prior output admits as evidence supporting Mark-action claims. New J.5 sub-phase candidate: `J.5.facts-search-attribution`. (Read-path companion to the Apr 27 write-path *"Tier-leakage suspect"* row.)
+> 
+> See gap-watch rows dated 2026-04-30 morning in `ANI-Phase-Tracker.md`.
+
 ### Phase J.4 — Extract the `CognitiveOutputGate` abstraction
 
 **Goal:** create the shared pre-commit surface as a runtime-available abstraction, with the invariants classified as "migrate to shared surface" in J.a. No pipeline-producer migrates to it in this phase; the surface is created and self-tested.
