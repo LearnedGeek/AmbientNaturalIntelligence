@@ -1,0 +1,101 @@
+namespace AniRuntime.Core.Models;
+
+/// <summary>
+/// Theme J Phase J.4 (Apr 30, 2026) — the unit of cognitive output that
+/// flows through <see cref="Interfaces.ICognitiveOutputGate"/>.
+///
+/// Carries the produced text plus enough metadata for invariants to
+/// type-condition their applicability. Each producer migrating through
+/// J.5 builds a <see cref="CognitiveArtifact"/> at its output boundary
+/// and hands it to the gate; the gate dispatches type-applicable
+/// invariants and returns a verdict.
+///
+/// **Why a sealed class with init-only properties** rather than a
+/// record: the optional-context surface is intentionally additive — new
+/// invariants can read additional context fields without breaking
+/// callers, and init-only enforces immutability without requiring
+/// every property at construction time.
+/// </summary>
+public sealed class CognitiveArtifact
+{
+    /// <summary>The produced text the gate is evaluating.</summary>
+    public required string Content { get; init; }
+
+    /// <summary>Which producer pipeline emitted this artifact.</summary>
+    public required CognitiveProducerKind ProducerKind { get; init; }
+
+    /// <summary>Where the artifact is headed once gated.</summary>
+    public required CognitiveOutputSink IntendedSink { get; init; }
+
+    /// <summary>The contact's display name (defaults to "Mark").</summary>
+    public string ContactName { get; init; } = Roles.Mark;
+
+    /// <summary>
+    /// Walltime when the output was generated. Used by temporal-attribution
+    /// invariants and for log correlation. Default = UtcNow at construction.
+    /// </summary>
+    public DateTimeOffset GeneratedAt { get; init; } = DateTimeOffset.UtcNow;
+
+    // ── Optional context — invariants read what they need ──────────────────
+
+    /// <summary>
+    /// Recent messages from the contact (verbatim, in chronological order).
+    /// Anti-parrot invariant uses this to detect 7+ token verbatim lifts.
+    /// Null = invariant cannot run (skipped, not failed).
+    /// </summary>
+    public IReadOnlyList<string>? ContactRecentMessages { get; init; }
+
+    /// <summary>
+    /// Recent prior outputs by Ani. Echo-guard invariant uses this to
+    /// detect cross-cycle output duplication.
+    /// </summary>
+    public IReadOnlyList<string>? PriorAniMessages { get; init; }
+
+    /// <summary>
+    /// The system prompt text the producer used to generate this output.
+    /// Prompt-template-leak invariant uses this to check for directive-
+    /// phrase paraphrasing, but the invariant also has a fallback
+    /// fixed-pattern list so it can run with this null.
+    /// </summary>
+    public string? SystemPromptText { get; init; }
+}
+
+/// <summary>
+/// The producer pipeline that emitted the artifact. Drives invariant
+/// applicability via <see cref="Interfaces.ICognitiveOutputInvariant.AppliesTo"/>.
+/// One enum value per migrating producer; add as J.5 sub-phases land.
+/// </summary>
+public enum CognitiveProducerKind
+{
+    ConversationReply       = 1,
+    Outreach                = 2,
+    InnerThought            = 3,
+    WorldExperience         = 4,
+    Reflection              = 5,
+    MemoryMerge             = 6,
+    ClosedThreadSummary     = 7,
+    Voice                   = 8,
+}
+
+/// <summary>
+/// Where the artifact is headed once it leaves the gate. Drives
+/// invariant strictness — outputs going to Mark (Dispatch) get the
+/// strictest checks; outputs persisted to memory tiers used as
+/// downstream-treated-as-fact (Reflection → Semantic) also strict;
+/// outputs persisted as Episodic substrate or context-only get
+/// looser invariants.
+/// </summary>
+public enum CognitiveOutputSink
+{
+    /// <summary>External delivery to the contact (SMS, voice).</summary>
+    Dispatch                 = 1,
+
+    /// <summary>Persisted to memory as Episodic-tier (verbatim continuity).</summary>
+    PersistedMemory          = 2,
+
+    /// <summary>Persisted as Semantic / structured summary (treated as fact downstream).</summary>
+    PersistedSummary         = 3,
+
+    /// <summary>Held only in the current cycle's context, not persisted.</summary>
+    ContextOnly              = 4,
+}

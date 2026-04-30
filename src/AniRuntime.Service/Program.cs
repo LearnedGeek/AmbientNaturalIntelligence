@@ -6,6 +6,7 @@ using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using AniRuntime.Loops;
+using AniRuntime.Loops.Invariants;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
 using AniRuntime.Dashboard;
@@ -98,6 +99,16 @@ try
     // Vibe Loop V1.2 — produces ClosedConversationRecord from a closed thread.
     // V1.3 wires this into SqliteConversationService.CloseThreadAsync.
     builder.Services.AddSingleton<IClosedConversationSummarizer, ClosedConversationSummarizer>();
+
+    // Theme J Phase J.4 (Apr 30, 2026) — CognitiveOutputGate + universal
+    // invariants. Producers migrate through the gate via J.5 sub-phases
+    // (J.5a ConversationReplyPhase first per Apr 30 priority reorder). DI
+    // registration order establishes the canonical invariant evaluation
+    // order: structural checks first, content checks next, semantic checks
+    // last. See docs/research/ANI-Theme-J-Detector-Inventory-Review.md.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, AntiParrotInvariant>();
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, PromptTemplateLeakInvariant>();
+    builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();
 
