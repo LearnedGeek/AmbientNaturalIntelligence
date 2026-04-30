@@ -29,20 +29,32 @@ The architectural insight the workstream rests on: **the closed-thread write is 
 
 ## Phase Structure
 
-### Phase V1.0 — Design alignment session ⏳
-**Estimated effort:** ~half-day.
-**Status:** Awaiting Mark's go-ahead.
+### Phase V1.0 — Design alignment session ✅
+**Status:** Decisions locked Apr 29, 2026 19:59 CDT (Mark + dogfood Claude).
 
-Decisions to lock before any code:
+**Locked decisions:**
 
-- **State classifier source.** LMKit emotion classifier per turn, aggregated to per-speaker register vectors at thread close. Open: do we use existing 9-register classifier (Tenderness/Longing/Playfulness/etc.) or a smaller state vector (Warmth/Energy/Concern/Playfulness)? Both are plausible; recommend the existing 9-register since it's already deployed and produces a richer signal.
-- **Gist representation.** Three options: prose summary, structured fields, both. Recommend **both**: a prose `Gist` (1-2 sentences, LMKit-generated, constrained to NOT lift verbatim) for retrieval rendering AND a structured `Topic` keyword set (LMKit `KeywordExtractor` output) for cosine-search.
-- **Outcome signal computation.** Delta on the per-speaker register vectors from start to end of thread. `outcome_signal_seed = AniRegister(end) - AniRegister(start)` produces a vector showing how Ani's emotional state moved across the thread. This is a SEED for the eventual full Vibe Loop outcome signal (which also needs Mark's reaction at the NEXT inbound — captured in V1.5).
-- **Storage tier.** Recommend new dedicated table `closed_conversation_records` (FK to `conversation_threads.id`) rather than overloading the `memories` table. Cleaner schema; clearer query surface for Vibe Loop reads.
-- **Backward compat.** Existing closed-thread Episodic records (with verbatim prose) stay readable. The retrieval-side migration (V1.4) consumes the new structured records when present and falls back to the prose form when not — same pattern as J.2's structured-summary additive deploy. Old records age out via natural recency decay; no purge required.
-- **Anti-parrot constraint on the gist.** The LMKit summarizer prompt explicitly forbids verbatim quotation of contact turns; the prompt produces a gist that paraphrases. Spec test V1.6 verifies this property holds.
+- **State classifier source — existing 9-register LMKit classifier** (Tenderness / Longing / Playfulness / Curiosity / Desire / Existential / Wistful / Frustration / Delight). Already deployed, produces richer signal than a 4-dim Warmth/Energy/Concern/Playfulness vector. **Mark's note (Lerman territory for Paper 2):** Chu et al. 2025 produce register-similarity data at aggregate scale; ANI's V1 will produce per-thread register vectors with outcome deltas — finer-grained empirical surface that should be tracked as a Paper 2 addition candidate. Captured in Paper 3 Contribution Candidates Index of `ANI-Phase-Tracker.md` and in Paper 2 Pre-Submission Tasks.
 
-**Acceptance:** decision record captured at the top of this doc; Mark approves before V1.1 builds.
+- **Gist representation — both prose and structured.** Prose `Gist` (1-2 sentences, LMKit-generated, anti-parrot constraint baked into the summarizer prompt) renders into outreach prompts. Structured `TopicKeywords` array (LMKit `KeywordExtractor` output) supports cosine-search and future structured queries. Mark's reasoning: *"both as they're necessary for anything structured we might want to do in the future."*
+
+- **Outcome signal computation — both vector and scalar.** Mark's question (*"how do we quantify this? an 'anger to happiness' sliding scale?"*) led to the dual representation:
+  - `outcome_signal_seed_vector` (9-dim) — register-vector delta from start of thread to end. Preserves directionality per register; supports finer-grained queries downstream (*"find threads where Playfulness rose"*).
+  - `outcome_signal_valence` (scalar, range -1 to +1) — Mark's anger-to-happiness projection. Computed as `sum(positive_register_deltas) - sum(negative_register_deltas)`, normalized. **Positive registers:** Tenderness, Playfulness, Delight, Curiosity. **Negative registers:** Longing, Frustration, Wistful, Existential, Hurt. **Neutral / context-dependent:** Desire (kept out of the projection; available in the vector).
+
+  The valence scalar is the primary sort key for V1.5 retrieval biasing. The vector is for downstream queries that need finer-grained access. Storage is cheap; both ship.
+
+  **Honest caveat:** this is a SEED. The full Vibe Loop outcome signal also wants Mark's reaction at the NEXT inbound — captured in V1.5's runtime-biasing logic. V1.3 ships the seed; V1.5 evolves the read-side.
+
+- **Storage tier — new dedicated table** `closed_conversation_records` (FK to `conversation_threads.id`). Cleaner schema, clearer query surface for Vibe Loop reads, no overloading the `memories` table with structured-record-only fields.
+
+- **Backward compat — forward-only with explicit legacy audit.** New closes use the new path. Old closed-thread Episodic records (with verbatim prose) stay readable. **V1.4.5 adds a legacy-substrate audit phase** (Mark's Q5 concern) — query the substrate for those records AND any that were merged into Semantic via reflection synthesis (Feature 32), report retrieval-frequency + importance scores. Output is a report, not a backfill. Mark decides backfill scope post-V1 if the audit shows ongoing influence on retrieval.
+
+- **`IClosedConversationSummarizer` location — AniRuntime.LLM (NOT LearnedGeek.ML for now).** Mark Apr 29 19:59: *"The question about LearnedGeek.ML is a big one and I don't think we yet know what that's going to look like... we'll need to have a longer conversation and look into what might be overall appropriate to migrate and refactor."* V1 keeps the summarizer ANI-specific; cross-domain extraction is a separate future workstream.
+
+- **Anti-parrot constraint on the gist.** The LMKit summarizer prompt explicitly forbids verbatim quotation of contact turns; the prompt produces a gist that paraphrases. Spec test V1.6 verifies the property holds against the Apr 29 dentist-conversation transcript as a regression fixture.
+
+**Acceptance:** decisions locked above. V1.1 implementation can begin.
 
 ### Phase V1.1 — `ClosedConversationRecord` schema + migration ⏳
 **Estimated effort:** ~1 day.
@@ -114,6 +126,27 @@ Same change applies to `BuildOutreachPrompt` (the decision-stage prompt at `Prom
 
 **Acceptance:** spec test — set up a closed thread containing Mark's verbatim text "I'm trying to pretend to work while being distracted by you. Haha"; trigger an outreach composition; verify the rendered outreach prompt contains NO occurrence of that verbatim string (or any substring ≥7 tokens of it).
 
+### Phase V1.4.5 — Legacy substrate audit (added Apr 29 per Mark's Q5) ⏳
+**Estimated effort:** ~1 day.
+
+V1's forward-only approach handles all FUTURE thread closes correctly. But the substrate already contains historical records that may continue to influence retrieval and synthesis until aged out:
+
+1. **Legacy `Conversation (N messages):` Episodic records** written by `CloseThreadAsync` before V1.3. These contain verbatim transcripts and remain retrievable.
+2. **Episodic → Semantic migration via Feature 32 reflection synthesis.** Some Episodic records with parrot-flavored verbatim content may have been synthesized into Semantic records (e.g., *"Mark thinks X about Y"*) — the parrot risk carries forward in a different shape, not closed by V1's forward-only fix.
+3. **Episodic records with global impact** — records that have been retrieved frequently and influenced subsequent generations.
+
+V1.4.5 produces an **audit report** (no backfill in V1):
+
+- Query 1: count + sample legacy `Conversation (N messages):` Episodic records; report total count, age distribution, retrieval-frequency from `memory_audit`, importance distribution.
+- Query 2: identify Semantic records whose lineage traces back to verbatim closed-thread Episodic — via `memory_links` table (Feature 31 A-MEM linked graph) or via reflection-synthesis audit-log entries.
+- Query 3: rank legacy Episodic records by retrieval-frequency × importance (the high-impact ones); flag any whose content matches the parrot signature (substring overlap with their associated thread's `conversation_messages` rows).
+
+Output: structured report saved to `tools/audits/snapshots/v1.4.5-legacy-substrate-audit.md` listing what's there, what's most influential, what crossed into Semantic. Mark reviews and decides scope of follow-up backfill / soft-hide / hard-delete as a separate post-V1 workstream.
+
+**Why this is V1.4.5 not V1.x.0:** it sits between forward-cutover (V1.3 + V1.4) and runtime biasing (V1.5) because (a) the audit needs both the old surface to exist and the new surface to be live, so retrieval-frequency comparison is meaningful; (b) V1.5's retrieval-bias function may want to optionally suppress or down-weight legacy records, depending on what the audit reveals.
+
+**Acceptance:** report exists with the three query outputs; Mark has read it and signaled which follow-up actions (if any) belong in V2 or a separate Substrate Hygiene Sweep workstream.
+
 ### Phase V1.5 — Vibe Loop retrieval-time biasing ⏳
 **Estimated effort:** ~2-3 days.
 
@@ -154,12 +187,13 @@ This becomes the canonical regression test for the leak class. Recurrence ever s
 
 ## Sequencing & Dependencies
 
-- V1.0 → V1.1 → V1.2 → V1.3 → V1.4 sequential (each builds on prior).
-- V1.5 depends on V1.3 (data must exist) but can run in parallel with V1.4 if hands available.
+- V1.0 ✅ (locked Apr 29 19:59 CDT) → V1.1 → V1.2 → V1.3 → V1.4 sequential (each builds on prior).
+- **V1.4.5 (legacy substrate audit) sits between V1.4 and V1.5** — needs both surfaces live for the comparison queries to be meaningful.
+- V1.5 depends on V1.3 + V1.4.5 (audit may inform retrieval-bias defaults around legacy records).
 - V1.6 validates V1.4 + V1.5 together; runs after both.
 - V1.7 closes the workstream.
 
-**Total calendar:** ~8-10 working days serial; ~6-7 if V1.4 / V1.5 run in parallel.
+**Total calendar:** ~9-11 working days serial (V1.4.5 added one day to original estimate); ~7-8 if V1.4 / V1.5 / V1.4.5 partially parallelize.
 
 **No cross-theme blockers.** Theme J's J.4 / J.5 phases are still queued; V1 doesn't wait on them, V1 IS the first instance of J.5's pattern. Theme G / Theme L / Theme H1 are independent.
 
@@ -185,3 +219,4 @@ This becomes the canonical regression test for the leak class. Recurrence ever s
 | Date | Phase | Note |
 |------|-------|------|
 | 2026-04-29 | V1.0 | Plan drafted by Mark + dogfood Claude after Apr 29 19:00 verbatim-parrot recurrence diagnosis. Mark Apr 29 19:22 critique surfaced the architectural framing: *"single-path failures shouldn't exist; the refactor is supposed to consolidate."* Plan drafted as the architecturally honest response — three concerns combined into one workstream rather than three patches. Awaiting Mark's go-ahead to start V1.0 design session. |
+| 2026-04-29 19:59 CDT | V1.0 | **V1.0 design alignment LOCKED.** Five primary decisions + bonus question answered. Notable upgrades from initial draft: (a) outcome signal expanded to dual representation (vector + valence scalar) per Mark's "anger to happiness sliding scale" question; (b) Q1 Lerman-territory note flagged for Paper 2 — per-thread register vectors with outcome deltas are a finer-grained empirical surface than Chu et al. 2025's aggregate-scale data; (c) new V1.4.5 legacy substrate audit phase added between V1.4 and V1.5 per Mark's Q5 concern about Episodic memories with global impact and Episodic→Semantic migration via Feature 32 reflection synthesis; (d) `IClosedConversationSummarizer` location locked to `AniRuntime.LLM` (cross-domain extraction to LearnedGeek.ML deferred — bigger conversation needed about overall migration scope). Calendar updated 8-10 → 9-11 working days serial. Ready to start V1.1. |
