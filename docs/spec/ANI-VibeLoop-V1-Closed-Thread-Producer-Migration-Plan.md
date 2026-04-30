@@ -56,8 +56,9 @@ The architectural insight the workstream rests on: **the closed-thread write is 
 
 **Acceptance:** decisions locked above. V1.1 implementation can begin.
 
-### Phase V1.1 — `ClosedConversationRecord` schema + migration ⏳
-**Estimated effort:** ~1 day.
+### Phase V1.1 — `ClosedConversationRecord` schema + store ✅
+**Status:** Shipped Apr 29, 2026 20:14 CDT.
+**Estimated effort:** ~1 day; actual ~30 min.
 
 New SQLite table:
 
@@ -84,6 +85,13 @@ CREATE INDEX ix_closed_conv_thread_id ON closed_conversation_records(thread_id);
 EF Core migration generated and committed. No data migration of existing records — V1 is forward-only.
 
 **Acceptance:** schema landed, migration applied locally, write/read roundtrip spec test green.
+
+**Implementation notes (Apr 29):**
+- `AniRuntime.Core/Models/ClosedConversationRecord.cs` — POCO with the 12 fields per V1.0 design.
+- `AniRuntime.Core/Interfaces/IClosedConversationStore.cs` — narrow interface (Save / GetById / GetByThreadId / GetRecent). Stays narrow per Mar 19 ISP discipline; V1.5 adds valence-sorted retrieval as a separate method when actually needed.
+- `AniRuntime.Memory/SqliteClosedConversationStore.cs` — raw SQLite (mirrors `SqliteMemoryService` / `SqliteConversationService` pattern; no EF Core). Idempotent `CREATE TABLE IF NOT EXISTS` schema. UPSERT semantics on save via `ON CONFLICT(id) DO UPDATE`. JSON serialisation for register dicts + topic-keyword list. Embedding blob via `BlockCopy` (mirrors existing helpers).
+- DI registration added in `Program.cs:96`.
+- 8 spec tests in `tests/AniRuntime.Tests/SqliteClosedConversationStoreTests.cs`: empty-schema reads, full-field roundtrip, UPSERT semantics, GetByThreadIdAsync (hit + miss), GetRecentAsync ordering + limit, NULL embedding roundtrip, empty-collection roundtrip. **726 tests passing** (up from 718 — 8 new), 0 errors, 1 pre-existing warning unrelated to V1.
 
 ### Phase V1.2 — LMKit-driven gist + emotional-rhythm extraction ⏳
 **Estimated effort:** ~2-3 days.
@@ -220,3 +228,4 @@ This becomes the canonical regression test for the leak class. Recurrence ever s
 |------|-------|------|
 | 2026-04-29 | V1.0 | Plan drafted by Mark + dogfood Claude after Apr 29 19:00 verbatim-parrot recurrence diagnosis. Mark Apr 29 19:22 critique surfaced the architectural framing: *"single-path failures shouldn't exist; the refactor is supposed to consolidate."* Plan drafted as the architecturally honest response — three concerns combined into one workstream rather than three patches. Awaiting Mark's go-ahead to start V1.0 design session. |
 | 2026-04-29 19:59 CDT | V1.0 | **V1.0 design alignment LOCKED.** Five primary decisions + bonus question answered. Notable upgrades from initial draft: (a) outcome signal expanded to dual representation (vector + valence scalar) per Mark's "anger to happiness sliding scale" question; (b) Q1 Lerman-territory note flagged for Paper 2 — per-thread register vectors with outcome deltas are a finer-grained empirical surface than Chu et al. 2025's aggregate-scale data; (c) new V1.4.5 legacy substrate audit phase added between V1.4 and V1.5 per Mark's Q5 concern about Episodic memories with global impact and Episodic→Semantic migration via Feature 32 reflection synthesis; (d) `IClosedConversationSummarizer` location locked to `AniRuntime.LLM` (cross-domain extraction to LearnedGeek.ML deferred — bigger conversation needed about overall migration scope). Calendar updated 8-10 → 9-11 working days serial. Ready to start V1.1. |
+| 2026-04-29 20:14 CDT | V1.1 | **V1.1 SHIPPED.** ~30 min actual vs ~1 day estimate. POCO + narrow interface (Mar 19 ISP discipline) + raw-SQLite store with UPSERT semantics + DI registration + 8 spec tests covering schema, roundtrip, UPSERT, by-thread lookup, recency ordering, NULL embedding, empty collections. 726 tests passing. Ready for V1.2 (LMKit-driven gist + emotional-rhythm extraction service). |

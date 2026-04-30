@@ -91,6 +91,11 @@ try
     builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<SqliteMemoryService>());
     builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<SqliteMemoryService>());
     builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
+
+    // Vibe Loop V1 (Apr 29, 2026) — closed-thread structured-record store.
+    // See docs/spec/ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md.
+    builder.Services.AddSingleton<IClosedConversationStore, SqliteClosedConversationStore>();
+
     builder.Services.AddSingleton<DesireEngine>();
 
     // ── LLM ───────────────────────────────────────────────────────────────────
