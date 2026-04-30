@@ -23,6 +23,7 @@ public class ContextBuilder
     private readonly IDiagnosticService _diagnostic;
     private readonly IRetrievalOriginTracker? _originTracker;
     private readonly IConversationService? _conversation;
+    private readonly IClosedConversationStore? _closedStore;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<ContextBuilder> _log;
 
@@ -37,7 +38,8 @@ public class ContextBuilder
         IOptions<AniOptions> aniOptions,
         ILogger<ContextBuilder> log,
         IRetrievalOriginTracker? originTracker = null,
-        IConversationService? conversation = null)
+        IConversationService? conversation = null,
+        IClosedConversationStore? closedStore = null)
     {
         _state = state;
         _search = search;
@@ -48,6 +50,7 @@ public class ContextBuilder
         _diagnostic = diagnostic;
         _originTracker = originTracker;
         _conversation = conversation;
+        _closedStore = closedStore;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -211,6 +214,28 @@ public class ContextBuilder
             {
                 _log.LogWarning(ex,
                     "J.2: failed to load structured conversation summary — falling back to prose-only");
+            }
+        }
+
+        // Vibe Loop V1.4 (Apr 29, 2026): fetch the most recent
+        // ClosedConversationRecord (V1.1 store, populated by V1.2/V1.3
+        // CloseThreadAsync). Outreach prompts (decision + composition) read
+        // this in preference to verbatim-prose surfaces — its Gist is
+        // paraphrased by V1.2's anti-parrot prompt, so the outreach path
+        // becomes structurally verbatim-free.
+        ClosedConversationRecord? recentClosed = null;
+        if (_closedStore is not null)
+        {
+            try
+            {
+                var recent = await _closedStore
+                    .GetRecentAsync(limit: 1, ct).ConfigureAwait(false);
+                recentClosed = recent.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "Vibe Loop V1.4: failed to load most recent ClosedConversationRecord — outreach falls back to structured-summary path");
             }
         }
 
@@ -452,6 +477,7 @@ public class ContextBuilder
             BuiltAt                  = DateTimeOffset.UtcNow,
             RecentConversationSummary = conversationSummary,
             StructuredConversationSummary = structuredSummary,
+            RecentClosedConversation = recentClosed,
             SimilarRecentThoughts    = similarThoughts,
             OutreachContext          = outreachContext,
             AnchoredMemories        = anchoredMemories,

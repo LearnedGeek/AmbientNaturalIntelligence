@@ -419,20 +419,23 @@ public static class PromptBuilder
 
         // Recent conversation awareness — crucial for contextual outreach.
         //
-        // Theme J Phase J.2 step 5 (Apr 27, 2026): the decision prompt now
-        // also reads the structured per-speaker form when available, so the
-        // shouldReach/confidence/reasoning judgement is grounded on speaker-
-        // attributed content rather than a fused prose blob. Reasoning is the
-        // input to the rollback-only path (J.1) and to logging — keeping it
-        // attribution-clean here means the audit trail stays clean too.
+        // Render order (Vibe Loop V1.4, Apr 29, 2026):
+        //   1. Closed-conversation gist (V1) — paraphrased, no verbatim. Preferred.
+        //   2. Active-thread structured summary (Theme J.2) — per-speaker tagged
+        //      verbatim, OK for active continuity but not for outreach off a
+        //      closed thread.
+        // The legacy free-prose <c>RecentConversationSummary</c> branch is GONE
+        // here — that's the consumer side of the Apr 29 verbatim-parrot leak.
+        // Outreach decisions no longer read the verbatim-Episodic surface.
+        var decisionClosed = snapshot.RecentClosedConversation;
         var decisionStructured = snapshot.StructuredConversationSummary;
-        if (decisionStructured is { Turns.Count: > 0 })
+        if (decisionClosed is not null && !string.IsNullOrWhiteSpace(decisionClosed.Gist))
+        {
+            context.Add(RenderClosedConversationContextDecision(decisionClosed, contact));
+        }
+        else if (decisionStructured is { Turns.Count: > 0 })
         {
             context.Add($"You recently talked with {contact} (each line tagged with who said it):\n{decisionStructured.ToPromptString()}");
-        }
-        else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
-        {
-            context.Add($"You recently talked with {contact}: {snapshot.RecentConversationSummary}");
         }
 
         if (snapshot.OpenLoops.Count > 0)
@@ -865,17 +868,25 @@ public static class PromptBuilder
         // of the prompt — not a model-side responsibility. Falls back to the
         // prose form when the structured field is null (e.g., during the
         // additive-deploy window or if the conversation service is unavailable).
+        // Render order (Vibe Loop V1.4, Apr 29, 2026):
+        //   1. Closed-conversation gist (V1) — paraphrased, no verbatim. Preferred.
+        //   2. Active-thread structured summary (Theme J.2) — per-speaker tagged
+        //      verbatim, OK for active continuity.
+        // The legacy free-prose <c>RecentConversationSummary</c> branch is GONE —
+        // that's the consumer side of the Apr 29 verbatim-parrot leak. Outreach
+        // composition no longer reads the verbatim-Episodic surface.
+        var closed = snapshot.RecentClosedConversation;
         var structured = snapshot.StructuredConversationSummary;
-        if (structured is { Turns.Count: > 0 })
+        if (closed is not null && !string.IsNullOrWhiteSpace(closed.Gist))
+        {
+            sections.Add($"\nIMPORTANT — You recently talked with {contact}. The relational gist is paraphrased below; the verbatim transcript is intentionally not included to avoid lifting {contact}'s words into your own message:");
+            sections.Add(RenderClosedConversationContextComposition(closed, contact));
+            sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
+        }
+        else if (structured is { Turns.Count: > 0 })
         {
             sections.Add($"\nIMPORTANT — You recently talked with {contact}. Each line is tagged with who said it; do not lift {contact}'s exact words into your own message:");
             sections.Add(structured.ToPromptString());
-            sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
-        }
-        else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
-        {
-            sections.Add($"\nIMPORTANT — You recently talked with {contact}:");
-            sections.Add($"  {snapshot.RecentConversationSummary}");
             sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
         }
 
@@ -1065,6 +1076,69 @@ public static class PromptBuilder
     }
 
     // ── Feature 27: Outreach continuity formatting ──────────────────────────
+
+    /// <summary>
+    /// Vibe Loop V1.4: render a <see cref="ClosedConversationRecord"/> as the
+    /// outreach <b>decision</b>-stage relational context block. Compact form —
+    /// the decision prompt is short; we just need enough to ground the
+    /// shouldReach/confidence/reasoning judgement in what actually happened.
+    /// </summary>
+    internal static string RenderClosedConversationContextDecision(
+        ClosedConversationRecord rec, string contactName)
+    {
+        var contactRegisters = TopRegisters(rec.MarkRegister, take: 2);
+        var aniRegisters     = TopRegisters(rec.AniRegister, take: 2);
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("Recent conversation gist with ").Append(contactName).Append(": ").Append(rec.Gist.TrimEnd('.')).Append('.');
+        if (contactRegisters.Length > 0)
+            sb.Append(' ').Append(contactName).Append(" was in ").Append(contactRegisters).Append('.');
+        if (aniRegisters.Length > 0)
+            sb.Append(' ').Append("You were in ").Append(aniRegisters).Append('.');
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Vibe Loop V1.4: render a <see cref="ClosedConversationRecord"/> as the
+    /// outreach <b>composition</b>-stage relational context block. Slightly
+    /// more elaborated than the decision form so the composition model has
+    /// enough signal to land a natural follow-up tone.
+    /// </summary>
+    internal static string RenderClosedConversationContextComposition(
+        ClosedConversationRecord rec, string contactName)
+    {
+        var contactRegisters = TopRegisters(rec.MarkRegister, take: 2);
+        var aniRegisters     = TopRegisters(rec.AniRegister, take: 2);
+
+        var lines = new List<string> { $"  Gist: {rec.Gist.TrimEnd()}" };
+        if (contactRegisters.Length > 0)
+            lines.Add($"  {contactName}'s emotional register at the time: {contactRegisters}");
+        if (aniRegisters.Length > 0)
+            lines.Add($"  Your register: {aniRegisters}");
+        if (rec.TopicKeywords.Count > 0)
+            lines.Add($"  Topics: {string.Join(", ", rec.TopicKeywords.Take(5))}");
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Take the top-N registers by prevalence value, format as a comma-joined
+    /// human-readable list. Empty input → empty string. Returns just register
+    /// names, not the numeric prevalence — the model doesn't need decimals to
+    /// pick up tone, and noisy decimals encourage the model to over-attend to
+    /// magnitudes that are noisy at small turn counts.
+    /// </summary>
+    internal static string TopRegisters(IReadOnlyDictionary<string, float> vector, int take)
+    {
+        if (vector is null || vector.Count == 0) return string.Empty;
+        var top = vector
+            .Where(kv => kv.Value > 0f)
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Take(take)
+            .Select(kv => kv.Key)
+            .ToList();
+        return string.Join(" + ", top);
+    }
 
     /// <summary>
     /// Formats RecentOutreachContext into a human-readable block for prompt injection.

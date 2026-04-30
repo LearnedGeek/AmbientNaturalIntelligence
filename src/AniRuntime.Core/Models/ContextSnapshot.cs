@@ -34,6 +34,19 @@ public class ContextSnapshot
     public StructuredConversationSummary? StructuredConversationSummary { get; set; }
 
     /// <summary>
+    /// Vibe Loop V1.4 (Apr 29, 2026): the most recent
+    /// <see cref="ClosedConversationRecord"/> for outreach prompt rendering.
+    /// The gist is paraphrased by V1.2's anti-parrot constraint, so consuming
+    /// this field gives outreach prompts a structurally-no-verbatim relational
+    /// context block. Outreach decision + composition paths read this in
+    /// preference to the active-thread <see cref="StructuredConversationSummary"/>
+    /// (which still includes verbatim turn content for active continuity), and
+    /// the legacy verbatim-prose <see cref="RecentConversationSummary"/> is no
+    /// longer read at all by outreach prompts.
+    /// </summary>
+    public ClosedConversationRecord? RecentClosedConversation { get; set; }
+
+    /// <summary>
     /// Recent inner thoughts that are semantically similar to current context.
     /// Used to detect thought loops and steer toward diversity.
     /// </summary>

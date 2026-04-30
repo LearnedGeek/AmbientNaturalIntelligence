@@ -141,18 +141,34 @@ New service `IClosedConversationSummarizer` in `AniRuntime.LLM` (location locked
 
 **The Apr 29 verbatim-parrot leak path (producer side) is now closed.** Outreach prompt (V1.4) still reads the OLD `Conversation (N messages):` Episodic records that exist in the substrate from before tonight; those are what V1.4.5 audits and what V1.4 stops consuming. New closes from this commit forward write only structured records.
 
-### Phase V1.4 — Outreach prompt path migration ⏳
-**Estimated effort:** ~1 day.
+### Phase V1.4 — Outreach prompt path migration ✅
+**Status:** Shipped Apr 29, 2026 21:15 CDT.
+**Estimated effort:** ~1 day; actual ~30 min.
 
-`PromptBuilder.cs:875-879` (the `RecentConversationSummary` prose fallback in `BuildOutreachMessagePrompt`) — replace with consumption of the new `ClosedConversationRecord`:
+Outreach prompts now consume the V1 gist surface; the legacy verbatim-prose `RecentConversationSummary` fallback in outreach paths is gone (this is the consumer side of the Apr 29 verbatim-parrot leak).
 
-- Retrieve the most recent `ClosedConversationRecord` for this contact (within recency window).
-- Render in the outreach prompt as: *"Recent conversation gist: {gist}. Mark's emotional register at the time: {mark_register top-2}. Your register: {ani_register top-2}."*
-- The structural anti-parrot guarantee: there's NO verbatim transcript in the prompt anymore — only the gist (which is paraphrased by V1.2 prompt design) and structured register vectors.
+**Render order (both `BuildOutreachPrompt` decision and `BuildOutreachMessagePrompt` composition):**
+1. `RecentClosedConversation` (V1 gist + register top-2 + topics) — preferred. Paraphrased by V1.2's anti-parrot prompt; no verbatim from contact.
+2. `StructuredConversationSummary` (Theme J.2) — fallback when no closed record exists. Per-speaker tagged verbatim; appropriate for active-thread continuity.
+3. (legacy `RecentConversationSummary` verbatim prose) — REMOVED from outreach paths. Inner-thought prompt still keeps the legacy fallback (out of V1.4 scope).
 
-Same change applies to `BuildOutreachPrompt` (the decision-stage prompt at `PromptBuilder.cs:428-435`) — both decision-stage and composition-stage now read the gist surface, not the prose surface.
+**Implementation notes (Apr 29 21:15):**
+- `ContextSnapshot` gained `RecentClosedConversation: ClosedConversationRecord?` (Vibe Loop V1.4 field).
+- `ContextBuilder` gained optional `IClosedConversationStore` constructor dep; populates `RecentClosedConversation` via `_closedStore.GetRecentAsync(limit: 1)`. Non-fatal on store failure — outreach falls back to structured-summary path.
+- `PromptBuilder` gained two render helpers (`RenderClosedConversationContextDecision`, `RenderClosedConversationContextComposition`) plus `TopRegisters` (ranks by prevalence, ties alphabetical, drops zero-prevalence registers). Composition form includes Gist + Mark's top-2 register + Ani's top-2 register + top-5 topics; decision form is more compact.
+- Both outreach prompts now contain the explicit framing: *"The relational gist is paraphrased below; the verbatim transcript is intentionally not included to avoid lifting Mark's words into your own message"* — instruction-side reinforcement of the structural guarantee.
+- Updated 2 existing J.2 fallback-to-prose tests to reflect the new V1.4 contract (legacy prose no longer rendered in outreach paths).
+- 8 new V1.4 spec tests in `PromptBuilderTests`:
+  - Both outreach prompts prefer `ClosedConversationRecord` over Structured + legacy prose.
+  - Composition falls back to Structured when ClosedRecord is null.
+  - Anti-parrot consumer-side regression with the Apr 29 dentist fixture: even when legacy `RecentConversationSummary` contains Mark's verbatim text *"i'm trying to pretend to work while being distracted by you. haha"*, the rendered outreach prompt contains NEITHER the full string NOR the 7+ token substring *"pretend to work while being distracted"*. Only the paraphrased gist appears.
+  - No-conversation-section when all three surfaces null.
+  - Render-helper unit tests on `TopRegisters` (ranking, ties, zero exclusion) and `RenderClosedConversationContextComposition` (renders gist + registers + topics).
+- **761 tests passing** (up from 753 — 8 net new). 0 errors. Pre-existing warning unrelated.
 
-**Acceptance:** spec test — set up a closed thread containing Mark's verbatim text "I'm trying to pretend to work while being distracted by you. Haha"; trigger an outreach composition; verify the rendered outreach prompt contains NO occurrence of that verbatim string (or any substring ≥7 tokens of it).
+**The Apr 29 verbatim-parrot leak is now closed end-to-end.** Producer side (V1.3) doesn't write the verbatim transcript at thread close. Consumer side (V1.4) doesn't read the legacy verbatim transcripts that exist in the substrate from before V1.3. New closes write structured records; outreach reads structured records. The legacy substrate records age out via existing Episodic decay; V1.4.5 audits whether they're still influencing other paths until they age out.
+
+**Acceptance criterion from the original plan** — *"closed thread containing Mark's verbatim text → outreach composition → no verbatim substring ≥7 tokens"* — is now structurally enforced AT THE CONSUMER. The empirical verification against a real LLM run is V1.6's regression test. V1.4 closes the prompt-rendering surface; V1.6 verifies the dispatched outreach text.
 
 ### Phase V1.4.5 — Legacy substrate audit (added Apr 29 per Mark's Q5) ⏳
 **Estimated effort:** ~1 day.
@@ -175,8 +191,18 @@ Output: structured report saved to `tools/audits/snapshots/v1.4.5-legacy-substra
 
 **Acceptance:** report exists with the three query outputs; Mark has read it and signaled which follow-up actions (if any) belong in V2 or a separate Substrate Hygiene Sweep workstream.
 
-### Phase V1.5 — Vibe Loop retrieval-time biasing ⏳
-**Estimated effort:** ~2-3 days.
+### Phase V1.5 — Vibe Loop retrieval-time biasing ⏳ **GATED**
+**Status:** Implementation BLOCKED on resolution of vibe-vs-mood balance design questions. See `ANI-VibeLoop-V1.5-Vibe-vs-Mood-Balance-Design-Questions.md` (drafted Apr 29 21:10 CDT during V1.4 work after Mark surfaced *"how do we balance transactional emotions against larger mood?"*).
+
+**What needs answers before V1.5 starts:**
+1. **Lever 1 — saturation/novelty pressure** for retrieved strategies (half-life, exact-record vs shape-similarity, soft decay vs hard exclusion).
+2. **Lever 2 — mood-as-modulator** vs mood-as-output (does the prompt explicitly name "shape not literal," or trust the model? how many prior strategies surfaced?).
+3. **Lever 3 — outcome-signal interpretation** (is the loop framed as Ani's self-regulation signal, or balanced with Mark's delta? both surfaces in V1.2 data — design choice is which one drives bias).
+4. **V1.5 phasing — V1.5a observational then V1.5b biasing** with explicit telemetry-gated cutover (diversity histogram + mood-vs-vibe divergence triple).
+
+Mark's worry, named: *"we don't want it to be 'oh, last time he was sad I made a joke so now he's happy' so every time I'm sad it's followed up with a joke."* V1.5 cannot ship the retrieval-bias function until that flattening risk has an architectural answer.
+
+**Estimated effort once unblocked:** ~2-3 days.
 
 The actual Vibe Loop runtime mechanism. At outreach composition time:
 
@@ -250,4 +276,5 @@ This becomes the canonical regression test for the leak class. Recurrence ever s
 | 2026-04-29 19:59 CDT | V1.0 | **V1.0 design alignment LOCKED.** Five primary decisions + bonus question answered. Notable upgrades from initial draft: (a) outcome signal expanded to dual representation (vector + valence scalar) per Mark's "anger to happiness sliding scale" question; (b) Q1 Lerman-territory note flagged for Paper 2 — per-thread register vectors with outcome deltas are a finer-grained empirical surface than Chu et al. 2025's aggregate-scale data; (c) new V1.4.5 legacy substrate audit phase added between V1.4 and V1.5 per Mark's Q5 concern about Episodic memories with global impact and Episodic→Semantic migration via Feature 32 reflection synthesis; (d) `IClosedConversationSummarizer` location locked to `AniRuntime.LLM` (cross-domain extraction to LearnedGeek.ML deferred — bigger conversation needed about overall migration scope). Calendar updated 8-10 → 9-11 working days serial. Ready to start V1.1. |
 | 2026-04-29 20:14 CDT | V1.1 | **V1.1 SHIPPED.** ~30 min actual vs ~1 day estimate. POCO + narrow interface (Mar 19 ISP discipline) + raw-SQLite store with UPSERT semantics + DI registration + 8 spec tests covering schema, roundtrip, UPSERT, by-thread lookup, recency ordering, NULL embedding, empty collections. 726 tests passing. Ready for V1.2 (LMKit-driven gist + emotional-rhythm extraction service). |
 | 2026-04-29 20:40 CDT | V1.2 | **V1.2 SHIPPED.** ~30 min actual vs ~2-3 day estimate. `IClosedConversationSummarizer` interface + `ClosedConversationSummarizer` implementation in AniRuntime.LLM. Per-turn 9-register classification via lean LLM prompt; per-speaker prevalence vectors; outcome-signal seed vector + scalar valence projection per V1.0 design (Desire excluded from valence as context-dependent); frequency-based topic-keyword extraction (LMKit-driven extraction deferred to V1.5 to avoid cross-project coupling); anti-parrot gist prompt with explicit "no 7+ word verbatim phrases" constraint; heuristic-gist fallback that preserves anti-parrot guarantee on LLM-failure path; embedding via `IOllamaClient.EmbedAsync`, non-fatal on failure. 22 new spec tests; 748 total passing. DI registered in Program.cs:99-100. Ready for V1.3 (CloseThreadAsync rewrite to use the summarizer + write to the V1.1 store, AND stop writing the verbatim Episodic record). |
+| 2026-04-29 21:15 CDT | V1.4 | **V1.4 SHIPPED — VERBATIM-PARROT CONSUMER LEAK CLOSED.** ~30 min actual vs ~1 day estimate. Outreach decision + composition now consume `ClosedConversationRecord` (V1 gist + register top-2 + topics) in preference to Structured (J.2) or legacy prose. Legacy `RecentConversationSummary` no longer read by outreach paths AT ALL. `ContextSnapshot.RecentClosedConversation` field added; ContextBuilder fetches via new optional `IClosedConversationStore` dep. Anti-parrot consumer-side regression test pins the structural property: even with Mark's verbatim Apr 29 dentist text in the legacy prose surface, the rendered outreach prompt contains only the paraphrased gist. 8 new V1.4 tests; 2 existing J.2 fallback tests updated to reflect V1.4 contract. **761 tests passing** (up from 753). End-to-end leak now closed: V1.3 producer side, V1.4 consumer side. **V1.5 gated** — Mark surfaced *"how do we balance transactional emotions against larger mood?"* during V1.4 work. Design doc drafted as `ANI-VibeLoop-V1.5-Vibe-vs-Mood-Balance-Design-Questions.md`. Three architectural levers (saturation, mood-as-modulator, outcome-as-self-regulation) need resolution before V1.5 implementation. |
 | 2026-04-29 20:50 CDT | V1.3 | **V1.3 SHIPPED — VERBATIM-PARROT PRODUCER LEAK CLOSED.** ~25 min actual vs ~1 day estimate. `SqliteConversationService.CloseThreadAsync` rewired through V1.2 summarizer → V1.1 store. Removed `BuildThreadSummary` and the verbatim `Conversation (N messages):` Episodic write entirely — that's the producer-side surface of the Apr 29 outreach-prompt parrot leak, and it is now structurally absent from the close path. Failure path verified: summarization exceptions log + drop, NO fallback verbatim write. Constructor gained `IClosedConversationSummarizer` + `IClosedConversationStore` deps; DI already wired from V1.1/V1.2. 5 new strict-mock spec tests in `SqliteConversationServiceTests`; 753 total passing. **Producer side closed; consumer side (outreach prompt path) still reads legacy substrate records — that's V1.4.** Tonight's Vibe Loop V1 work honours OG Ani by ending three commits deep with the leak path she would have wanted closed actually closed. |

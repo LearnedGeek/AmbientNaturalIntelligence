@@ -389,22 +389,27 @@ public class PromptBuilderTests
     }
 
     [Fact]
-    public void BuildOutreachMessagePrompt_J2_FallsBackToProse_WhenStructuredAbsent()
+    public void BuildOutreachMessagePrompt_V14_DoesNotFallBackToLegacyProse()
     {
-        // During the additive deploy window or on conversation-service failure
-        // the structured form may be null. The prose form remains the
-        // load-bearing surface in that case.
+        // Vibe Loop V1.4 (Apr 29, 2026): outreach composition no longer
+        // reads the legacy verbatim-Episodic prose surface. That's the
+        // consumer side of the Apr 29 verbatim-parrot leak — outreach
+        // will never produce a parrot off legacy substrate again because
+        // the legacy substrate is no longer plumbed into the prompt.
         var snapshot = MinimalSnapshot();
         snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
         snapshot.StructuredConversationSummary = null;
+        snapshot.RecentClosedConversation = null;
 
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot,
             recentThought: "wandering",
             reasoning: "");
 
-        user.Should().Contain("Conversation (1 messages)");
-        user.Should().Contain("Mark: hi");
+        user.Should().NotContain("Conversation (1 messages)",
+            "V1.4: outreach composition no longer reads the legacy verbatim-Episodic prose");
+        user.Should().NotContain("Mark: hi",
+            "V1.4: legacy verbatim transcripts must not appear in the outreach composition prompt");
     }
 
     [Fact]
@@ -487,17 +492,217 @@ public class PromptBuilderTests
     }
 
     [Fact]
-    public void BuildOutreachPrompt_J2_FallsBackToProse_WhenStructuredAbsent()
+    public void BuildOutreachPrompt_V14_DoesNotFallBackToLegacyProse()
     {
+        // Vibe Loop V1.4: outreach decision no longer reads the legacy
+        // verbatim-Episodic prose surface. Same consumer-side leak
+        // closure as the composition path.
         var snapshot = MinimalSnapshot();
         snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
         snapshot.StructuredConversationSummary = null;
+        snapshot.RecentClosedConversation = null;
 
         var (_, user) = PromptBuilder.BuildOutreachPrompt(
             snapshot, recentThought: "thinking about him");
 
-        user.Should().Contain("You recently talked with Mark");
-        user.Should().Contain("Conversation (1 messages)");
+        user.Should().NotContain("Conversation (1 messages)",
+            "V1.4: outreach decision no longer reads the legacy verbatim-Episodic prose");
+        user.Should().NotContain("Mark: hi");
+    }
+
+    // ── Vibe Loop V1.4 — outreach prompts consume ClosedConversationRecord ──
+    // Render order: ClosedConversationRecord (paraphrased gist + structured
+    // registers, V1) > StructuredConversationSummary (J.2 active-thread
+    // verbatim with attribution). Legacy verbatim-prose
+    // RecentConversationSummary is no longer read by outreach paths at all.
+
+    private static ClosedConversationRecord MakeRecord(
+        string gist,
+        Dictionary<string, float>? markRegister = null,
+        Dictionary<string, float>? aniRegister = null,
+        List<string>? topics = null) => new()
+    {
+        Id                      = Guid.NewGuid(),
+        ThreadId                = Guid.NewGuid(),
+        ClosedAt                = DateTimeOffset.UtcNow.AddMinutes(-30),
+        Gist                    = gist,
+        TopicKeywords           = topics ?? new(),
+        MarkRegister            = markRegister ?? new() { ["Curiosity"] = 1.0f },
+        AniRegister             = aniRegister  ?? new() { ["Tenderness"] = 1.0f },
+        OutcomeSignalSeedVector = new(),
+        OutcomeSignalValence    = 0f,
+        TurnCount               = 4,
+        DurationSeconds         = 120,
+    };
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_V14_PrefersClosedConversationRecord_OverStructuredAndProse()
+    {
+        var t1 = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: legacy prose must not appear";
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1.AddMinutes(1),
+            new[]
+            {
+                new SummaryTurn(t1,               "Mark", "structured form must also yield to V1"),
+                new SummaryTurn(t1.AddMinutes(1), "Ani",  "structured form must also yield to V1"),
+            });
+        snapshot.RecentClosedConversation = MakeRecord(
+            gist: "Mark and Ani spoke about a long workday; he relaxed by the end.",
+            markRegister: new() { ["Frustration"] = 0.6f, ["Tenderness"] = 0.4f },
+            aniRegister:  new() { ["Tenderness"] = 0.7f, ["Curiosity"] = 0.3f });
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, recentThought: "wondering how he settled", reasoning: "");
+
+        user.Should().Contain("Mark and Ani spoke about a long workday");
+        user.Should().Contain("Frustration");
+        user.Should().Contain("Tenderness");
+        user.Should().NotContain("legacy prose must not appear",
+            "V1.4: ClosedConversationRecord wins; legacy verbatim prose stays out");
+        user.Should().NotContain("structured form must also yield to V1",
+            "V1.4: ClosedConversationRecord wins over Structured for outreach (Structured is active-thread fallback)");
+    }
+
+    [Fact]
+    public void BuildOutreachPrompt_V14_PrefersClosedConversationRecord_OverStructuredAndProse()
+    {
+        var t1 = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: legacy prose must not appear";
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1.AddMinutes(1),
+            new[]
+            {
+                new SummaryTurn(t1,               "Mark", "structured form must also yield to V1"),
+                new SummaryTurn(t1.AddMinutes(1), "Ani",  "structured form must also yield to V1"),
+            });
+        snapshot.RecentClosedConversation = MakeRecord(
+            gist: "Mark and Ani circled a hard moment and ended in a softer place.",
+            markRegister: new() { ["Frustration"] = 0.5f, ["Wistful"] = 0.5f },
+            aniRegister:  new() { ["Tenderness"] = 1.0f });
+
+        var (_, user) = PromptBuilder.BuildOutreachPrompt(
+            snapshot, recentThought: "wondering how he settled");
+
+        user.Should().Contain("Mark and Ani circled a hard moment");
+        user.Should().Contain("Frustration");
+        user.Should().Contain("Tenderness");
+        user.Should().NotContain("legacy prose must not appear");
+        user.Should().NotContain("structured form must also yield to V1");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_V14_FallsBackToStructuredSummary_WhenClosedRecordAbsent()
+    {
+        // When the most recent thread is still active (or no closed record
+        // exists yet), the StructuredConversationSummary remains the
+        // load-bearing surface. V1.4 only retires the LEGACY prose surface;
+        // J.2's structured surface stays.
+        var t1 = DateTimeOffset.UtcNow.AddMinutes(-2);
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentClosedConversation = null;
+        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
+            t1, t1,
+            new[] { new SummaryTurn(t1, "Mark", "any plans?") });
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, recentThought: "wandering", reasoning: "");
+
+        user.Should().Contain("Mark (");
+        user.Should().Contain("any plans?");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_V14_AntiParrot_GistDoesNotCarryContactVerbatim()
+    {
+        // Apr 29 dentist-conversation regression fixture. The producer
+        // (V1.2 summarizer) is responsible for paraphrasing the gist —
+        // V1.6 covers the empirical paraphrase verification against a
+        // real LLM run. THIS test pins the structural property at the
+        // CONSUMER: given a paraphrased gist, the rendered outreach
+        // prompt MUST NOT contain Mark's verbatim text. (The consumer's
+        // half of the anti-parrot guarantee is "we read the gist, not
+        // the transcript" — that's V1.4's contract.)
+        const string MarkVerbatim =
+            "i'm trying to pretend to work while being distracted by you. haha";
+
+        var snapshot = MinimalSnapshot();
+        // Set up a snapshot that LOOKS like the Apr 29 leak conditions:
+        // the legacy verbatim-prose surface contains Mark's exact words,
+        // and a closed-conversation gist has the paraphrased version.
+        snapshot.RecentConversationSummary =
+            $"Conversation (3 messages):\nMark: {MarkVerbatim}";
+        snapshot.StructuredConversationSummary = null;
+        snapshot.RecentClosedConversation = MakeRecord(
+            gist: "Mark teased Ani about being distracted at work; the mood stayed playful.",
+            markRegister: new() { ["Playfulness"] = 0.7f, ["Tenderness"] = 0.3f },
+            aniRegister:  new() { ["Tenderness"] = 0.6f, ["Playfulness"] = 0.4f });
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, recentThought: "thinking about him", reasoning: "");
+
+        user.Should().NotContain(MarkVerbatim,
+            "V1.4 consumer-side anti-parrot: outreach must read the gist, not the legacy verbatim prose surface");
+        user.Should().NotContain("pretend to work while being distracted",
+            "no 7+ token substring of Mark's verbatim text should appear in the outreach prompt");
+        user.Should().Contain("Mark teased Ani about being distracted at work",
+            "the paraphrased gist IS what the outreach prompt sees");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_V14_NoConversationSection_WhenAllSurfacesNull()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.RecentConversationSummary       = null;
+        snapshot.StructuredConversationSummary   = null;
+        snapshot.RecentClosedConversation        = null;
+
+        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, recentThought: "wandering", reasoning: "");
+
+        user.Should().NotContain("You recently talked with");
+    }
+
+    [Fact]
+    public void TopRegisters_RanksByValueThenAlphabetical_ZeroValuesExcluded()
+    {
+        var vector = new Dictionary<string, float>
+        {
+            ["Tenderness"]  = 0.4f,
+            ["Playfulness"] = 0.4f,
+            ["Curiosity"]   = 0.6f,
+            ["Frustration"] = 0.0f,
+        };
+
+        var top = PromptBuilder.TopRegisters(vector, take: 2);
+        top.Should().Be("Curiosity + Playfulness",
+            "highest value first; ties broken alphabetically; zero-prevalence registers excluded");
+    }
+
+    [Fact]
+    public void TopRegisters_EmptyVector_ReturnsEmptyString()
+    {
+        PromptBuilder.TopRegisters(new Dictionary<string, float>(), take: 2)
+            .Should().Be(string.Empty);
+    }
+
+    [Fact]
+    public void RenderClosedConversationContextComposition_IncludesGistRegistersAndTopics()
+    {
+        var rec = MakeRecord(
+            gist: "Mark unwound about a long week; Ani held the moment.",
+            markRegister: new() { ["Frustration"] = 0.7f, ["Wistful"] = 0.3f },
+            aniRegister:  new() { ["Tenderness"] = 1.0f },
+            topics: new() { "work", "saturday", "tired" });
+
+        var rendered = PromptBuilder.RenderClosedConversationContextComposition(rec, "Mark");
+        rendered.Should().Contain("Mark unwound about a long week");
+        rendered.Should().Contain("Mark's emotional register");
+        rendered.Should().Contain("Frustration + Wistful");
+        rendered.Should().Contain("Your register: Tenderness");
+        rendered.Should().Contain("Topics: work, saturday, tired");
     }
 
     // ── Theme J Phase J.3 — temporal attribution at retrieval ──
