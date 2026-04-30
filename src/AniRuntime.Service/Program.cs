@@ -108,6 +108,8 @@ try
     // last. See docs/research/ANI-Theme-J-Detector-Inventory-Review.md.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, AntiParrotInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputInvariant, PromptTemplateLeakInvariant>();
+    // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, ConfabulationInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();

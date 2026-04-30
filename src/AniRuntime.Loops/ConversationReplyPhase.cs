@@ -838,45 +838,23 @@ public class ConversationReplyPhase
         knownNames.Add("Mama");
         knownNames.Add("Boo");
 
-        // Check 1: Does the reply reference a specific person not mentioned in the conversation?
-        // Uses Catalyst POS tagger to detect proper nouns (PROPN) — no hardcoded word lists.
-        // The NLP model identifies "Kathy", "Hugh", "Laurie" as PROPN automatically.
-        // Excludes character name, contact name, and known variants.
-        if (_nlpPipeline is not null)
-        {
-            try
-            {
-                var doc = new Catalyst.Document(reply, Mosaik.Core.Language.English);
-                _nlpPipeline.ProcessSingle(doc);
-
-                foreach (var span in doc)
-                {
-                    var properNouns = span.Tokens
-                        .Where(t => t.POS == Catalyst.PartOfSpeech.PROPN)
-                        .Select(t => t.Value)
-                        .ToList();
-
-                    foreach (var noun in properNouns)
-                    {
-                        if (noun.Length < 3) continue;
-                        // Skip "I" which sometimes gets tagged as PROPN
-                        if (noun is "I") continue;
-                        // Skip known names (character, contact, variants)
-                        if (knownNames.Contains(noun)) continue;
-                        var nounLower = noun.ToLowerInvariant();
-                        // Skip names already established in conversation, character seeds,
-                        // anchored memories, retrieved memories, or world experiences
-                        if (conversationText.Contains(nounLower)) continue;
-                        if (knownEntitiesContext.Contains(nounLower)) continue;
-                        return (true, $"Reply mentions proper noun '{noun}' not in conversation or known entities");
-                    }
-                }
-            }
-            catch
-            {
-                // NLP failure is non-blocking — fall through to other checks
-            }
-        }
+        // Check 1 (proper-noun-not-in-conversation) was RETIRED Apr 30, 2026.
+        //
+        // The Catalyst POS tagger fired false positives on em-dash artifacts
+        // (Apr 30 13:17:04: `were—i` was extracted as a "proper noun" because
+        // the em-dash split `were—i` produced a token starting with the
+        // capital letter that wasn't in the conversation). The brittle false-
+        // positive triggered grounded-regen which produced its own
+        // confabulation (the *"Western Career Technical Academy"* / welding
+        // chain). Mark Apr 30 16:13: *"let's just move on to complete the
+        // round of changes we'd planned"* — retiring the heuristic was on
+        // the planned list; the gate's <see cref="Invariants.ConfabulationInvariant"/>
+        // (J.5b) is the universal-invariants-on-the-gate replacement.
+        //
+        // The unused `knownNames` / `knownEntitiesContext` parameters stay
+        // on the signature for now — Checks 2-4 don't need them, but ripping
+        // them out is a separate cosmetic refactor.
+        _ = knownNames;
 
         return RunChecks2Through4(replyLower, conversationText);
     }

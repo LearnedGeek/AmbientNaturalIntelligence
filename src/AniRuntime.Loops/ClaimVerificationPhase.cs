@@ -153,15 +153,47 @@ public class ClaimVerificationPhase
         var topK      = Math.Max(3, _options.ClaimVerificationMaxMemories);
         var queryText = BuildQueryText(claim);
 
-        // Source 1: Facts tier semantic search.
+        // Source 1: Facts tier semantic search — Mark-asserted records only.
+        //
+        // Apr 30, 2026 — read-side source-attribution filter (Theme J.5c).
+        // The pre-Apr-30 verifier admitted any Facts-tier record as evidence
+        // supporting a Mark-action claim, including:
+        //   - RSS perceptions (Bon Appétit article → "cheesy chickpea toast"
+        //     became "supported" because the food name was in the substrate
+        //     from the reactive-share path that morning).
+        //   - Ani's own outputs that ended up in Facts via downstream
+        //     promotion paths.
+        //   - Generic world-facts that happened to share keywords with the
+        //     claim (Apr 30 desk-and-three-books false-positive).
+        // None of those are Mark-asserted. The fix: only `twilio-inbound`
+        // perceptions and `character-seed` records count as Mark-asserted
+        // evidence for claims about Mark's actions / decisions / shared
+        // events. Other Facts-tier content is still searched but excluded
+        // from the support decision.
         try
         {
             var factsResults = await _search.SearchByTierAsync(queryText, EpistemicTier.Facts, topK, ct)
                 .ConfigureAwait(false);
-            if (factsResults.Any(r => r.CosineSimilarity >= threshold))
+            var supportingFact = factsResults.FirstOrDefault(r =>
+                r.CosineSimilarity >= threshold && IsMarkAssertedSource(r.Record));
+            if (supportingFact is not null)
             {
-                _log.LogDebug("Claim supported by Facts tier: \"{Text}\"", claim.Text);
+                _log.LogDebug(
+                    "Claim supported by Facts tier (source={Source}): \"{Text}\"",
+                    supportingFact.Record.SourceName, claim.Text);
                 return true;
+            }
+
+            // Log when we filtered out a non-Mark-asserted match — visibility
+            // into how often the read-side filter is doing work.
+            var filteredOut = factsResults.FirstOrDefault(r =>
+                r.CosineSimilarity >= threshold && !IsMarkAssertedSource(r.Record));
+            if (filteredOut is not null)
+            {
+                _log.LogDebug(
+                    "J.5c attribution filter: rejected non-Mark-asserted Facts match (source={Source}, cosine={Cosine:F2}): \"{Preview}\"",
+                    filteredOut.Record.SourceName, filteredOut.CosineSimilarity,
+                    Truncate(filteredOut.Record.Content, 80));
             }
         }
         catch (Exception ex)
@@ -232,6 +264,41 @@ public class ClaimVerificationPhase
         if (claim.KeyTerms.Count == 0) return claim.Text;
         return $"{claim.Text} {string.Join(" ", claim.KeyTerms)}";
     }
+
+    /// <summary>
+    /// Apr 30, 2026 — Theme J.5c read-side source-attribution filter.
+    /// Returns true when the memory record represents a Mark-asserted fact —
+    /// either an inbound message Mark sent (twilio-inbound perception) or a
+    /// curated character seed about Mark's life. Other Facts-tier content
+    /// (RSS perceptions, world facts, residual Ani-output promoted to Facts
+    /// by downstream paths) is excluded from claim-support decisions about
+    /// Mark's actions / decisions / shared events, since those claims need
+    /// MARK as the source of truth, not the substrate at large.
+    /// </summary>
+    internal static bool IsMarkAssertedSource(MemoryRecord record)
+    {
+        if (record is null) return false;
+        var source = record.SourceName ?? string.Empty;
+
+        // The two canonical Mark-asserted source paths.
+        if (string.Equals(source, "twilio-inbound", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(source, "character-seed", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Defense-in-depth content-prefix check for inbound perception
+        // records that may not carry the source name through every code
+        // path (older substrate may have empty SourceName but the content
+        // shape — "Mark texted: …" / "Mark said: …" — still identifies
+        // the assertion as Mark's).
+        var content = record.Content ?? string.Empty;
+        if (content.StartsWith("Mark texted:", StringComparison.OrdinalIgnoreCase)) return true;
+        if (content.StartsWith("Mark said:",   StringComparison.OrdinalIgnoreCase)) return true;
+        if (content.StartsWith("About Mark:",  StringComparison.OrdinalIgnoreCase)) return true;
+
+        return false;
+    }
+
+    private static string Truncate(string s, int max)
+        => string.IsNullOrEmpty(s) || s.Length <= max ? (s ?? "") : s[..max] + "...";
 
     /// <summary>
     /// Parse the LLM JSON response into a list of structured claims. Tolerant of
