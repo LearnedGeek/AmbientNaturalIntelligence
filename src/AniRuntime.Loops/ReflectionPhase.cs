@@ -24,6 +24,7 @@ public class ReflectionPhase
     private readonly IMemoryPersistence _persist;
     private readonly IMemorySearch _search;
     private readonly AniOptions _options;
+    private readonly ICognitiveOutputGate? _outputGate;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
 
@@ -32,12 +33,14 @@ public class ReflectionPhase
         IMemoryPersistence persist,
         IMemorySearch search,
         IOptions<AniOptions> options,
-        ILogger<ReflectionPhase> log)
+        ILogger<ReflectionPhase> log,
+        ICognitiveOutputGate? outputGate = null)
     {
         _ollama = ollama;
         _persist = persist;
         _search = search;
         _options = options.Value;
+        _outputGate = outputGate;
         _log = log;
     }
 
@@ -115,7 +118,16 @@ public class ReflectionPhase
             .Select(m => m.Content.Length >= 50 ? m.Content[..50] : m.Content)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // J.5d (May 1, 2026) — gate evaluation context. Build once for the
+        // whole batch (recent contact messages + recent Ani output) so each
+        // observation is evaluated against the same conversational state.
+        // Cheap to compute and identical across observations within a cycle.
+        var gateContext = _outputGate is not null && _options.ReflectionOutputGateEnabled
+            ? BuildGateContext(recentMemories, contact)
+            : default;
+
         var saved = 0;
+        var gateDropped = 0;
         foreach (var observation in observations)
         {
             // Skip if we already have a reflection memory with this prefix
@@ -124,6 +136,44 @@ public class ReflectionPhase
             {
                 _log.LogDebug("Reflection: skipping duplicate '{Prefix}...'", prefix[..Math.Min(40, prefix.Length)]);
                 continue;
+            }
+
+            // J.5d gate evaluation. Per-observation; on Remediate or Fail
+            // we drop the observation (no regen — reflection observations
+            // are independent, dropping the suspect line is safer than
+            // re-rolling and getting a different fabrication). Other
+            // observations from the same cycle that pass continue to save.
+            if (_outputGate is not null && _options.ReflectionOutputGateEnabled)
+            {
+                var artifact = new CognitiveArtifact
+                {
+                    Content                 = observation,
+                    ProducerKind            = CognitiveProducerKind.Reflection,
+                    IntendedSink            = CognitiveOutputSink.PersistedSummary,
+                    ContactName             = contact,
+                    ContactRecentMessages   = gateContext.ContactMessages,
+                    PriorAniMessages        = gateContext.AniMessages,
+                };
+
+                try
+                {
+                    var verdict = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
+                    if (verdict.Verdict != OutputGateVerdict.Pass)
+                    {
+                        _log.LogWarning(
+                            "J.5d reflection gate {Verdict} [{Fired}] — dropping observation: \"{Preview}\" — hint: {Hint}",
+                            verdict.Verdict, string.Join(",", verdict.FiredInvariants),
+                            observation.Length > 80 ? observation[..80] + "..." : observation,
+                            verdict.RemediationHint);
+                        gateDropped++;
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex,
+                        "J.5d reflection gate threw — saving observation uncovered (gate failure must NOT block reflection persistence).");
+                }
             }
 
             var record = new MemoryRecord
@@ -144,7 +194,47 @@ public class ReflectionPhase
             saved++;
         }
 
-        _log.LogInformation("Reflection synthesis: generated {Count} observations from {SourceCount} recent memories ({Saved} new, {Skipped} duplicates skipped)",
-            observations.Count, recentMemories.Count, saved, observations.Count - saved);
+        _log.LogInformation(
+            "Reflection synthesis: generated {Count} observations from {SourceCount} recent memories ({Saved} new, {Skipped} duplicates skipped, {GateDropped} gate-dropped)",
+            observations.Count, recentMemories.Count, saved, observations.Count - saved - gateDropped, gateDropped);
+    }
+
+    /// <summary>
+    /// J.5d (May 1, 2026) — extract recent contact + ani-output messages
+    /// from the recent-memory pool to seed the gate's confabulation
+    /// classifier with conversational context. Mark-asserted records are
+    /// identified by the canonical "Mark texted:" / "Mark said:" prefix
+    /// or twilio-inbound source; Ani's outputs by "I said to Mark:" /
+    /// "I reached out to Mark:" prefix or conversation source.
+    /// </summary>
+    internal static (IReadOnlyList<string> ContactMessages, IReadOnlyList<string> AniMessages) BuildGateContext(
+        IReadOnlyList<MemoryRecord> recentMemories, string contact)
+    {
+        var contactMessages = new List<string>();
+        var aniMessages = new List<string>();
+
+        foreach (var m in recentMemories)
+        {
+            var content = m.Content ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(content)) continue;
+
+            if (content.StartsWith($"{contact} texted:", StringComparison.OrdinalIgnoreCase)
+             || content.StartsWith($"{contact} said:",   StringComparison.OrdinalIgnoreCase)
+             || content.StartsWith("Mark texted:",       StringComparison.OrdinalIgnoreCase)
+             || content.StartsWith("Mark said:",         StringComparison.OrdinalIgnoreCase))
+            {
+                contactMessages.Add(content);
+            }
+            else if (content.StartsWith("I said to ",      StringComparison.OrdinalIgnoreCase)
+                  || content.StartsWith("I reached out to ", StringComparison.OrdinalIgnoreCase))
+            {
+                aniMessages.Add(content);
+            }
+        }
+
+        // Cap each list at 8 to bound prompt size for the classifier.
+        return (
+            contactMessages.TakeLast(8).ToList(),
+            aniMessages.TakeLast(8).ToList());
     }
 }

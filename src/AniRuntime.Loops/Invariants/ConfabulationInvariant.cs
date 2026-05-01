@@ -70,11 +70,18 @@ public sealed class ConfabulationInvariant : ICognitiveOutputInvariant
                                        or CognitiveOutputSink.PersistedSummary))
             return false;
 
+        // J.5d (May 1, 2026) — Reflection added to the applicable producer set.
+        // Reflection writes to MemoryType.Semantic with high importance (0.8);
+        // unguarded reflections enter the substrate as treated-as-fact. The
+        // confabulation invariant is the load-bearing gate here — anti-parrot
+        // is intentionally NOT extended (reflection legitimately recalls
+        // contact text; a 7-token verbatim run is not a parrot in this surface).
         return artifact.ProducerKind is
             CognitiveProducerKind.ConversationReply
          or CognitiveProducerKind.Outreach
          or CognitiveProducerKind.ClosedThreadSummary
-         or CognitiveProducerKind.Voice;
+         or CognitiveProducerKind.Voice
+         or CognitiveProducerKind.Reflection;
     }
 
     public async Task<InvariantResult> EvaluateAsync(

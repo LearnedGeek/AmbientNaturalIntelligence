@@ -1,5 +1,6 @@
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.Loops.Invariants;
 
@@ -31,8 +32,13 @@ public sealed class AntiParrotInvariant : ICognitiveOutputInvariant
 {
     public string Name => "anti-parrot";
 
-    /// <summary>Token-count threshold for verbatim-lift detection.</summary>
-    public const int VerbatimNGramThreshold = 7;
+    /// <summary>
+    /// Token-count threshold for verbatim-lift detection. Sourced from
+    /// <see cref="AntiParrotPromptFragments.VerbatimNGramThreshold"/> so
+    /// V1.2's producer-side prompt-rule and this gate-side check use a
+    /// single source of truth (J.5e consolidation, May 1, 2026).
+    /// </summary>
+    public const int VerbatimNGramThreshold = AntiParrotPromptFragments.VerbatimNGramThreshold;
 
     public bool AppliesTo(CognitiveArtifact artifact)
     {

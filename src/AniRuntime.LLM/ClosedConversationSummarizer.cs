@@ -3,6 +3,7 @@ using System.Text.Json;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace AniRuntime.LLM;
@@ -385,11 +386,15 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
     /// </summary>
     internal static (string System, string User) BuildGistPrompt(ConversationThread thread)
     {
-        var system = """
+        // J.5e (May 1, 2026): the verbatim-7-token rule is now defined ONCE
+        // in AntiParrotPromptFragments and referenced by both V1.2 (here)
+        // and the gate's AntiParrotInvariant. Single source of truth.
+        var noVerbatim = AntiParrotPromptFragments.NoVerbatimContactTurnsRule("Mark");
+        var system = $$"""
             You are a paraphrase-only summariser. Produce a 1–2 sentence summary of the conversation between Mark (the contact) and Ani.
 
             HARD CONSTRAINTS:
-            - DO NOT quote any contact (Mark) turn verbatim. Do not lift phrases of 7 or more consecutive words from any of his messages.
+            - {{noVerbatim}}
             - DO NOT use direct speech ("she said", "he asked"). Use paraphrase.
             - Focus on what shifted EMOTIONALLY between them, not what was literally said.
             - 1 to 2 sentences. No more.

@@ -250,6 +250,23 @@ public class AniOptions
     // docs/research/ANI-Theme-J-Detector-Inventory-Review.md).
     public bool ConversationReplyOutputGateEnabled { get; set; } = true;
 
+    // Theme J Phase J.5d (May 1, 2026): route ReflectionPhase observations
+    // through CognitiveOutputGate before they are persisted as Semantic-tier
+    // memories. Reflections are syntheses of recent memory into higher-order
+    // observations ("Mark's been checking on me a lot this week"); unguarded
+    // they enter the substrate at importance 0.8 with Provenance=Interior but
+    // Type=Semantic, where downstream retrieval treats them as factual
+    // grounding (Apr 27 reflection-confab + May 1 morning rank-4 surfacing).
+    //
+    // Per-observation evaluation: each line the reflection LLM produced is
+    // gated independently. On Remediate or Fail the observation is dropped
+    // (no regen — observations are independent so dropping is safer than
+    // re-rolling). Other observations from the same cycle that pass are
+    // persisted normally.
+    //
+    // Default ON; flag-flip is the rollback path.
+    public bool ReflectionOutputGateEnabled { get; set; } = true;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.

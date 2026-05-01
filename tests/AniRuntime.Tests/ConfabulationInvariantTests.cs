@@ -49,7 +49,10 @@ public class ConfabulationInvariantTests
     [InlineData(CognitiveProducerKind.Voice,                CognitiveOutputSink.Dispatch,         true)]
     [InlineData(CognitiveProducerKind.InnerThought,         CognitiveOutputSink.PersistedMemory,  false)]
     [InlineData(CognitiveProducerKind.WorldExperience,      CognitiveOutputSink.PersistedMemory,  false)]
-    [InlineData(CognitiveProducerKind.Reflection,           CognitiveOutputSink.PersistedSummary, false)]
+    // J.5d (May 1, 2026): Reflection added to the applicable set — reflections
+    // write to Semantic with importance 0.8 and become treated-as-fact via
+    // downstream retrieval. Was `false` pre-J.5d.
+    [InlineData(CognitiveProducerKind.Reflection,           CognitiveOutputSink.PersistedSummary, true)]
     public void AppliesTo_DispatchAndPersistedSummaryOnly_ForContactFacingProducers(
         CognitiveProducerKind producer, CognitiveOutputSink sink, bool expected)
     {
