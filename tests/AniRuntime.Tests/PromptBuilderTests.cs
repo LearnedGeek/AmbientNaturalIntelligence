@@ -132,6 +132,43 @@ public class PromptBuilderTests
         system.Should().NotContain("What you know about yourself:");
     }
 
+    // ── May 1, 2026 — current-time anchor in inner-thought prompt ──────────
+    // Pre-fix the inner-thought system prompt had no clock anchor; the model
+    // hallucinated wrong times (May 1 07:34 inner thought said "i'm sitting
+    // here at 10:55 am on friday in may"). Hallucinated time then bleeds
+    // into world-experience output and downstream outreach composition.
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_IncludesCurrentTimeAnchor()
+    {
+        var snapshot = MinimalSnapshot();
+        snapshot.BuiltAt = new DateTimeOffset(2026, 5, 1, 7, 34, 0, TimeSpan.Zero).ToLocalTime();
+
+        var (system, _) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        system.Should().Contain("It is currently",
+            "Apr 30 / May 1 hallucinated-time tag class — inner thought MUST anchor to walltime");
+        system.Should().Contain("Friday");
+        system.Should().Contain("May");
+    }
+
+    [Fact]
+    public void BuildInnerThoughtPrompt_TimeAnchor_RendersHourFromBuiltAt()
+    {
+        var snapshot = MinimalSnapshot();
+        // Use a UTC time that's distinct from local — ensure the formatter
+        // uses the local-time projection, since BuiltAt comes through as the
+        // ContextBuilder's UtcNow but the model expects "current time" in
+        // a human shape.
+        snapshot.BuiltAt = new DateTimeOffset(2026, 5, 1, 13, 22, 0, TimeSpan.Zero).ToLocalTime();
+
+        var (system, _) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        // The exact local-hour rendering depends on the runtime TZ; just
+        // assert the pattern is present.
+        system.Should().MatchRegex(@"It is currently \d{1,2}:\d{2} (AM|PM) on \w+,? \w+ \d{1,2}\.");
+    }
+
     // ── Agentic Lens Layer 5: Inner-thought subject-space opener ───────────────
     // The no-WorldSeed final question used to be "What is passing through your mind
     // right now?" — neutral in principle, but produced caregiver-centered thought in

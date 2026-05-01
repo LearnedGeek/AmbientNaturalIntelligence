@@ -233,10 +233,16 @@ public class AdminCommandHandler : IAdminCommandHandler
     {
         var decision = new OutreachDecision
         {
-            ShouldReach = true,
-            Message     = text,
-            ActionType  = ActionTypes.Sms,
-            Reasoning   = "admin command response",
+            ShouldReach  = true,
+            Message      = text,
+            ActionType   = ActionTypes.Sms,
+            Reasoning    = "admin command response",
+            // May 1, 2026 — flag as admin-meta so the dispatch pipeline skips
+            // voice / image enrichment. Mark Apr 30 ///tag at 07:47:32 had ~184KB
+            // of ElevenLabs audio attached because the meta-dispatch went through
+            // the same enrichment path as a real reply. Admin tags are not
+            // relational content and should ship as plain SMS.
+            IsAdminMeta  = true,
         };
 
         await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);

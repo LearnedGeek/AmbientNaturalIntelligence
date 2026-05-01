@@ -25,6 +25,15 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
     private bool _initialized;
     private bool _disposed;
 
+    // May 1, 2026 — auto-recovery state. Pre-fix the service set `_initialized = true`
+    // on the first failure to prevent retry-storms, but that left the service in a
+    // permanently-broken state if the model ever failed at runtime (Apr 30 22:41
+    // production: every classification call started failing 5+ hours after a
+    // successful load, no recovery path). Now: failures clear `_initialized` and
+    // `_model`, but a cooldown gates re-init attempts so we don't retry every call.
+    private DateTimeOffset? _lastInitAttemptAt;
+    private static readonly TimeSpan ReInitCooldown = TimeSpan.FromMinutes(5);
+
     // Extended emotion labels beyond the built-in 5 (Happiness, Anger, Sadness, Fear, Neutral)
     private static readonly string[] ExtendedEmotions =
         ["love", "curiosity", "amusement", "surprise", "disgust"];
@@ -73,6 +82,7 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         catch (Exception ex)
         {
             _log.LogWarning(ex, "LMKit emotion classification failed for text ({Length} chars)", text.Length);
+            MarkRuntimeFailure();
             return new EmotionResult("neutral", 0.5f, new Dictionary<string, float> { ["neutral"] = 0.5f });
         }
     }
@@ -94,6 +104,7 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         catch (Exception ex)
         {
             _log.LogWarning(ex, "LMKit sarcasm detection failed for text ({Length} chars)", text.Length);
+            MarkRuntimeFailure();
             return new SarcasmResult(false, 0f);
         }
     }
@@ -147,6 +158,7 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         catch (Exception ex)
         {
             _log.LogWarning(ex, "LMKit confabulation classification failed");
+            MarkRuntimeFailure();
             return new ConfabulationResult(false, 0f, null);
         }
     }
@@ -177,6 +189,7 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         catch (Exception ex)
         {
             _log.LogWarning(ex, "LMKit NER failed for text ({Length} chars)", text.Length);
+            MarkRuntimeFailure();
             return [];
         }
     }
@@ -217,11 +230,23 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
     {
         if (_initialized) return;
 
+        // Cooldown gate (May 1, 2026): if init recently failed, don't retry
+        // on every call — wait at least ReInitCooldown between attempts. The
+        // per-call methods skip-pass when _initialized is false, so missing
+        // a window just means classification stays at defaults briefly.
+        if (_lastInitAttemptAt is not null
+            && DateTimeOffset.UtcNow - _lastInitAttemptAt.Value < ReInitCooldown)
+            return;
+
         await _modelLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             if (_initialized) return;
+            if (_lastInitAttemptAt is not null
+                && DateTimeOffset.UtcNow - _lastInitAttemptAt.Value < ReInitCooldown)
+                return;
 
+            _lastInitAttemptAt = DateTimeOffset.UtcNow;
             _log.LogInformation("LMKit: Loading classification model (first use, may download ~770MB)...");
 
             _model = await Task.Run(() => LM.LoadFromModelID("lmkit-sentiment-analysis"), ct).ConfigureAwait(false);
@@ -235,13 +260,33 @@ public sealed class LMKitClassificationService : ITextClassificationService, IDi
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "LMKit: Failed to load classification model. Classification will return defaults.");
-            _initialized = true; // Don't retry on every call
+            _log.LogError(ex,
+                "LMKit: Failed to load classification model — defaults until next retry in ~{Cooldown:F0}m.",
+                ReInitCooldown.TotalMinutes);
+            // Stays uninitialized; cooldown gate prevents retry-storm; next call
+            // after cooldown will attempt re-load.
         }
         finally
         {
             _modelLock.Release();
         }
+    }
+
+    /// <summary>
+    /// May 1, 2026 — called from each per-call exception handler. Marks the
+    /// service as needing re-initialization on the next call (after cooldown).
+    /// Apr 30 22:41 production: classification calls started failing 5h after
+    /// a successful model load, with no recovery path. Now: persistent runtime
+    /// failures trigger a fresh model load on the next eligible call.
+    /// </summary>
+    private void MarkRuntimeFailure()
+    {
+        _initialized = false;
+        _model?.Dispose();
+        _model = null;
+        _emotionDetector = null;
+        _sarcasmDetector = null;
+        _nerExtractor    = null;
     }
 
     private Dictionary<string, float>? TryExtendedClassification(string text)

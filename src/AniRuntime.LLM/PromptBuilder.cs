@@ -24,8 +24,19 @@ public static class PromptBuilder
             ? string.Join(" ", cs.NatureGrounding)
             : string.Empty;
 
+        // May 1, 2026 — inject current time. Pre-fix the inner-thought / world-
+        // experience prompt had no clock anchor and the model was hallucinating
+        // wrong times (e.g. May 1 07:34 inner thought said "i'm sitting here at
+        // 10:55 am on friday in may" — wrong hour entirely). Hallucinated
+        // temporal context then bleeds into downstream outreach composition
+        // ("i'm still up" at 7:34 AM). Conversation + outreach prompts already
+        // inject time; inner thought + world experience must too. Same shape.
+        var now      = snapshot.BuiltAt.ToLocalTime();
+        var timeLine = $"It is currently {now:h:mm tt} on {now:dddd}, {now:MMMM d}.";
+
         var system = $"""
             You are {cs.Name}. {cs.Occupation}
+            {timeLine}
             Your personality: {string.Join("; ", cs.CoreTraits)}.
             {(selfLines.Length > 0 ? $"How you see yourself: {selfLines}" : string.Empty)}
             {(natureBlock.Length > 0 ? $"What you know about yourself: {natureBlock}" : string.Empty)}

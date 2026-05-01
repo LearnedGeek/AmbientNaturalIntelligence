@@ -54,8 +54,12 @@ public class TwilioSmsAction : IAniAction
             return true;
         }
 
-        // Media enrichment — voice audio, images, etc. (if service is registered)
-        if (_enrichment is not null)
+        // Media enrichment — voice audio, images, etc. (if service is registered).
+        // Skipped for admin-meta dispatches (admin-tag confirmations, test-mode
+        // replies) so a `///tag` doesn't trigger 180KB+ of ElevenLabs audio
+        // synthesis on a meta-confirmation. May 1 fix; Apr 30 07:47:32 ///tag
+        // received unwanted voice attachment via this path.
+        if (_enrichment is not null && !decision.IsAdminMeta)
         {
             try
             {
@@ -66,6 +70,10 @@ public class TwilioSmsAction : IAniAction
             {
                 _log.LogError(ex, "Media enrichment failed — sending text only");
             }
+        }
+        else if (decision.IsAdminMeta)
+        {
+            _log.LogDebug("Admin-meta dispatch — skipping media enrichment.");
         }
 
         var mediaUrls = decision.MediaUrls.Count > 0
