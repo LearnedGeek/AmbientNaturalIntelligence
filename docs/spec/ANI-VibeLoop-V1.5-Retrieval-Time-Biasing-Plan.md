@@ -101,7 +101,8 @@ Required before V1.5b ships:
 
 ---
 
-### Phase V1.5.1 — Bias function + telemetry instrumentation
+### Phase V1.5.1 — Bias function + telemetry instrumentation ✅
+**Status:** Shipped May 2, 2026 (~30 min code + ~25 spec tests).
 **Estimated effort:** ~1.5 days code + spec tests.
 
 New types:
@@ -144,6 +145,8 @@ V15_DIVERSITY_HISTOGRAM record=R1 surface_count=7 record=R2 surface_count=3 ...
 ```
 
 **Acceptance:** unit tests cover (a) importance computation across the three tiers, (b) bias-weight decay across the three half-lives, (c) MMR diversity rerank produces fewer records when input is high-similarity cluster, (d) self-regulation framing — outcome valence sourced from Ani-register delta, NOT Mark-register delta. ~25 spec tests.
+
+**Outcome:** 35 spec tests landed (more than the original ~25 estimate; spread across pure-helpers, end-to-end via `ComputeBiasAsync` with strict-mock `IClosedConversationStore`, and architectural-invariant tests pinning the self-regulation framing). 959/959 total tests passing. Build green, zero warnings. The architectural-invariant test `Contribution_OutcomeValence_SourcedFromAniDeltaNotMarkDelta` is the load-bearing pin — it verifies that two records with **identical Ani-delta valence but radically different Mark register vectors** produce identical contribution `OutcomeValence`, confirming the bias is invariant to Mark's pre-state. Files: [`VibeBiasContribution.cs`](../../src/AniRuntime.Core/Models/VibeBiasContribution.cs), [`VibeBiasResult.cs`](../../src/AniRuntime.Core/Models/VibeBiasResult.cs), [`MarkRegisterContext.cs`](../../src/AniRuntime.Core/Models/MarkRegisterContext.cs), [`IVibeBiasService.cs`](../../src/AniRuntime.Core/Interfaces/IVibeBiasService.cs), [`VibeBiasService.cs`](../../src/AniRuntime.Loops/VibeBiasService.cs), [`AniOptions.cs`](../../src/AniRuntime.Core/AniOptions.cs) (V1.5 tier thresholds + similarity threshold + MMR lambda + lookback days), [`Program.cs`](../../src/AniRuntime.Service/Program.cs) (DI registration).
 
 ---
 

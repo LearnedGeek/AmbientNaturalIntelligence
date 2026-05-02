@@ -379,6 +379,68 @@ public class AniOptions
     // LLM claim verification (Feature 14 v2) is restored. Flip back to true once
     // verification is deployed. Also useful during maintenance windows.
     public bool OutreachEnabled { get; set; } = true;
+
+    // ── Vibe Loop V1.5 (May 2, 2026) — retrieval-time biasing ─────────────
+    //
+    // V1.5.0 design decisions (locked May 2 11:24 CDT). See
+    // docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md.
+    //
+    // Lever 1 — importance-weighted decay tier thresholds. Tiers mirror
+    // EmotionalContribution's Ambient/Conversation/Global structure: Heavy
+    // saturates over weeks (load-bearing emotional events keep informing
+    // decisions), Medium over days (typical-substantive conversation),
+    // Light over hours (throwaway exchanges decay before they accumulate
+    // into pattern-lock).
+
+    /// <summary>Half-life in hours for "Light" tier records (low importance).</summary>
+    public double VibeBiasLightTierHalfLifeHours    { get; set; } = 12.0;
+
+    /// <summary>Half-life in hours for "Medium" tier records (typical-substantive).</summary>
+    public double VibeBiasMediumTierHalfLifeHours   { get; set; } = 72.0;   // 3 days
+
+    /// <summary>Half-life in hours for "Heavy" tier records (load-bearing).</summary>
+    public double VibeBiasHeavyTierHalfLifeHours    { get; set; } = 336.0;  // 14 days
+
+    /// <summary>Outcome-valence magnitude threshold for Medium tier promotion.</summary>
+    public double VibeBiasMediumValenceThreshold    { get; set; } = 0.3;
+
+    /// <summary>Outcome-valence magnitude threshold for Heavy tier promotion.</summary>
+    public double VibeBiasHeavyValenceThreshold     { get; set; } = 0.6;
+
+    /// <summary>Turn-count threshold for Medium tier promotion (lower bound, inclusive).</summary>
+    public int    VibeBiasMediumTierMinTurns        { get; set; } = 3;
+
+    /// <summary>Turn-count threshold for Heavy tier promotion (lower bound, inclusive).</summary>
+    public int    VibeBiasHeavyTierMinTurns         { get; set; } = 10;
+
+    /// <summary>Register-saturation depth threshold for Heavy tier promotion.</summary>
+    public double VibeBiasHeavyRegisterSaturation   { get; set; } = 0.8;
+
+    /// <summary>
+    /// Minimum cosine similarity over <c>MarkRegister</c> for a record to
+    /// enter the bias candidate cluster. V1.5.0 Lever 1 default 0.85 —
+    /// records with cosine ≤ 0.85 are treated as distinct shapes; their
+    /// bias contributions don't compete.
+    /// </summary>
+    public double VibeBiasSimilarityThreshold       { get; set; } = 0.85;
+
+    /// <summary>
+    /// MMR diversity rerank lambda for the V1.5 bias. Same default as
+    /// Layer 1 Phase 1b's retrieval rerank (0.3 — relevance-heavy,
+    /// diversity tie-breaks; per Carbonell &amp; Goldstein).
+    /// </summary>
+    public double VibeBiasMmrLambda                 { get; set; } = 0.3;
+
+    /// <summary>Number of records to surface as the bias top-N.</summary>
+    public int    VibeBiasSurfaceTopN               { get; set; } = 2;
+
+    /// <summary>
+    /// Lookback window (days) for candidate records. Records older than
+    /// this are not loaded as bias candidates. Defaults to 30 days; a
+    /// 14-day half-life Heavy record is at ~25% strength at 30 days,
+    /// which is the natural cutoff.
+    /// </summary>
+    public int    VibeBiasLookbackDays              { get; set; } = 30;
 }
 
 public class OllamaOptions

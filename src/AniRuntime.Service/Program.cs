@@ -99,6 +99,12 @@ try
     // Vibe Loop V1.2 — produces ClosedConversationRecord from a closed thread.
     // V1.3 wires this into SqliteConversationService.CloseThreadAsync.
     builder.Services.AddSingleton<IClosedConversationSummarizer, ClosedConversationSummarizer>();
+    // Vibe Loop V1.5 (May 2, 2026) — retrieval-time biasing service.
+    // V1.5a wires this in observational-only via OutreachPhase /
+    // ConversationReplyPhase telemetry. V1.5b activates prompt
+    // consumption gated on the V1.5a observation window.
+    // See docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md.
+    builder.Services.AddSingleton<IVibeBiasService, VibeBiasService>();
 
     // Theme J Phase J.4 (Apr 30, 2026) — CognitiveOutputGate + universal
     // invariants. Producers migrate through the gate via J.5 sub-phases
