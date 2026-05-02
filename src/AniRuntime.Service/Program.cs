@@ -121,6 +121,13 @@ try
     // outputs that only make sense if the reader had access to the
     // writer's inner thoughts. See InnerThoughtBleedInvariant.cs.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, InnerThoughtBleedInvariant>();
+    // Door B Truth-Verification Sub-claim 2 (May 2, 2026) — day-of-week /
+    // calendar regex+clock check. Catches direct day-of-week assertions
+    // that don't match the actual current day. Sub-claims 1 (temporal-
+    // anchor verification against substrate) and 3 (state-now via
+    // perception) ship in follow-up commits. See TemporalAnchorInvariant.cs
+    // and docs/spec/ANI-Coherence-Gate-Door-B-Design.md.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, TemporalAnchorInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();
