@@ -1018,6 +1018,7 @@ public class ConversationReplyPhase
             ProducerKind            = CognitiveProducerKind.ConversationReply,
             IntendedSink            = CognitiveOutputSink.Dispatch,
             ContactName             = snapshot.CharacterState.PrimaryContactName ?? Roles.Mark,
+            GeneratedAt             = DateTimeOffset.Now,
             ContactRecentMessages   = contactRecent,
             PriorAniMessages        = priorAni,
         };

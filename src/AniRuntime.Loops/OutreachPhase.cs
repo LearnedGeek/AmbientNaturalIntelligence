@@ -320,6 +320,7 @@ public class OutreachPhase
                     ProducerKind            = CognitiveProducerKind.Outreach,
                     IntendedSink            = CognitiveOutputSink.Dispatch,
                     ContactName             = contact,
+                    GeneratedAt             = DateTimeOffset.Now,
                     WriterInnerThought      = recentThought,
                     ContactRecentMessages   = ExtractRecentContactMessages(snapshot, contact),
                     PriorAniMessages        = ExtractRecentAniMessages(snapshot),

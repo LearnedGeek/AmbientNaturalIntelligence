@@ -65,7 +65,11 @@ public sealed class TemporalAnchorInvariant : ICognitiveOutputInvariant
         if (string.IsNullOrWhiteSpace(artifact.Content))
             return Task.FromResult(InvariantResult.Pass());
 
-        var localToday = artifact.GeneratedAt.ToLocalTime().DayOfWeek;
+        // Use artifact.GeneratedAt's DayOfWeek directly — it reflects the
+        // OFFSET embedded in the value. Producers populate GeneratedAt with
+        // an offset matching local time (DateTimeOffset.Now). Avoids
+        // .ToLocalTime() which is TZ-machine-dependent.
+        var localToday = artifact.GeneratedAt.DayOfWeek;
         var failure = CheckDayOfWeekClaims(artifact.Content, localToday);
 
         if (failure is not null)

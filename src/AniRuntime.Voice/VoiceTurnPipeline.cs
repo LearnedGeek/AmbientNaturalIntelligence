@@ -215,6 +215,7 @@ public class VoiceTurnPipeline
             ProducerKind            = CognitiveProducerKind.Voice,
             IntendedSink            = CognitiveOutputSink.Dispatch,
             ContactName             = Roles.Mark,
+            GeneratedAt             = DateTimeOffset.Now,
             ContactRecentMessages   = contactRecent,
             PriorAniMessages        = priorAni,
         };

@@ -128,6 +128,13 @@ try
     // perception) ship in follow-up commits. See TemporalAnchorInvariant.cs
     // and docs/spec/ANI-Coherence-Gate-Door-B-Design.md.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, TemporalAnchorInvariant>();
+    // Door B Truth-Verification Sub-claim 3 (May 2, 2026) — state-now
+    // claim verification via day-of-week + time-of-day heuristics. Catches
+    // past-tense time-of-day claims about not-yet-occurred periods (e.g.
+    // "hope your evening went smooth" said at 11:58 AM) and work-state
+    // claims on weekends or before workday-end. The May 2 11:58 outreach
+    // is the canonical case. See StateNowInvariant.cs.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, StateNowInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();
