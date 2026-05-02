@@ -150,23 +150,30 @@ V15_DIVERSITY_HISTOGRAM record=R1 surface_count=7 record=R2 surface_count=3 ...
 
 ---
 
-### Phase V1.5a — Observational instrumentation (bias logged, NOT applied)
+### Phase V1.5a — Observational instrumentation (bias logged, NOT applied) ✅
+**Status:** Shipped May 2, 2026 (~30 min code + 9 spec tests).
 **Estimated effort:** ~half-day to wire telemetry; 2-week observation window.
 
 V1.5.1 service is wired into `OutreachPhase` and `ConversationReplyPhase` BUT the result is logged only — the prompt does NOT consume `RecommendedStrategyRegister` or `SurfacedTopN`. The composition prompt remains unchanged from current V1.4 form.
 
 Per outreach + per reply, log:
-- `V15_BIAS_*` lines above (what V1.5b WOULD apply)
-- Current `mood_register` (from `EmotionalState`)
-- `response_register_actual` (post-generation register classification of the actual outreach text via the existing 9-register LMKit classifier)
+- `V15_BIAS_CANDIDATES` — count + tier breakdown across the eligible candidate set
+- `V15_BIAS_SURFACED` — per-record (one log line per surfaced record): record id, weight, tier, age, valence
+- `V15_BIAS_RECOMMENDED` — top register name from `RecommendedStrategyRegister`, top value, surfaced count, diversity reason
+- `V15_BIAS_SKIP` (debug-level) when no recent closed conversation OR empty register dict — surfaces the substrate-volume signal even when bias can't run
+- `V15_BIAS_FAILURE` (warning-level, never propagates) when the bias computation throws — observational telemetry is best-effort and must not affect dispatch
+
+**Pragmatic deferral on the divergence triple:** the original plan called for logging the full triple `(mood_register, vibe_recommended_strategy_register, response_register_actual)` per outreach. V1.5a-as-shipped logs only the bias-side at composition time. The post-hoc `response_register_actual` is recoverable from the **next `ClosedConversationRecord.AniRegister`** that includes the outreach as one of its turns (V1.2's per-speaker classification already runs at thread close). Dashboard joins by `thread_id` to render the divergence triple offline. This avoids adding an Ollama round-trip per outreach for observational-only telemetry — the wrong trade for V1.5a.
 
 Dashboard rendering (Theme I.0 deliverable):
-- Diversity histogram: surface count per record, rolling 7-day + 30-day windows
-- Mood-vs-vibe-vs-actual divergence triple-log: time-series chart of the three register dimensions per outreach
+- Diversity histogram: surface count per record, rolling 7-day + 30-day windows. Source: `V15_BIAS_SURFACED` rolled up by `record` field.
+- Mood-vs-vibe-vs-actual divergence triple: join `V15_BIAS_RECOMMENDED.top_register` (composition time, by `thread_id`) with `closed_conversation_records.ani_register` (post-thread-close, dominant register slot) for the actual-vs-recommended comparison.
 
-**Acceptance:** ≥10 closed conversations in substrate; ≥10 outreaches logged with full telemetry; dashboard renders both views; diversity histogram is fat-tailed (no record >40%); pre-bias correlation baseline computed.
+**Acceptance:** ≥10 closed conversations in substrate; ≥10 outreaches logged with full V1.5a telemetry; dashboard renders both views; diversity histogram is fat-tailed (no record >40%); pre-bias correlation baseline computed.
 
 **Mark + Claude review session:** before V1.5b ships, sit together with the data. If the histogram shows pattern-lock risk (single-record dominance) or if `response_register_actual` already strongly tracks `mood_register` with the recommended-strategy register diverging widely, retune Lever 1 / Lever 2 / Lever 3 parameters before activation rather than ship a known-flattening loop.
+
+**Outcome:** `VibeBiasObservation.ObserveAsync` helper landed (best-effort, never throws); `IVibeBiasService` injected as optional dependency into both `OutreachPhase` and `ConversationReplyPhase`; observation call placed immediately before each composition LLM call. 9 spec tests pin the contract: short-circuits on null service / no recent closed conversation / empty register dict, never propagates exceptions, passes a 9-dim ordered Mark register vector with `AsOf=UtcNow`, falls back to "Mark" contact name when snapshot field is empty. Files: [`VibeBiasObservation.cs`](../../src/AniRuntime.Loops/VibeBiasObservation.cs), [`OutreachPhase.cs`](../../src/AniRuntime.Loops/OutreachPhase.cs) (+5 lines), [`ConversationReplyPhase.cs`](../../src/AniRuntime.Loops/ConversationReplyPhase.cs) (+5 lines).
 
 ---
 

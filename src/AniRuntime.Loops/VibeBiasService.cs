@@ -318,7 +318,7 @@ public class VibeBiasService : IVibeBiasService
     /// <see cref="ClosedConversationSummarizer.Registers"/>. Missing keys
     /// resolve to 0; extra keys are ignored.
     /// </summary>
-    internal static float[] ToOrderedVector(IReadOnlyDictionary<string, float> register)
+    public static float[] ToOrderedVector(IReadOnlyDictionary<string, float> register)
     {
         var arr = new float[ClosedConversationSummarizer.Registers.Count];
         for (var i = 0; i < ClosedConversationSummarizer.Registers.Count; i++)

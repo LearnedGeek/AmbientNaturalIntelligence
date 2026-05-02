@@ -40,6 +40,7 @@ public class ConversationReplyPhase
     private readonly PersonaSummaryCache? _personaCache;
     private readonly Em9Detector? _em9;
     private readonly ICognitiveOutputGate? _outputGate;
+    private readonly IVibeBiasService? _vibeBias;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -70,7 +71,8 @@ public class ConversationReplyPhase
         ITextClassificationService? mlClassifier = null,
         PersonaSummaryCache? personaCache = null,
         Em9Detector? em9Detector = null,
-        ICognitiveOutputGate? outputGate = null)
+        ICognitiveOutputGate? outputGate = null,
+        IVibeBiasService? vibeBias = null)
     {
         _state = state;
         _persist = persist;
@@ -94,6 +96,7 @@ public class ConversationReplyPhase
         _personaCache = personaCache;
         _em9 = em9Detector;
         _outputGate = outputGate;
+        _vibeBias = vibeBias;
         _log = log;
     }
 
@@ -251,6 +254,15 @@ public class ConversationReplyPhase
         // verify the WHAT IS TRUE section is populated with useful facts. Remove
         // after tier separation is validated in deployment.
         _log.LogDebug("Reply user prompt:\n{UserPrompt}", replyPrompt.User);
+
+        // Vibe Loop V1.5a (May 2, 2026) — observational-only telemetry pass.
+        // Logs V15_BIAS_* lines describing what V1.5b WOULD surface from the
+        // closed-conversation-record substrate; the prompt above is unchanged.
+        // Self-regulation framing: the bias is computed from Ani's-delta
+        // valence on each prior record, never from Mark's-delta. See
+        // docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md §V1.5a.
+        await VibeBiasObservation.ObserveAsync(
+            _vibeBias, snapshot, callSite: "reply", _log, ct).ConfigureAwait(false);
 
         var reply = await _ollama.ChatAsync(
             replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct, replyTemperature)

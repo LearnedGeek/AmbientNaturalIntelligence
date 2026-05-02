@@ -30,6 +30,7 @@ public class OutreachPhase
     private readonly PersonaSummaryCache? _personaCache;
     private readonly Em9Detector? _em9;
     private readonly ICognitiveOutputGate? _outputGate;
+    private readonly IVibeBiasService? _vibeBias;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -55,7 +56,8 @@ public class OutreachPhase
         ITextClassificationService? mlClassifier = null,
         PersonaSummaryCache? personaCache = null,
         Em9Detector? em9Detector = null,
-        ICognitiveOutputGate? outputGate = null)
+        ICognitiveOutputGate? outputGate = null,
+        IVibeBiasService? vibeBias = null)
     {
         _state = state;
         _persist = persist;
@@ -69,6 +71,7 @@ public class OutreachPhase
         _personaCache = personaCache;
         _em9 = em9Detector;
         _outputGate = outputGate;
+        _vibeBias = vibeBias;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -205,6 +208,15 @@ public class OutreachPhase
                 "J0_REASONING_PIPE chars={Chars} pipedToComposition={Piped} text={Text}",
                 decisionReasoning.Length, reasoningInComposition, decisionReasoning);
         }
+
+        // Vibe Loop V1.5a (May 2, 2026) — observational-only telemetry pass.
+        // Logs V15_BIAS_* lines describing what V1.5b WOULD surface from the
+        // closed-conversation-record substrate; the prompt below is unchanged.
+        // Self-regulation framing: the bias is computed from Ani's-delta
+        // valence on each prior record, never from Mark's-delta. See
+        // docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md §V1.5a.
+        await VibeBiasObservation.ObserveAsync(
+            _vibeBias, snapshot, callSite: "outreach", _log, ct).ConfigureAwait(false);
 
         // Step 2b: Compose — free-text message generation (no JSON constraint)
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
