@@ -110,6 +110,11 @@ try
     builder.Services.AddSingleton<ICognitiveOutputInvariant, PromptTemplateLeakInvariant>();
     // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, ConfabulationInvariant>();
+    // Theme J Phase J.5g (May 2, 2026) — Door C universalised from
+    // OutreachPhase.EvaluateCoherenceAsync. Catches contact-facing
+    // outputs that only make sense if the reader had access to the
+    // writer's inner thoughts. See InnerThoughtBleedInvariant.cs.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, InnerThoughtBleedInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();

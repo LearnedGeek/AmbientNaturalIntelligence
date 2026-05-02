@@ -58,6 +58,19 @@ public sealed class CognitiveArtifact
     /// fixed-pattern list so it can run with this null.
     /// </summary>
     public string? SystemPromptText { get; init; }
+
+    /// <summary>
+    /// May 2, 2026 (Door C universalization) — the inner-thought / inner-
+    /// monologue that produced this output, when applicable. Used by
+    /// <c>InnerThoughtBleedInvariant</c> to detect when a contact-facing
+    /// message *only makes sense if you'd seen the writer's inner thought*.
+    /// Outreach has this naturally (the recent inner thought drove the
+    /// outreach decision); conversation reply and voice typically don't
+    /// (the conversation history drove the reply, not an inner thought).
+    /// Null = run the bleed invariant with reader-perspective sensibility
+    /// only, no inner-thought comparison.
+    /// </summary>
+    public string? WriterInnerThought { get; init; }
 }
 
 /// <summary>

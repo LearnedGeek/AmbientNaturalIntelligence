@@ -1292,7 +1292,7 @@ public static class PromptBuilder
     /// Door C: Only makes sense in Ani's head — inner thought leaked through → SUPPRESS
     /// </summary>
     public static (string System, string User) BuildCoherenceEvaluationPrompt(
-        string composedMessage, string innerThought, string contactName,
+        string composedMessage, string? innerThought, string contactName,
         DateTimeOffset? currentTime = null)
     {
         var now = currentTime ?? DateTimeOffset.Now;
@@ -1374,15 +1374,34 @@ public static class PromptBuilder
             { "door": "C", "verdict": "SUPPRESS", "reasoning": "why" }
             """;
 
-        var user = $$"""
-            The writer's inner thought (the reader will NEVER see this):
-            "{{innerThought}}"
+        // May 2, 2026 — innerThought is optional (Door C universalization).
+        // Conversation reply + voice paths don't have a single inner thought
+        // that produced the message — they generate from conversation
+        // history. Without inner-thought context the evaluation reduces to
+        // reader-perspective sensibility, which is still the load-bearing
+        // Door C question.
+        string user;
+        if (string.IsNullOrWhiteSpace(innerThought))
+        {
+            user = $$"""
+                The composed text message:
+                "{{composedMessage}}"
 
-            The composed text message:
-            "{{composedMessage}}"
+                Does this message make sense to {{contactName}} as a standalone reader-perspective text? Apply the fictional-coherence and temporal-coherence checks above. Door A or B (SEND) when the message is grounded or makes self-contained sense. Door C (SUPPRESS) when the message reads as if the reader needed access to private context they don't have, or when the fiction is incoherent.
+                """;
+        }
+        else
+        {
+            user = $$"""
+                The writer's inner thought (the reader will NEVER see this):
+                "{{innerThought}}"
 
-            Does this message make sense to {{contactName}}, who cannot see the inner thought?
-            """;
+                The composed text message:
+                "{{composedMessage}}"
+
+                Does this message make sense to {{contactName}}, who cannot see the inner thought?
+                """;
+        }
 
         return (system, user);
     }

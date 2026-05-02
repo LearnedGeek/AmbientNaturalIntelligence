@@ -29,6 +29,7 @@ public class OutreachPhase
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
     private readonly Em9Detector? _em9;
+    private readonly ICognitiveOutputGate? _outputGate;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -53,7 +54,8 @@ public class OutreachPhase
         ILogger<OutreachPhase> log,
         ITextClassificationService? mlClassifier = null,
         PersonaSummaryCache? personaCache = null,
-        Em9Detector? em9Detector = null)
+        Em9Detector? em9Detector = null,
+        ICognitiveOutputGate? outputGate = null)
     {
         _state = state;
         _persist = persist;
@@ -66,6 +68,7 @@ public class OutreachPhase
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
         _em9 = em9Detector;
+        _outputGate = outputGate;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -279,14 +282,54 @@ public class OutreachPhase
             return;
         }
 
-        // Step 4: Feature 28 — Dispatch Coherence Gate (Three-Door Evaluation)
-        if (!await EvaluateCoherenceAsync(rewritten, recentThought, contact, ct).ConfigureAwait(false))
+        // Step 4: Universal output gate (J.5b/c/g — May 2, 2026).
+        //
+        // Pre-J.5g this step called the standalone EvaluateCoherenceAsync (the
+        // pipeline-scoped Door A/B/C check). May 2 09:08 Mark: *"this is a case
+        // of a gate applying only on a single pipeline again where it should be
+        // more universal."* The InnerThoughtBleedInvariant (J.5g) hoists Door C
+        // semantics onto the gate; sibling invariants (anti-parrot, prompt-
+        // template-leak, confabulation) also fire here. Outreach now routes
+        // through the same dispatch-boundary gate as ConversationReply,
+        // VoiceTurnPipeline, and Reflection.
+        //
+        // Suppression behavior preserved: on Remediate/Fail verdict, decay
+        // desire + apply cooldown (the existing outreach-suppress shape) and
+        // return. We do NOT regenerate on outreach gate-fail because
+        // outreach is initiated by Ani — there's no pending user message
+        // demanding a reply, so dropping the outreach is the safe move.
+        if (_outputGate is not null)
         {
-            _log.LogInformation("Coherence gate: SUPPRESS — message only makes sense in Ani's head");
-            await _desire.DecayDesireAsync(0.30f, "coherence gate suppression (Door C)", ct)
-                .ConfigureAwait(false);
-            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-            return;
+            try
+            {
+                var artifact = new CognitiveArtifact
+                {
+                    Content                 = rewritten,
+                    ProducerKind            = CognitiveProducerKind.Outreach,
+                    IntendedSink            = CognitiveOutputSink.Dispatch,
+                    ContactName             = contact,
+                    WriterInnerThought      = recentThought,
+                    ContactRecentMessages   = ExtractRecentContactMessages(snapshot, contact),
+                    PriorAniMessages        = ExtractRecentAniMessages(snapshot),
+                };
+
+                var verdict = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
+                if (verdict.Verdict != OutputGateVerdict.Pass)
+                {
+                    _log.LogInformation(
+                        "Output gate {Verdict} on outreach [{Fired}]: {Hint} — suppressing dispatch.",
+                        verdict.Verdict, string.Join(",", verdict.FiredInvariants), verdict.RemediationHint);
+                    await _desire.DecayDesireAsync(0.30f, $"output gate {verdict.Verdict} ({string.Join(",", verdict.FiredInvariants)})", ct)
+                        .ConfigureAwait(false);
+                    await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "Output gate evaluation threw — dispatching outreach uncovered (gate failure must NOT block outreach pipeline).");
+            }
         }
 
         decision.Message    = rewritten;
@@ -484,53 +527,44 @@ public class OutreachPhase
     }
 
     /// <summary>
-    /// Feature 28: Dispatch Coherence Gate — evaluates whether a composed outreach message
-    /// makes sense to the reader (not just the writer).
+    /// J.5g (May 2, 2026) — extract recent contact messages from the
+    /// snapshot's structured conversation summary (or recent memory pool
+    /// fallback) for the gate's confabulation + bleed invariants.
+    /// Bounded at 8 messages per the gate context cap.
     /// </summary>
-    private async Task<bool> EvaluateCoherenceAsync(
-        string message, string innerThought, string contactName, CancellationToken ct)
+    private static IReadOnlyList<string>? ExtractRecentContactMessages(
+        ContextSnapshot snapshot, string contactName)
     {
-        try
+        // Prefer the J.2 structured summary when available (per-speaker
+        // tagged, no parsing required).
+        var structured = snapshot.StructuredConversationSummary;
+        if (structured is { Turns.Count: > 0 })
         {
-            var prompt = PromptBuilder.BuildCoherenceEvaluationPrompt(message, innerThought, contactName);
-            var raw = await _ollama.ChatJsonAsync(
-                prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
-                .ConfigureAwait(false);
-
-            _log.LogDebug("Coherence evaluation raw: {Raw}", raw);
-
-            var verdict = ParseCoherenceVerdict(raw);
-            _log.LogInformation("Coherence gate: Door {Door} → {Verdict} — {Reasoning}",
-                verdict.Door, verdict.Verdict, verdict.Reasoning);
-
-            return !string.Equals(verdict.Verdict, "SUPPRESS", StringComparison.OrdinalIgnoreCase);
+            return structured.Turns
+                .Where(t => string.Equals(t.Speaker, contactName, StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.Content)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .TakeLast(8)
+                .ToList();
         }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Coherence evaluation failed — defaulting to SEND");
-            return true;
-        }
+
+        return null;
     }
 
-    internal record CoherenceResult(string Door, string Verdict, string Reasoning);
-
-    internal static CoherenceResult ParseCoherenceVerdict(string raw)
+    /// <summary>J.5g — companion extractor for prior Ani messages.</summary>
+    private static IReadOnlyList<string>? ExtractRecentAniMessages(ContextSnapshot snapshot)
     {
-        try
+        var structured = snapshot.StructuredConversationSummary;
+        if (structured is { Turns.Count: > 0 })
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(raw);
-            var root = doc.RootElement;
-            var door = root.TryGetProperty("door", out var d) ? d.GetString() ?? "?" : "?";
-            var verdict = root.TryGetProperty("verdict", out var v) ? v.GetString() ?? "SEND" : "SEND";
-            var reasoning = root.TryGetProperty("reasoning", out var r) ? r.GetString() ?? "" : "";
-            return new CoherenceResult(door, verdict, reasoning);
+            return structured.Turns
+                .Where(t => string.Equals(t.Speaker, "Ani", StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.Content)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .TakeLast(8)
+                .ToList();
         }
-        catch
-        {
-            return raw.Contains("SUPPRESS", StringComparison.OrdinalIgnoreCase)
-                ? new CoherenceResult("C", "SUPPRESS", "parse failed but SUPPRESS detected in response")
-                : new CoherenceResult("?", "SEND", "parse failed — defaulting to SEND");
-        }
+        return null;
     }
 
     /// <summary>
