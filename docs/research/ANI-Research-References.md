@@ -1,7 +1,9 @@
 # ANI — Research Reference Library
 **For:** OC (architecture/implementation instance) and research collaborators  
 **Maintained by:** Mark McArthey (markm@learnedgeek.com)  
-**Last updated:** April 22, 2026 (added agentic-lens reference set: Horton & Wohl 1956 parasocial, Ryan & Deci 2000 SDT, Oudeyer & Kaplan 2007 intrinsic motivation, McAdams 2001 narrative identity, Damasio 1999 layered self, Gallagher 2000 minimal/narrative self, Carbonell & Goldstein 1998 MMR diversity retrieval — all for Paper 3 Contribution 4 on centrality gravity and the five-layer agentic-lens architecture)
+**Last updated:** May 2, 2026 (added coreference-resolution reference set: Maverick 2024 ACL — operational SOTA for Paper 3's proposed CoreferenceInvariant; Kirstain & Ram 2021 — lightweight-coref precursor for latency-budget grounding; Lee et al. 2017 — foundational neural coref for lineage). Companion ideation doc: `docs/research/model-coreference-ideas.md`. The reference set positions coref as the next-generation invariant for `CognitiveOutputGate`, completing the gate's coverage of attribution-class failures alongside anti-parrot, prompt-template-leak, confabulation, and inner-thought-bleed. Paper 3 takes this on; Paper 4 (inter-agent) gets it as supporting.
+
+Prior update (April 22, 2026) — added agentic-lens reference set: Horton & Wohl 1956 parasocial, Ryan & Deci 2000 SDT, Oudeyer & Kaplan 2007 intrinsic motivation, McAdams 2001 narrative identity, Damasio 1999 layered self, Gallagher 2000 minimal/narrative self, Carbonell & Goldstein 1998 MMR diversity retrieval — all for Paper 3 Contribution 4 on centrality gravity and the five-layer agentic-lens architecture.
 
 This document contains the academic reference library assembled for the ANI research paper. Each entry includes full citation, where to find it, what it contributes to the paper, and — critically for OC — **how it relates to active algorithmic problems in the codebase.**
 
@@ -194,6 +196,24 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 - **Paper 2 §6.17 (centrality gravity finding):** Theoretical grounding for the claim that single-axis caregiver-desire architecture is characteristic of commercial companion AI and is a structural precondition for centrality gravity.
 
 **Paper applicability:** Paper 2 (Supporting — §6.17 theoretical grounding), Paper 3 (Core — Contribution 4 Layer 2), Paper 4 (Supporting — inter-agent motivation model).
+
+---
+
+### Martinelli, Barba & Navigli (2024) — Maverick: Efficient and Accurate Coreference Resolution Defying Recent Trends
+**Full citation:** Martinelli, G., Barba, E., & Navigli, R. (2024). Maverick: Efficient and Accurate Coreference Resolution Defying Recent Trends. *Proceedings of ACL 2024.*
+**ACL Anthology:** https://aclanthology.org/2024.acl-long.722
+**GitHub:** https://github.com/SapienzaNLP/maverick-coref
+
+**What it is:** Current state-of-the-art coreference resolution system as of ACL 2024. Outperforms much larger models on the OntoNotes benchmark with significantly fewer parameters and faster inference. Builds on the span-based neural lineage (Lee et al. 2017, Joshi et al. 2019) but defies the recent trend of scaling to large LLMs — demonstrates that focused, well-engineered specialist models still beat scaled generalists for narrow tasks.
+
+**What it contributes to the paper:** The operational reference for Paper 3's proposed `CoreferenceInvariant` on `CognitiveOutputGate`. Coreference resolution is the formal NLP subfield name for the entity-tracking failure class observed in production (May 1 *"my thumb rubs against mine"* reflexive nonsense; multi-turn cross-entity confusion). Maverick is the candidate small-model implementation — runs via LM-Kit alongside the existing emotional/sarcasm/confabulation classifiers, parallel architectural pattern. Cite as the model selection for the coref-invariant work; the broader contribution is positioning the universal gate as the natural home for coref invariants in proactive companion-AI systems where attribution-class failures are the dominant remaining bug class after architectural consolidation.
+
+**Relevance to active algorithmic problems:**
+- **Coreference resolution as a gate invariant:** ANI's `CognitiveOutputGate` (Theme J.4/5) currently runs anti-parrot, prompt-template-leak, confabulation, and inner-thought-bleed invariants. Coref is the missing attribution-class invariant. Maverick's small footprint + ONNX-runnable inference makes it a viable LM-Kit-class addition without latency stacking concerns. See `docs/research/model-coreference-ideas.md` for the candidate-model evaluation and the proposed integration shape.
+- **OntoNotes-vs-conversation register gap:** Maverick is trained on news/broadcast register. ANI's deployment is texted-conversation register, which has different patterns: ellipsis, role-switching, cocktail-as-nickname, multi-turn entity drift. Out-of-the-box Maverick may underperform on SMS conversation; fine-tuning on ANI's conversation logs is a non-trivial but tractable next step. Worth a small evaluation pass on Mark-tagged failures before committing to the integration.
+- **What coref does NOT fix:** behavior-attribution drift (*"old-fashioned man is trying to focus on work and you're over here begging"* — same person, same binding, fabricated activity in second clause) is NOT a coref problem. Coref correctly resolves both clauses to Mark; the failure is claim-level, not entity-level. The Paper 3 contribution is partly the demonstration that attribution failures decompose into *binding* (coref's job) vs *behavior assignment* (claim-verification's job) — these are different invariants and both are needed.
+
+**Paper applicability:** Paper 1 (—), Paper 2 (—), Paper 3 (Core — universal-gate invariant set completion), Paper 4 (Supporting — inter-agent attribution).
 
 ---
 
@@ -440,6 +460,22 @@ The PostTrainBench result also validates an architectural-decision-space ANI liv
 
 ---
 
+### Kirstain, Ram et al. (2021) — Coreference Resolution without Span Representations
+**Full citation:** Kirstain, Y., Ram, O., & Levy, O. (2021). Coreference Resolution without Span Representations. *arXiv preprint.*
+**arXiv:** https://arxiv.org/abs/2101.00434
+
+**What it is:** Lightweight end-to-end coreference model that removes the dependency on span representations, handcrafted features, and heuristics typical of prior approaches. Achieves competitive accuracy with significantly simpler architecture. Direct precursor to F-Coref and Maverick — established that coref can be efficient without sacrificing accuracy.
+
+**What it contributes to the paper:** Cite alongside Maverick (Tier 1) as evidence that coreference resolution can be lightweight enough to run as a per-output gate invariant in latency-sensitive companion-AI deployment. Without this paper's demonstration that span-free coref works, the universal-gate proposal would face a credibility ceiling on inference cost.
+
+**Relevance to active algorithmic problems:**
+- **Latency budget for the gate:** Per-output coref needs sub-300ms inference to fit alongside the existing invariant stack (anti-parrot, prompt-template-leak, confabulation, inner-thought-bleed). Span-free architectures established the pattern; F-Coref refined it; Maverick currently SOTAs it.
+- **F-Coref (biu-nlp 2022)** is the speed-optimized successor — 14× faster than AllenNLP on equivalent inputs, modest accuracy tradeoff. Worth a candidate evaluation if Maverick proves too heavy for reply-path latency.
+
+**Tier:** Supporting (Paper 3 Tier 2). Methodology grounding for the lightweight-gate-invariant design choice.
+
+---
+
 ## Tier 3 — Background Context
 
 ---
@@ -527,6 +563,18 @@ The PostTrainBench result also validates an architectural-decision-space ANI liv
 
 ---
 
+### Lee, He, Lewis & Zettlemoyer (2017) — End-to-end Neural Coreference Resolution
+**Full citation:** Lee, K., He, L., Lewis, M., & Zettlemoyer, L. (2017). End-to-end Neural Coreference Resolution. *Proceedings of EMNLP 2017.*
+**ACL Anthology:** https://aclanthology.org/D17-1018/
+
+**What it is:** Foundational neural coreference paper — introduced the span-based end-to-end approach that became the standard architecture for the next half-decade of coref research. Replaced the prior multi-stage mention-detection-then-clustering pipelines with a single learnable model.
+
+**Why it matters:** Background. Cite as the lineage point for Maverick, F-Coref, and the broader span-based coref family. Joshi et al. (2019, BERT-for-Coref) and Kirstain & Ram (2021, span-free) are downstream of this work. For Paper 3's coref-invariant section, Lee et al. is the "this is the field's foundational neural approach" paragraph; the actual implementation cites Maverick.
+
+**Tier:** Background only.
+
+---
+
 ## Active Algorithmic Problems — Reference Mapping
 
 Quick lookup: which papers are most relevant to each current open problem.
@@ -556,6 +604,7 @@ Quick lookup: which papers are most relevant to each current open problem.
 | World Layer durability (Layer 3) | Park et al. (reflection synthesis), Chhikara et al. (Mem0 merge), Xu et al. (A-MEM durability), McAdams (narrative identity thickening) |
 | Corpus directionality (Layer 4) | Jha et al. (ternary reward for honest non-caregiver content), EmoSLLM (voice-anchored LoRA synthesis), McAdams (narrative self capacity) |
 | Agentic-lens philosophical framing | Damasio (proto/core/autobiographical self), Gallagher (minimal vs narrative self), Horton & Wohl (parasocial structure) |
+| Pronoun coreference / entity-tracking failures (Paper 3 next gate invariant) | Maverick (Martinelli et al. 2024 — operational SOTA), Kirstain & Ram (2021 — lightweight precursor), Lee et al. (2017 — foundational neural). Distinguish from behavior-attribution drift (claim-verification's job, not coref's). See `docs/research/model-coreference-ideas.md`. |
 
 ---
 
@@ -608,6 +657,9 @@ Quick lookup: which papers are most relevant to each current open problem.
 | Inside Out (2026, arxiv 2601.05171) | — | Supporting (memory architecture comparison) | Core (Theme D positioning + Theme J framing) | — |
 | Paper 3 (experiential grounding + tier separation + durability + agentic lens) | — | Forward-referenced (§6.17) | Primary paper | — |
 | Paper 4 (inter-agent) — Park et al. closest | — | — | — | Primary gap |
+| Martinelli et al. (2024) — Maverick (Coref SOTA) | — | — | Core (Coref invariant operational reference) | Supporting |
+| Kirstain & Ram (2021) — Lightweight Coref | — | — | Supporting (Tier 2, latency-budget grounding) | — |
+| Lee et al. (2017) — End-to-end Neural Coref | — | — | Background (foundational neural) | — |
 
 ---
 
