@@ -120,8 +120,16 @@ public class EmotionalContribution
     /// Whether this contribution has decayed below a meaningful threshold.
     /// Used to determine when to move it to "processed" status.
     /// </summary>
-    public bool IsEffectivelyZero(DateTimeOffset asOf, float epsilon = 0.005f)
+    public bool IsEffectivelyZero(DateTimeOffset asOf, float epsilon = 0.02f)
     {
+        // May 2, 2026 calibration: epsilon tightened from 0.005 → 0.02. Pre-May-2
+        // contributions stayed "active" until they decayed below 0.005, which for
+        // an Ambient max-delta-0.15 contribution meant ~5 hours of pool time. That
+        // produced ~50 active Ambient contributions in steady-state, contributing
+        // to the May 1 evening saturation observation. New epsilon drops Ambient
+        // contributions at ~3 half-lives (~1.5h with the May 2 0.5h half-life)
+        // when they're already below 13% of original strength — they're no longer
+        // moving the dial meaningfully and shouldn't count toward the active pool.
         var (w, e, c, p) = CurrentDeltas(asOf);
         return Math.Abs(w) < epsilon
             && Math.Abs(e) < epsilon
@@ -132,28 +140,48 @@ public class EmotionalContribution
 
 public enum ImpactCategory
 {
-    /// <summary>Inner thoughts, routine observations. Max delta 0.15, half-life 1 hour.</summary>
+    /// <summary>Inner thoughts, routine observations. Max delta 0.15, half-life 0.5h (May 2 calibration).</summary>
     Ambient,
 
-    /// <summary>Direct conversation with contact. Max delta 0.25, half-life 3 hours.</summary>
+    /// <summary>Direct conversation with contact. Max delta 0.25, half-life 1.5h (May 2 calibration).</summary>
     Conversation,
 
-    /// <summary>Major news, life events. Max delta 0.35, half-life 12 hours.</summary>
+    /// <summary>Major news, life events. Max delta 0.35, half-life 6h (May 2 calibration).</summary>
     Global
 }
 
 /// <summary>
 /// Constants for impact category parameters, kept centralized so cognitive cycle
 /// and prompt builder use the same values.
+///
+/// **May 2, 2026 calibration** — half-lives halved across all three tiers
+/// after May 1 evening observed state pegged at warmth=0.99 / worry=0.93 /
+/// playfulness=0.95 simultaneously. The pre-May-2 half-lives (1h / 3h /
+/// 12h) combined with the model's uniform-positive delta bias on three
+/// dimensions (W+/C+/P+ on 75–85% of contributions) produced steady-state
+/// `deltaSum ≈ rate × halfLife / ln(2)` of ~2.16 for ambient cycles
+/// alone — high enough that <c>tanh(deltaSum / 1.5)</c> sat in the flat
+/// region (~0.89), pinning state near saturation and making new events
+/// unable to move the needle.
+///
+/// Tighter half-lives reduce the steady-state deltaSum proportionally,
+/// keeping tanh in the responsive slope region. Calibration: state still
+/// elevates noticeably after sustained positive events, but doesn't peg
+/// — and new events register as visible state changes.
+///
+/// If empirical observation shows the new values are too aggressive
+/// (state too volatile, doesn't sustain genuine emotional arcs), revert
+/// or tune intermediately. The previous values are documented above for
+/// rollback context.
 /// </summary>
 public static class ImpactCategoryDefaults
 {
     public static (float MaxDelta, float HalfLifeHours) GetDefaults(ImpactCategory category) => category switch
     {
-        ImpactCategory.Ambient      => (0.15f, 1.0f),
-        ImpactCategory.Conversation => (0.25f, 3.0f),
-        ImpactCategory.Global       => (0.35f, 12.0f),
-        _                           => (0.15f, 1.0f),
+        ImpactCategory.Ambient      => (0.15f, 0.5f),
+        ImpactCategory.Conversation => (0.25f, 1.5f),
+        ImpactCategory.Global       => (0.35f, 6.0f),
+        _                           => (0.15f, 0.5f),
     };
 
     /// <summary>

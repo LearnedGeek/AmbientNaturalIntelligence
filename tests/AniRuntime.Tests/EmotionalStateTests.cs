@@ -549,10 +549,16 @@ public class EmotionalStateTests
         c.IsEffectivelyZero(c.CreatedAt).Should().BeTrue();
     }
 
+    // May 2, 2026: half-lives halved (Ambient 1.0 → 0.5, Conversation 3.0 → 1.5,
+    // Global 12.0 → 6.0) after May 1 evening saturation observation
+    // (warmth=0.99 / worry=0.93 / playfulness=0.95 simultaneously). Pre-calibration
+    // half-lives let model's uniform-positive delta bias accumulate to steady-state
+    // deltaSum that landed in the flat region of tanh, pinning state near
+    // saturation. See ImpactCategoryDefaults docstring for rationale.
     [Theory]
-    [InlineData(ImpactCategory.Ambient, 0.15f, 1.0f)]
-    [InlineData(ImpactCategory.Conversation, 0.25f, 3.0f)]
-    [InlineData(ImpactCategory.Global, 0.35f, 12.0f)]
+    [InlineData(ImpactCategory.Ambient, 0.15f, 0.5f)]
+    [InlineData(ImpactCategory.Conversation, 0.25f, 1.5f)]
+    [InlineData(ImpactCategory.Global, 0.35f, 6.0f)]
     public void ImpactCategoryDefaults_ReturnsCorrectValues(ImpactCategory category, float maxDelta, float halfLife)
     {
         var (actualMax, actualHalfLife) = ImpactCategoryDefaults.GetDefaults(category);
@@ -733,6 +739,107 @@ public class EmotionalStateTests
     {
         var (maxDelta, halfLife) = ImpactCategoryDefaults.GetDefaults(ImpactCategory.Global);
         maxDelta.Should().Be(0.35f);
-        halfLife.Should().Be(12.0f);
+        // May 2, 2026: was 12.0f; halved to 6.0f as part of saturation calibration.
+        halfLife.Should().Be(6.0f);
+    }
+
+    // ── May 2, 2026 — saturation calibration regression fixtures ──────────
+    //
+    // Pin the new contract: with the model's typical uniform-positive delta
+    // bias on W/W/P and ambient cycle frequency, steady-state should land
+    // ABOVE baseline (real signal) but BELOW saturation (responsive).
+    // Pre-calibration produced state pegged at 0.99 / 0.93 / 0.95 simultaneously
+    // and was unable to register new events. Post-calibration these tests
+    // pin the responsive band.
+
+    [Fact]
+    public void May2Calibration_AmbientSteadyState_LandsBelowSaturationAndAboveBaseline()
+    {
+        // Simulate 2 hours of ambient cycle deposits at 10/hour with the model's
+        // uniform +0.15 warmth bias. Pre-calibration: state would peg at ~0.96.
+        // Post-calibration: state should land in responsive range (~0.80-0.90).
+        var now = DateTimeOffset.UtcNow;
+        var (_, ambientHalfLife) = ImpactCategoryDefaults.GetDefaults(ImpactCategory.Ambient);
+        var contributions = new List<EmotionalContribution>();
+        for (var i = 0; i < 20; i++)
+        {
+            // 6-minute spacing → 10 cycles/hour, over 2 hours
+            var minutesAgo = i * 6;
+            contributions.Add(new EmotionalContribution
+            {
+                WarmthDelta   = 0.15f,
+                CreatedAt     = now.AddMinutes(-minutesAgo),
+                HalfLifeHours = ambientHalfLife,
+            });
+        }
+
+        var state = new EmotionalState();
+        state.ComputeFromContributions(contributions, now);
+
+        state.Warmth.Should().BeGreaterThan(state.WarmthBaseline,
+            "real positive bias should still elevate state above baseline");
+        state.Warmth.Should().BeLessThan(0.95f,
+            "post-May-2 calibration: 2h of continuous +0.15 ambient warmth must NOT pin state at saturation. Pre-calibration this hit ~0.96+.");
+    }
+
+    [Fact]
+    public void May2Calibration_AmbientContribution_DropsFromActivePoolFasterWithTighterEpsilon()
+    {
+        // Pre-May-2 epsilon=0.005 meant a 0.15-magnitude Ambient contribution
+        // stayed "active" until decayed to <0.005 — about 4.9 half-lives.
+        // Post-May-2 epsilon=0.02 (default) drops it at ~2.9 half-lives, when
+        // it's still ~13% of original strength but not load-bearing on state.
+        var now = DateTimeOffset.UtcNow;
+        var contribution = new EmotionalContribution
+        {
+            WarmthDelta   = 0.15f,
+            CreatedAt     = now,
+            HalfLifeHours = 0.5f,  // post-May-2 ambient default
+        };
+
+        // At 1.5h (3 half-lives), original 0.15 → 0.0188. Below new 0.02 epsilon.
+        contribution.IsEffectivelyZero(now.AddHours(1.5)).Should().BeTrue(
+            "post-May-2 epsilon drops the contribution at ~3 half-lives, capping the active-pool size");
+
+        // At 1.0h (2 half-lives), still 0.0375 — above 0.02 epsilon, still active.
+        contribution.IsEffectivelyZero(now.AddHours(1.0)).Should().BeFalse(
+            "still active at 2 half-lives — short of the new drop point");
+    }
+
+    [Fact]
+    public void May2Calibration_NewEventStillRegistersAfterSteadyState()
+    {
+        // Critical responsiveness test: at saturated steady-state, a new
+        // contribution should still produce a visible state shift. Pre-calibration,
+        // tanh was so flat at deltaSum~2.16 that adding +0.15 barely moved state.
+        // Post-calibration the responsive slope should still produce visible movement.
+        var now = DateTimeOffset.UtcNow;
+        var contributions = new List<EmotionalContribution>();
+        for (var i = 0; i < 20; i++)
+        {
+            contributions.Add(new EmotionalContribution
+            {
+                WarmthDelta   = 0.15f,
+                CreatedAt     = now.AddMinutes(-i * 6),
+                HalfLifeHours = 0.5f,
+            });
+        }
+
+        var stateBefore = new EmotionalState();
+        stateBefore.ComputeFromContributions(contributions, now);
+
+        contributions.Add(new EmotionalContribution
+        {
+            WarmthDelta   = 0.15f,
+            CreatedAt     = now,
+            HalfLifeHours = 0.5f,
+        });
+
+        var stateAfter = new EmotionalState();
+        stateAfter.ComputeFromContributions(contributions, now);
+
+        var delta = stateAfter.Warmth - stateBefore.Warmth;
+        delta.Should().BeGreaterThan(0.005f,
+            "new event must produce visible state movement — that's the responsiveness contract");
     }
 }
