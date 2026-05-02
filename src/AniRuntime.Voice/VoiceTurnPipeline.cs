@@ -23,6 +23,8 @@ public class VoiceTurnPipeline
     private readonly IConversationService _conversations;
     private readonly IOllamaClient _ollama;
     private readonly OllamaOptions _ollamaOptions;
+    private readonly AniOptions _aniOptions;
+    private readonly ICognitiveOutputGate? _outputGate;
     private readonly ILogger<VoiceTurnPipeline> _log;
 
     public VoiceTurnPipeline(
@@ -30,12 +32,16 @@ public class VoiceTurnPipeline
         IConversationService conversations,
         IOllamaClient ollama,
         IOptions<OllamaOptions> ollamaOptions,
-        ILogger<VoiceTurnPipeline> log)
+        IOptions<AniOptions> aniOptions,
+        ILogger<VoiceTurnPipeline> log,
+        ICognitiveOutputGate? outputGate = null)
     {
         _memory        = memory;
         _conversations = conversations;
         _ollama        = ollama;
         _ollamaOptions = ollamaOptions.Value;
+        _aniOptions    = aniOptions.Value;
+        _outputGate    = outputGate;
         _log           = log;
     }
 
@@ -123,7 +129,24 @@ public class VoiceTurnPipeline
 
             // Clean and buffer Ani's reply
             var reply = MessageCleaner.Clean(fullReply.ToString());
-            if (!string.IsNullOrWhiteSpace(reply))
+
+            // ═════════════════════════════════════════════════════════════════
+            // Theme J Phase J.5f (May 1, 2026) — substrate-write gate.
+            //
+            // Voice replies stream: by the time `reply` is complete here, TTS
+            // has already played the audio to Mark. The gate cannot prevent
+            // dispatch in this surface. What it CAN prevent is the bad reply
+            // entering the substrate (PendingMessages → conversation_messages
+            // → next cycle's retrieval). The trade-off is honest: the audio
+            // happened, but the substrate stays clean. Bad voice reply
+            // becomes single-turn ephemeral, not multi-cycle pollution.
+            //
+            // Disabled when: gate not registered, flag off, or empty reply.
+            // ═════════════════════════════════════════════════════════════════
+            var gateAllowsPersist = await EvaluateVoiceReplyForSubstrateAsync(
+                reply, allMessages, ct).ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(reply) && gateAllowsPersist)
             {
                 session.PendingMessages.Enqueue(new ConversationMessage
                 {
@@ -131,7 +154,8 @@ public class VoiceTurnPipeline
                 });
             }
 
-            _log.LogInformation("VoiceTurnPipeline reply: \"{Reply}\"", reply);
+            _log.LogInformation("VoiceTurnPipeline reply: \"{Reply}\" (substratePersist={Persist})",
+                reply, gateAllowsPersist);
 
             await sendJson(new { type = "reply_end" }, ct).ConfigureAwait(false);
 
@@ -147,6 +171,70 @@ public class VoiceTurnPipeline
             session.SetSpeaking(false);
             _log.LogInformation("VoiceTurnPipeline: turn cancelled (barge-in or disconnect)");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Theme J Phase J.5f (May 1, 2026) — voice reply substrate-write gate.
+    /// Returns true when the reply may enter the substrate
+    /// (<c>session.PendingMessages</c>), false when it must be dropped.
+    ///
+    /// Note: returns true (allow-persist) when the gate is unregistered,
+    /// flag-off, or empty content — the no-op cases. Returns false ONLY
+    /// when the gate evaluated and returned a non-Pass verdict. Gate
+    /// exceptions are non-fatal: log + allow persist (observability bugs
+    /// in the gate must NOT block voice replies from entering the
+    /// active thread).
+    /// </summary>
+    internal async Task<bool> EvaluateVoiceReplyForSubstrateAsync(
+        string reply,
+        IReadOnlyList<ConversationMessage> threadMessages,
+        CancellationToken ct)
+    {
+        if (_outputGate is null || !_aniOptions.VoiceTurnOutputGateEnabled)
+            return true;
+        if (string.IsNullOrWhiteSpace(reply))
+            return true;
+
+        var contactRecent = threadMessages
+            .Where(m => m.Role == Roles.Mark)
+            .Select(m => m.Content)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .TakeLast(8)
+            .ToList();
+        var priorAni = threadMessages
+            .Where(m => m.Role == Roles.Ani && m.Content != reply)
+            .Select(m => m.Content)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .TakeLast(8)
+            .ToList();
+
+        var artifact = new CognitiveArtifact
+        {
+            Content                 = reply,
+            ProducerKind            = CognitiveProducerKind.Voice,
+            IntendedSink            = CognitiveOutputSink.Dispatch,
+            ContactName             = Roles.Mark,
+            ContactRecentMessages   = contactRecent,
+            PriorAniMessages        = priorAni,
+        };
+
+        try
+        {
+            var result = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
+            if (result.Verdict == OutputGateVerdict.Pass)
+                return true;
+
+            _log.LogWarning(
+                "J.5f voice gate {Verdict} [{Fired}] — dropping reply from substrate (audio already played; reply will NOT enter conversation_messages). Hint: {Hint}",
+                result.Verdict, string.Join(",", result.FiredInvariants), result.RemediationHint);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "J.5f voice gate threw — allowing substrate persist uncovered (gate failure must NOT block voice substrate writes).");
+            return true;
         }
     }
 

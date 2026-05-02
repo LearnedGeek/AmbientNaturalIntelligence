@@ -40,6 +40,7 @@ public class VoiceTurnPipelineTests
             _mockConversations.Object,
             _mockOllama.Object,
             Options.Create(new OllamaOptions { ChatModel = "test-model" }),
+            Options.Create(new AniOptions()),
             NullLogger<VoiceTurnPipeline>.Instance);
     }
 
@@ -268,5 +269,149 @@ public class VoiceTurnPipelineTests
             yield return token;
             await Task.Yield();
         }
+    }
+
+    // ── J.5f — substrate-write gate for voice replies (May 1, 2026) ──────
+    //
+    // Voice replies stream → audio is dispatched before the full reply text
+    // is available. The gate cannot prevent dispatch in this surface; it
+    // can only prevent the bad reply from polluting substrate (entering
+    // PendingMessages → conversation_messages → next-cycle retrieval).
+
+    private VoiceTurnPipeline CreatePipelineWithGate(
+        ICognitiveOutputGate gate, bool flagEnabled = true)
+    {
+        var aniOpts = Options.Create(new AniOptions
+        {
+            VoiceTurnOutputGateEnabled = flagEnabled,
+        });
+        return new VoiceTurnPipeline(
+            _mockMemory.Object,
+            _mockConversations.Object,
+            _mockOllama.Object,
+            Options.Create(new OllamaOptions { ChatModel = "test-model" }),
+            aniOpts,
+            NullLogger<VoiceTurnPipeline>.Instance,
+            outputGate: gate);
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_NoGate_AllowsPersist()
+    {
+        var pipeline = CreatePipeline();  // gate not provided
+
+        var allow = await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "any reply text", Array.Empty<ConversationMessage>(), CancellationToken.None);
+
+        allow.Should().BeTrue("no-op when gate isn't registered (pre-J.5f deployments + tests)");
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_FlagOff_AllowsPersist_WithoutCallingGate()
+    {
+        var mockGate = new Mock<ICognitiveOutputGate>(MockBehavior.Strict);
+        var pipeline = CreatePipelineWithGate(mockGate.Object, flagEnabled: false);
+
+        var allow = await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "reply", Array.Empty<ConversationMessage>(), CancellationToken.None);
+
+        allow.Should().BeTrue();
+        mockGate.Verify(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_GatePass_AllowsPersist()
+    {
+        var mockGate = new Mock<ICognitiveOutputGate>(MockBehavior.Strict);
+        mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(OutputGateResult.Pass());
+
+        var pipeline = CreatePipelineWithGate(mockGate.Object);
+        var allow = await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "good reply", Array.Empty<ConversationMessage>(), CancellationToken.None);
+
+        allow.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_GateRemediate_BlocksPersist()
+    {
+        var mockGate = new Mock<ICognitiveOutputGate>(MockBehavior.Strict);
+        mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OutputGateResult
+                {
+                    Verdict          = OutputGateVerdict.Remediate,
+                    FiredInvariants  = new[] { "confabulation" },
+                    RemediationHint  = "high-confidence confab on date-specific claim",
+                });
+
+        var pipeline = CreatePipelineWithGate(mockGate.Object);
+        var allow = await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "bad reply", Array.Empty<ConversationMessage>(), CancellationToken.None);
+
+        allow.Should().BeFalse(
+            "Remediate verdict on voice → drop from substrate. Audio already played; the reply must NOT enter PendingMessages.");
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_GateFail_BlocksPersist()
+    {
+        var mockGate = new Mock<ICognitiveOutputGate>(MockBehavior.Strict);
+        mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OutputGateResult
+                {
+                    Verdict          = OutputGateVerdict.Fail,
+                    FiredInvariants  = new[] { "prompt-template-leak" },
+                    RemediationHint  = "directive phrase paraphrased",
+                });
+
+        var pipeline = CreatePipelineWithGate(mockGate.Object);
+        var allow = await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "reply containing leak", Array.Empty<ConversationMessage>(), CancellationToken.None);
+
+        allow.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_GateThrows_AllowsPersistUncovered()
+    {
+        var mockGate = new Mock<ICognitiveOutputGate>(MockBehavior.Strict);
+        mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("gate bug"));
+
+        var pipeline = CreatePipelineWithGate(mockGate.Object);
+        var allow = await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "reply", Array.Empty<ConversationMessage>(), CancellationToken.None);
+
+        allow.Should().BeTrue(
+            "gate exception must NOT block voice substrate writes — observability bugs in the gate stay non-fatal.");
+    }
+
+    [Fact]
+    public async Task EvaluateVoiceReplyForSubstrate_BuildsArtifactWithVoiceProducerKind()
+    {
+        var mockGate = new Mock<ICognitiveOutputGate>(MockBehavior.Strict);
+        CognitiveArtifact? captured = null;
+        mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                .Callback<CognitiveArtifact, CancellationToken>((a, _) => captured = a)
+                .ReturnsAsync(OutputGateResult.Pass());
+
+        var threadHistory = new List<ConversationMessage>
+        {
+            new() { Role = Roles.Mark, Content = "what should we read?", SentAt = DateTimeOffset.UtcNow.AddMinutes(-2) },
+            new() { Role = Roles.Ani,  Content = "earlier ani turn",     SentAt = DateTimeOffset.UtcNow.AddMinutes(-1) },
+        };
+
+        var pipeline = CreatePipelineWithGate(mockGate.Object);
+        await pipeline.EvaluateVoiceReplyForSubstrateAsync(
+            "current reply", threadHistory, CancellationToken.None);
+
+        captured.Should().NotBeNull();
+        captured!.ProducerKind.Should().Be(CognitiveProducerKind.Voice);
+        captured.IntendedSink.Should().Be(CognitiveOutputSink.Dispatch);
+        captured.Content.Should().Be("current reply");
+        captured.ContactRecentMessages.Should().Contain(m => m.Contains("what should we read?"));
+        captured.PriorAniMessages.Should().Contain(m => m.Contains("earlier ani turn"));
     }
 }

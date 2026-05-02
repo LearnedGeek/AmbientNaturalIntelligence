@@ -17,4 +17,8 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AniRuntime.Tests" />
+  </ItemGroup>
+
 </Project>

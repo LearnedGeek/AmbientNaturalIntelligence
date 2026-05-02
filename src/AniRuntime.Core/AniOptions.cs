@@ -267,6 +267,23 @@ public class AniOptions
     // Default ON; flag-flip is the rollback path.
     public bool ReflectionOutputGateEnabled { get; set; } = true;
 
+    // Theme J Phase J.5f (May 1, 2026): route voice-turn replies through
+    // CognitiveOutputGate at the SUBSTRATE-WRITE boundary, NOT the
+    // TTS-dispatch boundary. Voice replies stream — by the time the full
+    // reply text is available, TTS has already played the audio. The gate
+    // cannot prevent dispatch in this surface; it can only prevent the
+    // bad reply from polluting substrate.
+    //
+    // On Remediate or Fail: the reply is NOT enqueued to PendingMessages
+    // (which would have written it to conversation_messages on the next
+    // flush). Audio already happened to Mark; the reply just doesn't
+    // enter the substrate. Bad voice reply becomes audio-only — single-
+    // turn ephemeral failure rather than substrate pollution that
+    // compounds across cycles.
+    //
+    // Default ON; flag-flip is rollback path.
+    public bool VoiceTurnOutputGateEnabled { get; set; } = true;
+
     // Phase 3: ML confabulation classification threshold.
     // Only trigger regeneration when LM-Kit classifies reply as "confabulated"
     // with confidence >= this value. Start conservative, tighten if needed.
