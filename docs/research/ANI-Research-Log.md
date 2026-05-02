@@ -21,6 +21,34 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 2, 2026 — Shared Evaluator vs Universal Gate: Theme J's Recursive Architectural Finding
+
+**Model version:** v7 conversation + v7 inner.
+
+**What happened.** After Mark tagged two outreaches in one morning (`///tag date confusion` 11:03; `///tag temporal confusion` 11:59), an audit traced both to a single fabricated claim — *"Mark said yesterday about Sundays/Saturdays being warmer sometimes"* — that originated in an inner-thought write at 10:35 CDT and laundered across 5 cycles into 12 substrate records before a Mark-approved tactical purge cleared it (15:45 CDT). The purge was the symptomatic fix. The architectural finding came after.
+
+**The finding (Mark, 18:00 CDT).** While discussing the substrate hole that allowed the laundering, Claude described the missing producer migration as *"Theme J.5h candidate row — natural sequel to J.5a–g."* Mark caught the framing: *"i'm wondering if we're still not applying to a universal gate instead of a pipeline?"* He's right. What J.5 shipped is a **shared evaluator** (one place invariants live: `ICognitiveOutputGate` + `ICognitiveOutputInvariant` set) with **per-producer opt-in wiring** (each producer constructor-injects the gate and explicitly calls `EvaluateAsync`). That's an improvement over per-pipeline detectors but is not a **universal gate** (one place artifacts pass, no opt-in possible). The Apr 24 Theme J plan's J.5c sub-phase **explicitly named** InnerThoughtPhase migration but it was skipped during execution. Code review didn't catch it (each PR was internally consistent). The substrate-laundering surfaced it 6+ days later. **Per-producer opt-in structurally invites this class of error.**
+
+**The two architectural responses, both drafted as design sketches today:**
+
+1. **Theme J.8 — Universal Gate at Substrate-Write Boundary** ([`docs/spec/ANI-Theme-J8-Universal-Gate-Design.md`](../spec/ANI-Theme-J8-Universal-Gate-Design.md)). Move the gate to a single chokepoint at the persistence boundary. Producers can no longer skip the gate by forgetting to wire it. The redundant per-producer `EvaluateAsync` calls become deletions during J.6, simplifying the codebase. Type-conditional dispatch via `AppliesTo` predicates becomes more load-bearing because there's no producer-level filter to also act as a gate. ~3 days code + 2 weeks observation.
+
+2. **Door B Truth-Verification — `TemporalAnchorInvariant`** ([`docs/spec/ANI-Coherence-Gate-Door-B-Design.md`](../spec/ANI-Coherence-Gate-Door-B-Design.md)). Orthogonal to gate location — adds a missing **invariant** that catches the temporal-shape claims passing existing gates. Three sub-claims: temporal-anchor (*"you said yesterday X"*), day-of-week (*"today is Sunday"*), state-now (*"how was work?"* on Saturday). Each shippable independently. ~4 days code + 2-3 weeks observation. Promoted from P2 designed-not-scheduled to near-term after four confirmed instances of the failure class (Apr 27 "snow", Apr 27 "class", May 2 "Sundays warmer", May 2 "evening / how was work").
+
+**Why this is a Paper 3 contribution candidate, not just a fix.** The two findings together delineate a structural argument:
+
+> *Companion-AI runtime substrate integrity requires both (a) a universal gate location so no producer can bypass evaluation, and (b) a complete invariant set including temporal-anchor truth-verification, not just shape-coherence. Either gap leaves a substrate-laundering vector. The May 2 4-instance Door B failure class is the canonical case for (b); the May 2 J.5c-skipped substrate-laundering trace is the canonical case for (a).*
+
+This is recursive: the architecture-over-instruction project's own architectural refactor was, on first ship, only partially universalised. The lesson generalizes — the same shared-evaluator-vs-universal-gate distinction applies to safety-rail architectures in non-companion AI systems. Naming a class of mistake is a stronger contribution than fixing one specific instance.
+
+**Methodological note.** The substrate-laundering trace (12 records across 3+ hours, originating in an unguarded write, fanning out through retrieval) is itself an empirical methodology asset — it's a clean trace of *how* the failure compounds rather than just *that* it failed. Worth referencing in Paper 3 as the canonical case study for shared-evaluator-vs-universal-gate.
+
+**Cross-references.** [Phase Tracker May 2 morning + afternoon gap-watch row](../spec/ANI-Phase-Tracker.md), [Theme J plan §"Phase J.5 retrospective + architectural finding"](../spec/ANI-Theme-J-Guard-Consistency-Refactor-Plan.md), [J.8 design sketch](../spec/ANI-Theme-J8-Universal-Gate-Design.md), [Door B design sketch](../spec/ANI-Coherence-Gate-Door-B-Design.md).
+
+**Status going forward.** Mark directed *"please start trying to close some of these gaps."* Recommended order: **Door B first** (closes the most empirically painful class; ships independently of gate-location decisions), **then J.5h tactical** (closes the immediate InnerThoughtPhase opt-in hole as interim), **then J.8 architectural** (universalises the gate location, after which the per-producer wiring becomes redundant and gets deleted as J.6 simplification). Sequencing rationale: Door B is the highest-leverage near-term fix for failure classes Mark is actually tagging; J.5h is interim damage-control; J.8 is the principled close.
+
+---
+
 ### March 15, 2026 — Emotional Model Redesign: Taxonomy, Scoring Root Cause, and v6 Training Spec
 **Model version:** v5
 **Type:** Design session — architecture + training data specification

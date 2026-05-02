@@ -352,6 +352,42 @@ Suite total: 646 passing (up from 638 after J.2). Build clean, 0 errors / 0 new 
 
 ---
 
+### Phase J.5 retrospective + architectural finding (May 2, 2026)
+
+**What actually shipped vs the plan above:**
+- J.5a (ConversationReply) ✅
+- J.5b (Outreach ConfabulationInvariant) ✅
+- J.5c (originally planned: InnerThoughtPhase migration; **diverged**) — what shipped under the J.5c label was a *read-side substrate-typing fix* for Facts-tier search attribution. The InnerThoughtPhase write-side migration originally scoped under J.5c **was not shipped**.
+- J.5d (ReflectionPhase) ✅
+- J.5e (V1.2 anti-parrot fragment hoisted to shared primitive) ✅
+- J.5f (VoiceTurnPipeline) ✅
+- J.5g (Door C `InnerThoughtBleedInvariant` universalised) ✅
+
+**Net result:** four contact-facing producers migrated (Reply, Outreach, Reflection, Voice). One internal producer (InnerThoughtPhase) was in the plan but skipped during execution. The May 2 substrate-laundering trace (`docs/spec/ANI-Phase-Tracker.md` May 2 morning + afternoon gap-watch row) shows the consequence: the originating confab at 10:35 CDT was an inner-thought write that no gate inspected, and the next 5 cycles laundered it into substrate.
+
+**Architectural critique surfaced May 2 18:00 CDT (Mark):** *"i'm wondering if we're still not applying to a universal gate instead of a pipeline?"* — the framing this plan inherited assumed all cognitive producers would eventually be migrated through `EvaluateAsync` calls at their output boundaries. That makes the gate a **shared evaluator** (one place invariants live) but not a **universal gate** (one place artifacts pass). Per-producer migrations remain opt-in; a producer that's never migrated leaves a substrate-write hole indefinitely (InnerThoughtPhase being the canonical instance — designed to be migrated, then wasn't).
+
+**Two candidate paths to close this gap:**
+
+#### Path A — J.5h: tactical opt-in extension (cheapest, recovers the original plan)
+Migrate `InnerThoughtPhase` through the shared evaluator as the next pipeline-by-pipeline step. Same pattern as J.5a–g. Doesn't change the per-producer-opt-in shape; just closes the specific producer that was skipped. ~half-day code + spec tests. Catches future inner-thought confab at write time IF the relevant invariant exists (caveat: ConfabulationInvariant alone wouldn't have caught *"Mark said yesterday X"* this morning — that's the Door B truth-verification missing-invariant problem, orthogonal to gate location).
+
+#### Path B — J.8: substrate-write-boundary chokepoint (architectural, principled)
+Move the gate to a single chokepoint at the substrate-write boundary so every cognitive-artifact write is intercepted regardless of producer. Concretely: tag every memory write with a `CognitiveArtifact` (already the unit the gate consumes), and put a single gate call at the persistence boundary (likely in or wrapping `IMemoryPersistence.SaveAsync`). Producers no longer need to opt in — they can't bypass it.
+
+**Tradeoffs of Path B:**
+- **Pro:** future producers can't skip the gate. The class of error J.5c-skip represents becomes structurally impossible.
+- **Pro:** "shared evaluator vs universal gate" distinction collapses — they become the same thing.
+- **Con:** runtime cost. Some invariants (`ConfabulationInvariant`) make LMKit/Ollama calls; running them on every memory write means many calls per cognitive cycle. `AppliesTo` predicates already filter, but the predicate evaluation has to happen at every write site.
+- **Con:** producer-specific context plumbing. `AntiParrotInvariant` needs the contact's recent words; `InnerThoughtBleedInvariant` needs prior Ani messages. Currently producers populate the `CognitiveArtifact` with what they have access to. A write-boundary gate has to either pull this context itself (more reads), or rely on producers to populate it correctly (recreates the opt-in problem in a new shape).
+- **Con:** AppliesTo correctness becomes load-bearing. If a write-time invariant accidentally fires on a write it shouldn't (e.g., `InnerThoughtBleedInvariant` running on inner-thought writes when it should only fire on dispatch), it adds noise or worse, drops legitimate writes.
+
+**Recommendation (May 2):** ship **both**, in order. Path A as a tactical interim *because* the plan's original J.5c was supposed to do it and there's already a cluster of failures at this surface; explicitly name it as interim, not principled. Path B as the architectural close — design first (Phase J.8 design doc), then implement, then **delete the per-producer opt-in calls** as J.6's natural extension because they become redundant. Door B truth-verification (separate workstream — see `ANI-Coherence-Gate-Door-B-Design.md` if drafted, otherwise the Phase Tracker P2 row) is orthogonal to this and ships on its own track.
+
+**Substrate-laundering audit reference:** the May 2 12-record purge is the empirical case. Substrate is now clean; observation window opens at next conversation. If the laundering pattern recurs after Path A ships but before Path B, Path B's necessity becomes empirically demonstrated rather than just theoretically argued.
+
+---
+
 ### Phase J.6 — Delete obsolete detectors
 
 **Goal:** remove detectors classified as "Remove" in J.a and detectors made redundant by successful J.5 migration. This is the simplification step — the one that makes the refactor's end-state *simpler* rather than *rehoused*.
