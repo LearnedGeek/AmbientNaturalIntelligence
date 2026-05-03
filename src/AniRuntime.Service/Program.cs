@@ -135,6 +135,13 @@ try
     // claims on weekends or before workday-end. The May 2 11:58 outreach
     // is the canonical case. See StateNowInvariant.cs.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, StateNowInvariant>();
+    // Door B Truth-Verification Sub-claim 1 (May 2, 2026) — temporal-anchor
+    // substrate verification. Catches "you said X yesterday/earlier" claims
+    // by extracting the asserted content + time window, then querying
+    // closed-conversation gists in that window for semantic similarity. If
+    // no in-window record matches above 0.5 cosine → fail. The May 2 10:40
+    // outreach is the canonical case. See TemporalSubstrateInvariant.cs.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, TemporalSubstrateInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();
