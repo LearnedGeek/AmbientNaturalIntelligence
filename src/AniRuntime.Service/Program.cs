@@ -149,6 +149,23 @@ try
     // no in-window record matches above 0.5 cosine → fail. The May 2 10:40
     // outreach is the canonical case. See TemporalSubstrateInvariant.cs.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, TemporalSubstrateInvariant>();
+    // Door B Truth-Verification Sub-claim 4 (May 3, 2026) — type-aware
+    // addressee-name verification. Catches greetings to non-canonical names
+    // ("hey perez" — May 3 10:55 outreach was the canonical case where the
+    // inner-thought model fabricated a Spanish-flavored nickname out of
+    // substrate priming on Mark's Spanish-class context). Names are typed
+    // claims with an absolute oracle; the invariant uses
+    // CognitiveArtifact.CanonicalAddresseeNames + ContactName as the oracle.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, AddresseeNameInvariant>();
+    // Door B Truth-Verification Sub-claim 5 (May 3, 2026) — present-tense
+    // time-of-day verification. Catches "good morning" / "good night" /
+    // "it's late" claims that don't match the wall clock. May 3 06:47
+    // outreach "hey perez… i know it's late" said at 6:47 AM is the
+    // canonical case where substrate priming on a 30-minute-old inner
+    // thought (mentioning "10:30") overrode the system prompt's correct
+    // time-of-day. Distinct from sub-claim 3 (StateNow) which catches
+    // past-tense state queries; this one catches present-tense assertions.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, SubstrateTimeOfDayInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();

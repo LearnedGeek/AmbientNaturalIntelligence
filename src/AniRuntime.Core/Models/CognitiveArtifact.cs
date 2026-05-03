@@ -71,6 +71,25 @@ public sealed class CognitiveArtifact
     /// only, no inner-thought comparison.
     /// </summary>
     public string? WriterInnerThought { get; init; }
+
+    /// <summary>
+    /// Door B Truth-Verification, Sub-claim 4 (May 3, 2026) — canonical
+    /// addressee names recognized as legitimate greeting targets. Used by
+    /// <c>AddresseeNameInvariant</c> to fail outputs that greet someone
+    /// the system can't identify (e.g. May 3 10:55 "hey perez…" fabricated
+    /// a Spanish-flavored nickname out of substrate priming on Mark's
+    /// Spanish-class context). Producers populate this from
+    /// <c>CharacterStateDoc.PrimaryContactName</c> plus any canonical
+    /// nicknames known to be legitimate (real friends/family from
+    /// character seeds, established pet-names from prior sessions). The
+    /// invariant ALSO accepts <see cref="ContactName"/> implicitly as a
+    /// belt-and-suspenders fallback. Null = the invariant runs against
+    /// ContactName alone, which catches "hey perez" but would
+    /// false-positive on legitimate canonical nicknames the producer
+    /// failed to surface; producers SHOULD populate this when they have
+    /// access to the character state.
+    /// </summary>
+    public IReadOnlyList<string>? CanonicalAddresseeNames { get; init; }
 }
 
 /// <summary>
