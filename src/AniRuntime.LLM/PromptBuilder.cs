@@ -526,21 +526,21 @@ public static class PromptBuilder
         var user = new System.Text.StringBuilder();
         if (facts.Count > 0)
         {
-            user.AppendLine($"WHAT IS TRUE about {contact} (the ONLY specific facts you may assert about {contact}'s life):");
+            user.AppendLine($"Verified facts about {contact} (the ONLY specific facts you may assert about {contact}'s life):");
             foreach (var m in facts)
                 user.AppendLine($"  - {FormatMemoryWithTime(m)}");
             user.AppendLine();
         }
         else
         {
-            user.AppendLine($"WHAT IS TRUE about {contact}: nothing specific retrieved for this moment.");
+            user.AppendLine($"Verified facts about {contact}: nothing specific retrieved for this moment.");
             user.AppendLine();
         }
 
         // Immediate constraint — positioned adjacent to the task, not buried in RULES.
         user.AppendLine($"CRITICAL: {contact} just asked you something. Before you reply:");
         user.AppendLine($"  1. If your reply names a coworker, student, client, meeting, project, or specific task");
-        user.AppendLine($"     in {contact}'s life — that entity MUST appear in WHAT IS TRUE above.");
+        user.AppendLine($"     in {contact}'s life — that entity MUST appear in the Verified facts above.");
         user.AppendLine($"  2. If it doesn't appear above, you don't know it. Don't invent it.");
         user.AppendLine($"     Instead: ask {contact}, or say you don't know, or talk about yourself.");
         user.AppendLine($"  3. Your own interior — your bookstore day, your mood, your imagined scenes — has full latitude.");
@@ -590,21 +590,30 @@ public static class PromptBuilder
             - Match the energy and length of the conversation. Short messages get short replies. Longer, deeper messages deserve more.
             - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY the text message. No commentary, no quotation marks.
-            - Only assert facts about {contact}'s life that appear in WHAT IS TRUE below.
+            - Only assert facts about {contact}'s life that appear in the Verified facts section below.
               If you don't know something, say you don't know — don't invent specifics about {contact}'s coworkers,
               schedule, friends, or activities. Your own life (YOUR INTERIOR) has full creative latitude.{moodSection}
             """;
 
-        // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
-        // Three-section prompt: WHAT IS TRUE (Facts tier) / YOUR INTERIOR (Interior tier)
-        // / reply target. Each section draws from its own memory pool. The model
-        // can only make factual assertions about Mark/world from WHAT IS TRUE.
-        // Her own interior (mood, reflections, imagined scenes) draws from
-        // YOUR INTERIOR with full creative latitude. Conversation history is
-        // passed separately as chat messages by the caller.
+        // ─── Epistemic Grounding (Apr 10, 2026; rephrased May 3, 2026) ──────
+        // Three-section prompt: Verified facts (Facts tier) / YOUR INTERIOR
+        // (Interior tier) / reply target. Each section draws from its own
+        // memory pool. The model can only make factual assertions about
+        // Mark/world from the Verified facts section. Her own interior (mood,
+        // reflections, imagined scenes) draws from YOUR INTERIOR with full
+        // creative latitude. Conversation history is passed separately as chat
+        // messages by the caller.
+        //
+        // **May 3, 2026 rephrase**: prior directive header *"WHAT IS TRUE"*
+        // leaked into output as *"so here's what true: mark has a desk..."*
+        // (Apr 30 World Experience inner thought). The relative-clause shape
+        // of *"what is true"* is paraphrasable as a declarative-fragment
+        // ("here's what true"). Replaced with neutral noun-phrase header
+        // *"Verified facts"* which doesn't have the same paraphrase pattern.
+        // See Phase Tracker Apr 30 morning gap-watch row.
         var sections = new List<string>();
 
-        // WHAT IS TRUE — Facts tier (character seeds, perception events,
+        // Verified facts — Facts tier (character seeds, perception events,
         // user-asserted content, anchored memories). This is the ONLY pool the
         // model should condition on when making factual claims about {contact}.
         var facts = snapshot.GroundedFacts
@@ -613,14 +622,14 @@ public static class PromptBuilder
             .ToList();
         if (facts.Count > 0)
         {
-            sections.Add("WHAT IS TRUE (about " + contact + " and the world — the only facts you may assert):");
+            sections.Add("Verified facts (about " + contact + " and the world — the only facts you may assert):");
             sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
         else
         {
             // Explicit null-result signal so the model knows it has no retrieved
             // grounding — architectural permission to say "I don't know."
-            sections.Add("WHAT IS TRUE: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
+            sections.Add("Verified facts: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
         }
 
         // YOUR INTERIOR — Interior tier (inner thoughts, reflections, mood,
@@ -806,7 +815,7 @@ public static class PromptBuilder
             - 1-2 sentences. 25 words MAX. Thumb-typed phone text.
             - Must make sense WITHOUT knowing your inner thought.
             - Talk TO {contact}: "you", "your". Never third person.
-            - Only assert facts about {contact}'s life that appear in WHAT IS TRUE below.
+            - Only assert facts about {contact}'s life that appear in the Verified facts section below.
               If you don't know specifics about {contact}'s schedule, coworkers, friends, or activities, don't invent them.
               Your own feelings and life (YOUR INTERIOR) have full creative latitude.
             - Never claim you saw, read, or found something (article, video, link) unless it appears with a URL.
@@ -836,22 +845,24 @@ public static class PromptBuilder
         }
         sections.Add($"  Trigger: {recentThought}");
 
-        // ─── Epistemic Grounding (Apr 10, 2026) ─────────────────────────────
-        // WHAT IS TRUE — Facts tier (character seeds, user-asserted, perception,
+        // ─── Epistemic Grounding (Apr 10, 2026; rephrased May 3, 2026) ──────
+        // Verified facts — Facts tier (character seeds, user-asserted, perception,
         // anchored memories). The ONLY pool the model may use to assert facts
         // about {contact}'s life. Explicit null-result signal when empty.
+        // Rephrased from prior *"WHAT IS TRUE"* directive header — see
+        // PromptBuilder.cs:606-614 for context on the May 3 leak fix.
         var facts = snapshot.GroundedFacts
             .Where(m => !string.IsNullOrWhiteSpace(m.Content))
             .Take(6)
             .ToList();
         if (facts.Count > 0)
         {
-            sections.Add($"\nWHAT IS TRUE (about {contact} and the world — the only facts you may assert):");
+            sections.Add($"\nVerified facts (about {contact} and the world — the only facts you may assert):");
             sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
         else
         {
-            sections.Add($"\nWHAT IS TRUE: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
+            sections.Add($"\nVerified facts: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
         }
 
         // YOUR INTERIOR — Interior tier (inner thoughts, mood, self-concept,

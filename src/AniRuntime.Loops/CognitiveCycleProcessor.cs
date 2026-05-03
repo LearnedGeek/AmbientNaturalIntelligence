@@ -404,6 +404,17 @@ public class CognitiveCycleProcessor
                 valence, obs.Severity, worldOriginFraction);
         }
 
+        // May 3, 2026 — per-cycle 4D emotional-state log line (gap-watch row
+        // Apr 27): Paper 2 figure #5 (Damasio somatic-marker trace) needs
+        // W/E/C/P at every cycle to render the full 4D form. Prior to this
+        // line, only valence + severity were per-cycle-loggable; W/E/C/P
+        // had to be reconstructed from contribution traces.
+        _log.LogInformation(
+            "EMOTIONAL_STATE warmth={Warmth:F2} energy={Energy:F2} concern={Concern:F2} playfulness={Playfulness:F2} " +
+            "tension={Tension:F2}",
+            postShift.Warmth, postShift.Energy, postShift.Worry, postShift.Playfulness,
+            postShift.ContactGapTension);
+
         await _desire.ApplyDriftAsync(motivation, ct).ConfigureAwait(false);
 
         if (valence > (float)_aniOptions.ValenceTriggerThreshold)

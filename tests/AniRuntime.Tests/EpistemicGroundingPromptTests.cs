@@ -7,7 +7,7 @@ namespace AniRuntime.Tests;
 /// <summary>
 /// Tests for the Epistemic Grounding prompt structure (Apr 10, 2026).
 /// Verifies that tier-partitioned memory pools render into the correct prompt
-/// sections (WHAT IS TRUE / YOUR INTERIOR) and that the model receives explicit
+/// sections (Verified facts / YOUR INTERIOR) and that the model receives explicit
 /// architectural permission to express uncertainty when no grounding is retrieved.
 ///
 /// See docs/spec/design/ANI-Epistemic-Grounding-Architecture.md for the design.
@@ -63,7 +63,7 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
 
-        user.Should().Contain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
         user.Should().Contain("Mark teaches at WCTC");
         user.Should().Contain("Mark's gym partner is Sarah");
     }
@@ -78,7 +78,7 @@ public class EpistemicGroundingPromptTests
 
         // Post-Apr-10 hardening: "nothing specific retrieved" replaces the old wording.
         // The test verifies the null-result signal is present regardless of exact phrasing.
-        user.Should().Contain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
         user.Should().Contain("nothing specific retrieved");
     }
 
@@ -127,7 +127,7 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().Contain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
         user.Should().Contain("Mark is a software consultant");
     }
 
@@ -184,7 +184,7 @@ public class EpistemicGroundingPromptTests
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, "thinking of him teaching tonight", "warm, wanted to check in");
 
-        user.Should().Contain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
         user.Should().Contain("Mark teaches evening classes at WCTC");
     }
 
@@ -196,7 +196,7 @@ public class EpistemicGroundingPromptTests
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, "thought of him", "warm");
 
-        user.Should().Contain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
         user.Should().Contain("no grounding memories retrieved");
     }
 
@@ -227,7 +227,7 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        var factsPosition = user.IndexOf("WHAT IS TRUE");
+        var factsPosition = user.IndexOf("Verified facts");
         var interiorPosition = user.IndexOf("YOUR INTERIOR");
 
         factsPosition.Should().BeGreaterThan(-1);

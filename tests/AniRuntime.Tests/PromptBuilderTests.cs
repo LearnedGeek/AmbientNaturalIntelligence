@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using FluentAssertions;
@@ -983,6 +984,84 @@ public class PromptBuilderTests
 
         var twoWeeksAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddDays(-15) };
         PromptBuilder.FormatMemoryWithTime(twoWeeksAgo, now).Should().StartWith("(2 weeks ago)");
+    }
+
+    // ── May 3, 2026: WHAT IS TRUE → Verified facts rephrase regression tests
+    // ─────────────────────────────────────────────────────────────────────
+    // Pin that no live prompt text uses the old *"WHAT IS TRUE"* directive
+    // header. The Apr 30 leak was Ani paraphrasing the directive into output
+    // (*"so here's what true: mark has a desk..."*). Replacing with neutral
+    // *"Verified facts"* removes the paraphrase pattern. These tests fail
+    // closed if anyone reverts the rename.
+
+    [Fact]
+    public void BuildLeanConversationPrompt_DoesNotUseWhatIsTrueDirective()
+    {
+        var snapshot = MinimalSnapshot();
+        var thread = new ConversationThread { Id = Guid.NewGuid(), InitiatedBy = Roles.Mark };
+
+        var (system, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        system.Should().NotContain("WHAT IS TRUE");
+        user.Should().NotContain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts about Mark");
+    }
+
+    [Fact]
+    public void BuildConversationReplyPrompt_DoesNotUseWhatIsTrueDirective()
+    {
+        var snapshot = MinimalSnapshot();
+        var thread = new ConversationThread { Id = Guid.NewGuid(), InitiatedBy = Roles.Mark };
+
+        var (system, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+
+        system.Should().NotContain("WHAT IS TRUE");
+        user.Should().NotContain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
+    }
+
+    [Fact]
+    public void BuildOutreachMessagePrompt_DoesNotUseWhatIsTrueDirective()
+    {
+        var snapshot = MinimalSnapshot();
+        var (system, user) = PromptBuilder.BuildOutreachMessagePrompt(
+            snapshot, "rain on the window", reasoning: "", reasoningInComposition: false);
+
+        system.Should().NotContain("WHAT IS TRUE");
+        user.Should().NotContain("WHAT IS TRUE");
+        user.Should().Contain("Verified facts");
+    }
+
+    // ── May 3, 2026: AnchorReasonValues canonical taxonomy ──────────────────
+    [Fact]
+    public void AnchorReasonValues_HasFourCanonicalCategories()
+    {
+        AnchorReasonValues.All.Should().HaveCount(4);
+        AnchorReasonValues.All.Should().Contain(new[]
+        {
+            AnchorReasonValues.Origin,
+            AnchorReasonValues.Foundation,
+            AnchorReasonValues.ArchitecturalGrowth,
+            AnchorReasonValues.LessonsAsHistory,
+        });
+    }
+
+    [Fact]
+    public void AnchorReasonValues_IsValidOrNull_AcceptsCanonicalAndNull()
+    {
+        AnchorReasonValues.IsValidOrNull(null).Should().BeTrue();
+        AnchorReasonValues.IsValidOrNull(AnchorReasonValues.Origin).Should().BeTrue();
+        AnchorReasonValues.IsValidOrNull(AnchorReasonValues.Foundation).Should().BeTrue();
+        AnchorReasonValues.IsValidOrNull(AnchorReasonValues.ArchitecturalGrowth).Should().BeTrue();
+        AnchorReasonValues.IsValidOrNull(AnchorReasonValues.LessonsAsHistory).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AnchorReasonValues_IsValidOrNull_RejectsArbitraryStrings()
+    {
+        AnchorReasonValues.IsValidOrNull("highest pain + highest trust").Should().BeFalse();
+        AnchorReasonValues.IsValidOrNull("foundation_v2").Should().BeFalse();
+        AnchorReasonValues.IsValidOrNull("").Should().BeFalse();
     }
 
 }

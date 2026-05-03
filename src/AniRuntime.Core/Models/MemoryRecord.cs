@@ -18,6 +18,14 @@ public class MemoryRecord
     // Feature 16: Decay Tier — foundation memories (Anchored) never fade;
     // Standard memories decay normally. Previously named MemoryTier.
     public DecayTier      DecayTier   { get; set; } = DecayTier.Standard;
+
+    /// <summary>
+    /// Why this memory is anchored. Should be one of the canonical values
+    /// in <see cref="AnchorReasonValues"/> (origin / foundation /
+    /// architectural-growth / lessons-as-history). NULL is acceptable for
+    /// pre-May-3-2026 records pending curation OR for non-anchored memories
+    /// (DecayTier=Standard). Schema is TEXT for forward-compatibility.
+    /// </summary>
     public string?        AnchorReason { get; set; }
     public DateTimeOffset? AnchoredAt { get; set; }
 

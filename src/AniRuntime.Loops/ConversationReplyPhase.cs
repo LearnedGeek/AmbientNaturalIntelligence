@@ -626,7 +626,18 @@ public class ConversationReplyPhase
         // ═══════════════════════════════════════════════════════════════════════
 
         // Feature 10: Receiving Care
-        if (emotionalState is not null && ConversationFeatureDetector.DetectCareGivingIntent(lastMessage))
+        // May 3, 2026 — F10_REGISTER structured log line per gap-watch row
+        // (Apr 27): Paper 2 figure #2 (Horton & Wohl reciprocity) needs
+        // per-utterance Feature-10-by-direction data to chart. Logged on
+        // every inbound (fire and non-fire) so the figure-author can render
+        // both signal and negative space.
+        var f10Fired = ConversationFeatureDetector.DetectCareGivingIntent(lastMessage);
+        var f10Preview = lastMessage.Length > 80 ? lastMessage[..80] + "..." : lastMessage;
+        _log.LogInformation(
+            "F10_REGISTER direction=mark->ani fired={Fired} message=\"{Preview}\"",
+            f10Fired, f10Preview);
+
+        if (emotionalState is not null && f10Fired)
         {
             _log.LogInformation("Care detected (post-reply) — creating care contribution");
             await _emotional.SaveDirectContributionAsync(emotionalState,
