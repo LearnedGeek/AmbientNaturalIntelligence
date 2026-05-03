@@ -384,6 +384,14 @@ public class ConversationReplyPhase
 
                     var grounded = groundingMemories
                         .Where(s => s.CosineSimilarity >= (float)_aniOptions.RetrievalConfidenceFloor)
+                        // Theme G Layer 3 G3.4 substrate-typing (May 3, 2026 — blocker 3):
+                        // confab-grounding for outbound reply must consult EXTERNAL
+                        // substrate, never Ani's Interior tier. Prior to this filter
+                        // the regen could ground its rebuttal from Ani's own prior
+                        // inner thoughts or reflections, which is the same self-
+                        // confirming loop that produced the May 3 10:55 "perez"
+                        // failure at the outreach surface.
+                        .Where(s => s.Record.Provenance != EpistemicTier.Interior)
                         .Select(s => s.Record)
                         .Take(3)
                         .ToList();

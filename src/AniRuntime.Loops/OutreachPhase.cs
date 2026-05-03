@@ -179,7 +179,15 @@ public class OutreachPhase
             var results = await _search.SearchWithScoresAsync(recentThought, 5, ct).ConfigureAwait(false);
             groundingMemories = results
                 .Where(s => s.CosineSimilarity >= (float)_aniOptions.RetrievalConfidenceFloor)
-                .Where(s => s.Record.Type != MemoryType.InnerThought) // Don't ground from other generated thoughts
+                // Theme G Layer 3 G3.4 substrate-typing (May 3, 2026 — blocker 3):
+                // outreach grounding must consult EXTERNAL substrate (Facts +
+                // Episodic), never Ani's Interior tier. Prior filter excluded
+                // MemoryType.InnerThought only — that misses reflection
+                // memories which save as MemoryType.Semantic but Provenance=
+                // Interior. Provenance check is the architecturally complete
+                // form; matches the read-side filter principle the Apr 30 row
+                // 247 fix applied at the claim verifier surface.
+                .Where(s => s.Record.Provenance != EpistemicTier.Interior)
                 .Select(s => s.Record)
                 .Take(3)
                 .ToList();
