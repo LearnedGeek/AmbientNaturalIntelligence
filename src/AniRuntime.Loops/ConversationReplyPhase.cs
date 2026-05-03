@@ -484,88 +484,15 @@ public class ConversationReplyPhase
         // deployment evidence). Mark-echo is retained in the outreach path
         // where contact-mirroring is a genuine failure mode.
         //
-        // Self-echo detection RETAINED but switched from cosine similarity to
-        // n-gram overlap (ParrotingDetector). Cosine measures topical overlap;
-        // parroting is verbatim phrase reuse. These are different signals.
-        // Mark's prior Ani messages can legitimately share topic with the
-        // current reply; the failure mode we want to catch is Ani repeating
-        // her own specific phrases across replies ("legs tucked under desk"
-        // verbatim twice, not "desk" appearing in two different sentences).
-        var priorAniMessages = thread.Messages
-            .Where(m => m != replyMessage && m.Role == Roles.Ani)
-            .ToList();
-        _log.LogDebug("Self-echo guard: checking reply against {Count} prior Ani messages", priorAniMessages.Count);
-        if (priorAniMessages.Count > 0)
-        {
-            try
-            {
-                foreach (var prior in priorAniMessages)
-                {
-                    var (isParroting, sharedLen, sharedPhrase) =
-                        AniRuntime.LLM.ParrotingDetector.Check(reply, prior.Content);
-                    if (isParroting)
-                    {
-                        _log.LogWarning(
-                            "Self-echo detected (shared {Tokens}-gram: \"{Phrase}\"): reply parrots prior Ani message \"{Prior}\"",
-                            sharedLen, sharedPhrase,
-                            prior.Content.Length > 60 ? prior.Content[..60] + "..." : prior.Content);
-
-                        // Self-echo regeneration — tell the model what phrase to avoid
-                        // rather than stripping context entirely. Clean-slate regeneration
-                        // (which stripped all retrieved context) was a confabulation
-                        // amplifier and is scheduled for removal in Pipeline Simplification
-                        // Phase 2. For now, we preserve the existing regen approach but
-                        // scope it to self-echo where it does less harm — repeating yourself
-                        // is a distinct failure mode from topical engagement, so a harder
-                        // reset is defensible even if imperfect.
-                        var cs = snapshot.CharacterState;
-                        var lastMsg = lastMessage;
-                        var threadSummary = thread.Messages.Count > 1
-                            ? string.Join("\n", thread.Messages
-                                .Where(m => m != replyMessage)
-                                .TakeLast(Math.Min(4, thread.Messages.Count))
-                                .Select(m => $"{m.Role}: {Truncate(m.Content, 80)}"))
-                            : "";
-                        var threadContext = string.IsNullOrEmpty(threadSummary)
-                            ? ""
-                            : $"\n\nRecent conversation:\n{threadSummary}";
-                        var contact = cs.PrimaryContactName ?? "Mark";
-                        var cleanSystem = $"""
-                            You are {cs.Name}, texting {contact}.
-                            Your personality: {string.Join("; ", cs.CoreTraits)}.{threadContext}
-
-                            {contact} just said something to you. Reply to THEIR message directly.
-                            Stay on the topic THEY brought up. Do not change the subject.
-                            Do not repeat what you already said. Find a new angle on the same topic.
-                            Match the energy and length of the conversation.
-                            Talk TO {contact}: "you", "your". Never third person.
-                            Write ONLY the text message. No commentary, no quotation marks.
-                            """;
-                        var cleanUser = $"Do NOT repeat this phrase (you already used it): \"{sharedPhrase}\"\n\n{contact} said: \"{lastMsg}\"";
-
-                        var retryReply = await _ollama.ChatAsync(
-                            cleanSystem, Array.Empty<ChatMessage>(), cleanUser, ct, 0.7f)
-                            .ConfigureAwait(false);
-                        retryReply = CleanOutreachMessage(retryReply);
-
-                        if (!string.IsNullOrWhiteSpace(retryReply))
-                        {
-                            _log.LogInformation("Self-echo regenerated: {Reply}", retryReply);
-                            reply = retryReply;
-                        }
-                        else
-                        {
-                            _log.LogWarning("Self-echo regeneration produced empty reply — keeping original");
-                        }
-                        break;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogDebug(ex, "Self-echo check failed — proceeding with original reply");
-            }
-        }
+        // Self-echo check has moved onto the universal cognitive-output gate
+        // as `SelfEchoInvariant` (May 3, 2026 — Theme J Phase J.5h-prelude).
+        // The prior in-line ParrotingDetector pass + clean-slate regeneration
+        // block lived here; it ran BEFORE the J.5a gate call, and the J.5a
+        // remediation regen path itself skipped the self-echo check, which
+        // is how May 3 10:55 dispatched a regen byte-identical to the prior
+        // assistant turn (the "hey perez" duplicate). Universalising self-
+        // echo onto the gate closes that class for every producer + every
+        // regen path in one place.
 
         // Theme J Phase J.5a (Apr 30, 2026) — universal output gate.
         // See EvaluateAndRemediateReplyAsync. No-op when flag is off OR
@@ -998,6 +925,13 @@ public class ConversationReplyPhase
     /// through to dispatch the original reply uncovered. Observability
     /// bugs in the gate must NOT block the conversation pipeline.
     /// </summary>
+    /// <summary>
+    /// Fallback dispatched when the J.5a gate refuses both the original reply
+    /// and the regen (May 3, 2026 re-eval gate). Soft acknowledgement is
+    /// preferable to silence-without-cause OR to dispatching a known-bad reply.
+    /// </summary>
+    internal const string SafeAcknowledgement = "mmm, sorry — give me a second to gather my thoughts.";
+
     internal async Task<string> EvaluateAndRemediateReplyAsync(
         string reply,
         ConversationThread thread,
@@ -1068,13 +1002,54 @@ public class ConversationReplyPhase
                         replyPrompt.System, snapshot.RecentHistory, remediationUser, ct, replyTemperature)
                         .ConfigureAwait(false);
                     regenerated = CleanOutreachMessage(regenerated);
-                    if (!string.IsNullOrWhiteSpace(regenerated))
+                    if (string.IsNullOrWhiteSpace(regenerated))
                     {
-                        _log.LogInformation("J.5a gate remediation succeeded — using regenerated reply.");
+                        _log.LogWarning("J.5a gate remediation produced empty reply — keeping original.");
+                        return reply;
+                    }
+
+                    // J.5a re-evaluation (May 3, 2026) — regen output MUST pass the same
+                    // gate stack. May 3 10:55 Failure C: J.5a remediation regen returned
+                    // a byte-identical copy of the prior assistant turn from chat history;
+                    // both sends went through Twilio ~57 seconds apart because the regen
+                    // never re-ran the self-echo / coherence checks the original ran.
+                    // SelfEchoInvariant (universal, May 3) plus this re-eval together
+                    // close that class.
+                    var regenArtifact = new CognitiveArtifact
+                    {
+                        Content                 = regenerated,
+                        ProducerKind            = artifact.ProducerKind,
+                        IntendedSink            = artifact.IntendedSink,
+                        ContactName             = artifact.ContactName,
+                        GeneratedAt             = DateTimeOffset.Now,
+                        ContactRecentMessages   = artifact.ContactRecentMessages,
+                        PriorAniMessages        = artifact.PriorAniMessages,
+                        SystemPromptText        = artifact.SystemPromptText,
+                        WriterInnerThought      = artifact.WriterInnerThought,
+                    };
+
+                    OutputGateResult regenResult;
+                    try
+                    {
+                        regenResult = await _outputGate.EvaluateAsync(regenArtifact, ct).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning(ex,
+                            "J.5a gate re-evaluation threw on regen — falling back to safe acknowledgement (regen would have dispatched uncovered).");
+                        return SafeAcknowledgement;
+                    }
+
+                    if (regenResult.Verdict == OutputGateVerdict.Pass)
+                    {
+                        _log.LogInformation("J.5a gate remediation succeeded — regenerated reply passes gate.");
                         return regenerated;
                     }
-                    _log.LogWarning("J.5a gate remediation produced empty reply — keeping original.");
-                    return reply;
+
+                    _log.LogWarning(
+                        "J.5a gate remediation FAILED re-eval [{Fired}] — verdict={Verdict}, hint={Hint}; falling back to safe acknowledgement.",
+                        string.Join(",", regenResult.FiredInvariants), regenResult.Verdict, regenResult.RemediationHint);
+                    return SafeAcknowledgement;
                 }
                 catch (Exception ex)
                 {
@@ -1086,7 +1061,7 @@ public class ConversationReplyPhase
                 _log.LogWarning(
                     "J.5a gate Fail on reply [{Fired}]: {Hint} — dropping reply, using safe acknowledgement.",
                     string.Join(",", gateResult.FiredInvariants), gateResult.RemediationHint);
-                return "mmm, sorry — give me a second to gather my thoughts.";
+                return SafeAcknowledgement;
 
             default:
                 return reply;

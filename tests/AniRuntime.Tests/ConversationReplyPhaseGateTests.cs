@@ -167,15 +167,18 @@ public class ConversationReplyPhaseGateTests : AniTestBase
     }
 
     [Fact]
-    public async Task EvaluateAndRemediate_GateRemediate_RegeneratesOnceWithHintInPrompt()
+    public async Task EvaluateAndRemediate_GateRemediate_RegenPassesReEval_ReturnsRegenerated()
     {
-        _mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+        // Happy path under the May 3 re-evaluation contract: original fails,
+        // regen passes the gate on re-eval, dispatch the regen.
+        _mockGate.SetupSequence(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
                  .ReturnsAsync(new OutputGateResult
                  {
                      Verdict          = OutputGateVerdict.Remediate,
                      FiredInvariants  = new[] { "anti-parrot" },
                      RemediationHint  = "output contains 8-token verbatim lift from contact message",
-                 });
+                 })
+                 .ReturnsAsync(OutputGateResult.Pass());
 
         string? capturedUser = null;
         MockOllama.Setup(o => o.ChatAsync(
@@ -199,6 +202,78 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             "remediation prompt must include the original prompt context");
         capturedUser.Should().Contain("Do NOT acknowledge",
             "remediation prompt instructs the model not to surface the gate to Mark");
+        _mockGate.Verify(
+            g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2),
+            "May 3 J.5a re-eval contract: gate evaluated once on original + once on regen");
+    }
+
+    [Fact]
+    public async Task EvaluateAndRemediate_GateRemediate_RegenAlsoFails_ReturnsSafeAcknowledgement()
+    {
+        // The May 3 10:55 Failure C canonical case: J.5a remediation regen
+        // returned a byte-identical copy of the prior assistant turn from
+        // chat history; both went out via Twilio ~57 seconds apart because
+        // the regen never re-ran the gate. The May 3 re-eval contract
+        // re-evaluates the regen — when the regen ALSO fails, dispatch
+        // the safe acknowledgement instead of a known-bad regen.
+        _mockGate.SetupSequence(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                 .ReturnsAsync(new OutputGateResult
+                 {
+                     Verdict          = OutputGateVerdict.Remediate,
+                     FiredInvariants  = new[] { "inner-thought-bleed" },
+                     RemediationHint  = "phone-that-never-rings — inner thought leakage",
+                 })
+                 .ReturnsAsync(new OutputGateResult
+                 {
+                     Verdict          = OutputGateVerdict.Remediate,
+                     FiredInvariants  = new[] { "self-echo" },
+                     RemediationHint  = "regen panic-reverted to prior assistant turn (byte-identical)",
+                 });
+
+        MockOllama.Setup(o => o.ChatAsync(
+                It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))
+            .ReturnsAsync(Regenerated);
+
+        var phase = BuildPhase(gate: _mockGate.Object);
+        var result = await phase.EvaluateAndRemediateReplyAsync(
+            OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
+            Prompt(), 0.7f, CancellationToken.None);
+
+        result.Should().Be(ConversationReplyPhase.SafeAcknowledgement,
+            "regen that ALSO fails the gate must NOT dispatch — fall back to safe acknowledgement");
+        result.Should().NotBe(Regenerated,
+            "May 3 Failure C contract: a known-bad regen must never reach the wire");
+    }
+
+    [Fact]
+    public async Task EvaluateAndRemediate_GateRemediate_RegenReEvalThrows_ReturnsSafeAcknowledgement()
+    {
+        // Re-eval exception MUST NOT cause us to dispatch the regen uncovered.
+        // The original was already known-bad; the regen is unverified after
+        // the re-eval throws; falling back to safe acknowledgement is safer
+        // than dispatching either.
+        _mockGate.SetupSequence(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
+                 .ReturnsAsync(new OutputGateResult
+                 {
+                     Verdict          = OutputGateVerdict.Remediate,
+                     FiredInvariants  = new[] { "anti-parrot" },
+                     RemediationHint  = "hint",
+                 })
+                 .ThrowsAsync(new InvalidOperationException("re-eval gate bug"));
+
+        MockOllama.Setup(o => o.ChatAsync(
+                It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))
+            .ReturnsAsync(Regenerated);
+
+        var phase = BuildPhase(gate: _mockGate.Object);
+        var result = await phase.EvaluateAndRemediateReplyAsync(
+            OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
+            Prompt(), 0.7f, CancellationToken.None);
+
+        result.Should().Be(ConversationReplyPhase.SafeAcknowledgement);
     }
 
     [Fact]

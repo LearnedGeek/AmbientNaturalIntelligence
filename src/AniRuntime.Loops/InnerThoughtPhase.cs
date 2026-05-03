@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
@@ -11,16 +12,32 @@ namespace AniRuntime.Loops;
 /// Extracted from CognitiveCycleProcessor (SRP) — inner thought generation
 /// is a distinct responsibility from cycle orchestration. This class owns
 /// the LLM calls for private monologue, reflection, and valence scoring.
+///
+/// **Theme J Phase J.5h-prelude (May 3, 2026) — gate wiring.** Inner-thought
+/// outputs route through <see cref="ICognitiveOutputGate"/> at the
+/// generation boundary BEFORE returning to the cycle. The May 3 10:55
+/// "perez" failure traced to an inner-thought-side fabrication that was
+/// saved as Interior-tier substrate and then lifted into outreach
+/// composition. Gating the thought at production catches the substrate
+/// laundering at its source. On Remediate/Fail verdict, the thought is
+/// dropped (returned as empty string) — inner thoughts are not user-
+/// facing, dropping is safe; substrate doesn't accumulate the suspect
+/// content; the next cycle generates fresh.
 /// </summary>
 public class InnerThoughtPhase
 {
     private readonly IOllamaClient _ollama;
     private readonly ILogger<InnerThoughtPhase> _log;
+    private readonly ICognitiveOutputGate? _outputGate;
 
-    public InnerThoughtPhase(IOllamaClient ollama, ILogger<InnerThoughtPhase> log)
+    public InnerThoughtPhase(
+        IOllamaClient ollama,
+        ILogger<InnerThoughtPhase> log,
+        ICognitiveOutputGate? outputGate = null)
     {
         _ollama = ollama;
         _log = log;
+        _outputGate = outputGate;
     }
 
     /// <summary>
@@ -35,14 +52,87 @@ public class InnerThoughtPhase
             thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 
-        // Score the raw thought for valence BEFORE reflection
-        var valence = await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
-            .ConfigureAwait(false);
+        // Theme J Phase J.5h-prelude (May 3, 2026) — gate the thought before it
+        // becomes substrate. SelfEchoInvariant catches inner-thought-loops
+        // (duck-norris / dinner-at-seven / vanilla-cream-soda class); other
+        // applicable invariants (PromptTemplateLeak, Confabulation, temporal
+        // sub-claims) catch additional classes via type-conditional dispatch.
+        if (!string.IsNullOrWhiteSpace(thought))
+        {
+            thought = await GateThoughtAsync(thought, snapshot, thoughtPrompt.System, ct)
+                .ConfigureAwait(false);
+        }
 
-        // Reflection layer (Park et al.)
-        var reflection = await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
+        // Score the raw thought for valence BEFORE reflection. Skip when the
+        // gate dropped the thought — there's nothing to score.
+        var valence = string.IsNullOrWhiteSpace(thought)
+            ? 0.3f
+            : await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
+                .ConfigureAwait(false);
+
+        // Reflection layer (Park et al.) — only run if thought survived the gate
+        var reflection = string.IsNullOrWhiteSpace(thought)
+            ? null
+            : await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
 
         return (thought, reflection, valence);
+    }
+
+    /// <summary>
+    /// Theme J Phase J.5h-prelude (May 3, 2026) — route the produced thought
+    /// through the universal cognitive-output gate. Drop-on-fail semantics:
+    /// inner thoughts that trip the gate become empty strings rather than
+    /// polluting Interior-tier substrate. The gate's
+    /// <see cref="ICognitiveOutputInvariant.AppliesTo"/> filtering ensures
+    /// only inner-thought-applicable invariants run (e.g. self-echo,
+    /// prompt-template-leak; not anti-parrot which is contact-facing).
+    /// Gate exceptions are caught and logged; the thought passes through
+    /// uncovered (gate observability bugs MUST NOT block the cognitive
+    /// cycle from producing thoughts).
+    /// </summary>
+    internal async Task<string> GateThoughtAsync(
+        string thought, ContextSnapshot snapshot, string systemPromptText, CancellationToken ct)
+    {
+        if (_outputGate is null) return thought;
+
+        // Recent inner thoughts feed SelfEchoInvariant — looking for
+        // verbatim self-templating across cycles (the duck-norris loop class).
+        var priorThoughts = snapshot.RelevantMemory?
+            .Where(m => m.Type == MemoryType.InnerThought)
+            .Select(m => m.Content)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Take(8)
+            .ToList();
+
+        var artifact = new CognitiveArtifact
+        {
+            Content                 = thought,
+            ProducerKind            = CognitiveProducerKind.InnerThought,
+            IntendedSink            = CognitiveOutputSink.PersistedMemory,
+            ContactName             = snapshot.CharacterState?.PrimaryContactName ?? Roles.Mark,
+            GeneratedAt             = DateTimeOffset.UtcNow,
+            PriorAniMessages        = priorThoughts,
+            SystemPromptText        = systemPromptText,
+        };
+
+        OutputGateResult result;
+        try
+        {
+            result = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "J.5h inner-thought gate threw — passing thought uncovered (gate failure must NOT block cognitive cycle).");
+            return thought;
+        }
+
+        if (result.Verdict == OutputGateVerdict.Pass) return thought;
+
+        _log.LogWarning(
+            "J.5h inner-thought gate {Verdict} [{Fired}] — dropping thought from substrate. Hint: {Hint}",
+            result.Verdict, string.Join(",", result.FiredInvariants), result.RemediationHint);
+        return string.Empty;
     }
 
     private async Task<string?> ReflectOnThoughtAsync(

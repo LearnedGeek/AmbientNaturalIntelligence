@@ -113,6 +113,13 @@ try
     // order: structural checks first, content checks next, semantic checks
     // last. See docs/research/ANI-Theme-J-Detector-Inventory-Review.md.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, AntiParrotInvariant>();
+    // Theme J Phase J.5h-prelude (May 3, 2026) — universal self-echo invariant.
+    // Lifts the prior per-producer ParrotingDetector check (formerly in
+    // ConversationReplyPhase lines 488-568) onto the gate so every artifact
+    // with PriorAniMessages context routes through the same check, including
+    // J.5a remediation regen output (which previously skipped the producer-
+    // side check and dispatched byte-identical regens — May 3 10:55 Failure C).
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, SelfEchoInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputInvariant, PromptTemplateLeakInvariant>();
     // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, ConfabulationInvariant>();
