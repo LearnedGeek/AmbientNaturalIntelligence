@@ -33,7 +33,7 @@
     <ProjectReference Include="..\..\src\AniRuntime.Perception\AniRuntime.Perception.csproj" />
     <ProjectReference Include="..\..\src\AniRuntime.Emergence\AniRuntime.Emergence.csproj" />
     <ProjectReference Include="..\..\src\AniRuntime.Voice\AniRuntime.Voice.csproj" />
-    <ProjectReference Include="..\..\src\LearnedGeek.ML\LearnedGeek.ML.csproj" />
+    <ProjectReference Include="..\..\..\learnedgeek-libs\LearnedGeek.ML\LearnedGeek.ML.csproj" />
   </ItemGroup>
 
 </Project>

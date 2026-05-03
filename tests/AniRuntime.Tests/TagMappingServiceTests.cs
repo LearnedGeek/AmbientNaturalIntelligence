@@ -11,10 +11,12 @@ public class TagMappingServiceTests
 
     public TagMappingServiceTests()
     {
-        // Find the StaticTagMap.json relative to test execution
-        var projectRoot = FindProjectRoot();
-        var jsonPath = Path.Combine(projectRoot, "src", "LearnedGeek.ML", "TagMapping", "StaticTagMap.json");
-        _sut = new TagMappingService(NullLogger<TagMappingService>.Instance, jsonPath);
+        // LearnedGeek.ML's csproj copies StaticTagMap.json into the test's
+        // bin output via <None Update> + CopyToOutputDirectory. Letting
+        // TagMappingService auto-resolve via AppContext.BaseDirectory keeps
+        // this test stable across in-tree vs cross-repo project layouts
+        // (May 2 2026 extraction to learnedgeek-libs).
+        _sut = new TagMappingService(NullLogger<TagMappingService>.Instance);
     }
 
     [Fact]
@@ -267,15 +269,4 @@ public class TagMappingServiceTests
             new Dictionary<string, float> { [primary] = confidence });
     }
 
-    private static string FindProjectRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
-        {
-            if (File.Exists(Path.Combine(dir, "AniRuntime.slnx")))
-                return dir;
-            dir = Path.GetDirectoryName(dir);
-        }
-        throw new InvalidOperationException("Could not find project root (AniRuntime.slnx)");
-    }
 }

@@ -248,11 +248,17 @@ public class TemporalAnchorInvariantTests
     {
         // Inner thought writes get skipped via AppliesTo — but if the gate
         // somehow still routes one through EvaluateAsync, the invariant
-        // shouldn't crash.
+        // shouldn't crash. Use an explicit Saturday GeneratedAt so the
+        // "today is Sunday" assertion is deterministically wrong regardless
+        // of when the test runs (the original used DateTimeOffset.UtcNow
+        // default, which flipped between Saturday and Sunday around UTC
+        // midnight).
+        var saturday = new DateTimeOffset(2026, 5, 2, 12, 0, 0, TimeSpan.FromHours(-5));
         var result = await Build().EvaluateAsync(
             Artifact("today is Sunday",
                 producer:    CognitiveProducerKind.InnerThought,
-                sink:        CognitiveOutputSink.PersistedMemory),
+                sink:        CognitiveOutputSink.PersistedMemory,
+                generatedAt: saturday),
             CancellationToken.None);
         result.Passed.Should().BeFalse(
             "EvaluateAsync runs unconditionally if called; AppliesTo is the producer-side filter. " +
