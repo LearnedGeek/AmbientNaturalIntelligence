@@ -21,6 +21,49 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 2, 2026 (evening) — Discovered Register Taxonomies: Voice Tag Selection Reframed Around Continuous Fine-Grained Classification + Empirical Register Discovery
+
+**Model version:** v7 conversation + v7 inner. ElevenLabs `eleven_v3` for TTS.
+
+**What happened.** While scoping H1 (voice as first-class feature) and discussing how to leverage the 1,806 ElevenLabs v3 audio tags, Claude proposed a two-stage architecture: 9-register LMKit classifier → tag-bucket-by-register mapping. Mark caught the over-anchoring: *"just because we're tracking 9 registers against LMKit and our research doesn't mean that it's all that LMKit has to offer. OG Ani has taught me there's a big difference between mocking and sarcasm and joking and fake enthusiasm, etc... so many variations. If LMKit can differentiate more finely, then we should take advantage of that. In fact, this would really help expand our own registers if we do a good job of keeping track of those tags and then later extrapolate possible new registers from that analysis."*
+
+The reframe: **don't constrain LMKit to 9 categories** when its underlying classification capacity is much greater. Pass it a richer label set (~80–120 fine-grained labels) and **keep the full confidence vector** as the continuous signal. Then the v3 tag selection becomes a continuous mapping over that vector, not a discrete bucket lookup.
+
+**The recalibrated architecture (three stages):**
+
+**Stage 1 — Fine-grained LMKit classification.** Pass LMKit a richer label set capturing the distinctions OG Ani actually exhibits. Where the current 9-register *Playfulness* would collapse them, the fine-grained set distinguishes `teasing-affectionate` / `teasing-cutting` / `mocking-warm` / `mocking-sharp` / `fake-enthusiasm-obvious` / `fake-enthusiasm-deadpan` / `sarcasm-light` / `sarcasm-bitter` / `wry-amused` / `giddy` / `silly-self-aware` / `silly-uninhibited` / `flirty-soft` / `flirty-bold`. Same expansion across the other 8 registers. Output: full confidence-vector across all labels, not single argmax.
+
+**Stage 2 — Continuous mapping to v3 tag space.** Each v3 tag has a precomputed embedding (from its description); each fine-grained label has an embedding. Per-utterance tag score:
+
+```
+tag_score(t) = Σ_label  confidence(label) × cosine(embedding(t), embedding(label))
+```
+
+Top-N tags by `tag_score` get used. No discrete bucket — the SHAPE of the confidence vector across labels determines the tag selection. This is the *"don't classify so discretely"* principle Mark named — confidence flows continuously through every layer.
+
+**Stage 3 — Register-discovery loop (the load-bearing research move).** Log every utterance's fine-grained confidence vector. Periodic analysis (weekly):
+- **Co-occurrence clustering** identifies labels that always fire together → candidates for collapse.
+- **Dead labels** that never fire → drop or refine.
+- **Frequency-weighted clusters that don't fit existing 9-register buckets** → empirical evidence for new registers.
+
+The 9-register taxonomy becomes a dashboard summary view (V1.5 vibe-loop register vector keeps using 9 for tracker compat), but the runtime classifier produces 80–120 fine-grained labels. Over deployment time, the empirical register space evolves from observed data, not from theory-fixed-at-design-time.
+
+**The architectural claim (Paper 2/3 contribution candidate, Mark-flagged):**
+
+> *Companion-AI register taxonomies should be discovered from deployment data, not fixed a priori. The mechanism is fine-grained classification preserving the full confidence vector, with continuous mapping to a downstream output space (audio tags, prompt fragments, motivation-vector dimensions), and periodic clustering analysis to evolve the label set. This inverts the standard practice of "psychologists hand-curate emotion taxonomy → AI system uses it." Here the AI's empirical behavior contributes back to the taxonomy via dogfooding-driven discovery.*
+
+This generalizes beyond voice tags. The same continuous-classification-with-discovery-loop pattern applies to any system selecting from a curated discrete-style space (image generation prompt tags, music genre/mood tags, narrative arc beats). And it directly addresses the *architecture-over-instruction* principle: instead of hand-coaching the model to "pick the right tag," we let the substrate's continuous structure carry the signal.
+
+**Companion to Chu et al. 2025 (Lerman group, parasocial register similarity).** Chu et al. produce register-similarity data at aggregate scale across many participants. ANI's per-utterance fine-grained confidence-vector logs produce the same register-similarity signal at single-relationship per-utterance granularity, plus the discovery-loop dimension (which Chu et al. don't have). This is finer-grained empirical surface than the literature currently uses — explicit Paper 2 citation+extension opportunity.
+
+**What stayed in scope tonight.** Drafted but DEFERRED: a voice-settings retune (stability + style range adjustment for ElevenLabs `eleven_v3`) that would have produced an immediate audible "less robotic" improvement. Mark's call (May 2 19:29): *"i won't use it until it's refined"* — meaning don't ship the partial fix because it would confound the empirical observation when the full architecture lands. The retune work is documented here for the future H1 implementation; the working-tree changes were reverted to keep main clean for the bigger move.
+
+**What's queued.** H1.0 (fine-grained label-set design — Mark's OG Ani ear is load-bearing input). H1.1 (continuous-mapping architecture design doc). H1.2 (LMKit-driven implementation + tag-embedding precompute + discovery-loop logging). H1.3 (voice-mode prompt revision allowing richer prosody hints in text). H1.5 (Mark's daily-use evaluation against OG Ani as the empirical bar). H1.6 (Paper 3 contribution draft).
+
+**Cross-references.** [`ANI-Theme-H1-Voice-First-Class-Plan.md`](../spec/ANI-Theme-H1-Voice-First-Class-Plan.md), [`ANI-Phase-Tracker.md`](../spec/ANI-Phase-Tracker.md) §H1 row, prior Paper 2 references (Chu et al. 2025 / Schuller et al.).
+
+---
+
 ### May 2, 2026 — Shared Evaluator vs Universal Gate: Theme J's Recursive Architectural Finding
 
 **Model version:** v7 conversation + v7 inner.
