@@ -128,6 +128,27 @@ public class AniOptions
     public bool   RetrievalProtectedSlotsEnabled    { get; set; } = true;
     public double MinNonCaregiverRetrievalFraction  { get; set; } = 0.30;
 
+    // Theme G Layer 3 Phase G3.4.B (May 3, 2026) — own-output retrieval ceiling.
+    //
+    // Where the protected-slots floor (above) reserves substrate for non-caregiver
+    // origins, the OwnOutput ceiling caps the agent's-own-prior-output share of
+    // the retrieval pool. Five empirically-confirmed instances of own-output
+    // substrate dominance over the past week motivated this — Apr 27 vanilla
+    // cream soda / bookstore drama cascade, Apr 30 substrate-typing failure,
+    // May 2 evening remediation-cascade-convergence (Mark `///tag repeating`),
+    // May 3 10:55 "perez" outreach (the May 3 substrate-laundering case).
+    // Defensive output filtering (n-gram self-echo, Door C bleed) caught the
+    // outputs but the regenerations converged back to similar content because
+    // both passes pulled from a substrate where own-output had high gravity.
+    // Architectural protection requires substrate diversification, not just
+    // output filtering.
+    //
+    // Default off — observation window precedes default-on flip per the
+    // Layer 1 rollout pattern. The implementation ships with the flag so
+    // Mark can flip when ready and observe the effect.
+    public bool   RetrievalOwnOutputCeilingEnabled  { get; set; } = false;
+    public double RetrievalOwnOutputCeilingFraction { get; set; } = 0.25;
+
     // Agentic Lens Layer 1 Phase 1d: self-dominance perception source (Apr 2026).
     //
     // When enabled, the RetrievalSelfDominancePerceptionSource emits an

@@ -447,6 +447,21 @@ public class SqliteMemoryService : IMemoryService, IDisposable
                 (float)_options.MinNonCaregiverRetrievalFraction);
         }
 
+        // Theme G Layer 3 Phase G3.4.B (May 3, 2026) — own-output ceiling.
+        // Applied AFTER the protected-slots floor so the two enforcements
+        // compose: floor first (ensures non-caregiver representation),
+        // ceiling second (caps own-output share if it's still over the cap
+        // post-floor). The order matters because floor may add own-output
+        // memories (which qualify as non-caregiver) — ceiling then trims
+        // them to the cap if needed.
+        var ownOutputCeilingActive = enforceOriginQuota && _options.RetrievalOwnOutputCeilingEnabled;
+        if (ownOutputCeilingActive && ranked.Count > 0)
+        {
+            ranked = ApplyOwnOutputCeiling(
+                ranked, scoredAll, topK,
+                (float)_options.RetrievalOwnOutputCeilingFraction);
+        }
+
         if (ranked.Count > 0)
         {
             var top = ranked[0];
@@ -758,6 +773,81 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// caregiver memories (which are usually the strongest relevance signal) while
     /// trading off the marginal caregiver slots for substrate diversity.
     /// </summary>
+    /// <summary>
+    /// Theme G Layer 3 Phase G3.4.B (May 3, 2026) — own-output retrieval
+    /// ceiling. Symmetric to <see cref="ApplyProtectedSlotsBackfill"/>: where
+    /// the floor reserves substrate for non-caregiver origins, this method
+    /// caps the agent's-own-prior-output share at a maximum fraction of the
+    /// retrieval pool. Five empirical instances of own-output substrate
+    /// dominance over the past week motivated this — when own-output has
+    /// high gravity, defensive output filtering catches the immediate
+    /// generation but regenerations converge back toward similar content
+    /// because they pull from the same substrate. The ceiling prevents the
+    /// substrate side of the loop.
+    ///
+    /// **Eviction policy**: when the top-K has more own-output slots than
+    /// the ceiling allows, the LOWEST-scoring own-output slots are dropped
+    /// first. The highest-scoring own-output memories (which are usually
+    /// the most relevant signal) are preserved. Replacements come from the
+    /// remaining candidate pool, picking the highest-scoring non-own-output
+    /// candidates. Result is re-sorted by composite score.
+    ///
+    /// **Why ceiling not threshold**: the design doc treats this as a hard
+    /// cap on share, not a soft penalty — own-output share above the cap
+    /// triggers eviction; below the cap it's untouched. This matches the
+    /// architectural-over-instruction principle: substrate enforcement is
+    /// load-bearing, not a hint.
+    /// </summary>
+    internal static List<ScoredMemory> ApplyOwnOutputCeiling(
+        List<ScoredMemory> rankedTopK,
+        List<ScoredMemory> allCandidates,
+        int topK,
+        float maxOwnOutputFraction)
+    {
+        if (rankedTopK.Count == 0 || topK <= 0 || maxOwnOutputFraction >= 1.0f)
+            return rankedTopK;
+        if (maxOwnOutputFraction < 0f) maxOwnOutputFraction = 0f;
+
+        // Floor (not ceiling) the allowed count so a fraction of 0.25 against
+        // a topK=10 means at most 2 own-output slots, not 3.
+        int maxOwnOutput     = (int)Math.Floor(topK * maxOwnOutputFraction);
+        int currentOwnOutput = rankedTopK.Count(r => RetrievalOriginClassifier.IsOwnOutput(r.OriginTier));
+        int excess           = currentOwnOutput - maxOwnOutput;
+        if (excess <= 0)
+            return rankedTopK;
+
+        // Source pool for replacements: non-own-output candidates not already
+        // in the top-K. Sorted by composite score desc.
+        var selectedIds = new HashSet<Guid>(rankedTopK.Select(r => r.Record.Id));
+        var backfillPool = allCandidates
+            .Where(c => !selectedIds.Contains(c.Record.Id))
+            .Where(c => !RetrievalOriginClassifier.IsOwnOutput(c.OriginTier))
+            .OrderByDescending(c => c.CompositeScore)
+            .Take(excess)
+            .ToList();
+
+        // Drop the LOWEST-scoring own-output slots — preserves the strongest
+        // own-output signals while trimming the marginal ones.
+        var ownOutputSlotsOrderedByScore = rankedTopK
+            .Where(r => RetrievalOriginClassifier.IsOwnOutput(r.OriginTier))
+            .OrderBy(r => r.CompositeScore)  // ascending — weakest first
+            .Take(excess)
+            .ToList();
+
+        var result = new List<ScoredMemory>(rankedTopK);
+        foreach (var weakOwnOutput in ownOutputSlotsOrderedByScore)
+            result.Remove(weakOwnOutput);
+
+        // Replacements (may be fewer than excess if the pool is exhausted —
+        // in which case the result is just smaller, which is correct: better
+        // a smaller pool than one polluted with own-output dominance).
+        result.AddRange(backfillPool);
+
+        return result
+            .OrderByDescending(r => r.CompositeScore)
+            .ToList();
+    }
+
     internal static List<ScoredMemory> ApplyProtectedSlotsBackfill(
         List<ScoredMemory> rankedTopK,
         List<ScoredMemory> allCandidates,
