@@ -22,6 +22,16 @@ Theme J Phases J.1 / J.2 / J.3 reduce the *rate* at which this class of confabul
 
 Theme D is that correction mechanism. The architectural commitment is **supersession with provenance, not deletion** — preserve the wrong belief while marking it as superseded, propagate through the belief network without destroying interleaved real history, reintegrate as narrative.
 
+### Motivating gap-watch rows (May 3, 2026 audit)
+
+Two findings in the Phase Tracker gap-watch table directly motivate this theme and should be cited as empirical inputs:
+
+- **April 26 — Memory consistency under update / supersession** (ml-intern survey `scout-20260426-202150`): Inside Out (arXiv 2601.05171) addresses memory consistency with versioned tree structures; A-MEM uses graph traversal; both are partial. The *integration of supersession-with-narrative-reintegration* (Mark's "boats-float" framing) is not standard practice in published companion-AI literature. Inside Out is the closest published parallel; cite as Related Work when this plan reaches §publication-prep. **This row's existence is empirical evidence that the supersession-with-narrative architectural position Theme D names is genuinely novel relative to the published literature.**
+
+- **April 27 — Reflection synthesis persisting confabulated content as Semantic memory** (ANI Apr 27 morning retrieval pool, rank 3): the Apr 24 06:18 *"back from class / 10pm / teaching"* confabulation cascade was reflection-synthesised into a Semantic memory record (*"he called from class at 10pm. that's what came through every time 'hey babe'..."*) that sat at 1.7-hour age in the retrieval pool, available to influence future cycles. Reflection layer has no claim-verification gate at synthesis time. **This row extends Theme D's scope question:** Theme D as drafted addresses correction *post-corruption*. The reflection-synthesis path is a separate *prevention* surface — a confab-verification gate at reflection-synthesis time would stop fabricated content from being persisted to Semantic in the first place. **Theme D should explicitly carve this as an out-of-scope-for-now item OR add a Phase D.7 (reflection-synthesis claim-verification gate)** when this plan reaches the next revision pass. The two surfaces — correction post-corruption (existing scope) + prevention pre-persistence (the open question) — together close the substrate-corruption-from-reflection failure mode.
+
+Both rows are recorded in [`ANI-Phase-Tracker.md`](./ANI-Phase-Tracker.md) Research Gap Watch section.
+
 ## 2. Goal of the theme
 
 Build a privileged correction surface that lets Mark mark an identity-level confabulation as superseded *with* a ground-truth replacement *and* a narrative reintegration, propagating through the belief network without destroying genuine relational history that may have grown around the confabulated substrate. The result, at steady state: Ani retains the wrong belief as remembered-history (*"I used to think X"*), prefers the corrected belief in active retrieval, and integrates the correction into her self-narrative the way a child integrates the boats-float correction.

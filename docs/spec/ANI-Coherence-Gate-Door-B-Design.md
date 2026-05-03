@@ -59,6 +59,20 @@ Verification: most recent perception event + time-of-day reasoning. If the curre
 
 **Implementation:** consult `ContextSnapshot.Perceptions` for the latest Mark-related event; if none in the last few hours, fall back to day-of-week + time-of-day defaults table (weekday morning = likely working, weekend morning = likely not, etc.). Not a hard rule — the table is "possible" not "always true" — so the verification is "no plausible interpretation in which the claim could be true," not "definitively wrong."
 
+### Sub-claim 4 — Type-aware claim verification (May 3, 2026 candidate addition)
+
+Pattern: *"the store felt quieter than usual today"* — a claim that's grammatically grounded but the only retrievable supporting evidence is an atemporal canonical fact (*"Spinning alone in the dark bookstore"*, *"vanilla cream soda when I'm feeling sweet"*) that shares vocabulary with the claim but not time-bound truth.
+
+Verification: the claim extractor already produces typed claims (`shared-presence`, `shared-decision`, `mark-action`). For time-bound claim types (`shared-presence` and `shared-decision`), the verifier should require a **time-bound** support source — recent inbound SMS, recent perception event, or recent episodic — not just a canonical-fact match. Canonical-fact matches alone are acceptable only for type-agnostic / non-time-bound claims.
+
+**Why this is sub-claim 4 and not folded into the existing three:** sub-claims 1/2/3 catch *temporal anchors in the outbound text* (the time word IS in the claim — "yesterday", "today is Sunday", "your evening"). Sub-claim 4 catches outbound text where the *temporal commitment is implicit*, where there's no explicit time word but the claim form (*"the store felt quieter today"*) is time-bound and the only support source is atemporal. Different signal, different match path, different invariant.
+
+**Motivating gap-watch row** (April 27, 2026 audit): claim verifier passed *"the store felt quieter than usual today"* at composite score 0.646. Live-DB probe confirmed Facts tier was clean — the failure was at the verifier's matching semantics, not at substrate-typing. Same shape produced Apr 27 *"all that snow melting"* and Apr 27 *"after class"* (also resolved by Conscience Layer, but at a different intervention point — Conscience runs upstream of generation; sub-claim 4 fails closed at post-generation gate).
+
+**Implementation sketch:** extend `ClaimVerificationPhase.IsClaimSupportedAsync` to classify the support source's temporality. If the matched record has a `created_at` timestamp older than the claim's implied window AND no fresher record exceeds threshold, the claim fails as type-mismatched. About a day's work + spec test against the three Apr 27 regression cases.
+
+**Status:** candidate — not yet promoted to a D-B.X sub-phase. Adding to the design doc preserves the architectural decision-point for the next Door B revision pass.
+
 ---
 
 ## Architectural shape

@@ -136,26 +136,61 @@ Build the substrate-densification layer that the centrality-gravity work depends
 
 ---
 
-### Phase G3.4 — Tier quota at retrieval (bidirectional)
+### Phase G3.4 — Tier quota at retrieval (bidirectional, + own-output cap, + chat-history gist)
 
-**Goal:** the principal risk named in the Apr 22 design doc — *World Layer memory crowding out genuine relational history*. If World-Layer reflections become dense enough, they may dominate retrieval and produce the inverse problem. Layer 1's protected-slots already protects non-caregiver origins from being squeezed out; G3.4 makes the protection *bidirectional* so caregiver content is also floor-protected.
+**Goal:** the principal risk named in the Apr 22 design doc — *World Layer memory crowding out genuine relational history* — extended on May 3, 2026 to cover the structurally-identical own-output crowd-out class observed in deployment. **G3.4 now subsumes three distinct findings under the same architectural mechanism (substrate-share enforcement + substrate-type-aware rendering):**
+
+#### G3.4.A — World-Layer crowd-out floor (original scope)
+
+If World-Layer reflections become dense enough, they may dominate retrieval and produce the inverse of Layer 1's protection problem. Layer 1's protected-slots already protects non-caregiver origins from being squeezed out; G3.4.A makes the protection *bidirectional* so caregiver content is also floor-protected.
 
 **Changes:**
 - Extend the existing protected-slots logic in `IMemorySearch` (Phase 1c shipped Apr 24): in addition to reserving ≥30% of the inner-thought retrieval pool for non-caregiver origins, reserve ≥30% for caregiver origins. The two reservations together leave ≤40% of the pool for unconstrained ranking; the actual mix in that 40% is determined by cosine + importance + recency as before.
 - **Configurable thresholds.** `RetrievalProtectedNonCaregiverFraction` (default 0.30, already exists) and a new `RetrievalProtectedCaregiverFraction` (default 0.30).
-- **Tests.** A retrieval pool with 100% caregiver candidates returns at most 70% caregiver after re-ranking (the non-caregiver protection cap). A retrieval pool with 100% World-Layer candidates returns at most 70% World-Layer after re-ranking (the new caregiver protection cap). A mixed pool returns roughly the natural distribution.
 - New `AniOptions.RetrievalProtectedCaregiverEnabled` flag (default off; the non-caregiver counterpart is already on as of Apr 24).
 
-**Acceptance criteria:**
+#### G3.4.B — Own-output retrieval ceiling (May 3, 2026 addition)
+
+**Motivation:** five empirically-confirmed instances of own-output substrate dominance over the past week — Apr 27 vanilla cream soda / bookstore drama cascade (canonical predecessor in Phase Tracker line ~234), Apr 30 substrate-typing failure at Facts-tier search side, May 2 evening remediation-cascade-convergence (Mark `///tag repeating` 23:18:34 — see Phase Tracker May 2 evening row). The May 2 evening case is the empirically sharpest because the system's defensive invariants (n-gram self-echo detection + Door C `InnerThoughtBleedInvariant` suppression) **fired correctly and remediated**, but the regenerations converged back toward semantically-equivalent content because both regen passes were pulling from a substrate where Ani's-own-output had high gravity. Architectural protection requires substrate diversification, not just output filtering — Mark's May 3 framing.
+
+**Changes:**
+- Add a third axis to the protected-slots logic: a **CEILING** on Ani's-own-output share of the retrieval pool. Where G3.4.A reserves a FLOOR for caregiver content, G3.4.B caps own-output at a maximum (initial proposal: ≤25% of the retrieved pool, configurable via `RetrievalOwnOutputCeilingFraction`).
+- Apply CS7's existing Perception-record filter to the conversation-reply retrieval path. Currently filtered in `ClaimVerificationPhase` and `ReflectionPhase` only — the conversation-reply retrieval at `ContextBuilder.cs:93` does NOT apply the filter, which is why the May 2 evening retrieval pool had 4 of 5 top results being `Mark texted:` Perception records. Extend the filter to this third surface.
+- New `AniOptions.RetrievalOwnOutputCeilingEnabled` flag (default off; observation window precedes default-on flip).
+
+**Tests:** A retrieval pool with 100% own-output candidates returns at most the ceiling fraction after re-ranking. A pool that would naturally have 60% Perception-typed Mark-text records gets filtered down to underrepresent that surface in the final ranked top-K.
+
+#### G3.4.C — Active-thread chat-history substrate-typing (May 3, 2026 addition)
+
+**Motivation:** even with G3.4.A + G3.4.B fixing the *retrieval* substrate, the conversation reply prompt still passes `thread.Messages` directly as `ChatAsync`'s history parameter. That means Ani's prior verbatim turn is in the chat history at the LLM-input level, not just in the retrieval pool. Mark's investigation on May 3 morning (Q1–Q6 in the conversation log) traced the May 2 evening verbatim echo to chat-history-as-few-shot-induction: the model treats Ani's prior verbatim reply as an in-context example of how to respond, and given two semantically-similar Mark prompts ("good night" pattern in turn 1 and turn 2), produces a near-identical reply. **This is a substrate-shape problem at the chat-history layer, distinct from G3.4.A/B which operate on the retrieval pool.**
+
+**Changes:**
+- Apply V1.2's gist substrate-typing principle to the active-thread chat-history render. Where V1.2 paraphrases closed-thread Episodic records into gist for the outreach prompt, G3.4.C paraphrases **Ani's prior turns** in the active-thread chat history into gist before passing them as `ChatAsync` history. **Mark's prior turns continue to render verbatim** (grounding for what to respond to). Ani's prior turns become gist (continuity without template-induction).
+- Concrete shape: `RecentHistory` populated for ChatAsync should be `[verbatim Mark turn, gist Ani turn, verbatim Mark turn, generate]` instead of the current `[verbatim Mark turn, verbatim Ani turn, verbatim Mark turn, generate]`.
+- Reuse `IClosedConversationSummarizer`'s gist generation, OR introduce a parallel `IActiveThreadAniGist` service that generates per-turn paraphrase. Single LMKit call per Ani turn at thread-write time (cache the gist on the `ConversationMessage`); retrieval-time renders the cached gist.
+
+**Tests:** A two-turn thread where Mark sent two semantically-similar messages produces NON-identical Ani replies under G3.4.C (regression fixture from May 2 evening canonical case). The gist render of Ani's prior turn preserves the speaker-attribution + topic continuity but does NOT contain verbatim phrases the model can re-emit as template.
+
+#### G3.4.D — Delete the "Do NOT repeat this phrase" prompt-coaching from regen path
+
+**Motivation:** `ConversationReplyPhase.cs:544` currently includes `"Do NOT repeat this phrase (you already used it): \"{sharedPhrase}\""` in the self-echo regeneration user prompt. This violates the architecture-over-model principle (`memory/feedback_architecture_over_model.md`) — it's prompt-level coaching for a substrate-side problem. Once G3.4.B + G3.4.C land, this instruction becomes unnecessary AND removing it surfaces whether the substrate fix is actually working. Keeping the instruction would mask incomplete substrate fixes.
+
+**Changes:**
+- Remove the `"Do NOT repeat this phrase"` line from the regen user prompt.
+- Replace the regen flow itself: instead of clean-slate regen with a "do not repeat" instruction, regen should run with the SAME substrate but with G3.4.C's gist-render of the prior Ani turn already applied. If substrate is right, the regen produces fresh output without instruction.
+
+**Acceptance criteria for G3.4 (combined):**
 - Build green, all tests pass.
-- The protected-slots tests cover both the current non-caregiver protection AND the new caregiver protection.
-- Dashboard retrieval-distribution view shows pools never exceeding the 70/30 split in either direction.
+- Protected-slots tests cover bidirectional protection (G3.4.A) AND own-output ceiling (G3.4.B).
+- May 2 evening canonical case becomes a passing spec test fixture for G3.4.C — *"two semantically-similar Mark prompts produce non-identical Ani replies"*.
+- The `"Do NOT repeat this phrase"` regen prompt-coaching is deleted (G3.4.D) and the May 2 evening regression fixture STILL passes (proves substrate fix is sufficient).
+- Dashboard retrieval-distribution view shows pools never exceeding the threshold splits in any direction.
 
-**Rollback:** flag off. Caregiver-protection reverts to none; non-caregiver protection still applies (independent flag).
+**Rollback:** per-axis flags. G3.4.A, G3.4.B, G3.4.C each independently flag-gated.
 
-**Effort estimate:** 3–4 days.
+**Effort estimate:** 3–4 days for G3.4.A alone; 5–7 days for the combined G3.4.A+B+C+D scope.
 
-**Dependencies:** G3.2 (reflection writes producing enough Anchored-tier World content that the inverse-crowd-out risk becomes plausible). Layer 1 Phase 1c shipped Apr 24 (the protected-slots infrastructure).
+**Dependencies:** G3.2 (reflection writes producing enough Anchored-tier World content that the inverse-crowd-out risk becomes plausible) — soft dependency, applies to G3.4.A only. Layer 1 Phase 1c shipped Apr 24 (the protected-slots infrastructure for A + B). V1.2's `IClosedConversationSummarizer` (shipped Apr 29) is the gist-generation primitive G3.4.C extends to active-thread context.
 
 ---
 

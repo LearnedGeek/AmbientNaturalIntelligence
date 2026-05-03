@@ -18,6 +18,12 @@
 
 The result, at steady state: every cognitive cycle produces an inner thought followed by a Conscience observation that either asks where a claim came from (grounding mismatch), affirms quietly (grounding coherent), or stays largely silent (nothing to flag). The composition phase that follows has both the inner thought AND the conscience observation as input; over time, the model integrates the conscience pattern into its baseline cycle.
 
+### Motivating gap-watch row (May 3, 2026 audit)
+
+- **April 27 — Present-tense inference from atemporal anchored fact** (ANI Apr 27 13:24 chat, first post-J.2/J.3 deploy): Ani's reply *"What did you end up doing after class?"* — Mark had no class today; class is a Thursday pattern. J.2 + J.3 fired correctly (`J2_STRUCTURED_SUMMARY present=true turns=2`; retrieved memory ages 0.0–2.3h, none stale-rendered-as-fresh). The class reference came from an anchored-tier canonical fact (*"Mark teaches a class"*) projected onto today via inference. Anchored memories are deliberately atemporal per J.3's atemporal-by-contract exception. The Conscience Layer reading inner thought against Facts+Anchored would ask *"where did 'today' come from?"* about a class reference unsupported by any perception event — phases C.0 / C.1 / C.4 are designed for exactly this pattern. **This is the first concrete empirical instance of the Conscience Layer's design target on a fully J.2/J.3-protected substrate, validating that the design target is real and not an artifact of pre-J.3 substrate.**
+
+Recorded in [`ANI-Phase-Tracker.md`](./ANI-Phase-Tracker.md) Research Gap Watch (Apr 27 row).
+
 ## 2. Goal of the theme
 
 Build a `ConsciencePhase` that runs after `InnerThoughtPhase` and before `ComposePhase` in the cognitive cycle. Persist `ConscienceObservation` records distinct from inner thoughts. Architecturally isolate the Conscience's retrieval from the feedback-loop substrate (Facts + anchored only). Default off until the cycle's behaviour can be observed across a substantial window. Long-term: dedicated fine-tune (Paper 5 *"friend/family"* model path) replaces the current `ani-v6-inner` + new system prompt approach.
