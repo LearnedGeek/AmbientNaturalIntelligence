@@ -108,17 +108,19 @@ No re-generation attempt — re-generation often produces the same shape with di
 
 ## Phased implementation sketch
 
-| Phase | Goal | Effort |
-|---|---|---|
-| **D-B.0** | Spec test fixtures from the four confirmed cases (Apr 27 snow / Apr 27 class / May 2 Sundays-warmer / May 2 evening-Saturday). Each becomes a regression case the new invariant must catch. | 0.5 day |
-| **D-B.1** | Sub-claim 2 (day-of-week / calendar) — cheapest, most deterministic. Regex + clock verification. Ship behind flag. | 0.5 day |
-| **D-B.2** | Sub-claim 1 (temporal-anchor verification) — extractor + verifier against `closed_conversation_records.gist` + `conversation_messages` within named window. | 1.5 days |
-| **D-B.3** | Sub-claim 3 (state-now claims) — perception + default-table verification. | 1 day |
-| **D-B.4** | Wire the full `TemporalAnchorInvariant` into the `CognitiveOutputGate` invariant set. Flag-gated initially. | 0.5 day |
-| **D-B.5** | Observation window with all four regression fixtures asserting failure-on-substrate-mismatch. | 1 week |
-| **D-B.6** | Flag flip; live observation. | 1–2 weeks |
+| Phase | Goal | Effort | Status |
+|---|---|---|---|
+| **D-B.0** | Spec test fixtures from the four confirmed cases (Apr 27 snow / Apr 27 class / May 2 Sundays-warmer / May 2 evening-Saturday). | 0.5 day | Folded into each sub-claim's tests |
+| **D-B.1** | Sub-claim 2 (day-of-week / calendar) — cheapest, most deterministic. Regex + clock verification. | 0.5 day | **✅ SHIPPED May 2 (commit `5ddb5cc`)** — `TemporalAnchorInvariant`, 28 spec tests |
+| **D-B.2** | Sub-claim 1 (temporal-anchor verification) — extractor + verifier against `closed_conversation_records.gist` within named window. | 1.5 days | **✅ SHIPPED May 2 (commit `1cda7dc`)** — `TemporalSubstrateInvariant`, 25 spec tests. ~30 min actual code time vs 1.5 day estimate. V1 uses closed-conversation gists only; `conversation_messages` direct query deferred. |
+| **D-B.3** | Sub-claim 3 (state-now claims) — perception + default-table verification. | 1 day | **✅ SHIPPED May 2 (commit `476287e`)** — `StateNowInvariant`, 23 spec tests. V1 uses heuristics (day-of-week + workday-end hour); perception consultation deferred. |
+| **D-B.4** | Wire all into `CognitiveOutputGate` invariant set via DI. | 0.5 day | **✅ SHIPPED** — three `AddSingleton<ICognitiveOutputInvariant, ...>` registrations in `Program.cs`. |
+| **D-B.5** | Observation window with all four regression fixtures asserting failure. | 1 week | **Pending Mark redeploy** to start observation window. |
+| **D-B.6** | Flag flip; live observation. | 1–2 weeks | All three sub-claims ship default-on (no flag) — they're defensive checks that fail closed. Observation begins on next deploy. |
 
-**Total:** ~4 days code + ~25 spec tests + 2-3 weeks observation. Modest scope; each sub-claim is independently shippable.
+**Total:** ~3 hours code + 76 spec tests + 2-3 weeks observation. Significantly faster than the 4-day estimate; sub-claims composed cleanly because each is a small standalone invariant.
+
+**Sequencing inversion from the original design:** plan sequenced 1→2→3 by dependency depth; actual ship was 2→3→1 because (a) sub-claim 2 is foundation infrastructure, (b) sub-claim 3 catches the empirically-most-painful May 2 *"how was work"* class via cheap heuristics, (c) sub-claim 1 was last because it depends on the V1.2 closed-conversation embedding substrate being in place.
 
 **Dependencies:**
 - None blocking. Door B's truth-verification ships independently of J.8 location-question. If J.8 has shipped first, Door B inherits universal-gate properties; if not, it lives at producer entry like the other current invariants.
