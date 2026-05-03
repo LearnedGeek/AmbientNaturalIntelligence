@@ -47,6 +47,36 @@ All outreach related to the ANI research program. Organized by contact, reverse 
 
 ---
 
+## Tim Althoff — Potential PhD Advisor / Collaborator (UW Allen School)
+
+**Role:** Associate Professor, Allen School of CS & Engineering, UW. Directs Behavioral Data Science Group. h-index 49, 10K+ citations. Best Paper WWW 2021 + Nature Machine Intelligence 2023 on AI-augmented empathic peer support (Talklife).
+**Faculty page:** https://www.cs.washington.edu/people/faculty/tim-althoff/
+**Personal page:** https://homes.cs.washington.edu/~althoff/
+**Group:** https://behavioral-data.github.io/
+**Status:** Identified May 2, 2026 via ml-intern survey for Lerman alternatives. **No outreach sent yet.** Outreach gated on Paper 2 finalization (~weeks out).
+**Tracking artifacts:** [`Althoff-PhD-Research.md`](./Althoff-PhD-Research.md), [`Althoff-Conversation-CheatSheet.md`](./Althoff-Conversation-CheatSheet.md)
+
+### Pre-outreach research checklist
+
+- [ ] Read his 2024 papers (LLM-therapist evaluation, pluralistic alignment, CHI mental health intervention) — informs framing
+- [ ] Skim Behavioral Data Science Group recent publications page — current student topics + research direction
+- [ ] Identify whether he co-advises with iSchool/HCDE/HCI faculty at UW — committee shape
+- [ ] Confirm UW Allen School CS PhD application deadline + GRE requirement (verify post-COVID change)
+- [ ] Letter-of-recommendation slate — Lerman if she'd write (after Paper 2 sends), Martin (DrOk/Infanzia cross-domain), one more
+
+### Email 1 — Cold outreach (NOT YET SENT)
+
+**Trigger:** Paper 2 in finalization (substantive hook ready). Estimated send: ~weeks out, post Paper 2 v0.5 draft.
+**Subject:** TBD — likely "Inverted-architecture companion-AI runtime: deployed system, related to your Talklife / LLM-therapist work"
+**Draft body:** see `Althoff-PhD-Research.md` §"Recommended Outreach Strategy"
+
+**Three things the message must do:**
+1. Establish peer framing ("closely-related work from an inverted angle"), not student-applying framing
+2. Name a concrete artifact (Paper 1 + DOI + Paper 2 trajectory)
+3. Soft-open both paths (collaboration / advisor) without forcing either
+
+---
+
 ## arXiv / Paper 1 Outreach
 
 *(Add entries here for any cold emails sent regarding the published preprint)*
