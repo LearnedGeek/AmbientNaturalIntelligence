@@ -62,6 +62,7 @@ Every outstanding workstream with an explicit priority. Priorities are assigned 
 | **Memory Durability (v8 architectural)** | Standalone (Paper 3/4 contribution candidate) | this tracker §Memory Durability (line ~604); design docs queued at `docs/spec/design/ANI-Memory-Durability-Design.md` + `ANI-Identity-Boundary-Design.md` | **Two genuine architectural holes from Apr 11/12.** Gap 1: transient-vs-durable claim classification + importance half-life on transient-state + periodic Facts re-evaluation (Park et al. + Mem0 extension). Gap 2: identity boundary — three-sub-mode Interior tier (`self-state` / `self-world` / `self-fantasy`) with self-world as canonical and a fantasy-to-identity bridge for role-level identity change. Apr 11 persona drift + Apr 12 Yesteryear case are motivating instances. Implementation effort ~3 weeks. Novel contribution — not present in Park et al., Chu et al., Chhikara et al. (Mem0), or Schuller et al. Promoted into matrix Apr 28 21:04. |
 | **Coherence Gate Door B Truth-Verification** | Standalone (Apr 21 cascade response) | [`ANI-Coherence-Gate-Door-B-Design.md`](./ANI-Coherence-Gate-Door-B-Design.md); this tracker §Coherence Gate Door B (line ~1065) | **Five sub-claims now shipped on `CognitiveOutputGate`.** May 2 (commits `5ddb5cc` → `476287e` → `1cda7dc`): **TemporalAnchorInvariant** (sub-claim 2 — day-of-week claims), **StateNowInvariant** (sub-claim 3 — past-tense state queries), **TemporalSubstrateInvariant** (sub-claim 1 — temporal-anchor claims against substrate). May 3 (commit `df08ac2`): **AddresseeNameInvariant** (sub-claim 4 — type-aware name verification, catches May 3 10:55 + 12:51 "perez" cases), **SubstrateTimeOfDayInvariant** (sub-claim 5 — present-tense time-of-day, catches May 3 06:47 "i know it's late"). All five confirmed regression classes (Apr 27 snow, Apr 27 class, May 2 Sundays, May 2 evening-Saturday, May 3 perez, May 3 it's-late) now caught architecturally. Auto-deployed; observation window open. Mark May 2 18:00 directed *"please start trying to close some of these gaps."* — substantially closed for the empirically-observed sub-classes. |
 | **Lerman Substack Architectural Sparks (3 ideas)** | Standalone (Apr 21 cascade response + Paper 2/3 framing) | this tracker §Lerman Substack Architectural Sparks (line ~1008) | Three sparks from Lerman's *"How Social Media Learns to Bring Out the Worst in Us"* post, Apr 21. **Spark 2 — retrieval origin diversity as first-class runtime metric** is the heaviest one (high priority per Apr 21 catastrophic feedback loop validation; partially addressed by Theme G Layer 1 Phase 1c retrieval-dominance perception). Spark 1 is a Paper 2/3 framing move (no code). Spark 3 (flourishing metrics on relational side, not just Ani-internal) needs a design session. Promoted into matrix Apr 28 21:04. |
+| **Tactical Hygiene Batch — May 2026** | Standalone (cleanup batch) | this row | **Five small independent items consolidated as a single 5-7 day workstream batch** — same shape as the May 3 morning batch (commit `edc76a7`). Items: **(1) Anchored-tier `anchorReason` metadata** — schema migration + populate pass; ~2-3 days; unblocks Paper 2 figure #4 real-data render. **(2) Per-cycle 4D emotional-state log line** — `EMOTIONAL_STATE` log shipped as part of yesterday's morning batch (commit `edc76a7`); verify acceptance + close. **(3) Feature 10 register-by-direction logging** — `F10_REGISTER` log shipped yesterday; verify acceptance + close. **(4) Stale-tag fallback workflow** — when admin command fires but conversation thread has timed out, fall back to most-recent Ani-emitted message (last N hours, configurable) so the AC5 confab flag has an anchor. ~Half-day code + spec test. Files: `TwilioInboundPerceptionSource` admin handler + AC5 persistence. **(5) `conversation_messages`-as-coordination audit** — Apr 28 architectural concern (Mark: *"why is it even inserted into conversation_messages in the first place?"*); enumerate every `AddMessageAsync` call site, classify legitimate-conversation-event vs coordination-misuse, ~1 day investigation. **Sequencing**: ship after blockers 1-4 observation window closes (~mid-May) so observation data informs which items still matter. Items (2) and (3) may already be closeable — quick verification needed. **Why a batch not a theme**: tactical work doesn't earn theme-letter weight; batching keeps tracker clean per Mark's May 4 directive *"don't create a rolled-up bug feature."* Promoted into matrix May 4. |
 
 ### P3 — Deferred / gated on prerequisites
 
@@ -347,6 +348,55 @@ Tactical fixes batch (single-day workstreams sitting unassigned):
 | Apr 30 outreach grounding tier-isolation | Apr 30 / May 3 audit | Grounding retrieval pulled InnerThought / Interior content into outreach composition substrate | **Tactical-shipped via blocker 3 (Provenance != Interior filter)** | `b9c5da7` |
 
 **Empirical effect of today's work, summary line**: of the active failure classes pulled forward by today's three tags + the prior 6 days of substrate-dominance instances, **6 of 7 have tactical-shipped architectural answers in production**; the remaining 1 (Failure B register-misread) is correctly homed at Phase 5c training-pipeline work which is gated on different prerequisites. Observation window now open — recurrence of any of these classes within ≥1 week of conversation data indicates the architectural fix is incomplete and needs revisiting.
+
+---
+
+**Third rollup pass logged May 4, 2026 evening.** Four-state classification of every gap-watch row (per Mark's May 3 hygiene-pass rule: every row should land at one of *Absorbed* / *Promoted* / *Tactical-shipped* / *Closed-as-observation*; *"identified, no fix queued"* is limbo, not commitment). Triggered by Mark's question: *"what can we do with the gaps we currently have? should we roll them into a future theme or something or a rolled up bug feature?"* Decision: don't create a new theme; classify each row explicitly; bundle the small independent items into a **Tactical Hygiene Batch — May 2026** (now in the P2 matrix row above) rather than letting them float.
+
+| Row date / shape | State | Resolution |
+|---|---|---|
+| Apr 27 — Source attribution at generation time | **Absorbed** | Theme J.2 (per-speaker structured summary) shipped Apr 27 |
+| Apr 27 — Temporal attribution at retrieval | **Absorbed** | Theme J.3 (`FormatMemoryWithTime`) shipped Apr 27 |
+| Apr 27 — Memory consistency under update / supersession | **Absorbed** | Theme D plan doc cites the row in motivating cases |
+| Apr 27 — Emotional sycophancy class identification | **Absorbed** | Theme J's broader confab work; covered in §6.10 of Paper 2 |
+| Apr 27 — Single memory dominating retrieval (one-of-six in pool) | **Promoted** | R1 typed-claim extraction territory (typed retrieval-pool diversity check) |
+| Apr 27 — Substrate corruption (vanilla cream soda cascade) | **Absorbed** | Theme G Layer 3 G3.4.B (own-output ceiling) shipped May 3 (commit `bd30467`) |
+| Apr 27 — Feature 10 register-by-direction logging | **Tactical-shipped** | `F10_REGISTER` log line shipped May 3 batch (commit `edc76a7`) — verify acceptance |
+| Apr 27 — Per-cycle 4D emotional-state log line | **Tactical-shipped** | `EMOTIONAL_STATE` log line shipped May 3 batch (commit `edc76a7`) — verify acceptance |
+| Apr 27 — Anchored-tier `anchorReason` metadata | **Queued for Tactical Hygiene Batch — May 2026** | P2 row above; ~2-3 days schema + populate |
+| Apr 27 — Claim-verifier-vs-temporal-attribution disconnect | **Absorbed** | Door B sub-claim 1 `TemporalSubstrateInvariant` shipped May 2 (commit `1cda7dc`) |
+| Apr 27 — Present-tense inference from atemporal anchored fact | **Absorbed** | Conscience Layer plan doc cites this row in motivating cases (gated on Theme J.6 closing) |
+| Apr 28 — Conversation-quality regression (5-10 → 0-1 messages) | **Absorbed** | Theme L Trust-the-Model Reckoning + Apr 28 substrate purge; revised by Apr 28 evening substrate-vs-scaffold finding |
+| Apr 28 — `conversation_messages` as coordination channel (architectural) | **Queued for Tactical Hygiene Batch** | One-day audit; classify every `AddMessageAsync` call site |
+| Apr 28 — Admin-command leakage into substrate via `conversation_messages` | **Tactical-shipped** | Apr 28 architectural fix (commit `2437b8c`) |
+| Apr 28 — Silence-policy regression via `LastContactInbound` update | **Tactical-shipped** | Apr 28 fix (commit `58b9774`) |
+| Apr 29 evening — Verbatim-parrot recurrence via closed-thread summary | **Absorbed** | Vibe Loop V1 (closed-thread gist producer migration) shipped Apr 29 (commits `5be7fb0` → `d08b7a9`) |
+| Apr 29 evening — Scene-role inversion in roleplay register | **Closed-as-observation** | Watch for recurrence post-blockers-1-4 deploy; if it recurs, promote to scene-continuity detector workstream |
+| Apr 29 — Outbound shares not in `conversation_messages` | **Tactical-shipped** | Apr 29 fix |
+| Apr 30 — Prompt-template `"WHAT IS TRUE"` directive leak | **Tactical-shipped** | May 3 morning batch (commit `edc76a7`) — verified-facts rephrasing across 4 sites |
+| Apr 30 — Confabulation laundering across 5+ inner-thought cycles | **Absorbed** | Theme J.5 producer migration + universal `CognitiveOutputGate` (J.5h-prelude shipped May 3 commit `c9e554a`) |
+| Apr 30 — Substrate-typing failure at Facts-tier search | **Tactical-shipped** | `IsMarkAssertedSource` filter (already shipped Apr 30; verified in blocker 3 audit May 3) |
+| May 1 evening — Behavior-attribution drift within sentence | **Closed-as-observation** | Watch for recurrence post-blockers-1-4 deploy; J.5b ConfabulationInvariant may already catch |
+| May 2 evening — Remediation-cascade-convergence (Mark `///tag repeating`) | **Absorbed** | Theme G Layer 3 G3.4.B own-output ceiling + blocker 1 SelfEchoInvariant + J.5a re-eval (commits `c9e554a`, `bd30467`) |
+| May 2 morning — Day-of-week confab in outreach (Sundays-warmer) | **Absorbed** | Door B sub-claims 1-3 shipped May 2; substrate purge applied 15:45 CDT |
+| May 2 afternoon — Shared-evaluator vs universal-gate critique | **Promoted** | Theme J.8 universal write-boundary gate (R3 in refactor backlog); empirically partly addressed by blocker 1's J.5h-prelude wiring |
+| May 3 morning — Temporal confusion (06:47 + 08:19 parrot) | **Absorbed** | SubstrateTimeOfDayInvariant (sub-claim 5) shipped May 3 commit `df08ac2` |
+| May 3 morning — Perez addressee fabrication (10:55 + 12:51) | **Absorbed** | AddresseeNameInvariant (sub-claim 4) shipped May 3 commit `df08ac2` |
+| May 3 morning — Regen verbatim duplicate (Failure C) | **Absorbed** | SelfEchoInvariant universal + J.5a re-eval (blocker 1 commit `c9e554a`) |
+| May 3 morning — Register-misread "Who is Perez??" (Failure B) | **Promoted** | Phase 5c training-pipeline work + base-model upsize evaluation (P3 row); separate gating path |
+| May 4 morning — Numeric clock + cross-cycle self-echo + frozen anchor (02:59 + 08:50) | **Promoted** | R1 typed-claim extraction motivating case; `ExtractRecentAniMessages` scope expansion noted as half-day fix superseded by R1 |
+| May 4 morning — Schedule-event-day fabrication (06:41) | **Promoted** | R1 typed-claim extraction motivating case (schedule-event claims verify against `cs.ContactRoutine`) |
+| May 4 morning — Stale-tag fallback workflow gap | **Queued for Tactical Hygiene Batch** | P2 row above; ~half-day fix |
+
+**Summary by state after the third rollup pass:**
+
+- **Absorbed** (workstream plan-doc cites the row): 13 rows
+- **Tactical-shipped** (commit landed; gap closed at code level): 8 rows
+- **Promoted** (priority-tier bumped because of empirical evidence): 5 rows
+- **Closed-as-observation** (data point retained, no fix planned, watch for recurrence): 2 rows
+- **Queued for Tactical Hygiene Batch — May 2026** (P2 batch): 3 rows
+
+**Limbo count after pass: 0.** Every gap-watch row now has explicit state. The May 3 four-state rule is fully applied.
 
 ---
 
