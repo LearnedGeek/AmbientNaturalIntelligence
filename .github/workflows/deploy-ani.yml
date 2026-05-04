@@ -19,6 +19,13 @@ name: Deploy ANI to Server
 #   - ANI Windows Service installed (see SERVER-SETUP.md)
 #   - appsettings.Development.json and SQLite DBs present in expected locations
 #     (these are NOT in git; placed manually during initial cutover)
+#
+# Cross-repo dependency (May 3, 2026):
+#   - The csproj files reference `..\..\..\learnedgeek-libs\LearnedGeek.ML\...`
+#     (sibling-repo layout). The workflow checks out both repos under
+#     $GITHUB_WORKSPACE so the relative path resolves. Requires the
+#     LEARNEDGEEK_LIBS_TOKEN repo secret (fine-grained PAT with read on
+#     LearnedGeek/learnedgeek-libs).
 
 on:
   push:
@@ -46,9 +53,25 @@ jobs:
     runs-on: [self-hosted, windows, ani-server]
     timeout-minutes: 20
 
+    defaults:
+      run:
+        working-directory: AmbientNaturalIntelligence
+
     steps:
-      - name: Checkout
+      # Sibling-repo layout: AmbientNaturalIntelligence/ and learnedgeek-libs/
+      # both under $GITHUB_WORKSPACE so the cross-repo <ProjectReference>
+      # paths in csproj files resolve correctly.
+      - name: Checkout AmbientNaturalIntelligence
         uses: actions/checkout@v4
+        with:
+          path: AmbientNaturalIntelligence
+
+      - name: Checkout learnedgeek-libs (private sibling repo)
+        uses: actions/checkout@v4
+        with:
+          repository: LearnedGeek/learnedgeek-libs
+          path: learnedgeek-libs
+          token: ${{ secrets.LEARNEDGEEK_LIBS_TOKEN }}
 
       - name: Verify .NET SDK
         # Self-hosted runners use whatever is pre-installed on the machine.
@@ -57,6 +80,7 @@ jobs:
         # by default. .NET 8 SDK is installed on the server per the migration
         # runbook Phase 1.2 -- just verify it's accessible.
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
           dotnet --list-sdks
           $has8 = dotnet --list-sdks | Select-String '^8\.'
@@ -85,7 +109,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ github.sha }}
-          path: ./test-results/**
+          path: AmbientNaturalIntelligence/test-results/**
           retention-days: 14
 
       # If we get here, tests passed. Safe to deploy.
@@ -93,6 +117,7 @@ jobs:
       - name: Check service exists
         id: service-check
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
           $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
           if ($null -eq $svc) {
@@ -109,6 +134,7 @@ jobs:
       - name: Stop service
         if: steps.service-check.outputs.installed == 'true'
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
           Write-Host "Stopping $env:SERVICE_NAME..."
           sc.exe stop $env:SERVICE_NAME
@@ -130,6 +156,7 @@ jobs:
       - name: Start service
         if: steps.service-check.outputs.installed == 'true'
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
           Write-Host "Starting $env:SERVICE_NAME..."
           sc.exe start $env:SERVICE_NAME
@@ -148,6 +175,7 @@ jobs:
       - name: Health check
         if: steps.service-check.outputs.installed == 'true'
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
           # Give the service a moment to bind the port
           Start-Sleep -Seconds 5
@@ -164,6 +192,7 @@ jobs:
       - name: Deploy summary
         if: always()
         shell: powershell
+        working-directory: ${{ github.workspace }}
         run: |
           $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
           $status = if ($svc) { $svc.Status } else { "Not Installed" }

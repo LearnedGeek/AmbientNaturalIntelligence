@@ -21,9 +21,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    defaults:
+      run:
+        working-directory: AmbientNaturalIntelligence
+
     steps:
-      - name: Checkout
+      # Sibling-repo layout so the cross-repo <ProjectReference> in csproj
+      # files (`..\..\..\learnedgeek-libs\LearnedGeek.ML\...`) resolves.
+      # The main repo is checked out under AmbientNaturalIntelligence/
+      # and learnedgeek-libs/ sits next to it under $GITHUB_WORKSPACE.
+      # Project files at depth 3 (src/X/X.csproj) walk three `..` to reach
+      # the workspace root, then descend into learnedgeek-libs.
+      - name: Checkout AmbientNaturalIntelligence
         uses: actions/checkout@v4
+        with:
+          path: AmbientNaturalIntelligence
+
+      - name: Checkout learnedgeek-libs (private sibling repo)
+        uses: actions/checkout@v4
+        with:
+          repository: LearnedGeek/learnedgeek-libs
+          path: learnedgeek-libs
+          token: ${{ secrets.LEARNEDGEEK_LIBS_TOKEN }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -63,5 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: ./test-results/**
+          path: AmbientNaturalIntelligence/test-results/**
           retention-days: 7
