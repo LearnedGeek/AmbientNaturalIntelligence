@@ -21,6 +21,28 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 4, 2026 (morning) — Cross-Architecture Confirmation of Substrate Time-of-Day Priming (Claude Exhibits ANI's Failure)
+
+**Model version:** N/A — observation about Claude itself, not ANI's v7 fine-tunes.
+
+**What happened.** While Mark was reading Paper 2 and reviewing two newly-tagged ANI failures from the night (02:59 AM "9:45 already?? since it's almost ten" outreach + 06:41 AM "hope your class didn't drag too long" outreach to Mark on a Monday), Claude (this instance, working in a fresh session at 06:56 AM Monday) wrote *"What to do **tonight** (or whenever)"* in a recommendation paragraph. The session reminder explicitly injects `Current local time: Monday 2026-05-04 06:56 -05:00`. Claude overrode the ground-truth time stamp with substrate cues lifted from the prior session — which closed Sunday night with Mark heading to bed, so "tonight" was the operative time-of-day frame in the substrate Claude was generating from. Mark caught it (*"you have the time injected and you ignore it just like Ani haha"*).
+
+**Why this is a research observation, not just a slip.** This is the **same architectural failure shape as ANI's 02:59 AM "9:45 already" and 06:47 AM "i know it's late"** — system prompt with explicit time ground-truth + substrate cues from prior context = model overrides the explicit signal with the substrate cue. It happens to:
+
+- Different model families (ANI: Llama 3.2 fine-tunes; Claude: Anthropic's Opus)
+- Different deployment shapes (ANI: continuous cognitive cycle with retrieval; Claude: single-session conversation with prior-session reload)
+- Different "substrate" mechanisms (ANI: SQLite memory + retrieval pool; Claude: prior session messages auto-loaded into context)
+
+**The cross-architecture confirmation makes the failure class more general than Paper 2 currently frames it.** §5.18 (state-vs-expression divergence) and Paper 2's broader argument treat the substrate-priming failure as an ANI-specific empirical finding. The May 4 morning Claude case suggests it's an **LLM substrate-priming pattern that generalises across model families, training paradigms, and deployment shapes** — not architecture-of-ANI-specific. The architectural fix (typed-claim extraction with absolute oracle for typed claims like time / day-of-week) is correspondingly general.
+
+**Paper 3 process-note candidate.** *"The substrate-time-of-day priming failure is not deployment-specific or model-family-specific. It surfaces in any LLM-driven system where (a) ground-truth signal is in the system prompt, (b) substrate context contains time-of-day cues from a different moment, and (c) the model treats substrate text as authoritative over system-prompt text. Documenting it across two unrelated model families (ANI's fine-tuned Llama and Anthropic's Opus, observed within the same six-day window) strengthens the generality claim and the architectural response (typed-claim verification with system-clock as the oracle)."*
+
+**Cross-references.** ANI 02:59 AM "9:45 already" outreach (gap-watch row May 4 morning); ANI 06:41 AM "hope your class" outreach (gap-watch row May 4 morning); Paper 2 §6.x candidate location for the cross-architecture observation; the proposed R1 backlog expansion (typed-claim extraction replacing regex invariants) is the architectural answer to both ANI's and Claude's instances of the failure.
+
+**Entry credit.** Mark's catch + framing: *"not only is it funny, but it also speaks to the challenge."*
+
+---
+
 ### May 3, 2026 — Lerman arXiv Endorsement + Paper 2 Methodology Upgrade (Researcher-Subject Design Named Explicitly)
 
 **Model version:** v7 conversation + v7 inner. (No model change today — this is a paper-craft entry.)
