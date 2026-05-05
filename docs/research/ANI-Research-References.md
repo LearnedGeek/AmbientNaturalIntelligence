@@ -1,7 +1,9 @@
 # ANI — Research Reference Library
 **For:** OC (architecture/implementation instance) and research collaborators  
 **Maintained by:** Mark McArthey (markm@learnedgeek.com)  
-**Last updated:** May 2, 2026 (added coreference-resolution reference set: Maverick 2024 ACL — operational SOTA for Paper 3's proposed CoreferenceInvariant; Kirstain & Ram 2021 — lightweight-coref precursor for latency-budget grounding; Lee et al. 2017 — foundational neural coref for lineage). Companion ideation doc: `docs/research/model-coreference-ideas.md`. The reference set positions coref as the next-generation invariant for `CognitiveOutputGate`, completing the gate's coverage of attribution-class failures alongside anti-parrot, prompt-template-leak, confabulation, and inner-thought-bleed. Paper 3 takes this on; Paper 4 (inter-agent) gets it as supporting.
+**Last updated:** May 5, 2026 (added Theme M / Paper 3 Layer 6 conscious-substrate reference set surfaced by ml-intern Damasio + Jung literature survey: **Bengio 2017 Consciousness Prior** — theoretical ancestor for Paper 2 §6.17 + Paper 3 Layer 6, mathematically formalizes `c_t` as sparse attention-selected conscious state; **GWA 2025 Global Workspace Agents** — closest structural analog with `Φ_Self` static tensor, Theme M's novelty concentrates in synthesis-from-slices + first-person register vs GWA's authored constraint document; **Lemos et al. 2014** — only paper explicitly implementing Damasio's body-loop in artificial system, selective-fitness advantage demonstrated, useful Damasio precursor for §4.7 individuation tracker; **CogniPair 2025** — most complete psychological substrate without synthesis layer, complementary to Theme M; **Butlin et al. 2023** — indicator-property framework for evaluating conscious-substrate architectures, useful for reviewer-defense in Paper 3. Survey artifact: `docs/research/artifacts/ml-intern-runs/scout-damasio-jung-20260505-175945-clean.txt`. Headline finding: *"the conscious-substrate architectural axis — generated, read-only, slice-composed, phenomenological, growth-tracked — is genuinely novel as a deployed architectural specification in companion AI."* Paper 2 §6.17 now cites Bengio 2017 as Draft 0.41.
+
+Prior update (May 2, 2026) — added coreference-resolution reference set: Maverick 2024 ACL — operational SOTA for Paper 3's proposed CoreferenceInvariant; Kirstain & Ram 2021 — lightweight-coref precursor for latency-budget grounding; Lee et al. 2017 — foundational neural coref for lineage. Companion ideation doc: `docs/research/model-coreference-ideas.md`. The reference set positions coref as the next-generation invariant for `CognitiveOutputGate`, completing the gate's coverage of attribution-class failures alongside anti-parrot, prompt-template-leak, confabulation, and inner-thought-bleed. Paper 3 takes this on; Paper 4 (inter-agent) gets it as supporting.
 
 Prior update (April 22, 2026) — added agentic-lens reference set: Horton & Wohl 1956 parasocial, Ryan & Deci 2000 SDT, Oudeyer & Kaplan 2007 intrinsic motivation, McAdams 2001 narrative identity, Damasio 1999 layered self, Gallagher 2000 minimal/narrative self, Carbonell & Goldstein 1998 MMR diversity retrieval — all for Paper 3 Contribution 4 on centrality gravity and the five-layer agentic-lens architecture.
 
@@ -196,6 +198,89 @@ This paper studies the SAME phenomena ANI produces, from the observational side.
 - **Paper 2 §6.17 (centrality gravity finding):** Theoretical grounding for the claim that single-axis caregiver-desire architecture is characteristic of commercial companion AI and is a structural precondition for centrality gravity.
 
 **Paper applicability:** Paper 2 (Supporting — §6.17 theoretical grounding), Paper 3 (Core — Contribution 4 Layer 2), Paper 4 (Supporting — inter-agent motivation model).
+
+---
+
+### Bengio (2017) — The Consciousness Prior ⭐ THEORETICAL ANCESTOR FOR PAPER 2 §6.17 + PAPER 3 LAYER 6
+**Full citation:** Bengio, Y. (2017). The Consciousness Prior. *arXiv preprint* arXiv:1709.08568.
+**arXiv:** https://arxiv.org/abs/1709.08568
+**Surfaced by:** ml-intern Damasio + Jung literature survey, May 5, 2026 (`docs/research/artifacts/ml-intern-runs/scout-damasio-jung-20260505-175945-clean.txt`).
+
+**What it is:** Bengio's 2017 proposal of a *Consciousness Prior* — a sparse, attention-selected, low-dimensional conscious state `c_t` distinct from the high-dimensional unconscious representation `h_t` it draws from. Specified mathematically as a training objective: an attention mechanism `C` selects from `h_t`, a memory store `M` retains selected states, and a verifier network is trained to distinguish coherent vs incoherent `c_t` selections. The framework formalizes the architectural intuition that conscious processing operates on a small, focused, attention-selected subset of the agent's total state.
+
+**What it contributes to the papers:**
+- **Paper 2 §6.17 (centrality gravity):** Bengio 2017 is the theoretical ancestor for the architectural object §6.17 names as missing in ANI — the moment-to-moment first-person conscious state that the autobiographical layer alone does not produce. Paper 2 cites Bengio in §6.17 to ground the centrality-gravity finding in the broader AI literature landscape (the gap §6.17 names is a real architectural gap recognized in deployed-AI prior art, not idiosyncratic to ANI's framing).
+- **Paper 3 Contribution 4 (Conscious Substrate / Layer 6 / Theme M):** Bengio is the theoretical object Theme M's gist *is an engineering instantiation of* in the deployed LLM-companion context. Paper 3 cites Bengio + frames Theme M as the deployed-companion-AI realization of Bengio's theoretical proposal: instantiated in natural language rather than learned vector form, computed at inference time rather than as training objective, composed from explicit substrate slices rather than as single attention selection, and tracked over time via integration metrics. The contribution is in the deployed instantiation, not in the concept of conscious-substrate-as-distinct-state.
+
+**Relevance to active algorithmic problems:**
+- **Theme M Phase M.0–M.1 (read-only generated gist):** The architectural property of Theme M's gist (read-only at inference, composed of slices, supplying first-person material the agent reasons FROM) is the deployed instantiation of Bengio's `c_t`. Spec tests in M.0 pinning the read-only property are the engineering equivalent of Bengio's verifier-network coherence check.
+- **Theme M §4.7 individuation tracker:** Bengio's framework has no growth/integration metric for `c_t` over time. Theme M extends Bengio by proposing that integration-of-`h_t`-features-into-`c_t` over time is itself a Jungian-shaped longitudinal observation — a contribution shape Bengio's 2017 work does not include.
+- **Theme M caveat 1 in Paper 3:** A reviewer could argue Theme M is engineering instantiation of Bengio's theoretical object, not novel concept. The plan-doc and Paper 3 prose explicitly acknowledge this and frame the novelty as in *the deployed instantiation* (natural-language register, inference-time composition, slice-based, growth-tracked), not in the theoretical claim.
+
+**Paper applicability:** Paper 1 (—), Paper 2 (Supporting — §6.17 theoretical anchor), Paper 3 (Core — Contribution 4 Layer 6 theoretical ancestor), Paper 4 (—).
+
+---
+
+### Lemos et al. (2014) — Emotional Responses in Artificial Agent-Based Systems ⭐ DAMASIO OPERATIONALIZATION PRECURSOR
+**Full citation:** Lemos, M.S., et al. (2014). Emotional Responses in Artificial Agent-Based Systems. *arXiv preprint* arXiv:1401.2121.
+**arXiv:** https://arxiv.org/abs/1401.2121
+**Surfaced by:** ml-intern Damasio + Jung literature survey, May 5, 2026.
+
+**What it is:** Artificial-life paper implementing Damasio's *somatic marker hypothesis* operationally in a population of competing artificial agents (cog-1 agents) in a Holland Echo-derived environment. Cog-1 agents have three internal state variables — *desire to feed*, *desire to replicate*, *fear* — updated each timestep as functions of homeostatic state (energy reservoir level relative to capacity). Cog-0 agents lack the somatic layer; they compute action selection purely from environmental signals. Across thousands of simulations, cog-1 agents consistently outcompete cog-0 agents in harsh environments — establishing that somatic-marker-like affective priors confer a *selective advantage* over purely deliberative agents. Predates LLMs; the only paper in the May 5 survey that explicitly implements Damasio's body-loop at the proto-self level in an artificial system.
+
+**What it contributes to the papers:**
+- **Paper 3 Contribution 4 §4.7 individuation tracker:** Lemos et al. 2014 grounds the desire-axis-as-Self-regulatory-architecture claim in §1.5's Damasio + Jung dual framing. Pairing Lemos's evolutionary-game-theoretic grounding with Ryan & Deci 2000 SDT positions the §4.7 individuation tracker as architecturally grounded across two psychological traditions (Damasio's homeostatic / proto-self; Ryan-Deci's intrinsic-motivation / autonomy-competence-relatedness) AND empirically grounded in artificial-life precedent (Lemos's selective-advantage demonstration).
+- **Paper 3 Contribution 4 broader argument:** Lemos's selective-fitness finding provides a non-companion-AI empirical anchor for the claim that affective/somatic substrate architectures outperform purely deliberative ones. Strengthens the "architecture matters" argument in companion AI by showing it holds at the artificial-life level too.
+
+**Relevance to active algorithmic problems:**
+- **Theme G Layer 2 desire-axis decoupling:** Lemos's three-axis desire model (feed/replicate/fear) is structurally similar to the autonomy/competence/relatedness desire-axis decoupling Theme G Layer 2 implements per Ryan-Deci. The architectural pattern — multiple homeostatic state variables modulating action selection independently — is precedent for the multi-axis decoupling.
+- **Vibe Loop V1.5 self-regulation framing:** Lemos's "operates without ego direction, drives connection-seeking and repair-attempt behavior when tension is sensed" framing maps onto V1.5's locked self-regulation property (outcome valence sourced from Ani-delta, not Mark-delta).
+
+**Paper applicability:** Paper 1 (—), Paper 2 (—), Paper 3 (Supporting — Damasio precursor for Contribution 4), Paper 4 (—).
+
+---
+
+### GWA (2025) — Global Workspace Agents (Φ_Self Architecture) ⭐ CLOSEST STRUCTURAL ANALOG TO PAPER 3 LAYER 6 / THEME M
+**Full citation:** GWA (2025). Global Workspace Agents. *arXiv preprint* arXiv:2604.08206. *(Full author list and venue to be verified at Paper 3 prose-writing time.)*
+**arXiv:** https://arxiv.org/abs/2604.08206
+**Surfaced by:** ml-intern Damasio + Jung literature survey, May 5, 2026.
+
+**What it is:** Implements a Global Workspace Theory-derived architecture for LLM agents with a static *Self tensor* `Φ_Self` hardware-injected at each cognitive tick, preventing runtime modification. The design intent matches Theme M's read-only-conscious-substrate property: the agent cannot rewrite its own self-model during reasoning; the Self injection is epistemically protected from motivated mid-turn revision.
+
+**What it contributes to the papers:**
+- **Paper 3 Contribution 4 Layer 6 / Theme M (load-bearing caveat):** GWA is the closest structural analog to Theme M found in any deployed-companion-AI literature. Paper 3 prose must cite GWA + name Theme M's specific differentiators explicitly: (a) **synthesis-from-slices** — Theme M's gist is generated from accumulated experience slices rather than authored by designers, and (b) **first-person phenomenological register** — Theme M's gist is an experience report the agent inhabits as a subject ("what it is like to be me now"), not a constraint document. Survey's exact framing: *"if GWA were extended with (a) a synthesis process that generates Φ_Self from accumulated experience slices rather than having it authored by designers, and (b) a growth-tracking layer that compares Φ_Self across sessions, GWA would converge on Theme M."*
+
+**Relevance to active algorithmic problems:**
+- **Theme M Phase M.0 read-only spec tests:** GWA's tick-level read-only property is precedent for the same architectural commitment in M.0. The pin-by-spec-test approach (`ConsciousSubstrateGist_NoMemoryWriteAfterCompute_StrictMockProves`) is the engineering equivalent.
+- **Theme M Phase M.7 Paper 3 prose:** GWA citation is required for the contribution claim to be defensible. Without it, a reviewer could fairly say "this has been done." With it, the contribution is the synthesis-from-slices step + the first-person register, which the survey confirms have not been combined elsewhere.
+
+**Paper applicability:** Paper 1 (—), Paper 2 (—), Paper 3 (Core — Contribution 4 Layer 6 structural near-analog citation), Paper 4 (—).
+
+---
+
+### CogniPair (2025) — GNWT-Based Multi-Agent Digital Twins for Social Pairing
+**Full citation:** CogniPair (2025). GNWT-Based Multi-Agent Digital Twins for Social Pairing. *(Full citation to be verified at Paper 3 prose-writing time.)*
+**Surfaced by:** ml-intern Damasio + Jung literature survey, May 5, 2026.
+
+**What it is:** Most complete psychological substrate found in the May 5 survey. Personality-parametrized modules competing for attention in a Global Workspace-derived architecture; dual memory (short + long); adaptive updating across interactions. Phenomenologically expressive — produces module-level outputs that read as *"what the agent is feeling/thinking about"* in different functional registers. **Lacks a synthesis layer producing a unified phenomenological gist from the module outputs.**
+
+**What it contributes to the papers:**
+- **Paper 3 Contribution 4 Layer 6 / Theme M (close-but-different):** CogniPair is the architecture that does the most-of-what-Theme-M-does *except* for the load-bearing synthesis step. Paper 3 cites CogniPair as a complementary architectural reference: the module-competition substrate that supplies inputs to the synthesis layer Theme M proposes. A future architecture combining CogniPair-style modular phenomenology with Theme M's synthesis-from-slices gist is a natural research extension.
+
+**Paper applicability:** Paper 1 (—), Paper 2 (—), Paper 3 (Supporting — Contribution 4 complementary architecture), Paper 4 (—).
+
+---
+
+### Butlin et al. (2023) — Consciousness in Artificial Intelligence: Insights from the Science of Consciousness
+**Full citation:** Butlin, P., et al. (2023). Consciousness in Artificial Intelligence: Insights from the Science of Consciousness. *(Full citation to be verified at Paper 3 prose-writing time.)*
+**Surfaced by:** ml-intern Damasio + Jung literature survey, May 5, 2026.
+
+**What it is:** Theoretical framework establishing what properties a conscious-substrate architecture should have, derived from six neuroscience theories including Damasio-adjacent predictive-processing accounts. Indicator-property approach — does the architecture exhibit X / Y / Z properties associated with consciousness in established theories? **No deployed implementation;** purely theoretical/evaluative.
+
+**What it contributes to the papers:**
+- **Paper 3 Contribution 4 Layer 6 / Theme M:** Butlin et al. provide a framework Paper 3 can use to evaluate Theme M against multiple theoretical traditions of consciousness — an indicator-property check showing which boxes Theme M's architecture ticks. Useful as a reviewer-defense citation: when asked "is this really consciousness-related?" Paper 3 can answer "by Butlin et al.'s indicator-property framework, Theme M ticks the following boxes, derived from these neuroscience theories."
+
+**Paper applicability:** Paper 1 (—), Paper 2 (—), Paper 3 (Supporting — Contribution 4 indicator-property evaluation framework), Paper 4 (—).
 
 ---
 
