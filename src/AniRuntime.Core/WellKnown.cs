@@ -99,3 +99,28 @@ public static class MemoryPrefixes
     public static string FormatOutreach(string contactName, string content)
         => $"I reached out to {contactName}: \"{content}\"";
 }
+
+/// <summary>
+/// Strings the runtime emits when a gate refuses both the original output and
+/// the regeneration. Surfaced here so producers (the dispatching path) and
+/// consumers (the persistence path that decides whether to record output as
+/// Episodic substrate) reference the same canonical text.
+///
+/// **Why centralised** (May 4, 2026 — Phase Tracker gap-watch row May 4
+/// evening): SafeAcknowledgement was being persisted to Episodic memory at
+/// dispatch and re-entering the retrieval pool. Three fall-throughs in 23
+/// hours produced three "I said to Mark: 'mmm, sorry...'" Episodic records,
+/// observed in J0_RETRIEVAL_TEMPORAL on the next cycle. Fall-through artifacts
+/// must not become substrate. The constant moves here so the persistence path
+/// can reference the same string the dispatch path emits, without coupling
+/// the two layers through a string literal.
+/// </summary>
+public static class GateFallbacks
+{
+    /// <summary>
+    /// Canonical safe-acknowledgement dispatched when the J.5a re-eval gate
+    /// refuses both the original reply and the regeneration. Mirrors
+    /// <c>ConversationReplyPhase.SafeAcknowledgement</c> by reference.
+    /// </summary>
+    public const string SafeAcknowledgement = "mmm, sorry — give me a second to gather my thoughts.";
+}

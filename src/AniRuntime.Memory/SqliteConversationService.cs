@@ -212,6 +212,26 @@ public class SqliteConversationService : IConversationService, IDisposable
         // thread expiration and is findable via semantic search. Fixes BUG-010:
         // without this, expired conversation context is lost and re-engagement
         // on the same topic triggers confabulation (Michigan incident).
+        //
+        // **Gate-fallback suppression** (May 4, 2026 — Phase Tracker gap-watch
+        // row May 4 evening). The J.5a re-eval gate's SafeAcknowledgement
+        // fall-through is a substrate-thinness artifact, not a substantive
+        // utterance. Persisting it as Episodic re-enters it into the
+        // retrieval pool on the next cycle (observed at log line 4560 May 4:
+        // "I said to Mark: 'mmm, sorry — give me a second to gather my
+        // thoughts'" surfaced as J0_RETRIEVAL_TEMPORAL rank=0). Three
+        // fall-throughs in 23h means three such records compound into the
+        // substrate the regen draws from. Skip the Episodic write for the
+        // SafeAck — the conversation_messages row above still persists, so
+        // active-thread continuity is preserved (the model knows it just
+        // said "give me a sec"); only the broader retrieval pool is spared.
+        if (message.Role == Roles.Ani && content == GateFallbacks.SafeAcknowledgement)
+        {
+            _log.LogInformation(
+                "Skipping Episodic persist for J.5a SafeAcknowledgement fall-through — preserves active-thread continuity, prevents retrieval-pool pollution.");
+            return;
+        }
+
         try
         {
             var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);

@@ -937,8 +937,12 @@ public class ConversationReplyPhase
     /// Fallback dispatched when the J.5a gate refuses both the original reply
     /// and the regen (May 3, 2026 re-eval gate). Soft acknowledgement is
     /// preferable to silence-without-cause OR to dispatching a known-bad reply.
+    ///
+    /// **String lives in <see cref="GateFallbacks.SafeAcknowledgement"/>** so the
+    /// persistence path (SqliteConversationService) can suppress Episodic-tier
+    /// writes for fall-through artifacts without coupling layers through a literal.
     /// </summary>
-    internal const string SafeAcknowledgement = "mmm, sorry — give me a second to gather my thoughts.";
+    internal const string SafeAcknowledgement = GateFallbacks.SafeAcknowledgement;
 
     internal async Task<string> EvaluateAndRemediateReplyAsync(
         string reply,
