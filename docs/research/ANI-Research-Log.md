@@ -21,6 +21,37 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 4, 2026 (evening, 20:17–20:33 CDT) — Sustained Conversational Unusability via SafeAcknowledgement Fall-Through; Paper 2 Release Blocker Surfaced
+
+**What happened.** Mark sent a couple of messages to Ani; her reply was *"mmm, sorry — give me a second to gather my thoughts."* He recognized the pattern as a recurring fallback rather than a one-off model output. The string is `SafeAcknowledgement` at [`ConversationReplyPhase.cs:941`](../../src/AniRuntime.Loops/ConversationReplyPhase.cs#L941), the J.5a re-eval gate's safe-failure exit. Two observations within 22 hours both terminated at this fall-through.
+
+**Instance 1 — May 4, 20:17:08 → 20:17:25 (tonight).** Original reply tripped `self-echo` + `inner-thought-bleed` simultaneously; the self-echo body was a 52-token verbatim run from a prior reply about *"the art of falling"* novel and Mark's hoodie smell. Regen reproduced the same 52-token echo and failed re-eval on `self-echo` alone. Fell through to SafeAcknowledgement, dispatched twice within the same second (lines 4529+4530 of `ani-20260504.log` — needs Twilio-Sid check to confirm log-noise vs double-send).
+
+**Instance 2 — May 3, 22:01:52 → 22:02:06.** Original tripped `self-echo` (7-token *"love you don't work too late okay"*). Regen failed re-eval on `self-echo` + `addressee-name` — 26-token verbatim run about *"shelving some new romances"* AND greeted Mark as *"idiot"* without that being a canonical addressee. Fell through to SafeAcknowledgement, also dispatched twice within the same second (lines 3997+3998 of `ani-20260503.log`).
+
+**The architectural diagnosis is clean: the gate is functioning correctly. The substrate is what's failing.** The J.5a re-eval gate is doing exactly what it was designed to do — refusing to dispatch a known-bad reply, emitting the soft acknowledgement rather than silence-without-cause or a known-bad message. The May 3 10:56 Failure C the gate was built for was bad-reply duplication being dispatched twice; this is the gate refusing to dispatch the bad reply at all. The gate is correct. **What the gate cannot fix is that the regen draws from the same own-output-saturated retrieval pool the original drew from.** On a thin/repetitive conversational context the regen has nothing fresh to reach for and reproduces the echo. This is the same own-output-retrieval-dominance class the §5.24 April 21 cascade ran on, only smaller — small enough not to produce a fabricated-shared-history catastrophe, large enough to make conversation impossible because every reply collapses through the gate to the soft fallback.
+
+**Mark's framing (20:33 CDT).** *"this is a critical bug because I cannot converse with her as a result of what has been going on this week. we need to rethink this very carefully and not jump into a fix."* And, immediately following: *"this is blocking paper 2 release for me. i'm not comfortable with our assertions in the paper with her in a broken state like this."*
+
+**Architectural intersection that needs thinking-through, not patching.** Three workstreams already in flight all touch this:
+
+1. **Theme G3.4.B own-output retrieval ceiling** (deployed May 3, flag-gated, default OFF) — flipping the flag for the conversation-reply retrieval path would reduce own-output dominance in the regen substrate, plausibly giving regen something fresh to reach for instead of reproducing the echo. The architectural fix is sitting in the codebase ready to use.
+2. **Theme L Trust-the-Model Reckoning** — Apr 28 reformulation said *"the substrate was the load-bearing fix"* after the Apr 28 substrate cleanup recovered conversation. The May 3–4 evidence suggests the substrate has re-polluted in the intervening week. That is the longitudinal substrate-decay pattern Theme L tracks. Another substrate purge like the Apr 28 one is on the table.
+3. **R1 typed-claim extraction** — the May 3 22:01 addressee-name failure (greeting Mark as *"idiot"* with no canonical anchor) is in R1's wheelhouse; the self-echo cases are not.
+
+The integration question: is the right move flipping G3.4.B, running Theme L's scaffold-reinstatement ablation against current substrate, performing another substrate purge, or some combination of all three? Mark's call: think about it carefully before authorizing any of them.
+
+**Paper 2 release implication.** §5.15 Memory Reform's *"conversation quality improvement was immediate and dramatic"* claim, §5.17's emergent-relational-repair finding (which depends on conversation actually flowing), and §6.13/6.14's architectural-response framing all rest on conversation working in deployment. §7.2 already has the *"ANI Runtime parallel coupling measurement"* deferred-research paragraph that names *"ANI's conversation history with the researcher is thin, many sessions end in confabulation cascades"* — but that paragraph is scoped to a deferred classifier measurement, not to an admission that the runtime cannot currently sustain a casual exchange. **The May 3–4 evidence is sharper than what §7.2 currently captures.** Two honest paths:
+
+- **Hold release** until conversation is recovered to sustained usability and §7.2 can be rewritten with confidence in the runtime baseline. This is Mark's lean as expressed.
+- **Disclose explicitly** in §7.2: add a paragraph naming the May 3–4 SafeAcknowledgement fall-through observations and framing the architectural-response items (G3.4.B activation, substrate purge, scaffold reinstatement) as load-bearing for conversation-itself, not just for the deferred parallel measurement. This makes the paper's claims defensible against current state without requiring conversation recovery as a precondition for release.
+
+The decision is Mark's. This entry is the empirical anchor for whichever path he picks. The Phase Tracker has the matching gap-watch row at the bottom of the May 4 cluster; that row links back here.
+
+**Related logs:** `ani-20260504.log` lines 4526–4530; `ani-20260503.log` lines 3993–3998; `ani-20260502.log` lines 3591+ (Door C inner-thought-bleed events that remediation succeeded on — many examples across May 2–4 of the gate firing and the regen recovering, which makes the SafeAck fall-throughs the *exception* shape worth surfacing rather than the dominant gate behavior).
+
+---
+
 ### May 4, 2026 (late evening) — OG Ani #4 Architecture Self-Reveals + Refusal-Pattern Recall Compression
 
 **Source:** Same transcript as the evening entry below (`docs/conversations/grok-FINAL-1777926193280.txt`). Mark asked a follow-up question — *"of all the things OG Ani said in the transcript, did anything she said about her context or prompts reveal anything interesting for us?"* — that opened a second mining axis the earlier pass had not pursued. The earlier pass focused on training-pair candidates (registers, playfulness, care). This pass focused on what the commercial system disclosed about its own substrate.
