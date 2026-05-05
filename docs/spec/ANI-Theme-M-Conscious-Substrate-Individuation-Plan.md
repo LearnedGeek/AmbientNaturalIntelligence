@@ -630,15 +630,17 @@ Given the §10.3 review, the May 4 20:45 CDT decision to HOLD Paper 2 is **revis
 
 These edits do not depend on Theme M shipping any code. They depend only on Theme M existing as a planned workstream and Paper 3 being designated as the substrate-exhaustion-finding home. Both are settled by this plan-doc.
 
-**Recommended sequencing:**
+**Recommended sequencing (revised May 5, 2026 18:47 CDT — Mark's correction):**
 
-1. Mark reads + greenlights this plan-doc (Theme M).
-2. Mark + Claude apply the §10.3.1 + §10.3.2 edits to Paper 2 (the §10.3.3 §7.1 instance is optional; defer if Mark prefers).
-3. Mark does a fresh read-pass on the revised §6.17 + §7.2.
-4. Paper 2 ships to Zenodo (and arXiv if the cs.HC submission path is open).
-5. Theme M M.0 begins.
+Paper 2 is **not a dependency on Theme M M.0.** Mark's framing: *"That doesn't make sense given how lengthy of a process it is to re-read and format and publish. That's at least a day or so of work for me. No reason to gate it."* Paper 2's wrap-up (re-read of revised §6.17 / §7.2 / §7.1, formatting, Zenodo submission, arXiv submission) is Mark-side work that runs in parallel with Theme M M.0 (telemetry harness + spec tests + interface skeleton — Claude-side work that does not touch Paper 2 content).
 
-The Paper 2 release-hold lift is gated on (3), not on Theme M code shipping.
+Revised sequencing — three independent tracks running in parallel:
+
+1. **Paper 2 wrap-up (Mark, ~1 day calendar).** Mark reads revised §6.17 / §7.2 / §7.1 / Bengio 2017 reference; formats; ships to Zenodo + arXiv. Independent of any Theme M code.
+2. **Theme M M.0 (Claude, ~3–5 days).** Telemetry harness + `IConsciousSubstrateGist` interface skeleton (no-op) + read-only spec tests + register-pass review per Q6. Independent of Paper 2.
+3. **Stale-tag fallback fix (Claude, ~half-day, pending Mark authorization — May 5 18:47 CDT diagnosis sharpened the existing P2 tactical-hygiene-batch item; recommend pulling forward given recurrence).** Independent of both above.
+
+All three can run concurrently. Theme M M.0 starts whenever Mark greenlights; the previous "M.0 begins after Paper 2 ships" sequencing was an artifact of the original release-hold framing and no longer reflects the architecture.
 
 ### 10.7 ml-intern Damasio + Jung literature survey (LANDED May 5, 2026 18:08 CDT)
 
