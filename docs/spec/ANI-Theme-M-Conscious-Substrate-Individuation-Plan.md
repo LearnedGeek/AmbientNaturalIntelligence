@@ -638,9 +638,26 @@ These edits do not depend on Theme M shipping any code. They depend only on Them
 
 The Paper 2 release-hold lift is gated on (3), not on Theme M code shipping.
 
-### 10.7 ml-intern Damasio + Jung literature survey (kicked off May 5, 2026)
+### 10.7 ml-intern Damasio + Jung literature survey (LANDED May 5, 2026 18:08 CDT)
 
-**Survey kicked off May 5, 2026 06:19 CDT** on `ani-server` (PID 46664) per Mark's authorization 06:16 CDT. Output target: `ani-server:C:/dev/ml-intern-runs/scout-damasio-jung-20260505-061954.log`. Model: `anthropic/claude-sonnet-4-6`. Max iterations: 15. Cost: ~$1. Expected runtime: 20–60 minutes.
+**Survey output:** `docs/research/artifacts/ml-intern-runs/scout-damasio-jung-20260505-175945-clean.txt` (cleaned UTF-8 / ANSI-stripped from raw `ani-server:C:/dev/ml-intern-runs/scout-damasio-jung-20260505-175945.log`). Headline findings written to research log entry "May 5, 2026 (18:08 CDT) — ml-intern Damasio + Jung Literature Survey Lands."
+
+**Headline:** *"The conscious-substrate architectural axis — a generated, read-only, first-person phenomenological document that an agent reasons from, distinct from RAG, from in-context learning, from persona instruction, and from memory retrieval — is genuinely novel as a deployed architectural specification in companion AI."*
+
+**Six papers identified as relevant prior art:** Butlin et al. 2023 (theoretical framework, no deployed implementation); ACE Framework (cites Freud not Jung); GWA 2025 (closest structural analog — `Φ_Self` static tensor authored not generated); CogniPair 2025 (most complete psychological substrate, no synthesis layer); Bengio 2017 Consciousness Prior (mathematical ancestor `c_t`, training objective not deployed); Lemos et al. 2014 (somatic-marker proto-self in artificial-life agents, predates LLMs).
+
+**Two caveats Paper 3 must address:**
+
+1. **Bengio 2017 pre-emption.** The Consciousness Prior formalism mathematically describes the object Theme M's gist instantiates. Paper 3 prose must cite Bengio + position Theme M as engineering instantiation in LLM-companion context (deployed inference-time, natural language, slice-composed, growth-tracked) rather than novel concept of conscious-substrate-as-distinct-state.
+2. **GWA 2025 structural near-analog.** `Φ_Self` is read-only within each cognitive tick for the same epistemological reasons Theme M proposes. Theme M's genuine novelty concentrates in *synthesis-from-slices* + *first-person phenomenological register* — the gist as experience report the agent inhabits as subject, not as constraint document. Paper 3 prose must cite GWA + name the differentiators explicitly.
+
+**Jungian axis is doubly novel.** *"Jung's individuation, conscious/unconscious integration, active imagination, archetypes-as-priors, and Self/ego distinction have no explicit instantiation in any deployed AI architecture found in this survey."* The Spontaneous Individuality paper (arXiv 2411.03252) is closest behaviorally but is emergent differentiation from group rather than intrapsychic integration. Survey suggests architectural path: **archetype-as-prior in unconscious `h_t` + individuation as progressive integration into conscious `c_t` — a growth metric named in this plan but not yet implemented anywhere.** This validates §4.7 individuation tracker as architecturally novel beyond the gist itself.
+
+**M.7 Paper 3 prose absorbs:** Bengio 2017 + GWA 2025 caveats; Lemos et al. 2014 as Damasio-precursor for §4.7 evolutionary grounding pair with Ryan-Deci SDT; CogniPair 2025 as "complete-psychological-substrate-without-synthesis" near-miss; ACE / Butlin et al. as theoretical-framework precursors. **No prior work bridges Damasio + Jung in deployed AI architecture** — the §1.5 dual-framing is itself a research move not yet made.
+
+**No Research Gap Watch row required** — the survey confirms Theme M scope rather than surfacing a gap. Findings absorbed as prior-art context.
+
+**M.0 / M.1 phasing unaffected.** The survey informs framing + Paper 3 citation, not architectural skeleton. M.0 can begin whenever Mark greenlights.
 
 **Survey scope (verbatim from the run script):**
 

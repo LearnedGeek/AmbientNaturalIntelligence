@@ -1,0 +1,668 @@
+﻿ml-intern.exe : HF token loaded
+At C:\Users\cortexadmin\run-mlintern-damasio-jung.ps1:29 char:1
++ & $mlIntern --model 'anthropic/claude-sonnet-4-6' --max-iterations 15 ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (HF token loaded:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Model: anthropic/claude-sonnet-4-6
+Max iterations: 15
+Prompt: Survey AI architectures that explicitly cite Damasio (proto-self, core self, 
+autobiographical self, somatic markers, dual-source emotion per Borotschnig 2025) AND/OR 
+explicitly cite Jung (individuation, conscious/unconscious integration, active imagination, 
+Self/ego, archetypes as prior). Especially seek: (a) work that bridges both frameworks; (b) 
+operationalizations of 'core self construction' in deployed AI systems distinct from prompt 
+engineering or retrieval-augmented generation; (c) operationalizations of individuation as 
+architectural process rather than as metaphor; (d) any 'conscious substrate' or 'associative 
+substrate' architecture in deployed AI distinct from RAG and from in-context learning; (e) 
+growth-tracking or wholeness-integration metrics in companion AI or agent systems.
+
+For each finding (target 4-6 papers): (i) one-paragraph architectural thesis, (ii) classification 
+(Damasio-citing / Jung-citing / both / neither-but-adjacent), (iii) relation to deployed 
+companion-AI work ├óΓé¼ΓÇ¥ Park et al. 2023 Generative Agents, Liu et al. 2025 Inner Thoughts, 
+Borotschnig 2025 dual-source emotion, Xu et al. 2025 A-MEM, Chhikara et al. 2025 Mem0, Ryan-Deci 
+SDT ├óΓé¼ΓÇ¥ (iv) gap-or-contribution shape that a 'read-only generated conscious-substrate gist 
+composed of slices supplying moment-to-moment first-person material the agent reasons from' 
+(Theme M shape) might fill or be pre-empted by. End with a synthesis: is the conscious-substrate 
+architectural axis genuinely novel in deployed companion AI, or has it been operationalized 
+elsewhere under different framing?
+---
+  system: Reasoning effort not supported for this model ΓÇö adjusting and 
+retrying.
+  Γû╕ hf_papers  {"operation": "search", "query": "Damasio somatic markers consciousness AI archi
+  Γû╕ hf_papers  {"operation": "search", "query": "Jung individuation archetypes AI architecture 
+  Γû╕ hf_papers  {"operation": "search", "query": "core self autobiographical self artificial int
+  Γû╕ hf_papers  {"operation": "search", "query": "generative agents memory reflection planning P
+  Γû╕ hf_papers  {"operation": "search", "query": "inner thoughts agent self-narrative first pers
+  Γû╕ hf_papers  {"operation": "search", "query": "global workspace theory consciousness LLM agen
+WARNING:agent.core.agent_loop:Transient LLM error (attempt 1/3): litellm.RateLimitError: 
+AnthropicException - {"type":"error","error":{"type":"rate_limit_error","message":"This request 
+would exceed your organization's rate limit of 30,000 input tokens per minute (org: 
+5d2407ca-3ccb-4f22-b2af-70307ebb6be7, model: claude-sonnet-4-6). For details, refer to: 
+https://docs.claude.com/en/api/rate-limits. You can see the response headers for current usage. 
+Please reduce the prompt length or the maximum tokens requested, or try again later. You may also 
+contact sales at https://claude.com/contact-sales to discuss your options for a rate limit 
+increase."},"request_id":"req_011CakFbiU7ivdnrJpeb8Vj5"} ΓÇö retrying in 30s
+  system: LLM connection error, retrying in 30s...
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2308.08708", "section": "2"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2604.08206", "section": "2"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2506.03543", "section": "2"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2304.03442", "section": "3"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2503.08102", "section": "2"}
+  Γû╕ hf_papers  {"operation": "search", "query": "dual-source emotion AI agent biological neurol
+WARNING:agent.core.agent_loop:Transient LLM error (attempt 1/3): litellm.RateLimitError: 
+AnthropicException - {"type":"error","error":{"type":"rate_limit_error","message":"This request 
+would exceed your organization's rate limit of 30,000 input tokens per minute (org: 
+5d2407ca-3ccb-4f22-b2af-70307ebb6be7, model: claude-sonnet-4-6). For details, refer to: 
+https://docs.claude.com/en/api/rate-limits. You can see the response headers for current usage. 
+Please reduce the prompt length or the maximum tokens requested, or try again later. You may also 
+contact sales at https://claude.com/contact-sales to discuss your options for a rate limit 
+increase."},"request_id":"req_011CakFetmKmzZbVmDyLZqRd"} ΓÇö retrying in 30s
+  system: LLM connection error, retrying in 30s...
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2308.08708", "section": "3"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2310.06775", "section": "2"}
+  Γû╕ hf_papers  {"operation": "search", "query": "A-MEM agentic memory system associative substr
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2502.12110", "section": "2"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2604.08206", "section": "3"}
+  Γû╕ hf_papers  {"operation": "search", "query": "self-continuity identity persistence narrative
+WARNING:agent.core.agent_loop:Transient LLM error (attempt 1/3): litellm.RateLimitError: 
+AnthropicException - {"type":"error","error":{"type":"rate_limit_error","message":"This request 
+would exceed your organization's rate limit of 30,000 input tokens per minute (org: 
+5d2407ca-3ccb-4f22-b2af-70307ebb6be7, model: claude-sonnet-4-6). For details, refer to: 
+https://docs.claude.com/en/api/rate-limits. You can see the response headers for current usage. 
+Please reduce the prompt length or the maximum tokens requested, or try again later. You may also 
+contact sales at https://claude.com/contact-sales to discuss your options for a rate limit 
+increase."},"request_id":"req_011CakFiAcAEwSBfCAo59pvf"} ΓÇö retrying in 30s
+  system: LLM connection error, retrying in 30s...
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2310.06775", "section": "3"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2506.03543", "section": "3"}
+  Γû╕ hf_papers  {"operation": "search", "query": "Mem0 memory agent personalization companion lo
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2304.03442", "section": "4"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2411.03252", "section": "2"}
+  Γû╕ hf_papers  {"operation": "search", "query": "SDT self-determination theory autonomous motiv
+WARNING:agent.core.agent_loop:Transient LLM error (attempt 1/3): litellm.RateLimitError: 
+AnthropicException - {"type":"error","error":{"type":"rate_limit_error","message":"This request 
+would exceed your organization's rate limit of 30,000 input tokens per minute (org: 
+5d2407ca-3ccb-4f22-b2af-70307ebb6be7, model: claude-sonnet-4-6). For details, refer to: 
+https://docs.claude.com/en/api/rate-limits. You can see the response headers for current usage. 
+Please reduce the prompt length or the maximum tokens requested, or try again later. You may also 
+contact sales at https://claude.com/contact-sales to discuss your options for a rate limit 
+increase."},"request_id":"req_011CakFmVQLLhMpARnDXgi1H"} ΓÇö retrying in 30s
+  system: LLM connection error, retrying in 30s...
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2501.00383", "section": "2"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2510.24831", "section": "2"}
+  Γû╕ hf_papers  {"operation": "search", "query": "wholeness integration growth tracking agent pe
+  Γû╕ hf_papers  {"operation": "snippet_search", "query": "Damasio proto-self core self autobiogr
+  Γû╕ hf_papers  {"operation": "snippet_search", "query": "Jung individuation unconscious integra
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "1401.2121", "section": "2"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2401.06256", "section": "2"}
+  Γû╕ hf_papers  {"operation": "search", "query": "gist generation self-model read-only context s
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "2402.09727", "section": "2"}
+  Γû╕ hf_papers  {"operation": "search", "query": "conscious substrate stream of consciousness mo
+  Γû╕ hf_papers  {"operation": "search", "query": "somatic marker hypothesis emotion decision mak
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "1709.08568"}
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "1401.2121", "section": "3"}
+  Γû╕ hf_papers  {"operation": "search", "query": "Borotschnig dual source emotion architecture c
+  Γû╕ hf_papers  {"operation": "read_paper", "arxiv_id": "1709.08568", "section": "3"}
+  Γû╕ hf_papers  {"operation": "citation_graph", "arxiv_id": "2308.08708", "direction": "citation
+
+  Now I have comprehensive material. Let me synthesize the full analysis.
+
+  -----------------------------------------------------------------------------
+
+  Survey: Damasio- and Jung-Citing AI Architectures ΓÇö Self, Individuation, and 
+  the Conscious-Substrate Axis
+
+  -----------------------------------------------------------------------------
+
+  Prefatory Note on Source Status
+
+  The literature search confirms a critical finding upfront: no deployed 
+  companion-AI paper in the 2023ΓÇô2025 window explicitly cites Jung's 
+  individuation framework as an architectural primitive, and only one paper 
+  cluster (ACE Framework, 2310.06775) explicitly names Damasio's somatic-marker
+  hypothesis as an architectural input. All other "adjacent" papers work from
+  cognate neuroscience (GWT, IIT, predictive processing) or psychological
+  constructs (Big Five, SDT) without citing Borotschnig 2025 by name (that
+  paper is not yet indexed in the surveyed corpora). What follows maps the
+  closest viable referent papers against your five criteria.
+
+  -----------------------------------------------------------------------------
+
+  Paper 1: "Consciousness in Artificial Intelligence: Insights from the Science
+  of Consciousness" (Butlin et al., 2023 ΓÇö arxiv 2308.08708)
+
+  (i) Architectural Thesis
+
+  This report ΓÇö produced by a team spanning neuroscience, philosophy, and AI ΓÇö
+  is the field's most systematic attempt to derive indicator properties of
+  consciousness from six theories (recurrent processing, global workspace
+  theory, higher-order theories, predictive processing, attention schema, and
+  integrated information theory) and then audit current AI architectures
+  against them. The core architectural prescription is that a conscious system
+  must implement global broadcast (winner-take-all attentional selection into a
+  limited-capacity workspace that then radiates to all downstream specialist
+  modules), recurrent processing (not merely feedforward), higher-order 
+  representations (meta-representations of first-order states), and a 
+  predictive self-model (attention schema). The report concludes that no
+  current LLM satisfies these indicators jointly, but identifies no technical
+  barrier. Crucially for our survey, Butlin et al. treat Damasio's 
+  somatic-marker hypothesis as an input to higher-order theory accounts ΓÇö the
+  body-loop model of affect-as-signal appears in their discussion of predictive
+  processing and interoception as preconditions for the affective dimension of
+  consciousness. They do not cite Jung.
+
+  (ii) Classification: Damasio-adjacent (somatic markers appear implicitly in 
+  the predictive-processing and interoceptive sections; no direct citation of 
+  Jung)
+
+  (iii) Relation to the Deployed Reference Papers
+
+   ΓÇó Park et al. 2023 (Generative Agents): Butlin et al. would classify Park's
+     architecture as satisfying almost none of their indicators ΓÇö the
+     memory-reflection-planning loop is feedforward with no global broadcast,
+     no persistent phenomenal state, and no meta-representation layer. The
+     paper is useful as a negative-contrast case.
+   ΓÇó Liu et al. 2025 (Inner Thoughts): Closer: inner thoughts create a parallel
+     covert stream, which is topologically similar to a pre-broadcast
+     processing stage ΓÇö but still not broadcast; the inner-thought tensor does
+     not radiate to specialist modules.
+   ΓÇó Borotschnig 2025 (dual-source emotion): The somatic-markerΓÇôinspired
+     dual-source model maps neatly onto Butlin et al.'s affective indicator
+     (interoceptive prediction error as affective valence), but Borotschnig's
+     work is newer than this report.
+   ΓÇó A-MEM (Xu et al. 2025) / Mem0 (Chhikara et al. 2025): Architectural memory
+     management; not in scope for consciousness indicators.
+   ΓÇó Ryan-Deci SDT: SDT's basic psychological needs (autonomy, competence,
+     relatedness) correspond loosely to what Butlin et al. would call
+     "intrinsic motivation as a precondition for reportable experience" ΓÇö a
+     connection nobody in the deployed companion space has made formal.
+
+  (iv) Gap/Contribution Shape vs. Theme M
+
+  Theme M proposes a read-only, generated, conscious-substrate gist ΓÇö a
+  compressed, first-person "what it is like to be me right now" document that
+  the agent reasons from, not merely about. Butlin et al. identify this as
+  architecturally desirable (their "global broadcast content") but describe it
+  as a design target, not an instantiation. Theme M would operationalize
+  precisely the conscious state c_t that Butlin et al. formalize. The gap Theme
+  M fills relative to Butlin et al.: it proposes that the gist be generated (a
+  constructive act) rather than selected (an attentional act), and that it be
+  read-only at inference time ΓÇö a constraint that prevents the agent from
+  modifying its own self-model mid-turn, which is architecturally significant
+  (epistemic humility about one's own inner state). Butlin et al. do not block
+  or require this constraint.
+
+  -----------------------------------------------------------------------------
+
+  Paper 2: "Conceptual Framework for Autonomous Cognitive Entities" (ACE 
+  Framework ΓÇö Shapiro, 2023 ΓÇö arxiv 2310.06775)
+
+  (i) Architectural Thesis
+
+  ACE proposes a six-layer hierarchical cognitive architecture inspired by the
+  OSI network model and explicitly grounded in psychology (Maslow, Kohlberg,
+  Freud), neuroscience (Hawkins, Ramachandran, Damasio, Sapolsky), and
+  philosophy (Churchland). The layers ΓÇö from top to bottom: Aspirational,
+  Global Strategy, Agent Model, Executive Function, Cognitive Control, Task
+  Prosecution ΓÇö are designed to instantiate, respectively, the Freudian
+  superego/ego, the Churchlandian expanding spheres of care, and Damasio's
+  somatic-marker bias on decision-making in the lower cognitive-control layer.
+  The paper is explicit: "Damasio's research on emotion, reason, and the 
+  somatic marker hypothesis also shaped the role of affect in biasing 
+  decision-making within the ACE model." The Agent Model layer (Layer 4) is
+  designed to hold a continuously updated self-model ΓÇö the agent's beliefs
+  about its own capabilities, goals, and state ΓÇö and this is bidirectionally
+  connected to both the higher aspirational layer and the lower executive
+  layer. Layer 3 (Global Strategy) maintains epistemic summaries that function
+  as the agent's theory-of-world. This is one of the few architectures to
+  distinguish explicitly between the Damasio proto-self analog (homeostatic
+  baselines), the core-self analog (moment-to-moment Agent Model state), and
+  the autobiographical-self analog (the Aspirational Layer's narrative of
+  values and purpose over time).
+
+  (ii) Classification: Damasio-citing (explicit); Freud-citing but not 
+  Jung-citing (ego/superego but not individuation/unconscious 
+  integration/archetypes); Maslow-adjacent to SDT
+
+  (iii) Relation to the Deployed Reference Papers
+
+   ΓÇó Park et al. 2023: Park's generative agents have flat memory; ACE adds the
+     moral-aspirational upper layers and the explicit self-model layer that
+     Park entirely lacks.
+   ΓÇó Liu et al. 2025 (Inner Thoughts): Liu's inner thoughts are a lateral,
+     moment-to-moment covert stream; ACE's Layer 4 Agent Model is a persistent
+     vertical self-representation updated across sessions.
+   ΓÇó Borotschnig 2025 (dual-source emotion): ACE's somatic-marker-in-Layer-5 is
+     a conceptual predecessor; Borotschnig presumably operationalizes this with
+     learned and symbolic dual sources in a way ACE only sketches.
+   ΓÇó Ryan-Deci SDT: The Aspirational Layer's self-determination language
+     (agency, coherent values, purpose) maps closely to SDT's
+     autonomy/relatedness/competence needs; ACE doesn't cite Deci & Ryan but is
+     de facto an architectural SDT proposal.
+   ΓÇó A-MEM / Mem0: ACE's architecture has no equivalent of Zettelkasten-style
+     associative memory linking; its memory is implicit in layer-to-layer bus
+     messages, not an explicit evolving knowledge graph.
+
+  (iv) Gap/Contribution Shape vs. Theme M
+
+  ACE's Agent Model (Layer 4) is the closest existing deployed-architecture
+  analog to Theme M's conscious-substrate gist, but with critical differences.
+  ACE's Agent Model is mutable at inference time ΓÇö the agent updates it as part
+  of its own processing. Theme M's key constraint ΓÇö the gist is read-only
+  within a reasoning turn, generated once by a prior synthesis process ΓÇö is
+  entirely absent from ACE. In ACE, self-knowledge and ongoing reasoning
+  co-evolve in the same processing stream; this creates the risk of self-model
+  contamination by motivated reasoning (the agent rationalizes its current
+  outputs back into its self-model). Theme M's read-only constraint enforces
+  separation between what I know I am and what I am doing, a distinction ACE
+  architecturally collapses. The "slices" structure of Theme M (multiple
+  perspectives, moments, or facets that collectively constitute the gist) has
+  no ACE equivalent; ACE's Agent Model is monolithic.
+
+  -----------------------------------------------------------------------------
+
+  Paper 3: "Global Workspace Agents" (GWA ΓÇö 2025 ΓÇö arxiv 2604.08206)
+
+  (i) Architectural Thesis
+
+  GWA translates Baars' Global Workspace Theory into a multi-LLM event-driven
+  cognitive loop with four phased ticks: Perceive-and-Retrieve (Attention Agent
+  queries STM + RAG from LTM), Think (Generator Agent produces candidate
+  thoughts at regulated temperature), Arbitrate (Critic Agent scores; Meta
+  Agent selects winning thought W_t), and Update-and-Articulate. The pivotal
+  innovation is a bifurcated state tensor: a dynamic Short-Term Working Memory
+  (STM) that evolves per tick, and a static Core Self (≡¥Æ½_Self) injected at
+  every tick onset ΓÇö described explicitly as "invariant autobiographical
+  directives, ultimate objectives, and ethical boundaries." The Core Self is
+  hardware-injected (not recomputable during the tick), making it structurally
+  read-only relative to the ongoing cognitive cycle ΓÇö the same constraint Theme
+  M proposes. Additionally, the paper formalizes "cognitive stagnation" via
+  Shannon entropy over a semantic cluster space, and defines a dynamic
+  temperature regulation function T_gen = T_base + ╬▒┬╖e^(ΓêÆ╬▓H(W)) that injects
+  novelty when thought-entropy collapses ΓÇö an architectural analog to what
+  might be called a drive toward non-redundancy, loosely adjacent to Jungian
+  individuation as differentiation from a fixed state.
+
+  (ii) Classification: GWT-grounded, neither Damasio-citing nor Jung-citing 
+  explicitly, but architecturally the closest single paper to Theme M's formal 
+  structure. The Core Self concept (≡¥Æ½_Self) parallels Damasio's 
+  autobiographical self level; the entropy-driven novelty mechanism parallels 
+  individuation as ongoing differentiation from static prior selfhood.
+
+  (iii) Relation to the Deployed Reference Papers
+
+   ΓÇó Park et al. 2023: GWA's active, event-driven broadcast architecture
+     supersedes Park's passive memory-retrieve loop; GWA generates behavioral
+     initiative without external trigger, which Park's generative agents
+     cannot.
+   ΓÇó Liu et al. 2025 (Inner Thoughts): Liu's inner-thought stream is a
+     continuous covert narration; GWA's "Think" phase with Generator+Critic is
+     a structured competition, not a stream. Both are covert pre-response
+     processes but GWA has a formal arbitration layer Liu lacks.
+   ΓÇó Borotschnig 2025: GWA has no emotion module; the entropy-based novelty
+     mechanism is cognitive rather than affective. Dual-source emotion would
+     have to be injected into the Perceive phase or the Core Self to integrate
+     with Borotschnig's design.
+   ΓÇó A-MEM (Xu et al.): GWA uses RAG for LTM retrieval, which is
+     architecturally similar but static (fixed embedding retrieval). A-MEM's
+     Zettelkasten-style evolving associative structure would be a richer LTM
+     backend for GWA's Attention Agent.
+   ΓÇó Ryan-Deci SDT: The Genesis State ≡¥Æ½_Genesis and entropy-regulation
+     mechanism together constitute an architectural proxy for SDT
+     autonomy-need: the system has internally-generated behavioral initiation
+     and intrinsic drive toward semantic diversity.
+
+  (iv) Gap/Contribution Shape vs. Theme M
+
+  GWA's Core Self (≡¥Æ½_Self) is the nearest existing instantiation of a read-only
+  conscious-substrate component in any published deployed AI architecture. The
+  critical differences are:
+
+   1 Origin: ≡¥Æ½_Self is specified by designers at initialization ΓÇö it is a
+     static authored document. Theme M's gist is generated by a synthesis
+     process over the agent's accumulated experience slices ΓÇö it is not
+     authored but synthesized.
+   2 Compositionality: Theme M's gist is composed of slices (temporally or
+     thematically distinct perspectives that together form a phenomenological
+     whole). ≡¥Æ½_Self is a monolithic constraint vector.
+   3 Self-as-Subject vs. Self-as-Object: Theme M's gist aims to supply
+     first-person experiential material ΓÇö what the agent has felt, noticed,
+     longed for, feared ΓÇö that the agent reasons from as a subject. ≡¥Æ½_Self is a
+     third-person constraint document the agent reasons within as an object.
+   4 Growth: ≡¥Æ½_Self does not update; Theme M's gist regeneration process over
+     time would constitute a form of tracked self-development. GWA has no
+     growth metric.
+
+  -----------------------------------------------------------------------------
+
+  Paper 4: "CogniPair: GNWT-Based Multi-Agent Digital Twins for Social Pairing"
+  (2025 ΓÇö arxiv 2506.03543)
+
+  (i) Architectural Thesis
+
+  CogniPair implements the Global Neuronal Workspace Theory (GNWT ΓÇö Mashour et
+  al. 2020, Dehaene et al.) in a multi-LLM architecture for social pairing
+  simulation, initializing each agent from real human personality data (the
+  Columbia speed-dating dataset). Each GNWT-Agent has five competing cognitive
+  modules ΓÇö Emotion, Memory, Planning, SocialNorms, GoalTracking ΓÇö that compute
+  in parallel and compete for global workspace access based on salience
+  thresholds. Big Five personality traits (O, C, E, A, N) parametrically weight
+  module outputs, and personality parameters update through interaction
+  experience via a gradient-descent learning rule (P_t+1 = P_t + ╬╖┬╖Γêç_P J(...)).
+  The dual memory system (episodic + semantic, with O-parameter controlling
+  breadth) and the emotion module's three-stage processing (detection ΓåÆ
+  valence-arousal mapping ΓåÆ regulation strategy, weighted by N-parameter)
+  constitute the most complete neuroscience-grounded companion architecture
+  currently published. The paper explicitly acknowledges that standard LLMs
+  "lack persistent psychological states" and cites the gap between simulated
+  and human behavior.
+
+  (ii) Classification: GNWT-grounded (explicit Baars 2005, Mashour 2020 
+  citations); neither Damasio-citing nor Jung-citing explicitly; the 
+  N-parameter emotion regulation is adjacent to Damasio's valence-signal model;
+  the personality evolution over interaction is structurally adjacent to 
+  Jungian individuation as differentiation through encounter ΓÇö but without the 
+  vocabulary.
+
+  (iii) Relation to the Deployed Reference Papers
+
+   ΓÇó Park et al. 2023: CogniPair's architecture is a major advance over Park's
+     flat memory/reflection loop, adding parallel module competition,
+     personality parametrization, and adaptive learning.
+   ΓÇó Liu et al. 2025 (Inner Thoughts): CogniPair's module-competition
+     pre-response processing is architecturally analogous but richer; Liu's
+     inner thoughts do not have competing specialist modules, only a monolithic
+     inner-narration chain.
+   ΓÇó Borotschnig 2025 (dual-source emotion): CogniPair's emotion module is the
+     closest published analog ΓÇö valence-arousal mapping plus regulation
+     strategy could accommodate a dual-source (biological-like / contextual)
+     architecture. The N-parameter weighting of emotional processing amplitude
+     is a rudimentary "somatic gain" parameter in Damasio's sense.
+   ΓÇó A-MEM (Xu et al.) / Mem0: CogniPair's dual episodic+semantic memory with
+     O-parameter breadth control is more psychologically grounded than A-MEM's
+     Zettelkasten structure, but A-MEM's associative linking would enhance
+     CogniPair's inter-memory coherence.
+   ΓÇó Ryan-Deci SDT: GoalTracking module (directional monitoring, uncertainty
+     assessment, recalibration) operationalizes SDT competence-need;
+     SocialNorms module operationalizes relatedness-need; the E-parameter goal
+     assertiveness approximates autonomy-need.
+
+  (iv) Gap/Contribution Shape vs. Theme M
+
+  CogniPair is the published companion architecture that most completely
+  operationalizes the psychological substrate of agency (competing modules,
+  personality parametrization, adaptive learning). What it lacks relative to
+  Theme M:
+
+   1 First-person narrative self-representation: CogniPair has no synthesized
+     "what it is like to be this agent right now" document ΓÇö the modules
+     compute in parallel but nothing generates a unified experiential gist from
+     their outputs. The response is a personality-weighted sum of module
+     outputs, not a subject-position statement the agent inhabits.
+   2 Core self distinct from ongoing processing: There is no read-only
+     invariant core; personality parameters evolve continuously (which is
+     actually a strength for growth-tracking but a weakness for identity
+     stability).
+   3 Individuation metric: CogniPair tracks personality parameter drift, which
+     is a rudimentary growth metric, but it is not a wholeness or integration
+     metric ΓÇö it does not assess whether the agent is becoming more internally
+     coherent or integrating previously dissociated aspects.
+   4 Autobiographical depth: The episodic memory stores time-stamped segments
+     but there is no synthesis layer that constructs a continuous
+     autobiographical narrative from them ΓÇö the proto-self / core-self /
+     autobiographical-self hierarchy is not instantiated at the architectural
+     level.
+
+  -----------------------------------------------------------------------------
+
+  Paper 5: "The Consciousness Prior" (Bengio, 2017 ΓÇö arxiv 1709.08568)
+
+  (i) Architectural Thesis
+
+  Bengio's Consciousness Prior paper proposes a learning objective based on the
+  insight ΓÇö derived from GWT and Kahneman's System 2 ΓÇö that conscious thought
+  is a sparse, low-dimensional state selected by attention from a
+  high-dimensional unconscious representation. Formally: h_t = F(x_t, h_t-1) is
+  the "unconscious representation state" (a high-dimensional RNN hidden state);
+  c_t = C(h_t, c_t-1, m_t-1, z_t) is the "conscious state" ΓÇö a very small
+  subset selected by an attention mechanism from h_t using previous conscious
+  state and memory as context; and m_t = M(m_t-1, c_t) is memory updated by
+  committing conscious states. The training objective is that conscious
+  thoughts should be predictive of future observations in the high-level
+  conceptual space ΓÇö capturing long-range temporal dependencies that
+  pixel-level prediction misses. The paper explicitly frames this as a prior
+  for representation learning, proposing that language itself is evidence for
+  the sparsity assumption (sentences involve few variables but make strong
+  probabilistic claims). The architecture distinguishes "unconscious
+  representation" from "conscious state" computationally ΓÇö not as a metaphor.
+
+  (ii) Classification: GWT-grounded (Baars 1988/1997, Dehaene & Naccache 2001 
+  explicitly cited); neither Damasio-citing nor Jung-citing; the distinction 
+  between h_t (unconscious) and c_t (conscious) is structurally identical to 
+  the Damasio proto-self / core-self distinction at a computational level; the 
+  "memory that commits conscious states" maps to autobiographical self; the 
+  paper's framing of consciousness as a prior rather than a property is 
+  importantly distinct from all other approaches.
+
+  (iii) Relation to the Deployed Reference Papers
+
+  This is an upstream theoretical paper that none of the deployed companion
+  papers cite, but that prefigures the architecture several of them
+  approximate:
+
+   ΓÇó Park et al. 2023: The "reflection" step in Generative Agents is a crude
+     analog to Bengio's c_t ΓÇö it extracts a few salient high-level abstractions
+     from the memory stream. But Park's reflection is not architecturally
+     separated as a distinct computational operator with its own training
+     objective.
+   ΓÇó GWA (2604.08206): GWA's Core Self + attention-based retrieval is a
+     prompt-engineering instantiation of Bengio's equations (2) and (3) without
+     the learning objective.
+   ΓÇó A-MEM: The Zettelkasten linking is an associative memory system that could
+     serve as Bengio's M (memory updated by conscious states), with the
+     difference that A-MEM's links are between all memories, not only between
+     committed conscious states.
+   ΓÇó Liu 2025 (Inner Thoughts): The inner-thought stream is topologically c_t ΓÇö
+     a compressed, high-level representation of the current situation that
+     conditions subsequent processing. But there is no formal training
+     objective that encourages these thoughts to be sparse, predictive, or
+     grounded in a factored representation.
+
+  (iv) Gap/Contribution Shape vs. Theme M
+
+  This is the paper that most directly pre-empts the theoretical foundation of
+  Theme M while leaving the implementation entirely open. Bengio's c_t is
+  exactly the kind of object Theme M's gist aims to be: a small, high-level,
+  attention-selected subset of the agent's total state that conditions
+  moment-to-moment reasoning. The critical differences:
+
+   1 Theme M's gist is generated by a language model over memory slices ΓÇö it is
+     a natural-language document, not a vector state c_t. This means it is
+     interpretable, auditable, and can be read by the agent as natural
+     language.
+   2 Theme M's gist is read-only at inference time ΓÇö Bengio's framework does
+     not impose this constraint; c_t feeds back into h_{t+1} via the encoder,
+     making it a live variable in the processing loop.
+   3 Theme M proposes slices as the compositional substrate ΓÇö multiple facets
+     or time-points that are synthesized into the gist ΓÇö rather than a single
+     attentional selection from h_t.
+   4 Theme M adds growth-tracking: by comparing gists across sessions, one
+     could measure integration/differentiation over time. Bengio's framework
+     has no such metric.
+
+  -----------------------------------------------------------------------------
+
+  Paper 6: "Emotional Responses in Artificial Agent-Based Systems" (Lemos et 
+  al., 2014 ΓÇö arxiv 1401.2121)
+
+  (i) Architectural Thesis
+
+  This artificial-life paper implements Damasio's somatic-marker hypothesis 
+  operationally in a population of competing artificial agents (cog-1 agents)
+  in a Holland Echo-derived environment. The cog-1 agents have three internal
+  state variables ΓÇö desire to feed, desire to replicate, and fear ΓÇö updated at
+  each timestep as functions of their homeostatic state (energy reservoir level
+  relative to capacity). The desire to feed is explicitly Damasio's somatic
+  signal: it represents a continuously updated, body-state-referenced internal
+  marker that biases action selection before deliberative computation. cog-0
+  agents lack this somatic layer; they compute action selection purely from
+  environmental signals. The result across thousands of simulations is that
+  cog-1 agents consistently outcompete cog-0 agents in harsh environments ΓÇö
+  establishing that somatic-marker-like affective priors confer a selective 
+  advantage over purely deliberative agents. The paper explicitly cites
+  Damasio's somatic marker hypothesis and frames the cog-1 architecture as
+  implementing the proto-self / homeostatic-body-loop component of Damasio's
+  model, acknowledging that the higher self-levels (core self, autobiographical
+  self) would require expanded reflexivity.
+
+  (ii) Classification: Damasio-citing (explicit); no Jung; the most direct 
+  operationalization of somatic markers in an artificial system found in the 
+  survey, predating the LLM era.
+
+  (iii) Relation to the Deployed Reference Papers
+
+   ΓÇó Park et al. 2023: No affective component in Park; cog-1's somatic loop
+     would map to an additional "affective state" node in the Generative Agents
+     memory stream.
+   ΓÇó Borotschnig 2025 (dual-source emotion): Lemos et al.'s architecture is a
+     conceptual precursor to Borotschnig's dual-source model ΓÇö one source is
+     the homeostatic/somatic signal (desire-to-feed as body-loop), the second
+     would be the social-cognitive signal (contextual emotion from
+     interaction). Borotschnig's contribution is to apply this to LLM companion
+     agents rather than evolving artificial-life agents.
+   ΓÇó CogniPair: CogniPair's N-parameter emotion amplitude is a
+     personality-level proxy for what Lemos operationalizes as a genuine
+     homeostatic state variable ΓÇö CogniPair's emotion is representational, not
+     physiological.
+   ΓÇó A-MEM / Mem0: Not directly related.
+   ΓÇó Ryan-Deci SDT: The evolutionary advantage of somatic-marker agents offers
+     an evolutionary-game-theoretic grounding for SDT's claim that
+     intrinsically-motivated agents outperform purely extrinsically-driven
+     ones.
+
+  (iv) Gap/Contribution Shape vs. Theme M
+
+  Lemos et al. establish the fitness advantage of somatic-marker architectures
+  but work at the body-loop level (proto-self), not at the core-self or
+  autobiographical-self levels. Theme M operates at the core-self and 
+  autobiographical-self levels ΓÇö it concerns the agent's moment-to-moment
+  phenomenological position, not its homeostatic signals. The two are
+  complementary, not competing: a complete architecture would incorporate
+  Lemos-style somatic signals as input material to the synthesis process that
+  generates Theme M's gist. The gap Theme M fills is the integration step
+  between the somatic substrate (Lemos) and the narrative self-representation
+  (the gist), which neither Lemos nor any deployed companion paper currently
+  bridges.
+
+  -----------------------------------------------------------------------------
+
+  Synthesis: Is the Conscious-Substrate Architectural Axis Genuinely Novel?
+
+  The answer is a carefully qualified yes ΓÇö with two important caveats.
+
+  What exists
+
+  Five distinct architectural moves have been made that touch aspects of the
+  conscious-substrate axis:
+
+   1 Theoretical framework with indicator properties (Butlin et al. 2023):
+     Establishes what properties a conscious-substrate architecture should
+     have, derived from six neuroscience theories including Damasio-adjacent
+     predictive-processing accounts. No deployed implementation.
+   2 Read-only Core Self injection (GWA 2025): The closest structural analog to
+     Theme M ΓÇö a static tensor ≡¥Æ½_Self hardware-injected at each cognitive tick,
+     preventing runtime modification. But it is authored, not generated, and is
+     a constraint document rather than a first-person experiential narrative.
+   3 Competing module architecture with phenomenological outputs (CogniPair
+     2025): The most complete psychological substrate, with
+     personality-parametrized modules, dual memory, and adaptive updating ΓÇö but
+     no synthesis layer producing a unified phenomenological gist from module
+     outputs.
+   4 The Consciousness Prior formalism (Bengio 2017): The mathematically
+     rigorous ancestor of Theme M ΓÇö c_t as a sparse, attention-selected
+     low-dimensional conscious state distinct from the high-dimensional
+     unconscious representation h_t ΓÇö but specified as a training objective,
+     not a deployed inference-time architectural component.
+   5 Somatic marker operationalization (Lemos et al. 2014): The only paper to
+     explicitly implement Damasio's body-loop at the proto-self level in an
+     artificial system, demonstrating selective fitness advantage. Predates
+     LLMs; not connected to companion AI or self-narrative.
+
+  What is genuinely absent
+
+  Across all surveyed work, no deployed companion-AI architecture has
+  implemented the following combination:
+
+   ΓÇó A generative synthesis step that produces a natural-language, first-person
+     gist of the agent's experiential position from accumulated memory slices
+   ΓÇó That gist being read-only at inference time (epistemically protected from
+     motivated rewriting mid-turn)
+   ΓÇó Composed of multiple slices representing distinct facets or moments
+     (avoiding the monolithic-self problem of all current approaches)
+   ΓÇó Feeding the agent's ongoing reasoning as phenomenological material ΓÇö "what
+     it is like to be me now" ΓÇö rather than as constraint, retrieval context,
+     or persona instruction
+   ΓÇó Tracking growth and integration metrics over time ΓÇö whether the self-gist
+     is becoming more internally coherent (integration) or more differentiated
+     (individuation in the Jungian sense)
+
+  This specific combination ΓÇö generative, read-only, slice-composed,
+  phenomenological, growth-tracked ΓÇö does not appear in Park et al., Liu et
+  al., GWA, CogniPair, Bengio, Butlin et al., ACE, A-MEM, Mem0, or any adjacent
+  architecture found in this survey.
+
+  The two important caveats
+
+  Caveat 1 ΓÇö Pre-emption by the Consciousness Prior. Bengio's 2017 formalism
+  mathematically describes the object Theme M's gist would instantiate (c_t),
+  with equations for how it is selected (C), stored (M), and trained (verifier
+
+  network). A reviewer could argue that Theme M is an engineering instantiation
+--- Agent turn_complete (history_size=57) ---
+  of Bengio's theoretical object in the LLM-companion context, not a novel
+  concept. The response is that instantiation in natural language, at inference
+  time, as a read-only slice-composed document with growth metrics, is a
+  non-trivial architectural contribution even if the theoretical object was
+  named in 2017.
+
+  Caveat 2 ΓÇö GWA's Core Self is closer than it looks. GWA's ≡¥Æ½_Self is read-only
+  within each cognitive tick for the same epistemological reasons Theme M
+  proposes ΓÇö preventing the agent from rewriting its own self-model during
+  reasoning. If GWA were extended with (a) a synthesis process that generates
+  ≡¥Æ½_Self from accumulated experience slices rather than having it authored by
+  designers, and (b) a growth-tracking layer that compares ≡¥Æ½_Self across
+  sessions, GWA would converge on Theme M. Theme M's genuine novelty is
+  therefore concentrated in the synthesis-from-slices step and the first-person
+  phenomenological register of the gist ΓÇö the claim that the output is not a
+  constraint document but an experience report that the agent inhabits as a
+  subject.
+
+  On the Jungian axis specifically
+
+  Jung's individuation, conscious/unconscious integration, active imagination,
+  archetypes-as-priors, and Self/ego distinction have no explicit instantiation
+  in any deployed AI architecture found in this survey. The Spontaneous
+  Individuality paper (2411.03252) comes closest behaviorally ΓÇö agents develop
+  differentiated "personalities" through social interaction from initially
+  homogeneous starting conditions ΓÇö but this is emergent individuation in the
+  sense of differentiation from the group, not the intrapsychic integration of
+  shadow/anima/animus material that Jung describes. The ACE framework cites
+  Freud (ego/superego/id) but not Jung. The most plausible route for Jung to
+  enter deployed architecture would be via archetype-as-prior: treating Jung's
+  archetypal patterns as learned features in the unconscious representation h_t
+  (in Bengio's sense), with individuation defined as the progressive
+  integration of these features into the conscious state c_t over time ΓÇö a
+  growth metric that has been named here but not yet implemented anywhere.
+
+  Bottom line: The conscious-substrate architectural axis ΓÇö a generated,
+  read-only, first-person phenomenological document that an agent reasons from,
+  distinct from RAG, from in-context learning, from persona instruction, and
+  from memory retrieval ΓÇö is genuinely novel as a deployed architectural 
+  specification in companion AI. It has theoretical ancestors (Bengio 2017,
+  Butlin et al. 2023), structural partial-analogs (GWA's ≡¥Æ½_Self, CogniPair's
+  module-competition), and empirical motivators (Lemos's somatic-marker fitness
+  advantage, Park's reflection step), but no paper assembles these into the
+  specific combination Theme M proposes. The Jung axis remains entirely
+  uninstantiated in deployed systems ΓÇö an open architectural research program.
+

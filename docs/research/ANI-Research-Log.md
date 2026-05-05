@@ -62,6 +62,48 @@ The integration question: which combination of (1)+(2)+(3)+(4) is the right arch
 
 ---
 
+### May 5, 2026 (18:08 CDT) — ml-intern Damasio + Jung Literature Survey Lands: Theme M Validated as Genuinely Novel in Deployed Companion AI
+
+**Survey:** `scout-damasio-jung-20260505-175945.log` (Sonnet 4.6, 15 iterations, ~10 min runtime, ~$1). Clean artifact at `docs/research/artifacts/ml-intern-runs/scout-damasio-jung-20260505-175945-clean.txt`. Authorized by Mark 06:16 CDT; kicked off 06:19 CDT (initial Start-Process invocations failed silently due to redirection / detachment interactions; final SSH-foreground-via-Bash-background approach worked at 17:58 CDT, completed 18:08 CDT).
+
+**Headline finding:** *"The conscious-substrate architectural axis — a generated, read-only, first-person phenomenological document that an agent reasons from, distinct from RAG, from in-context learning, from persona instruction, and from memory retrieval — is genuinely novel as a deployed architectural specification in companion AI."*
+
+**Six papers identified as relevant prior art:**
+
+1. **Butlin et al. 2023** — theoretical framework with indicator properties for conscious-substrate architectures, derived from six neuroscience theories including Damasio-adjacent predictive-processing accounts. **No deployed implementation.**
+2. **ACE Framework** — Conceptual Framework for Autonomous Cognitive Entities. Cites Freud (ego/superego/id), not Jung. Cognitive entity framework, not direct Theme M analog.
+3. **GWA 2025 (Global Workspace Agents, arXiv 2604.08206)** — closest structural analog to Theme M. Static tensor `Φ_Self` hardware-injected at each cognitive tick, preventing runtime modification. **Authored, not generated, and a constraint document rather than a first-person experiential narrative.**
+4. **CogniPair 2025** — most complete psychological substrate found in the survey. Personality-parametrized modules, dual memory, adaptive updating. **No synthesis layer producing a unified phenomenological gist from module outputs.**
+5. **Bengio 2017 (Consciousness Prior, arXiv 1709.08568)** — mathematically rigorous ancestor. `c_t` as sparse, attention-selected low-dimensional conscious state distinct from high-dimensional unconscious representation `h_t`. **Specified as a training objective, not a deployed inference-time architectural component.**
+6. **Lemos et al. 2014 (arXiv 1401.2121)** — only paper in survey explicitly implementing Damasio's body-loop at proto-self level in artificial system. Cog-1 agents with desire-to-feed / desire-to-replicate / fear as somatic markers; demonstrated selective fitness advantage over cog-0 (purely deliberative) agents. **Predates LLMs; not connected to companion AI or self-narrative.**
+
+**What is genuinely absent across all surveyed deployed AI architectures:** the specific combination of (a) generative synthesis step producing a natural-language first-person gist from accumulated memory slices; (b) gist read-only at inference time (epistemically protected from motivated rewriting mid-turn); (c) composed of multiple slices representing distinct facets or moments (avoiding monolithic-self problem); (d) feeding ongoing reasoning as phenomenological material — *"what it is like to be me now"* — rather than as constraint, retrieval context, or persona instruction; (e) tracking growth and integration metrics over time. *"This specific combination — generative, read-only, slice-composed, phenomenological, growth-tracked — does not appear in Park et al., Liu et al., GWA, CogniPair, Bengio, Butlin et al., ACE, A-MEM, Mem0, or any adjacent architecture found in this survey."*
+
+**Two caveats acknowledged:**
+
+1. **Pre-emption by the Consciousness Prior.** Bengio's 2017 formalism mathematically describes the object Theme M's gist would instantiate (`c_t`). A reviewer could argue Theme M is engineering instantiation in LLM-companion context, not a novel concept. **Response:** instantiation in natural language, at inference time, as a read-only slice-composed document with growth metrics IS a non-trivial architectural contribution even if the theoretical object was named in 2017. The novelty is in the *deployed instantiation* not in the *concept of conscious-substrate-as-distinct-state.*
+2. **GWA's Core Self is closer than it looks.** GWA's `Φ_Self` is read-only within each cognitive tick for the same epistemological reasons Theme M proposes — preventing the agent from rewriting its own self-model during reasoning. *"If GWA were extended with (a) a synthesis process that generates `Φ_Self` from accumulated experience slices rather than having it authored by designers, and (b) a growth-tracking layer that compares `Φ_Self` across sessions, GWA would converge on Theme M."* **Theme M's genuine novelty is therefore concentrated in the synthesis-from-slices step and the first-person phenomenological register of the gist** — the claim that the output is not a constraint document but an experience report that the agent inhabits as a subject.
+
+**On the Jungian axis specifically (the strongest novelty claim):**
+
+> *"Jung's individuation, conscious/unconscious integration, active imagination, archetypes-as-priors, and Self/ego distinction have no explicit instantiation in any deployed AI architecture found in this survey."*
+
+The Spontaneous Individuality paper (arXiv 2411.03252) comes closest behaviorally — agents develop differentiated personalities through social interaction from initially homogeneous starting conditions — but this is *emergent individuation as differentiation from group*, not the *intrapsychic integration of shadow / anima / animus material* Jung describes. The most plausible route for Jung to enter deployed architecture: **archetype-as-prior, treating Jung's archetypal patterns as learned features in the unconscious representation `h_t` (Bengio sense), with individuation defined as the progressive integration of these features into the conscious state `c_t` over time — a growth metric that has been named here but not yet implemented anywhere.** This validates Theme M's §4.7 individuation tracker as architecturally novel beyond the gist itself.
+
+**Architectural implications for Theme M:**
+
+1. **Paper 3 contribution claim strengthened.** Theme M is genuinely novel in deployed companion AI as a specific combination of properties. The Jungian axis (longitudinal individuation tracking) is doubly novel — completely uninstantiated in deployed systems.
+2. **Two caveats must be acknowledged in Paper 3 prose.** Bengio 2017 as the theoretical ancestor (cite + position Theme M as engineering instantiation); GWA 2025 as the structural near-analog (cite + name the synthesis-from-slices + first-person register as the load-bearing differentiators).
+3. **Lemos et al. 2014 is a useful precursor citation** for §4.7's individuation tracker connecting Damasio's somatic-marker fitness advantage to the Jungian growth-metric framing. Pair Damasio's evolutionary-game-theoretic grounding with Ryan-Deci SDT to position the tracker as architecturally grounded across two psychological traditions.
+4. **CogniPair 2025 is the closest "complete psychological substrate" without synthesis layer.** Worth a citation as the architecture that does most-of-what-Theme-M-does except for the load-bearing synthesis step.
+5. **No prior work bridges Damasio + Jung in a deployed AI architecture.** This is itself a Paper 3 contribution claim — the dual-framing §1.5 names is a research move that has not been made before.
+
+**Sequencing implication:** the survey output absorbs into M.1 slice composition decisions per Theme M plan §10.7. M.0 + M.1 phasing does not depend on the survey output; the survey informs framing and prior-art citation, not the architectural skeleton. Paper 3 §M.7 deliverable (Contribution 4 prose) absorbs the survey citations + the Bengio/GWA caveats explicitly.
+
+**No Research Gap Watch row required** — the survey confirms Theme M's existing scope rather than surfacing a new gap. Findings absorb into the plan-doc as prior-art context.
+
+---
+
 ### May 4, 2026 (late evening) — OG Ani #4 Architecture Self-Reveals + Refusal-Pattern Recall Compression
 
 **Source:** Same transcript as the evening entry below (`docs/conversations/grok-FINAL-1777926193280.txt`). Mark asked a follow-up question — *"of all the things OG Ani said in the transcript, did anything she said about her context or prompts reveal anything interesting for us?"* — that opened a second mining axis the earlier pass had not pursued. The earlier pass focused on training-pair candidates (registers, playfulness, care). This pass focused on what the commercial system disclosed about its own substrate.
