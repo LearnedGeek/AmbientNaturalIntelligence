@@ -5,6 +5,7 @@ using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.Emergence;
 using AniRuntime.LLM;
+using AniRuntime.Loops.Coreference;
 using LearnedGeek.ML;
 using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -278,20 +279,16 @@ public class OutreachPhase
             return;
         }
 
-        // Step 3 (May 6, 2026 — RETIRED): the prior LLM-based pronoun-fix
-        // call (`FixPronounsIfNeeded`) introduced a working-text leak surface
-        // — May 5 outreaches at 09:55 + 12:16 emitted both the corrected
-        // message AND the model's self-explanation ("fixed message with
-        // swapped pronouns:" / "i swapped the pronouns so mark would..."),
-        // both Mark-tagged. The architectural fix is to detect third-person
-        // reference to the addressee at the universal gate via
-        // `DirectAddressInvariant`, which triggers the existing remediation
-        // regen path with a clear hint. No LLM call in the post-hoc fix path
-        // → no working-text leak surface. See
-        // `src/AniRuntime.Loops/Invariants/DirectAddressInvariant.cs` and
-        // `docs/research/model-coreference-ideas.md` for the broader coref
-        // architecture this is a step toward.
-        var rewritten = message;
+        // Step 3 (May 6, 2026): producer-side direct-address rewrite.
+        // Replaces the prior LLM-based `FixPronounsIfNeeded` (retired
+        // because it leaked working text on May 5 09:55 + 12:16). This
+        // is a deterministic regex stop-gap until the LM-Kit-based
+        // coreference model lands per
+        // `docs/research/model-coreference-ideas.md`. The gate's
+        // `DirectAddressInvariant` is the safety net for anything the
+        // rewriter misses.
+        var rewritten = DirectAddressRewriter.Rewrite(
+            message, snapshot.CharacterState.PrimaryContactName ?? "");
 
         // Step 3b: Feature 14 v2 — Outbound claim verification (Apr 22, 2026).
         // Extracts claims about the contact from the composed message and corroborates

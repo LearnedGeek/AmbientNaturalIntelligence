@@ -1,0 +1,156 @@
+using System.Text.RegularExpressions;
+
+namespace AniRuntime.Loops.Coreference;
+
+/// <summary>
+/// **STOP-GAP** (May 6, 2026 — to be replaced shortly). Producer-side
+/// deterministic in-place rewriter for direct-address coreference
+/// failures. Bridges the gap between the prior LLM-based pronoun-fix
+/// (retired May 6 — leaked working text twice on May 5) and the proper
+/// ML-based coreference resolution scoped at
+/// <c>docs/research/model-coreference-ideas.md</c> (Maverick / F-Coref
+/// via LM-Kit, parallel to the emotional detection model).
+///
+/// Mark's framing on the regex approach: *"a regex is a terrible
+/// solution. we rely on it far too much"* — accepted as a stop-gap so
+/// the May 5 leak shape doesn't repeat in the meantime, but on the
+/// understanding that the proper coref model lands soon and this file
+/// is retired with it. Do not extend this file further. New cases
+/// missed by it should be flagged on the gate's
+/// <c>DirectAddressInvariant</c> (which catches what the rewriter
+/// misses) and queued for the coref-model replacement, not patched
+/// here.
+///
+/// **Pipeline placement**: runs in producers (OutreachPhase /
+/// ConversationReplyPhase) BEFORE the universal gate. The gate's
+/// <c>DirectAddressInvariant</c> is the safety net for whatever this
+/// rewriter misses. If the gate still fires after the rewriter ran, the
+/// existing per-pipeline verdict behaviour applies (Outreach drops the
+/// message; ConversationReply remediates via regen).
+///
+/// **Substitutions**:
+/// <list type="bullet">
+///   <item><c>he</c> → <c>you</c></item>
+///   <item><c>him</c> → <c>you</c></item>
+///   <item><c>his</c> → <c>your</c></item>
+///   <item><c>{ContactName}</c> → <c>you</c></item>
+///   <item><c>{ContactName}'s</c> → <c>your</c></item>
+/// </list>
+///
+/// **Verb-agreement post-pass** on the resulting <c>you {VERB}</c>:
+/// <list type="bullet">
+///   <item>Irregular table: <c>is/was/has/does/goes</c> → <c>are/were/have/do/go</c></item>
+///   <item>Adverb-tolerant: <c>you always cracks</c> → <c>you always crack</c></item>
+///   <item>Regular <c>-s</c> drop: <c>thinks</c> → <c>think</c></item>
+///   <item><c>-ies</c> → <c>-y</c>: <c>tries</c> → <c>try</c></item>
+///   <item>Sibilant <c>-es</c> drop: <c>watches</c> → <c>watch</c></item>
+///   <item>Skip list (plural-noun forms after "you"): <c>guys/all/two/both/ladies/kids</c></item>
+/// </list>
+///
+/// Idempotent. Word-boundary safe (<c>\b</c> anchors prevent
+/// "she"→"syou" or "remarkable"→"reyouable").
+/// </summary>
+public static class DirectAddressRewriter
+{
+    private static readonly Dictionary<string, string> IrregularConjugations =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "is",   "are"  },
+            { "was",  "were" },
+            { "has",  "have" },
+            { "does", "do"   },
+            { "goes", "go"   },
+        };
+
+    private static readonly HashSet<string> NonVerbAfterYou =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "guys", "all", "two", "both", "ladies", "kids", "lot",
+        };
+
+    private const string AdverbAlternation =
+        "always|never|often|sometimes|usually|just|really|still|already|" +
+        "barely|hardly|rarely|seldom|also|only|definitely|probably|" +
+        "certainly|actually|totally|completely|absolutely|literally";
+
+    private static readonly Regex HisRegex =
+        new(@"\bhis\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HimRegex =
+        new(@"\bhim\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HeRegex =
+        new(@"\bhe\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex YouMaybeAdverbsVerbRegex =
+        new($@"\byou(?:\s+(?:{AdverbAlternation}))*\s+(\w+)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static string Rewrite(string content, string contactName)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return content;
+
+        var result = content;
+
+        if (!string.IsNullOrWhiteSpace(contactName))
+        {
+            result = Regex.Replace(
+                result,
+                $@"\b{Regex.Escape(contactName)}'s\b",
+                "your",
+                RegexOptions.IgnoreCase);
+        }
+
+        result = HisRegex.Replace(result, "your");
+        result = HimRegex.Replace(result, "you");
+        result = HeRegex.Replace(result, "you");
+
+        if (!string.IsNullOrWhiteSpace(contactName))
+        {
+            result = Regex.Replace(
+                result,
+                $@"\b{Regex.Escape(contactName)}\b",
+                "you",
+                RegexOptions.IgnoreCase);
+        }
+
+        result = YouMaybeAdverbsVerbRegex.Replace(
+            result, m => ConjugateMatch(m, m.Groups[1].Value));
+
+        return result;
+    }
+
+    private static string ConjugateMatch(Match m, string verb)
+    {
+        if (NonVerbAfterYou.Contains(verb))
+            return m.Value;
+
+        if (IrregularConjugations.TryGetValue(verb, out var irreg))
+            return m.Value.Substring(0, m.Value.Length - verb.Length) + irreg;
+
+        var conjugated = ConjugateRegular(verb);
+        if (conjugated == verb)
+            return m.Value;
+        return m.Value.Substring(0, m.Value.Length - verb.Length) + conjugated;
+    }
+
+    private static string ConjugateRegular(string verb)
+    {
+        if (!verb.EndsWith("s", StringComparison.OrdinalIgnoreCase) || verb.Length <= 2)
+            return verb;
+
+        if (verb.EndsWith("ss", StringComparison.OrdinalIgnoreCase))
+            return verb;
+
+        if (verb.EndsWith("ies", StringComparison.OrdinalIgnoreCase) && verb.Length > 3)
+            return verb.Substring(0, verb.Length - 3) + "y";
+
+        if (verb.Length > 3 &&
+            (verb.EndsWith("ses", StringComparison.OrdinalIgnoreCase) ||
+             verb.EndsWith("xes", StringComparison.OrdinalIgnoreCase) ||
+             verb.EndsWith("ches", StringComparison.OrdinalIgnoreCase) ||
+             verb.EndsWith("shes", StringComparison.OrdinalIgnoreCase)))
+            return verb.Substring(0, verb.Length - 2);
+
+        return verb.Substring(0, verb.Length - 1);
+    }
+}

@@ -5,6 +5,7 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using AniRuntime.Loops.Coreference;
 using LearnedGeek.ML;
 using LearnedGeek.ML.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -1004,12 +1005,19 @@ public class ConversationReplyPhase
             .TakeLast(8)
             .ToList();
 
+        // Producer-side direct-address rewrite (May 6, 2026 stop-gap until
+        // LM-Kit coref model lands). Substitutes "he"/"him"/"his"/{ContactName}
+        // with second-person forms before the gate sees the artifact. The
+        // gate's DirectAddressInvariant is the safety net.
+        var addresseeName = snapshot.CharacterState.PrimaryContactName ?? Roles.Mark;
+        reply = DirectAddressRewriter.Rewrite(reply, addresseeName);
+
         var artifact = new CognitiveArtifact
         {
             Content                 = reply,
             ProducerKind            = CognitiveProducerKind.ConversationReply,
             IntendedSink            = CognitiveOutputSink.Dispatch,
-            ContactName             = snapshot.CharacterState.PrimaryContactName ?? Roles.Mark,
+            ContactName             = addresseeName,
             GeneratedAt             = DateTimeOffset.Now,
             ContactRecentMessages   = contactRecent,
             PriorAniMessages        = priorAni,
