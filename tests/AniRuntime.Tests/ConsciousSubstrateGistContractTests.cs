@@ -56,39 +56,53 @@ public class ConsciousSubstrateGistContractTests
         CharacterState = new CharacterStateDoc { PrimaryContactName = "Mark" },
     };
 
-    [Fact]
-    public async Task ComputeGistAsync_M0_NoOp_ReturnsEmpty()
+    private static ContextSnapshot SnapshotWithEmotion() => new()
     {
-        // M.0 acceptance: composer always returns Empty regardless of input
-        // and regardless of feature-flag state. Slice content arrives in M.1+.
-        var composer = Composer(enabled: true);
+        CharacterState = new CharacterStateDoc { PrimaryContactName = "Mark" },
+        EmotionalState = new EmotionalState
+        {
+            Warmth      = 0.78f, WarmthBaseline      = 0.60f,
+            Energy      = 0.55f, EnergyBaseline      = 0.50f,
+            Worry       = 0.31f, WorryBaseline       = 0.20f,
+            Playfulness = 0.50f, PlayfulnessBaseline = 0.50f,
+        },
+    };
 
-        var gist = await composer.ComputeGistAsync(Snapshot(), CancellationToken.None);
+    [Fact]
+    public async Task ComputeGistAsync_M1_FlagDisabled_ReturnsEmpty()
+    {
+        // M.1 contract: when flag is disabled, composer returns Empty
+        // regardless of snapshot content. This is the load-bearing
+        // flag-respect property pinned by RegisterStateGistSlice_RespectsFeatureFlag.
+        var composer = Composer(enabled: false);
 
-        gist.Should().NotBeNull();
-        gist.IsEmpty.Should().BeTrue("M.0 no-op composer must return ConsciousSubstrateGist.Empty");
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
+
+        gist.IsEmpty.Should().BeTrue();
         gist.Composed.Should().BeEmpty();
         gist.TokenCount.Should().Be(0);
-        gist.Slices.ClosedConversation.Should().BeFalse();
-        gist.Slices.InnerThoughtAggregate.Should().BeFalse();
         gist.Slices.RegisterState.Should().BeFalse();
-        gist.Slices.ContactState.Should().BeFalse();
-        gist.Slices.WorldSelf.Should().BeFalse();
-        gist.Slices.TensionState.Should().BeFalse();
     }
 
     [Fact]
-    public async Task ComputeGistAsync_M0_NoOp_ReturnsEmptyEvenWhenFlagDisabled()
+    public async Task ComputeGistAsync_M1_FlagEnabled_ProducesRegisterStateSlice()
     {
-        // Flag-disabled path — same behavior. The flag's purpose in M.0 is
-        // to gate the consumer's prompt-injection logic, not to gate composer
-        // execution. Spec-tested property (no memory writes) holds regardless
-        // of flag state.
-        var composer = Composer(enabled: false);
+        // M.1 contract: when flag is enabled and EmotionalState is non-default,
+        // the composer produces a §4.3 register-state slice. Slice content
+        // is structured first-person register data: dominant + secondary
+        // register names with values, plus baseline drift.
+        var composer = Composer(enabled: true);
 
-        var gist = await composer.ComputeGistAsync(Snapshot(), CancellationToken.None);
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
 
-        gist.IsEmpty.Should().BeTrue();
+        gist.IsEmpty.Should().BeFalse();
+        gist.Slices.RegisterState.Should().BeTrue();
+        gist.Slices.ClosedConversation.Should().BeFalse();
+        gist.Slices.InnerThoughtAggregate.Should().BeFalse();
+        gist.Slices.ContactState.Should().BeFalse();
+        gist.Slices.WorldSelf.Should().BeFalse();
+        gist.Slices.TensionState.Should().BeFalse();
+        gist.TokenCount.Should().BeGreaterThan(0);
     }
 
     [Fact]
@@ -109,9 +123,12 @@ public class ConsciousSubstrateGistContractTests
 
         var composer = Composer(enabled: true);
 
-        var gist = await composer.ComputeGistAsync(Snapshot(), CancellationToken.None);
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
 
-        gist.IsEmpty.Should().BeTrue();
+        // The point of this test is the Verify(Never) below — gist content
+        // is permitted (M.1 produces register-state slice text), but it must
+        // never trigger an IMemoryService.SaveAsync call.
+        gist.Should().NotBeNull();
         memoryMock.Verify(
             m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()),
             Times.Never,
@@ -131,9 +148,12 @@ public class ConsciousSubstrateGistContractTests
 
         var composer = Composer(enabled: true);
 
-        var gist = await composer.ComputeGistAsync(Snapshot(), CancellationToken.None);
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
 
-        gist.IsEmpty.Should().BeTrue();
+        // The point of this test is the Verify(Never) below — gist content
+        // is permitted (M.1 produces register-state slice text), but it must
+        // never trigger an IConversationService.AddMessageAsync call.
+        gist.Should().NotBeNull();
         conversationMock.Verify(
             c => c.AddMessageAsync(It.IsAny<Guid>(), It.IsAny<ConversationMessage>(), It.IsAny<CancellationToken>()),
             Times.Never,
@@ -162,6 +182,47 @@ public class ConsciousSubstrateGistContractTests
         snapshot.RecentMemory.Count.Should().Be(memCountBefore);
         snapshot.RecentHistory.Count.Should().Be(historyCountBefore);
         snapshot.CharacterState.PrimaryContactName.Should().Be(contactBefore);
+    }
+
+    [Fact]
+    public async Task RegisterStateGistSlice_NotCaregiverOriented()
+    {
+        // §4.3 generation invariant: the slice is about Ani's register state,
+        // never about Mark. Mark-content belongs in §4.4 contact-state aggregate
+        // (M.4 deliverable). Pinned by spec test so future composer changes
+        // can't accidentally cross the categorical line.
+        var composer = Composer(enabled: true);
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
+
+        gist.Composed.Should().NotBeEmpty();
+        gist.Composed.Should().NotContain("Mark", "the register-state slice is about Ani's state, never about the caregiver as subject");
+        gist.Composed.Should().NotContain("mark", "case-insensitive check for the same property");
+        gist.Composed.Should().NotContain("you (Mark)", "no caregiver-as-subject framing allowed in this slice");
+    }
+
+    [Fact]
+    public async Task RegisterStateGistSlice_TokenBudgetEnforced()
+    {
+        // §4.6 token-budget rule: slice never exceeds ConsciousSubstrateGistMaxTokens.
+        // M.1 register-state is small (~30 tokens default); the budget enforcement
+        // is defense-in-depth for future slices. We test by setting a tight budget
+        // and asserting the composer drops to Empty rather than producing oversized
+        // content (the alternative — silently truncating — would corrupt slice text).
+        var tightOptions = Microsoft.Extensions.Options.Options.Create(new AniOptions
+        {
+            ConsciousSubstrateGistEnabled   = true,
+            ConsciousSubstrateGistMaxTokens = 5,  // far below the ~30-token slice
+        });
+        var composer = new ConsciousSubstrateGistComposer(
+            tightOptions,
+            NullLogger<ConsciousSubstrateGistComposer>.Instance);
+
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
+
+        // With a 5-token budget, the ~30-token register-state slice can't fit.
+        // The composer should return Empty (drops the slice) rather than truncate
+        // to a malformed half-clause.
+        gist.IsEmpty.Should().BeTrue("token-budget violation should drop the slice to Empty rather than truncate to malformed text");
     }
 
     [Fact]

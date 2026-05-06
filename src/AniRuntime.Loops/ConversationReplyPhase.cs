@@ -270,18 +270,31 @@ public class ConversationReplyPhase
         await VibeBiasObservation.ObserveAsync(
             _vibeBias, snapshot, callSite: "reply", _log, ct).ConfigureAwait(false);
 
-        // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist telemetry pass.
-        // Invokes the IConsciousSubstrateGist composer if registered; the M.0 no-op
-        // composer returns Empty. Emits M0_GIST_COMPOSITION + M0_GIST_SUBSTRATE_RATIO
-        // describing what M.1+ WOULD surface; the prompt above is unchanged.
-        // Best-effort: never propagates exceptions, never affects dispatch.
-        // See docs/spec/ANI-Theme-M-Conscious-Substrate-Individuation-Plan.md §5 Phase M.0.
-        await ConsciousSubstrateGistObservation.ObserveAsync(
-            _consciousGist, snapshot, _aniOptions, replyPrompt.User, _log, ct)
+        // Theme M Phase M.1 (May 5, 2026 evening) — conscious-substrate gist
+        // composition + injection. The composer reads EmotionalState and produces
+        // a §4.3 register-state slice (first-person register-vantage prose)
+        // when ConsciousSubstrateGistEnabled is true. ComposeAndInjectAsync emits
+        // M0_GIST_COMPOSITION + M0_GIST_SUBSTRATE_RATIO telemetry, then prepends
+        // the gist as a substrate block at the top of the user prompt when the
+        // flag is on and the gist has content. M.0 (flag off) is a no-op pass-
+        // through that returns the original prompt unchanged.
+        //
+        // Architectural property: read-only at inference. Composer never persists
+        // gist content (pinned by ConsciousSubstrateGistContractTests strict-mock
+        // spec tests). The injection here happens at the prompt-build call site
+        // immediately before the Ollama call; the gist is part of the prompt
+        // string for that one call and is then discarded.
+        //
+        // Best-effort: never propagates exceptions; on failure the original
+        // user prompt is used unchanged. Dispatch must not be affected by
+        // gist-side failures.
+        var replyUserPromptWithGist = await ConsciousSubstrateGistObservation
+            .ComposeAndInjectAsync(
+                _consciousGist, snapshot, _aniOptions, replyPrompt.User, _log, ct)
             .ConfigureAwait(false);
 
         var reply = await _ollama.ChatAsync(
-            replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct, replyTemperature)
+            replyPrompt.System, snapshot.RecentHistory, replyUserPromptWithGist, ct, replyTemperature)
             .ConfigureAwait(false);
 
         reply = CleanOutreachMessage(reply);
