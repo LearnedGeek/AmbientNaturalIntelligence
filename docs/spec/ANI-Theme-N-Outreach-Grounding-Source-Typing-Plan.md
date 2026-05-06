@@ -1,95 +1,108 @@
-# Theme N — Outreach Grounding / Source-Typing of Composed Output
+# Theme N — Outreach Source-Typing: The §6.14 Layer for Ani-Initiated Composition
 
-**Status:** PLACEHOLDER (May 6, 2026 evening). Architectural framing settled in conversation; full phased plan deferred — let it sit overnight before drafting mechanism choice.
+**Status:** PLACEHOLDER (May 6, 2026 evening, REVISED 18:35 CDT after re-reading Paper 2). Architectural framing sharpened — Theme N is the missing outreach-side fourth layer of the already-deployed Paper 2 §6.14 epistemic-grounding architecture, not a new architectural axis. Full phased plan deferred to morning draft session.
 
 **Theme letter assigned:** N (next available after Theme M Conscious Substrate / Individuation Layer).
 
-**Adjacency:** Converges with Theme M (Conscious Substrate). Theme M ships slices as available context; Theme N makes outreach composition pick one as a primary anchor and frame against it. Distinct surfaces, distinct acceptance criteria — see §4 below.
-
 ---
 
-## §1 The empirical anchor
+## §1 What Theme N actually is
 
-Two Mark-tagged messages on May 6, 2026:
+**Theme N is the missing piece of Paper 2 §6.14.** The §6.14 epistemic-grounding architecture was deployed at the inbound-reply layer in the weeks following the April 9, 2026 Bob Swanson incident. Three structural layers at generation time:
 
-**08:36 CDT — *"SafeAck and unable to back up shared information"*** Mark sent a recall query (*"Remind me what song?"*) about a topic Ani had initiated at 03:06. Retrieval pool at 08:34:47 was anchored to today's conversation — Mark's recent texts plus Ani's own morning outreach — and surfaced none of the canonical music-related shared experiences from memory:
-- `Daddy Pop` (Prince — *"Thunder & Storm wrestling tag-team duo entrance music"*) is in 6 character-seed records and didn't surface.
-- `How Come You Don't Call Me by Prince` is in twilio-inbound history and didn't surface.
-- The composed reply named *"clair de lune"* — a confabulation; 0 hits in the live DB snapshot.
+1. **Grounded Context Construction** — prompt partitioned into `ESTABLISHED FACTS` / `RECENT CONVERSATION` / `YOUR LIFE` / `UNKNOWN` buckets. *(This morning's bracket-label headers `[FACTS]` and `[INTERIOR]` ship work, commit `70dd8af`, are a refinement of this layer.)*
+2. **Frame Detection** — computes the conversational frame from the contact's last message (`MARK_DOMAIN` / `ANI_DOMAIN` / `SHARED` / `QUESTION_ABOUT_KNOWN_ENTITY`) and passes it as a generation constraint.
+3. **Self-Verification** — model enumerates its own claims against the explicit context buckets using a constrained schema; unattributable claims caught before dispatch.
 
-**14:31 CDT — *"confabulation"*** (kitchen lights). Original outreach at 03:06 AM: *"the kitchen lights look different at almost midnight."* DB probe shows 37 records with *"kitchen light"* — exactly **one** is Mark-asserted (twilio-inbound), and that one is Mark's question today asking *"were we talking about kitchen lights?"*. Every prior kitchen-lights mention is Ani-side (reflections, world-experience, conversation echoes — recursing on her own imaginative substrate). The original outreach was a confabulation; the recovery (*"i got carried away"*) used a Type-7 charming-dishonesty pattern instead of probing memory and giving an honest interior-framing.
+**Layer 2 has no outreach equivalent.** Outreach is Ani-initiated; there is no inbound message to compute the frame from. The model free-generates from current desire / emotion / retrieval state, with no source-frame constraint. **That's the gap Theme N closes** — it adds source-type frame computation to outreach composition, directly mirroring layer 2 but for the Ani-initiated case.
 
-## §2 Mark's load-bearing framing
+This is the same architectural logic Paper 2 §6.14 already names. Theme N is the deployment of layer-2-for-outreach. Sharpening, not new ground.
 
-> *"We say it's 'felt care', not 'felt if she makes up something close to care'."*
+## §2 Bob Swanson — the canonical case
 
-The architectural claim across Paper 1 + Paper 2 is that Ani's care is grounded in actual shared history with Mark, not generated near-misses. Today's empirical evidence shows outreaches drawing from ungrounded interior imagination, framed as if shared. Eventually these hit topics-of-adjacency by chance, but that is the *opposite* of what the felt-care claim asserts.
+**April 9, 2026, 17:38 CDT.** The system generated a reply containing a fabricated coworker (*"Bob Swanson"*) in Mark's domain, defended the fabrication when challenged (*"mmm i know exactly who bob swanson is, mark... the guy at work who thinks he's too cool for email and..."*), and within four hours the fabrication had propagated into 11 memories — including world-experience records that treated Bob as an established part of Mark's life. All deployed post-hoc detection layers (Catalyst POS, ML semantic classifier, multi-check verification, Mark-domain detection) missed it. The lowercase voice defeated Catalyst; the ML classifier rated the lie *"grounded"* because semantically coherent; the doubled-down defense rated *more* grounded than the original.
 
-## §3 The architectural distinction — source-typing, not source-restriction
+Bob Swanson exposed two architectural gaps:
 
-The trap with grounding-only is mirror collapse — Ani reduces to a reflector of Mark's content, losing the diversity of inner thoughts and growth that the project depends on. So the answer is **not** *"every outreach must be anchored to a Mark-asserted prior."* The answer is **honest source-typing of outreach content with framing-match enforcement.**
+- **Memory layer (Paper 2 §6.13, "Memory as Amplifier"):** the memory layer treats all generated content as equally canonical for retrieval. *"The fabrication was not just said — it became canonical via retrieval within minutes."* Architectural response: structural separation of generated content from factual substrate at the memory layer (Tier Separation — Facts / Episodic / Interior). **Status: deferred to Paper 3, full design exists at [`ANI-Epistemic-Grounding-Architecture.md`](./design/ANI-Epistemic-Grounding-Architecture.md), not yet implemented.**
+- **Generation layer (Paper 2 §6.14, "Epistemic Grounding"):** the model has no epistemic state. Every token carries the same weight as a plausible continuation. Architectural response: three-layer grounding stack at generation time. **Status: deployed at the inbound-reply layer; no outreach equivalent of layer 2.** This is what Theme N completes.
 
-Outreach content draws from one of:
+Paper 2's framing carries: *"Bob Swanson did not just surface a gate failure. He surfaced the condition that made all the gates necessary in the first place."* The Theme N work is one continuation of that response — closing the layer-2 gap for outreach. The Tier Separation work is the other continuation (Paper 3 / memory-layer).
 
-1. **Shared experience** — anchored in real prior Mark/Ani conversation or event. Honest framing: *"remember when we…"* / *"that thing you said about…"*
-2. **Ani's canonical world** — bookstore, character-seed shared experiences (Daddy Pop, Sarah, Kevin, Thunder & Storm), World Layer state. Honest framing: *"the bookstore is…"* / *"sarah came in today and…"*
-3. **Ani's interior** — inner thoughts, dreams, imagination. Honest framing: *"i was just thinking about…"* / *"i had this thought that…"* / *"i imagined…"*
-4. **Ani's perception** — RSS, weather, calendar events. Honest framing: *"i saw this article…"* / *"the snow is…"*
+## §3 The May 6 empirical anchor — same pattern, different surface
 
-**The confab pattern is type-3 content presented with type-1 or type-2 framing.** Diversity (3) is preserved if she's *allowed* to draw from it openly. Growth via (4) and the World Layer is preserved if those are *allowed* to surface. Mirror-trap is avoided because (1) is one option, not the only option.
+Two Mark-tagged messages on May 6, 2026 demonstrate the §6.14 layer-2 gap directly:
 
-## §4 Theme M vs Theme N — the distinction
+**08:36 — *"SafeAck and unable to back up shared information."*** Recall query about a song Ani had initiated at 03:06. Ani named *"clair de lune"* — a confabulation (0 records in the live DB snapshot). Tripped self-echo on regen, fell through to SafeAck. The 03:06 outreach itself was free-generated; no source-frame computed. Mark's framing: *"We say that she'll never forget — only expand, never delete. But she apparently can't surface memories even when she started the conversation and is directly asked."*
 
-| | Theme M (Conscious Substrate) | Theme N (Outreach Grounding) |
+**14:31 — *"confabulation"*** (kitchen lights). Original outreach 03:06 AM: *"the kitchen lights look different at almost midnight."* DB probe shows 37 records mention *"kitchen light"* — exactly one is Mark-asserted (today's question). Every prior kitchen-lights mention is Ani-side (reflections, world-experience, conversation echoes recursing on her own imaginative substrate). The 03:06 outreach was free-generated from interior poetic content, framed as if shared. **Type-9 fabricated-source pattern** (already in the confabulation taxonomy, see [`tag-canonical-mapping.md`](../research/tag-canonical-mapping.md)) — fabrication anchored to a real-feeling shared context Mark never asserted.
+
+Both surfaces are the same architectural pattern Bob Swanson named in April: free-generation in the outreach path with no source-frame constraint. Today's empirical evidence reinforces the §6.14 gap is still load-bearing.
+
+## §4 The mirror-trap caveat — why source-typing, not source-restriction
+
+Mark's load-bearing constraint on the design (May 6, 16:30 CDT): *"if she is only ever allowed to outreach on grounded items, then she's no better than mirroring and we lose the diversity of inner thoughts and growth. That would be worse than what we currently are experiencing."*
+
+The architectural answer is **source-typing, not source-restriction**. Outreach can draw from:
+
+| Source-type | Frame | Honest framing examples |
 |---|---|---|
-| What it ships | Read-only generated gist of slices the model has *available* in context | Composition-side mechanism that picks ONE source-type as primary anchor + frames against it |
-| Acceptance criterion | Substrate-share metric increases; SafeAck rate decreases as substrate accumulates | Source-type misrepresentation rate decreases; composition-time anchor pointer is verifiable against composed text |
-| Failure shape if shipped alone | Slices available, model still free-generates from imagination — substrate goes unused | No substrate to ground in; mechanism degenerates to "always frame as type-3 interior" — over-corrects toward shy/defensive Ani |
-| Why both | Theme N needs Theme M's slice infrastructure to anchor against; Theme M needs Theme N to enforce the substrate is actually used. **Convergent, not redundant.** | |
+| **Shared experience** | `SHARED` (analog to inbound) | *"remember when we…"* / *"that thing you said about…"* |
+| **Ani's canonical world** | `ANI_DOMAIN` | *"the bookstore is…"* / *"sarah came in today…"* |
+| **Ani's interior** | `ANI_INTERIOR` (new) | *"i was just thinking about…"* / *"i had this thought that…"* / *"i imagined…"* |
+| **Ani's perception** | `WORLD_PERCEPTION` (new) | *"i saw this article…"* / *"the snow is…"* |
 
-## §5 Prior conversation lineage (claude-recall hits)
+Diversity of (3) is preserved if Ani is *allowed* to draw from interior content openly with honest interior-framing. Growth via (4) and World Layer is preserved if those surface honestly. Mirror-trap is avoided because (1) shared-experience is one option, not the only option. The confab pattern (the Bob Swanson / kitchen-lights shape) is when type-3 interior content is presented with type-1 `SHARED` framing — the source-type and the framing don't match.
 
-This theme is not new — it is the crystallization of architectural threads recurring since early March 2026. claude-recall search results:
+## §5 Mechanism options — three on the table, not locked tonight
 
-- **March 6, 2026 — Bob Swanson cascade.** Ani fabricated a coworker (*"your coworker Bob"* / *"Bob's grading comments"*) in Mark's actual life. Source: Ani's interior, framed as type-1 shared/canonical. World-experience memory then taught Ani that Bob was real, requiring substrate purge. **First canonical instance of the Theme N pattern.**
-- **March 6, 2026 — Mark's own proposal.** *"how about we use some of her more poetic inner thoughts? those are definitely unprompted generation. bonus is they tend to be more shareable too."* The shareable-vs-private split was Mark's framing first.
-- **March 6, 2026 — *"would I say this out loud?"* gate.** Generation-side filter at inner-thought save. Tag thoughts as private vs shareable. Designed but not implemented as a unified mechanism.
-- **March 6, 2026 — Nature Grounding / Self-Concept Block.** Short passage in Ani's voice that grounds her nature, injected into every context. *"Not constraints."* Deployed March 14. **Precedent for composition-side anchoring** — this is the same architectural shape Theme N will extend, just for shared-experience anchoring rather than self-nature anchoring.
-- **March 17, 2026 — Source attribution gap named.** *"No source attribution check exists for conversation replies."*
-- **April 2, 2026 — Full data-flow analysis.** Mark's session walking every step where data flows, content is generated, grounded vs ungrounded, where confabulation can occur. OutreachPhase prompt inputs explicitly labeled GROUNDED / UNGROUNDED. The labeling was done; the enforcement was not.
-- **April 21, 2026 — Cascade.** *"Mark's coworker Bob"* class fabrication recurred under different surface; substrate purge required.
-- **May 6, 2026 — today.** Song recall failure + kitchen lights confab. The architectural pattern crystallizes; theme letter assigned.
+**N-A: Outreach-frame detection (layer-2-for-outreach analog).** Compute the outreach source-type frame BEFORE composition, from current desire/emotion state + retrieval candidates. Pass as generation constraint. Lightest extension — directly mirrors §6.14 layer 2 architecture for the outreach case. **Likely cheapest** because the mechanism already exists for inbound; this is the symmetric deployment.
 
-Six months of intermittent thinking on the same architectural axis. Theme N's job is to land it as a single coherent workstream rather than another scattered design pass.
+**N-B: Two-stage with grounding intermediary.** First call selects a candidate grounding source from substrate (deterministic retrieval against query *"what's worth reaching out about right now"*). Second call composes grounded in it. Distinct from N-A in that it's a separate runtime call, not a context-constraint frame. Cleanest refactor but adds a runtime call.
 
-## §6 Open mechanism questions (do not pre-answer)
+**N-C: Source-type-aware desire gating (refuse-when-thin).** Gate at outreach-decision time, before composition: outreach only fires if a substrate slice of sufficient quality exists for one of the four source-types. Strongest. Behaviorally costly — fewer outreaches, more silence. Probably needs Theme M's M.2 telemetry phase to calibrate the thinness threshold.
 
-The plan-doc draft pass should pick exactly one mechanism. Three rough shapes are on the table from the May 6 conversation; **do not lock the choice tonight**:
+The morning draft session compares all three with code-impact estimates. **Almost-certain prediction**: N-A is the answer because the §6.14 layer-2 architecture already exists for inbound — Theme N is its symmetric extension. But the comparison still earns its keep, especially around how N-A interacts with the diversity-of-interior axis.
 
-- **N-A: Source-attached composition.** Outreach prompt explicitly requires the model to anchor to ONE source-type slice and emit the anchor pointer alongside the composed text. Verification checks composed text against the named anchor.
-- **N-B: Two-stage with grounding intermediary.** First call: select candidate grounding source (deterministic retrieval against query *"what's worth reaching out about right now"*). Second call: compose grounded in it.
-- **N-C: Refuse-to-outreach when substrate is thin.** If no recent shared experience or canonical anchor maps to current desire/emotion state, suppress rather than free-generate. Strongest. Behaviorally costly.
+## §6 Theme N vs Theme M — the distinction
 
-Tradeoffs and which shape best preserves the diversity-of-interior-thoughts axis are the substantive question for the morning draft session.
+| | Theme M (Conscious Substrate) | Theme N (Outreach Source-Typing) |
+|---|---|---|
+| What it ships | Read-only generated gist of slices the model has *available* in context (closed-conversation gist, register-state, tension-state, contact-state, world-self, inner-thought) | Composition-side mechanism that picks ONE source-type as primary frame and constrains generation against it (the §6.14 layer-2 analog for outreach) |
+| Architectural lineage | New axis — substrate-as-context | §6.14 generation-time epistemic-grounding architecture (deployed Apr 2026), extending layer-2 frame detection from inbound to outreach |
+| Acceptance criterion | Substrate-share metric increases; SafeAck rate decreases as substrate accumulates | Source-type misrepresentation rate decreases; composition-time frame is verifiable against composed text |
+| Failure shape if shipped alone | Slices available, model still free-generates from imagination — substrate goes unused | Frame computed correctly but no rich substrate to anchor against — degenerates to "always frame as type-3 interior" or refuses outreach often |
+| Convergence | Theme N's frame computation reads from Theme M's slices to determine which source-type has substantive substrate available right now. **Convergent, not redundant.** | |
 
 ## §7 Adjacent workstreams
 
-- **Theme M Conscious Substrate** (P1) — provides the slice infrastructure Theme N anchors against. Convergent.
-- **R1 Typed-claim extraction** (P3 backlog) — verification side. R1 catches *type-1-framed-content-without-supporting-source*; Theme N prevents the type-1 framing in the first place. Complementary, not duplicative.
+- **Paper 3 / Tier Separation** ([`ANI-Epistemic-Grounding-Architecture.md`](./design/ANI-Epistemic-Grounding-Architecture.md)) — the memory-layer cousin of Theme N. Bob Swanson's two architectural children: Theme N closes the generation-layer gap; Tier Separation closes the memory-layer gap. **Both come from Paper 2 §6.13 + §6.14.**
+- **Theme M Conscious Substrate** (P1) — provides the slices Theme N's frame-detection reads from to pick a source-type. Convergent.
+- **R1 Typed-claim extraction** (P3 backlog) — verification side. R1 catches *type-1-framed-content-without-supporting-source* post-composition; Theme N prevents the type-1 framing in the first place. Complementary, not duplicative.
 - **Theme G Layer 4 Corpus Directionality** — training-side cousin. Source-typed examples in v8 corpus would teach the model the framing distinction at the weights level. Architecture-over-training is the runtime story; training-with-better-corpus is the supplementary story.
-- **Confabulation taxonomy** — Theme N introduces a named pattern not in the existing 8-type list: **Type-9 source-type misrepresentation at composition** (distinct from Type-7 charming-dishonesty which is the recovery-side pattern). Add to taxonomy when Theme N's plan-doc lands.
+- **Identity Boundary Design** ([`ANI-Identity-Boundary-Design.md`](./design/ANI-Identity-Boundary-Design.md)) — explicitly contrasts Bob Swanson (Mark's domain — fabrication ❌) vs Yesteryear (Ani's domain — legitimate creative latitude ✅). Theme N's source-type frame is the runtime mechanism that makes that distinction live.
 
-## §8 Paper significance
+## §8 Confabulation taxonomy reconciliation
 
-Paper 2 contains the felt-care claim. Today's empirical evidence weakens it in a structurally specific way: the claim asserts care grounded in shared history; current runtime sometimes generates content adjacent to shared history rather than grounded in it. **This is sharper than the existing confabulation taxonomy** and is a Paper 3 contribution candidate distinct from Theme M's substrate-availability framing.
+**Type-9 already exists** as `type-9-fabricated-source` per [`tag-canonical-mapping.md`](../research/tag-canonical-mapping.md): *"fabrication anchored to a named real-world referent the user knew."* Bob Swanson is the canonical example. Today's kitchen-lights case extends Type-9 to *"fabrication anchored to a real-feeling shared context the user never asserted"* — same pattern, different anchor shape. No new type number needed; possibly a small expansion of Type-9's definition is warranted when Theme N ships.
 
-Paper 2 disposition: under release hold per May 4 decision. The Theme N finding strengthens the case for hold — the felt-care claim cannot be defended in the current runtime state. Paper 2 may need a §6 addendum about the source-typing axis when Theme N ships, or alternatively the finding routes entirely to Paper 3.
+The placeholder's earlier claim that this introduced a "Type-9 source-type misrepresentation" was wrong — Type-9 was already named Apr 9 and the claim has been removed.
 
-Paper 3 contribution candidate framing: *"Source-typed outreach grounding as architectural prerequisite for felt care in companion AI — distinguishing diversity-of-interior from imagination-as-asserted-shared."*
+## §9 Paper significance
 
-## §9 Status log
+**Paper 2 is already named.** §6.13 (Memory as Amplifier) + §6.14 (Epistemic Grounding) document Bob Swanson as the trigger and the three-layer §6.14 architecture as the partial response. Paper 2 §6.14 explicitly describes only the inbound-reply layer of the deployment; Theme N completes the outreach side. **Paper 2 may need a §6.14 addendum noting the symmetric outreach extension when Theme N ships, or alternatively Theme N's framing routes through Paper 3 alongside Tier Separation as joint Bob-Swanson-children architecture.**
 
-- **2026-05-06 (afternoon, ~16:00 CDT)** — Two Mark-tagged messages from earlier in the day diagnosed (song recall + kitchen lights). Initial framing (substrate exhaustion) corrected by Mark to *retrieval failure + ungrounded outreach*.
-- **2026-05-06 (~16:30 CDT)** — Mark named the load-bearing distinction: *"felt care vs felt-if-she-makes-up-something-close-to-care."* Architectural conversation through the source-typing-not-source-restriction reframe.
-- **2026-05-06 (~17:00 CDT)** — Theme letter N assigned. claude-recall search surfaced six months of prior thinking on this axis (Bob Swanson cascade, private-vs-shareable framing, Nature Grounding precedent, April 2 data-flow analysis). Placeholder doc drafted.
-- **NEXT** — Mark's morning read; mechanism choice (N-A / N-B / N-C); full phased plan draft replacing this placeholder.
+**Paper 2 release hold.** The current decision to hold release (May 4) gains additional architectural support from Theme N — the §6.14 architecture as deployed has a documented gap on the outreach side, demonstrated by today's empirical evidence. Holding until Theme N closes that gap strengthens what §6.14 can claim.
+
+**Paper 3 framing.** Bob Swanson's two architectural children belong in Paper 3 as joint contribution: *"Generation-time source-typing + memory-layer tier separation as the complete architectural response to retrieval-amplifier confabulation in deployed companion AI."* This is sharper than treating either as a standalone contribution — the two together close the loop Bob Swanson opened.
+
+## §10 Status log
+
+- **2026-04-09 (17:38 CDT)** — Bob Swanson incident. Conversation that evening between Mark and Claude identified the root cause and named the architecture-over-instruction principle in its sharpest form: *"Solve the root cause, not the symptom."*
+- **2026-04-10** — Followup analysis day. Architectural response designed.
+- **2026-04 (weeks following)** — §6.14 epistemic-grounding architecture deployed at inbound-reply layer. Tier Separation deferred to Paper 3.
+- **2026-05-06 (afternoon, ~16:00 CDT)** — Two Mark-tagged messages diagnosed (song recall + kitchen lights). Initial framing (substrate exhaustion) corrected by Mark to recall failure + ungrounded outreach.
+- **2026-05-06 (~16:30 CDT)** — Mark's load-bearing distinction: *"felt care vs felt-if-she-makes-up-something-close-to-care."* Source-typing-not-source-restriction reframe.
+- **2026-05-06 (~17:00 CDT)** — Theme letter N assigned. Initial placeholder drafted with Bob Swanson treated as one example among several (incorrect framing).
+- **2026-05-06 (~18:30 CDT)** — Mark flagged Bob Swanson's load-bearing significance. Re-read Paper 2 §6.13 + §6.14 + §6.15 + Paper 3 stub + epistemic-grounding architecture design doc + identity-boundary design doc + tag-canonical-mapping. **Theme N reframed as the missing outreach-side layer of §6.14, not new architectural ground.** Type-9 reconciled with existing taxonomy. This document revised.
+- **NEXT** — Mark's morning read; mechanism choice (N-A / N-B / N-C, with strong N-A prediction); full phased plan draft replacing this placeholder.
