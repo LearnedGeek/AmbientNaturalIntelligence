@@ -462,6 +462,34 @@ public class AniOptions
     /// which is the natural cutoff.
     /// </summary>
     public int    VibeBiasLookbackDays              { get; set; } = 30;
+
+    // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist (companion-paper
+    // architectural axis, Layer 6 in the Agentic Lens / centrality-gravity
+    // architecture per Paper 2 §6.17 + Bengio 2017 Consciousness Prior).
+    //
+    // When enabled, the IConsciousSubstrateGist composer is invoked at
+    // ConversationReplyPhase prompt-build time and (M.4+) at OutreachPhase
+    // composition time. Returns a read-only generated gist composed of slices
+    // from canonical autobiographical-layer producers (Vibe Loop closed-
+    // conversation records, Display Rule register state, J.5a gate-trip
+    // events, contact-state perceptions, World Layer self-state, recent
+    // inner-thought aggregate). Gist is injected into the prompt; never
+    // persisted; never enters retrieval pools.
+    //
+    // **M.0 status:** the no-op composer returns ConsciousSubstrateGist.Empty
+    // regardless of the flag. Telemetry harness (M0_GIST_COMPOSITION,
+    // M0_GIST_SUBSTRATE_RATIO) emits at the consumer surface so the
+    // pre-Theme-M baseline accumulates regardless of flag state.
+    //
+    // Default off — M.0 ships skeleton + spec tests only; flag flip happens
+    // at M.1 once the first slice (tension-state §4.8 + register-state §4.3
+    // per Mark Q9 May 5 2026) lands and Mark + Claude have done a joint
+    // review of the M.0 telemetry baseline.
+    //
+    // Plan: docs/spec/ANI-Theme-M-Conscious-Substrate-Individuation-Plan.md
+    public bool   ConsciousSubstrateGistEnabled         { get; set; } = false;
+    public bool   ConsciousSubstrateGistOutreachEnabled { get; set; } = false;
+    public int    ConsciousSubstrateGistMaxTokens       { get; set; } = 200;
 }
 
 public class OllamaOptions

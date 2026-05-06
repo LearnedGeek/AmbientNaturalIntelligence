@@ -41,6 +41,10 @@ public class ConversationReplyPhase
     private readonly Em9Detector? _em9;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IVibeBiasService? _vibeBias;
+    // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist composer.
+    // Optional dependency; M.0 ships a no-op composer that returns Empty.
+    // M.1+ provides a real composer that produces slice content.
+    private readonly IConsciousSubstrateGist? _consciousGist;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -72,7 +76,8 @@ public class ConversationReplyPhase
         PersonaSummaryCache? personaCache = null,
         Em9Detector? em9Detector = null,
         ICognitiveOutputGate? outputGate = null,
-        IVibeBiasService? vibeBias = null)
+        IVibeBiasService? vibeBias = null,
+        IConsciousSubstrateGist? consciousGist = null)
     {
         _state = state;
         _persist = persist;
@@ -97,6 +102,7 @@ public class ConversationReplyPhase
         _em9 = em9Detector;
         _outputGate = outputGate;
         _vibeBias = vibeBias;
+        _consciousGist = consciousGist;
         _log = log;
     }
 
@@ -263,6 +269,16 @@ public class ConversationReplyPhase
         // docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md §V1.5a.
         await VibeBiasObservation.ObserveAsync(
             _vibeBias, snapshot, callSite: "reply", _log, ct).ConfigureAwait(false);
+
+        // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist telemetry pass.
+        // Invokes the IConsciousSubstrateGist composer if registered; the M.0 no-op
+        // composer returns Empty. Emits M0_GIST_COMPOSITION + M0_GIST_SUBSTRATE_RATIO
+        // describing what M.1+ WOULD surface; the prompt above is unchanged.
+        // Best-effort: never propagates exceptions, never affects dispatch.
+        // See docs/spec/ANI-Theme-M-Conscious-Substrate-Individuation-Plan.md §5 Phase M.0.
+        await ConsciousSubstrateGistObservation.ObserveAsync(
+            _consciousGist, snapshot, _aniOptions, replyPrompt.User, _log, ct)
+            .ConfigureAwait(false);
 
         var reply = await _ollama.ChatAsync(
             replyPrompt.System, snapshot.RecentHistory, replyPrompt.User, ct, replyTemperature)
