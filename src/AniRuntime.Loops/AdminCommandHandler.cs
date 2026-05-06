@@ -34,6 +34,21 @@ public class AdminCommandHandler : IAdminCommandHandler
 
     private DateTimeOffset? _testModeStartedAt;
 
+    // ─── Stale-tag fallback (May 6, 2026) ─────────────────────────────────
+    // When `///tag` arrives after the conversation timeout (15 min default),
+    // a NEW thread opens for the tag message itself, which then becomes the
+    // most-recent thread by `last_message_at`. The fix searches a wider net
+    // and skips threads that don't contain any Ani-content (i.e. tag-only
+    // threads). Lookback caps how far back the search goes — beyond 12h is
+    // stale by any reasonable measure. Search limit caps DB load on a
+    // pathological case where many short threads stacked recently.
+    private const int StaleTagLookbackHours = 12;
+    private const int StaleTagSearchLimit   = 5;
+
+    internal static bool IsValidTagAnchor(ConversationThread? thread) =>
+        thread is not null
+        && thread.Messages.Any(m => m.Role == Roles.Ani);
+
     public bool IsTestMode => _testModeStartedAt.HasValue;
 
     public AdminCommandHandler(
@@ -263,16 +278,36 @@ public class AdminCommandHandler : IAdminCommandHandler
         if (string.IsNullOrWhiteSpace(note))
             return "Usage: ///tag <label>  — e.g. ///tag confabulation";
 
-        // Find the most recent conversation thread with Ani's reply
+        // ─── Stale-tag fallback (May 6, 2026) ─────────────────────────────
+        // When a `///tag` admin command arrives ≥15 min after the last message
+        // (per appsettings.json ConversationTimeoutMinutes), the inbound
+        // perception source auto-closes the active thread and opens a new
+        // thread for the tag message itself. The naive fallback
+        // `GetRecentThreadsAsync(1)` then returns that new tag-only thread
+        // (sorted by last_message_at), which has only one message — failing
+        // the count-check and emitting the misleading "no recent conversation
+        // pair found to persist." The actual just-closed thread with the
+        // exchange sits at index 2, never consulted.
+        //
+        // Fix: pull a wider net of recent threads, iterate from newest to
+        // oldest, find the first one that has at least one Ani message
+        // within a 12-hour lookback window. Mark's two May 5 prompt-leak
+        // tags hit this; both should now attach to the offending message.
+        // See Phase Tracker May 4 morning gap-watch row + May 5 evening
+        // diagnosis (sharper-fix scope).
+
         var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false);
-        if (thread is null || thread.Messages.Count < 2)
+        if (!IsValidTagAnchor(thread))
         {
-            var recent = await _conversations.GetRecentThreadsAsync(1, ct).ConfigureAwait(false);
-            thread = recent.FirstOrDefault();
+            var lookbackCutoff = DateTimeOffset.UtcNow.AddHours(-StaleTagLookbackHours);
+            var recent = await _conversations.GetRecentThreadsAsync(StaleTagSearchLimit, ct).ConfigureAwait(false);
+            thread = recent
+                .Where(t => t.LastMessageAt >= lookbackCutoff)
+                .FirstOrDefault(IsValidTagAnchor);
         }
 
-        if (thread is null || thread.Messages.Count < 2)
-            return $"Tagged [{note}] — but no recent conversation pair found to persist.";
+        if (!IsValidTagAnchor(thread))
+            return $"Tagged [{note}] — but no Ani-content thread found within last {StaleTagLookbackHours}h to anchor against.";
 
         // Find the last Ani reply and the preceding Mark message
         string? aniReply    = null;
