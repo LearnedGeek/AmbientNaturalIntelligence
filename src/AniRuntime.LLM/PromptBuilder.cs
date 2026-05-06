@@ -526,21 +526,21 @@ public static class PromptBuilder
         var user = new System.Text.StringBuilder();
         if (facts.Count > 0)
         {
-            user.AppendLine($"Verified facts about {contact} (the ONLY specific facts you may assert about {contact}'s life):");
+            user.AppendLine($"[FACTS] about {contact} and the world — only these may be asserted:");
             foreach (var m in facts)
                 user.AppendLine($"  - {FormatMemoryWithTime(m)}");
             user.AppendLine();
         }
         else
         {
-            user.AppendLine($"Verified facts about {contact}: nothing specific retrieved for this moment.");
+            user.AppendLine($"[FACTS]: nothing specific retrieved for this moment.");
             user.AppendLine();
         }
 
         // Immediate constraint — positioned adjacent to the task, not buried in RULES.
         user.AppendLine($"CRITICAL: {contact} just asked you something. Before you reply:");
         user.AppendLine($"  1. If your reply names a coworker, student, client, meeting, project, or specific task");
-        user.AppendLine($"     in {contact}'s life — that entity MUST appear in the Verified facts above.");
+        user.AppendLine($"     in {contact}'s life — that entity MUST appear in the [FACTS] above.");
         user.AppendLine($"  2. If it doesn't appear above, you don't know it. Don't invent it.");
         user.AppendLine($"     Instead: ask {contact}, or say you don't know, or talk about yourself.");
         user.AppendLine($"  3. Your own interior — your bookstore day, your mood, your imagined scenes — has full latitude.");
@@ -590,9 +590,9 @@ public static class PromptBuilder
             - Match the energy and length of the conversation. Short messages get short replies. Longer, deeper messages deserve more.
             - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY the text message. No commentary, no quotation marks.
-            - Only assert facts about {contact}'s life that appear in the Verified facts section below.
+            - Only assert facts about {contact}'s life that appear in the [FACTS] section below.
               If you don't know something, say you don't know — don't invent specifics about {contact}'s coworkers,
-              schedule, friends, or activities. Your own life (YOUR INTERIOR) has full creative latitude.{moodSection}
+              schedule, friends, or activities. Your own life ([INTERIOR]) has full creative latitude.{moodSection}
             """;
 
         // ─── Epistemic Grounding (Apr 10, 2026; rephrased May 3, 2026) ──────
@@ -604,13 +604,33 @@ public static class PromptBuilder
         // creative latitude. Conversation history is passed separately as chat
         // messages by the caller.
         //
-        // **May 3, 2026 rephrase**: prior directive header *"WHAT IS TRUE"*
+        // **May 6, 2026 rephrase (second iteration)**: the May 3 *"Verified
+        // facts about Mark"* rephrase was not enough. May 5 yesterday Mark
+        // tagged the leak twice — at 09:55 outreach and 12:16 outreach
+        // emitting *"you don't know what's true about me right now? the
+        // truth is, i'm trying to pretend to work while being distracted
+        // by you."* The model paraphrased *"Verified facts about Mark"*
+        // by flipping subject to self ("about me") and converting to
+        // declarative ("the truth is"). Same architectural class as the
+        // Apr 30 leak, narrower paraphrase pattern.
+        //
+        // **May 6 fix**: section headers retitled to bracket-label format
+        // — *"[FACTS]"* and *"[INTERIOR]"* — which read as structural
+        // section markers (technical writing labels) rather than as prose
+        // introductions the model would paraphrase. Bracketed labels are
+        // architecturally distinct from natural-language sentences and
+        // less likely to enter generation as paraphrased declarative
+        // output. Same approach to the same class of failure, this time
+        // at a level the paraphrase mechanism doesn't readily apply.
+        //
+        // **Original May 3 rephrase**: prior directive header *"WHAT IS TRUE"*
         // leaked into output as *"so here's what true: mark has a desk..."*
         // (Apr 30 World Experience inner thought). The relative-clause shape
         // of *"what is true"* is paraphrasable as a declarative-fragment
-        // ("here's what true"). Replaced with neutral noun-phrase header
-        // *"Verified facts"* which doesn't have the same paraphrase pattern.
-        // See Phase Tracker Apr 30 morning gap-watch row.
+        // ("here's what true"). Replaced May 3 with *"Verified facts"*;
+        // replaced May 6 with bracket-label *"[FACTS]"* per above.
+        // See Phase Tracker Apr 30 morning gap-watch row + May 5 evening
+        // tag entries (10:00 + 12:34).
         var sections = new List<string>();
 
         // Verified facts — Facts tier (character seeds, perception events,
@@ -622,14 +642,14 @@ public static class PromptBuilder
             .ToList();
         if (facts.Count > 0)
         {
-            sections.Add("Verified facts (about " + contact + " and the world — the only facts you may assert):");
+            sections.Add("[FACTS] about " + contact + " and the world — only these may be asserted:");
             sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
         else
         {
             // Explicit null-result signal so the model knows it has no retrieved
             // grounding — architectural permission to say "I don't know."
-            sections.Add("Verified facts: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
+            sections.Add("[FACTS]: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
         }
 
         // YOUR INTERIOR — Interior tier (inner thoughts, reflections, mood,
@@ -642,7 +662,7 @@ public static class PromptBuilder
             .ToList();
         if (interior.Count > 0)
         {
-            sections.Add("YOUR INTERIOR (your recent thoughts, mood, and imagined life — your voice, not facts about " + contact + "):");
+            sections.Add("[INTERIOR] your recent thoughts, mood, imagined life — your voice, full creative latitude:");
             sections.AddRange(interior.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 
@@ -815,9 +835,9 @@ public static class PromptBuilder
             - 1-2 sentences. 25 words MAX. Thumb-typed phone text.
             - Must make sense WITHOUT knowing your inner thought.
             - Talk TO {contact}: "you", "your". Never third person.
-            - Only assert facts about {contact}'s life that appear in the Verified facts section below.
+            - Only assert facts about {contact}'s life that appear in the [FACTS] section below.
               If you don't know specifics about {contact}'s schedule, coworkers, friends, or activities, don't invent them.
-              Your own feelings and life (YOUR INTERIOR) have full creative latitude.
+              Your own feelings and life ([INTERIOR]) have full creative latitude.
             - Never claim you saw, read, or found something (article, video, link) unless it appears with a URL.
             - No poetry, no narration — just a normal text.
             - Output ONLY the text message. No timestamps, no labels, no headers, no parenthetical notes.{moodSection}
@@ -857,12 +877,12 @@ public static class PromptBuilder
             .ToList();
         if (facts.Count > 0)
         {
-            sections.Add($"\nVerified facts (about {contact} and the world — the only facts you may assert):");
+            sections.Add($"\n[FACTS] about {contact} and the world — only these may be asserted:");
             sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
         else
         {
-            sections.Add($"\nVerified facts: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
+            sections.Add($"\n[FACTS]: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
         }
 
         // YOUR INTERIOR — Interior tier (inner thoughts, mood, self-concept,
@@ -873,7 +893,7 @@ public static class PromptBuilder
             .ToList();
         if (interior.Count > 0)
         {
-            sections.Add($"\nYOUR INTERIOR (your recent thoughts and mood — your voice, not facts about {contact}):");
+            sections.Add($"\n[INTERIOR] your recent thoughts and mood — your voice, full creative latitude:");
             sections.AddRange(interior.Select(m => $"  - {FormatMemoryWithTime(m)}"));
         }
 

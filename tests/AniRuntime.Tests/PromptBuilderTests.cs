@@ -991,7 +991,7 @@ public class PromptBuilderTests
     // Pin that no live prompt text uses the old *"WHAT IS TRUE"* directive
     // header. The Apr 30 leak was Ani paraphrasing the directive into output
     // (*"so here's what true: mark has a desk..."*). Replacing with neutral
-    // *"Verified facts"* removes the paraphrase pattern. These tests fail
+    // *"[FACTS]"* removes the paraphrase pattern. These tests fail
     // closed if anyone reverts the rename.
 
     [Fact]
@@ -1004,7 +1004,7 @@ public class PromptBuilderTests
 
         system.Should().NotContain("WHAT IS TRUE");
         user.Should().NotContain("WHAT IS TRUE");
-        user.Should().Contain("Verified facts about Mark");
+        user.Should().Contain("[FACTS]");
     }
 
     [Fact]
@@ -1017,7 +1017,7 @@ public class PromptBuilderTests
 
         system.Should().NotContain("WHAT IS TRUE");
         user.Should().NotContain("WHAT IS TRUE");
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
     }
 
     [Fact]
@@ -1029,7 +1029,7 @@ public class PromptBuilderTests
 
         system.Should().NotContain("WHAT IS TRUE");
         user.Should().NotContain("WHAT IS TRUE");
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
     }
 
     // ── May 3, 2026: AnchorReasonValues canonical taxonomy ──────────────────

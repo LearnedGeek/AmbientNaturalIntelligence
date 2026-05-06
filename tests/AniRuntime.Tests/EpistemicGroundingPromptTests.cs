@@ -7,7 +7,7 @@ namespace AniRuntime.Tests;
 /// <summary>
 /// Tests for the Epistemic Grounding prompt structure (Apr 10, 2026).
 /// Verifies that tier-partitioned memory pools render into the correct prompt
-/// sections (Verified facts / YOUR INTERIOR) and that the model receives explicit
+/// sections ([FACTS] / [INTERIOR]) and that the model receives explicit
 /// architectural permission to express uncertainty when no grounding is retrieved.
 ///
 /// See docs/spec/design/ANI-Epistemic-Grounding-Architecture.md for the design.
@@ -63,7 +63,7 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
 
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
         user.Should().Contain("Mark teaches at WCTC");
         user.Should().Contain("Mark's gym partner is Sarah");
     }
@@ -78,7 +78,7 @@ public class EpistemicGroundingPromptTests
 
         // Post-Apr-10 hardening: "nothing specific retrieved" replaces the old wording.
         // The test verifies the null-result signal is present regardless of exact phrasing.
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
         user.Should().Contain("nothing specific retrieved");
     }
 
@@ -127,7 +127,7 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
         user.Should().Contain("Mark is a software consultant");
     }
 
@@ -142,7 +142,7 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().Contain("YOUR INTERIOR");
+        user.Should().Contain("[INTERIOR]");
         user.Should().Contain("I noticed I've been softer today");
     }
 
@@ -167,7 +167,7 @@ public class EpistemicGroundingPromptTests
         var (system, _) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
         system.Should().Contain("Only assert facts about Mark's life");
-        system.Should().Contain("YOUR INTERIOR");
+        system.Should().Contain("[INTERIOR]");
         system.Should().Contain("full creative latitude");
     }
 
@@ -184,7 +184,7 @@ public class EpistemicGroundingPromptTests
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, "thinking of him teaching tonight", "warm, wanted to check in");
 
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
         user.Should().Contain("Mark teaches evening classes at WCTC");
     }
 
@@ -196,7 +196,7 @@ public class EpistemicGroundingPromptTests
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, "thought of him", "warm");
 
-        user.Should().Contain("Verified facts");
+        user.Should().Contain("[FACTS]");
         user.Should().Contain("no grounding memories retrieved");
     }
 
@@ -211,7 +211,7 @@ public class EpistemicGroundingPromptTests
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, "thinking of him", "gentle");
 
-        user.Should().Contain("YOUR INTERIOR");
+        user.Should().Contain("[INTERIOR]");
         user.Should().Contain("the bookstore felt quiet today");
     }
 
@@ -227,8 +227,8 @@ public class EpistemicGroundingPromptTests
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        var factsPosition = user.IndexOf("Verified facts");
-        var interiorPosition = user.IndexOf("YOUR INTERIOR");
+        var factsPosition = user.IndexOf("[FACTS]");
+        var interiorPosition = user.IndexOf("[INTERIOR]");
 
         factsPosition.Should().BeGreaterThan(-1);
         interiorPosition.Should().BeGreaterThan(-1);
