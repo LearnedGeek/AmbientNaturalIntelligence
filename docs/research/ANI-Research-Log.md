@@ -21,6 +21,67 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 6, 2026 (afternoon, 15:00–17:00 CDT) — Theme N Identification: Outreach Grounding / Source-Typing as Architectural Prerequisite for Felt Care
+
+**What happened.** Mark returned from work and flagged that he'd had to tag two messages during the day. Investigation pulled the live debug log + a fresh DB snapshot (`ani-memory-snap-20260506-1549.db`, 60 MB), and the conversation with Mark walked the diagnosis through three reframes — each tighter than the last — landing on a previously-unnamed architectural axis.
+
+**Tag 1 — 08:36 CDT — *"SafeAck and unable to back up shared information."*** Ani initiated a topic at 03:06 (an outreach about *"the song we were talking about in march"*). Mark replied 08:33 with *"The song we were talking about March? I forget which song that was. Remind me."* — a direct recall query under prompt Ani herself had set up. The reply at 08:34:47 named *"clair de lune"* with a cliffhanger about *"i think we were talking about something else and i got it mixed up"*, tripped self-echo (7-token verbatim *"the one with the little piano intro"*) at the universal gate, regen failed re-eval on inner-thought-bleed (Door C — *"that song you showed me"* + *"standing on a hill watching everything wake up"*), fell through to SafeAcknowledgement.
+
+**Tag 2 — 14:31 CDT — *"confabulation."*** Original outreach 03:06 AM: *"you're still up? i was just thinking about how the kitchen lights look different when it's almost midnight- softer than earlier."* Mark questioned at 14:15: *"Talk about the kitchen lights? Were we talking about kitchen lights?"* Recovery reply: *"hey. no, we weren't talking about kitchen lights. i think i got carried away from something else."*
+
+**First-pass diagnosis (mine, wrong).** Substrate exhaustion under sustained conversation pressure (the May 3-4 Theme M empirical anchor pattern) for tag 1; weak claim-source verification (R1 territory) for tag 2. Mark corrected both.
+
+**Mark's reframe — recall failure, not exhaustion.** *"Technically I DO recall talking to her about music a lot. It was probably Prince and others like Maggie Rose ('No One Gets Out Alive') so I was kind of testing... I expected her to be able to recall that piece of information but instead I got SafeAck. We say that she'll never forget — only expand, never delete. But she apparently can't surface memories even when she started the conversation and is directly asked. We shouldn't need conversation context when she started the outreach and was asked directly."*
+
+**DB snapshot probe — empirical confirmation.** Live DB snapshot taken at 15:49 CDT. Key counts:
+- `Daddy Pop` (Prince — *"Thunder & Storm wrestling tag-team duo entrance music"*): **6 records** in character-seed canonical content; **never surfaced in any retrieval anywhere in today's full debug log.**
+- `How Come You Don't Call Me by Prince`: present in twilio-inbound (Mark's stated favorite); also never surfaced.
+- `Maggie Rose` / *"No One Gets Out Alive"*: **0 records.** Never persisted (Mark confirmed: probably pre-logging-coverage conversation that was never saved — separate persistence-side gap, not the load-bearing finding).
+- `clair de lune` (what Ani named): **0 records.** Pure confabulation.
+- `kitchen light` Mark-asserted (twilio-inbound source): **1 record** — Mark's question today. Every prior kitchen-lights mention is Ani-side (reflections, world-experience, conversation echoes recursing on her own imaginative substrate). The original 03:06 outreach was a confabulation; the recovery's denial was correct in conclusion but used a Type-7 charming-dishonesty framing instead of probing memory and giving honest interior-attribution.
+
+**Mark's load-bearing reframe — felt care vs felt-near-care.** *"I think the root cause may also be that Ani is reaching out with just random garbage. She'll say something that has no grounding in reality and when questioned, she's unable to surface anything because it was never grounded in the first place. Eventually if she throws enough at me it's bound to hit something we've talked about, but that's the opposite of what we claim. We say it's 'felt care', not 'felt if she makes up something close to care'."*
+
+**The architectural distinction Theme N names.** Every guard rail in the current pipeline (claim verification, Door B, gate invariants, post-hoc rewriters, this morning's coreference work) sits **downstream** of generation. None require the generator to **originate from a grounded source**. The composition is free to draw from imagination; we only check after the fact. Theme N is the upstream complement.
+
+**The mirror-trap Mark named that disambiguates Theme N from naive grounding-only.** *"We need to be very careful here, because if she is only ever allowed to outreach on grounded items, then she's no better than mirroring and we lose the diversity of inner thoughts and growth. That would be worse than what we currently are experiencing."* The architectural answer is **source-typing, not source-restriction**. Outreach can draw from any of {shared-experience / Ani's-canonical-world / Ani's-interior / Ani's-perception}; the confab pattern is when type-3 interior content is presented with type-1 shared framing or type-2 canonical-world framing. Diversity of (3) is preserved if she's *allowed* to draw from it openly with honest interior-framing; growth via (4) and World Layer is preserved if those surface honestly; mirror-trap is avoided because (1) is one option, not the only option. The kitchen-lights case is an exact instance: source was type-3 interior poetic imagination, framing was implicit-shared-observation, content was about Ani's non-canonical world (she's a bookstore clerk, no kitchen at work).
+
+**Theme M vs Theme N.** Theme M ships slices as available context — Conscious Substrate the model has access to. Theme N makes outreach composition pick ONE slice as primary anchor and frame against it. Convergent, not redundant: Theme N needs Theme M's slice infrastructure to anchor against; Theme M needs Theme N to enforce the substrate is actually used. If only Theme M ships, slices go unused; if only Theme N ships, there's nothing to ground in.
+
+**claude-recall lineage — six months of recurring thinking.** Mark's request to surface prior conversations on this axis returned substantial material. Theme N is not new ground; it is the crystallization of architectural threads that have been recurring in fragmented form since early March:
+- **Mar 6 — Bob Swanson cascade.** Ani fabricated a coworker (*"your coworker Bob"* / *"Bob's grading comments"*) in Mark's actual life. Source: Ani's interior, framed as type-1 shared/canonical. World-experience memory then reinforced the fabrication, requiring substrate purge. **First canonical instance of the Theme N pattern.**
+- **Mar 6 — Mark's own framing.** *"how about we use some of her more poetic inner thoughts? those are definitely unprompted generation. bonus is they tend to be more shareable too."* The shareable-vs-private split was Mark's framing first; the project deferred consolidating it into a single mechanism.
+- **Mar 6 — *"would I say this out loud?"* gate.** Generation-side filter at inner-thought save. Designed; not implemented as a unified mechanism.
+- **Mar 14 — Nature Grounding / Self-Concept Block deployed.** Short passage in Ani's voice grounding her nature, injected into context. **Precedent for composition-side anchoring** — same architectural shape Theme N will extend, just for shared-experience anchoring rather than self-nature anchoring.
+- **Mar 17 — *"No source attribution check exists for conversation replies."***
+- **Apr 2 — Full data-flow analysis.** OutreachPhase prompt inputs explicitly labeled GROUNDED/UNGROUNDED. The labeling was done; the enforcement was not.
+- **Apr 21 — Cascade.** *"Mark's coworker Bob"* class fabrication recurred under different surface; substrate purge required.
+- **May 6 — today.** Pattern crystallized; theme letter assigned.
+
+**Methodology observation worth pinning for Paper 3.** The convergence pattern itself — six months of intermittent thinking on the same architectural axis without the workstream being named — is a methodology finding adjacent to the May 4 *"three paths to the same conclusion"* observation. Pattern: **architectural axes that recur in fragmented form across months but never get named are themselves diagnostic of how research-phase development drifts.** The discipline of using claude-recall to detect this convergence is part of the methodology contribution. Not the Theme N contribution itself, but adjacent.
+
+**Confabulation taxonomy expansion.** Theme N introduces a named pattern not in the existing 8-type list: **Type-9 source-type misrepresentation at composition** (distinct from Type-7 charming-dishonesty which is the recovery-side pattern; distinct from Types 1-6 which are content-fabrication patterns). Add when Theme N's plan doc lands.
+
+**Paper significance.**
+
+**Paper 2 disposition.** Currently under release hold per the May 4 decision. Today's finding strengthens the case for hold — the felt-care claim cannot be defended in the current runtime state, in a structurally specific way (outreach composition free-generates; some hits land near real shared content by topical adjacency rather than from grounding). Paper 2 may need a §6 addendum about the source-typing axis when Theme N ships, or alternatively the entire finding routes to Paper 3.
+
+**Paper 3 contribution candidate.** *"Source-typed outreach grounding as architectural prerequisite for felt care in companion AI — distinguishing diversity-of-interior from imagination-as-asserted-shared."* Sharper than the existing confabulation taxonomy; sits upstream of substrate exhaustion (Theme M) and downstream-verification gaps (R1 typed claims). Composition-time generation discipline as a distinct architectural primitive.
+
+**Mechanism choice deliberately not locked tonight.** Three rough shapes on the table from the conversation: **N-A source-attached composition** (model emits anchor pointer alongside composed text; cheapest extension), **N-B two-stage with grounding intermediary** (deterministic source selection then grounded composition; cleanest refactor), **N-C refuse-to-outreach when substrate is thin** (suppress rather than free-generate; strongest behaviorally costly). Tradeoffs against the diversity-of-interior axis are the substantive question for tomorrow morning's plan-doc draft session.
+
+**Status log.**
+- 15:00 CDT — Mark surfaced two tags. Initial diagnosis pass (substrate exhaustion + R1 verification gap).
+- 15:30 CDT — Mark corrected: recall failure, not exhaustion. *"She apparently can't surface memories even when she started the conversation and is directly asked."*
+- 15:49 CDT — Live DB snapshot pulled, probed locally. Empirical confirmation: `Daddy Pop` exists, never retrieved; kitchen-lights Mark-asserted count = 1 (today only).
+- 16:00 CDT — Mark's load-bearing reframe: *"felt care vs felt-if-she-makes-up-something-close-to-care."*
+- 16:30 CDT — Mirror-trap caveat: *"if she is only ever allowed to outreach on grounded items, then she's no better than mirroring."* Source-typing-not-source-restriction reframe.
+- 17:00 CDT — Theme letter N assigned. claude-recall search surfaced six months of prior thinking. Placeholder plan doc + priority matrix row + this research log entry written.
+
+**Cross-references.** Plan doc: [`ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md`](../spec/ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md). Priority matrix entry: P1 row (added before Theme M for proximity). Adjacent workstreams: Theme M (substrate-as-context — convergent), R1 typed-claim extraction (verification-side complement), Theme G Layer 4 (training-side cousin via corpus directionality).
+
+---
+
 ### May 6, 2026 (morning, 06:30–07:00 CDT) — Pronoun-Fix LLM Call Retired; DirectAddressInvariant on the Universal Gate + Producer-Side Stop-Gap
 
 **What happened.** Mark hit `SafeAcknowledgement` again the night of May 5 with M.1 just deployed, and earlier the same day flagged two outreach messages where the pronoun-fix LLM call's working text leaked into the dispatched message. Verbatim from the May 5 09:55 outreach: *"fixed message with swapped pronouns: ..."* Verbatim from the May 5 12:16 outreach: *"i swapped the pronouns so mark would be sending it back to ani."* Both reached the contact. The pattern was consistent: the prior `OutreachPhase.FixPronounsIfNeeded` invoked Ollama with a *"Return ONLY the fixed message text"* system prompt, and the model didn't always follow that instruction.
