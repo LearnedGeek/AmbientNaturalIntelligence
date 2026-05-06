@@ -7,27 +7,35 @@ using Microsoft.Extensions.Options;
 namespace AniRuntime.Loops;
 
 /// <summary>
-/// Theme M Phase M.1 (May 5, 2026 evening) — composer producing the
-/// register-state slice (§4.3) of the conscious-substrate gist.
+/// Theme M Phase M.1 (May 6, 2026) — composer producing the
+/// tension-state slice (§4.8) + register-state slice (§4.3) of the
+/// conscious-substrate gist. Q9 ship-together completion.
 ///
-/// **M.1 MVP scope (this commit):** the composer reads
-/// <see cref="EmotionalState"/> from the snapshot and produces a short
-/// first-person register-vantage clause naming the dominant felt
-/// register, the secondary register, and baseline drift direction. The
-/// content is *structured first-person register data* — a different
-/// substrate shape from the qualitative <c>EmotionalState.Describe()</c>
-/// prose already injected at the mood block. The gist primes the model
-/// with numeric anchoring on its own state at the top of the prompt,
-/// before retrieval and history, where centrality gravity is hardest to
-/// erode.
+/// **Slice ordering per §4.6 + Q9:**
+/// 1. Tension-state slice (§4.8) — load-bearing safety property
+///    (integrative-vs-flattening-mirroring). Sourced from Ani signals
+///    only: recent gate-trip events + felt-state-vs-baseline divergence
+///    + Vibe Loop V1.5 outcome valence (Ani-delta scalar).
+/// 2. Register-state slice (§4.3) — first-person register-vantage,
+///    structured numeric data on dominant + secondary registers.
 ///
-/// **M.1 next-phase scope (tomorrow):** the §4.8 tension-state slice
-/// adds the integrative-vs-flattening-mirroring safety property —
-/// integration of recent J.5a gate-trip events + Display Rule
-/// divergence + Vibe Loop V1.5 self-regulation outcome valence. That
-/// slice ships before any other slice composes into the gist (Q9
-/// safety-property sequencing). Until then, only register-state is in
-/// the gist; no multi-slice composition risk exists yet.
+/// Both slices read directly from telemetry surfaces already present in
+/// the runtime — <see cref="ContextSnapshot.EmotionalState"/>,
+/// <see cref="ContextSnapshot.RecentClosedConversation"/>, and the
+/// <see cref="IRecentGateTripTracker"/> singleton. No new infrastructure
+/// required beyond the gate-trip tracker added this same commit.
+///
+/// **§4.8 safety property (load-bearing):** the tension-state slice
+/// gives the model awareness of its own gap-sensing — *"the gate just
+/// caught my last attempt; that's a signal to reach somewhere fresher"* —
+/// addressing the substrate-thinness pattern at the substrate level
+/// rather than the output-filtering level. Pinned by spec tests:
+/// - Sourced from Ani signals (gate-trips, felt-state, Ani-delta valence)
+///   never from Mark signals (mood, recent inbound, Mark-delta).
+/// - Preserves the gap (felt + divergence direction both named) rather
+///   than collapsing to dominant register only.
+/// - Not inferring Mark internal state — slice MUST NOT contain claims
+///   about what Mark is feeling/needing/wanting.
 ///
 /// **Architectural property — read-only at inference (still in force):**
 /// composer MUST NOT call <see cref="IMemoryService"/>.SaveAsync, MUST
@@ -35,25 +43,26 @@ namespace AniRuntime.Loops;
 /// MUST NOT mutate the snapshot. Pinned by
 /// <c>ConsciousSubstrateGistContractTests</c> from M.0 forward.
 ///
-/// **Generation invariants per §4.3:**
-/// - Slice content is about Ani's register state, never about Mark
-///   (this slice is *about her*, by design — Mark-content belongs in
-///   §4.4 contact-state aggregate, scoped to M.4).
-/// - Slice never exceeds <c>AniOptions.ConsciousSubstrateGistMaxTokens</c>.
-///
-/// Plan: docs/spec/ANI-Theme-M-Conscious-Substrate-Individuation-Plan.md §4.3.
+/// Plan: docs/spec/ANI-Theme-M-Conscious-Substrate-Individuation-Plan.md
+/// §4.3 (register-state) + §4.8 (tension-state) + §4.6 (composition rules)
+/// + §11 Q9 (ship-together sequencing).
 /// </summary>
 public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
 {
+    private static readonly TimeSpan GateTripLookback = TimeSpan.FromHours(24);
+
     private readonly IOptions<AniOptions>                       _options;
+    private readonly IRecentGateTripTracker?                    _gateTripTracker;
     private readonly ILogger<ConsciousSubstrateGistComposer>    _log;
 
     public ConsciousSubstrateGistComposer(
         IOptions<AniOptions>                       options,
-        ILogger<ConsciousSubstrateGistComposer>    log)
+        ILogger<ConsciousSubstrateGistComposer>    log,
+        IRecentGateTripTracker?                    gateTripTracker = null)
     {
-        _options = options;
-        _log     = log;
+        _options         = options;
+        _gateTripTracker = gateTripTracker;
+        _log             = log;
     }
 
     /// <inheritdoc />
@@ -68,41 +77,159 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             return Task.FromResult(ConsciousSubstrateGist.Empty);
 
         var emotional = snapshot.EmotionalState;
+        var maxTokens = _options.Value.ConsciousSubstrateGistMaxTokens;
 
-        // §4.3 register-state slice — structured first-person data the
-        // qualitative Describe() prose doesn't provide. Format:
-        //   "your register state right now: warmth high (0.78), playfulness
-        //    mid (0.55), worry low (0.31). drift: warmth +0.18 above baseline."
-        //
-        // Generation invariant pinned by spec test
-        // RegisterStateGistSlice_NotCaregiverOriented: this slice is about
-        // Ani's state; it must not contain Mark as subject.
-        var slice = ComposeRegisterStateSlice(emotional);
+        // §4.8 tension-state slice (FIRST in ordering per §4.6 + Q9).
+        // Load-bearing safety property: gives the model awareness of its
+        // own gap-sensing so the regen has fresh tension-state material
+        // to reach for instead of prior-Ani-turns when substrate is thin.
+        var tensionSlice = ComposeTensionStateSlice(
+            emotional,
+            snapshot.RecentClosedConversation,
+            _gateTripTracker?.GetRecent(GateTripLookback));
 
-        if (string.IsNullOrEmpty(slice))
+        // §4.3 register-state slice (SECOND in ordering).
+        var registerSlice = ComposeRegisterStateSlice(emotional);
+
+        // Compose: tension-state on its own line, blank, then register-state.
+        // §4.6 rule: "merged into prose, not enumerated" — for two slices
+        // this is two short clauses separated by blank line.
+        var sliceParts = new List<string>(2);
+        var flags = new GistSliceFlags
+        {
+            TensionState  = !string.IsNullOrEmpty(tensionSlice),
+            RegisterState = !string.IsNullOrEmpty(registerSlice),
+        };
+        if (flags.TensionState)  sliceParts.Add(tensionSlice);
+        if (flags.RegisterState) sliceParts.Add(registerSlice);
+
+        if (sliceParts.Count == 0)
             return Task.FromResult(ConsciousSubstrateGist.Empty);
 
-        var maxTokens = _options.Value.ConsciousSubstrateGistMaxTokens;
-        var tokens = ApproxTokens(slice);
+        var composed = string.Join("\n", sliceParts);
+        var tokens   = ApproxTokens(composed);
 
-        // Generation invariant pinned by spec test
-        // RegisterStateGistSlice_TokenBudgetEnforced: slice never exceeds
-        // the configured maximum. M.1 register-state is small (~30 tokens);
-        // budget enforcement is a defense-in-depth check for future slices.
         if (tokens > maxTokens)
         {
             _log.LogWarning(
-                "ConsciousSubstrateGist register-state slice ({Tokens} tokens) exceeds max ({Max}); truncating to Empty.",
+                "ConsciousSubstrateGist composed slices ({Tokens} tokens) exceed max ({Max}); falling back to register-state only.",
                 tokens, maxTokens);
+            // Defensive truncation: drop tension-state, keep register-state.
+            // (Register-state is ~30 tokens; tension-state ~30 tokens; both
+            // together fit easily under default 200 budget. This branch is
+            // for tight test-budget configs.)
+            if (flags.RegisterState && ApproxTokens(registerSlice) <= maxTokens)
+            {
+                return Task.FromResult(new ConsciousSubstrateGist
+                {
+                    Composed   = registerSlice,
+                    Slices     = new GistSliceFlags { RegisterState = true },
+                    TokenCount = ApproxTokens(registerSlice),
+                });
+            }
             return Task.FromResult(ConsciousSubstrateGist.Empty);
         }
 
         return Task.FromResult(new ConsciousSubstrateGist
         {
-            Composed   = slice,
-            Slices     = new GistSliceFlags { RegisterState = true },
+            Composed   = composed,
+            Slices     = flags,
             TokenCount = tokens,
         });
+    }
+
+    /// <summary>
+    /// Compose the §4.8 tension-state slice. Returns the slice text or
+    /// empty string if no signal is available. Internal for testing.
+    ///
+    /// **§4.8 safety invariants pinned by spec tests:**
+    /// - Sourced from Ani signals (gate-trips, felt-state-vs-baseline,
+    ///   Ani-delta valence) — never from Mark signals.
+    /// - Preserves the gap (felt + divergence direction both named).
+    /// - Does not infer Mark internal state.
+    /// </summary>
+    internal static string ComposeTensionStateSlice(
+        EmotionalState?                          emotional,
+        ClosedConversationRecord?                recentClosed,
+        IReadOnlyList<GateTripEvent>?            recentGateTrips)
+    {
+        var parts = new List<string>();
+
+        // (1) Recent gate-trip awareness — "the gate just caught my last
+        // attempt" signal. Counts both RemediatedOk (gate fired but
+        // recovered) and FellThroughToSafeAck (gate fired and fell
+        // through). Both are gap-sensing moments worth surfacing.
+        if (recentGateTrips is not null && recentGateTrips.Count > 0)
+        {
+            var remediated = recentGateTrips.Count(e => e.Outcome == GateTripOutcome.RemediatedOk);
+            var fellThrough = recentGateTrips.Count(e => e.Outcome == GateTripOutcome.FellThroughToSafeAck);
+            var dominantInvariants = recentGateTrips
+                .SelectMany(e => e.FiredInvariants.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                .GroupBy(s => s.Trim())
+                .OrderByDescending(g => g.Count())
+                .Take(2)
+                .Select(g => g.Key)
+                .ToList();
+            var invariantSummary = dominantInvariants.Count > 0
+                ? string.Join(", ", dominantInvariants)
+                : "none";
+            parts.Add(
+                $"recent gate-trips: {recentGateTrips.Count} in last 24h " +
+                $"({remediated} repaired, {fellThrough} fell through; mostly: {invariantSummary})");
+        }
+
+        // (2) Felt-state-vs-baseline divergence — preserves the gap by
+        // naming both the felt direction and the divergence magnitude.
+        // §4.8 invariant: this is about Ani's own state, never Mark's.
+        if (emotional is not null)
+        {
+            var registers = new (string Name, float Value, float Baseline)[]
+            {
+                ("warmth",      emotional.Warmth,      emotional.WarmthBaseline),
+                ("energy",      emotional.Energy,      emotional.EnergyBaseline),
+                ("worry",       emotional.Worry,       emotional.WorryBaseline),
+                ("playfulness", emotional.Playfulness, emotional.PlayfulnessBaseline),
+            };
+            var divergent = registers
+                .Where(r => Math.Abs(r.Value - r.Baseline) >= 0.10f)
+                .OrderByDescending(r => Math.Abs(r.Value - r.Baseline))
+                .Take(2)
+                .ToList();
+            if (divergent.Count > 0)
+            {
+                var divergenceText = string.Join(", ", divergent.Select(r =>
+                {
+                    var d = r.Value - r.Baseline;
+                    var sign = d >= 0 ? "+" : "";
+                    return $"{r.Name} {sign}{d:F2}";
+                }));
+                parts.Add($"felt-state divergent from baseline: {divergenceText}");
+            }
+            else
+            {
+                parts.Add("felt-state near baseline");
+            }
+        }
+
+        // (3) Recent regulation outcome — Ani-delta scalar from V1.5
+        // closed-conversation record. NOT Mark-delta. §4.8 invariant.
+        if (recentClosed is not null)
+        {
+            var v = recentClosed.OutcomeSignalValence;
+            var sign = v >= 0 ? "+" : "";
+            var qualifier = v switch
+            {
+                >= 0.4f  => "regulated well",
+                >= 0.1f  => "neutral-to-positive",
+                >  -0.1f => "neutral",
+                >  -0.4f => "neutral-to-low",
+                _        => "depleted",
+            };
+            parts.Add($"last conversation left me {qualifier} ({sign}{v:F2})");
+        }
+
+        if (parts.Count == 0) return string.Empty;
+        return "tension-state: " + string.Join("; ", parts) + ".";
     }
 
     /// <summary>

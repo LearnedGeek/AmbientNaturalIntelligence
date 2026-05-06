@@ -91,6 +91,12 @@ public class ConsciousSubstrateGistContractTests
         // the composer produces a §4.3 register-state slice. Slice content
         // is structured first-person register data: dominant + secondary
         // register names with values, plus baseline drift.
+        //
+        // M.1 evening update: composer now also produces §4.8 tension-state
+        // slice when emotional state has any divergence from baseline. The
+        // test snapshot has warmth/worry above baseline → tension-state
+        // slice also fires. The §4.3 register-state slice is what this test
+        // asserts; tension-state coverage is in TensionStateSliceContractTests.
         var composer = Composer(enabled: true);
 
         var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
@@ -101,7 +107,9 @@ public class ConsciousSubstrateGistContractTests
         gist.Slices.InnerThoughtAggregate.Should().BeFalse();
         gist.Slices.ContactState.Should().BeFalse();
         gist.Slices.WorldSelf.Should().BeFalse();
-        gist.Slices.TensionState.Should().BeFalse();
+        // TensionState slice MAY also fire when emotional state has
+        // divergence from baseline; we don't assert on it here. Coverage:
+        // TensionStateSliceContractTests.
         gist.TokenCount.Should().BeGreaterThan(0);
     }
 

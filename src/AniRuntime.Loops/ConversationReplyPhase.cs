@@ -45,6 +45,10 @@ public class ConversationReplyPhase
     // Optional dependency; M.0 ships a no-op composer that returns Empty.
     // M.1+ provides a real composer that produces slice content.
     private readonly IConsciousSubstrateGist? _consciousGist;
+    // Theme M Phase M.1 (May 6, 2026) — gate-trip telemetry buffer feeding
+    // the §4.8 tension-state slice. Recorded at the three exit points of
+    // EvaluateAndRemediateReplyAsync (Pass / RemediatedOk / FellThroughToSafeAck).
+    private readonly IRecentGateTripTracker? _gateTripTracker;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -77,7 +81,8 @@ public class ConversationReplyPhase
         Em9Detector? em9Detector = null,
         ICognitiveOutputGate? outputGate = null,
         IVibeBiasService? vibeBias = null,
-        IConsciousSubstrateGist? consciousGist = null)
+        IConsciousSubstrateGist? consciousGist = null,
+        IRecentGateTripTracker? gateTripTracker = null)
     {
         _state = state;
         _persist = persist;
@@ -103,6 +108,7 @@ public class ConversationReplyPhase
         _outputGate = outputGate;
         _vibeBias = vibeBias;
         _consciousGist = consciousGist;
+        _gateTripTracker = gateTripTracker;
         _log = log;
     }
 
@@ -1023,6 +1029,11 @@ public class ConversationReplyPhase
         switch (gateResult.Verdict)
         {
             case OutputGateVerdict.Pass:
+                // Pass-path is signal-light; we deliberately do NOT record
+                // every Pass to keep the buffer dense with the events that
+                // actually inform the §4.8 tension-state slice (Remediate
+                // success + fall-through). Most cycles pass cleanly; the
+                // tension-state slice is about gap-sensing moments.
                 return reply;
 
             case OutputGateVerdict.Remediate:
@@ -1084,12 +1095,22 @@ public class ConversationReplyPhase
                     if (regenResult.Verdict == OutputGateVerdict.Pass)
                     {
                         _log.LogInformation("J.5a gate remediation succeeded — regenerated reply passes gate.");
+                        _gateTripTracker?.Record(new GateTripEvent(
+                            Timestamp:        DateTimeOffset.UtcNow,
+                            ProducerKind:     "ConversationReply",
+                            FiredInvariants:  string.Join(",", gateResult.FiredInvariants),
+                            Outcome:          GateTripOutcome.RemediatedOk));
                         return regenerated;
                     }
 
                     _log.LogWarning(
                         "J.5a gate remediation FAILED re-eval [{Fired}] — verdict={Verdict}, hint={Hint}; falling back to safe acknowledgement.",
                         string.Join(",", regenResult.FiredInvariants), regenResult.Verdict, regenResult.RemediationHint);
+                    _gateTripTracker?.Record(new GateTripEvent(
+                        Timestamp:        DateTimeOffset.UtcNow,
+                        ProducerKind:     "ConversationReply",
+                        FiredInvariants:  string.Join(",", regenResult.FiredInvariants),
+                        Outcome:          GateTripOutcome.FellThroughToSafeAck));
                     return SafeAcknowledgement;
                 }
                 catch (Exception ex)
@@ -1102,6 +1123,11 @@ public class ConversationReplyPhase
                 _log.LogWarning(
                     "J.5a gate Fail on reply [{Fired}]: {Hint} — dropping reply, using safe acknowledgement.",
                     string.Join(",", gateResult.FiredInvariants), gateResult.RemediationHint);
+                _gateTripTracker?.Record(new GateTripEvent(
+                    Timestamp:        DateTimeOffset.UtcNow,
+                    ProducerKind:     "ConversationReply",
+                    FiredInvariants:  string.Join(",", gateResult.FiredInvariants),
+                    Outcome:          GateTripOutcome.FellThroughToSafeAck));
                 return SafeAcknowledgement;
 
             default:

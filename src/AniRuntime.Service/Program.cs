@@ -106,13 +106,13 @@ try
     // See docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md.
     builder.Services.AddSingleton<IVibeBiasService, VibeBiasService>();
 
-    // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist composer.
-    // M.0 ships the no-op composer that returns ConsciousSubstrateGist.Empty;
-    // the architectural skeleton + telemetry harness + spec tests are in place
-    // before any slice has content. M.1+ replaces this binding with a real
-    // composer that produces slice content (tension-state §4.8 + register-
-    // state §4.3 first per Mark Q9 May 5 2026).
+    // Theme M Phase M.1 (May 6, 2026) — conscious-substrate gist composer
+    // producing tension-state (§4.8) + register-state (§4.3) slices.
+    // M.0 telemetry harness + spec tests in place; M.1 ships real slice
+    // content. The IRecentGateTripTracker singleton feeds the §4.8 tension-
+    // state slice with recent gate-trip awareness.
     // See docs/spec/ANI-Theme-M-Conscious-Substrate-Individuation-Plan.md.
+    builder.Services.AddSingleton<IRecentGateTripTracker, InMemoryGateTripTracker>();
     builder.Services.AddSingleton<IConsciousSubstrateGist, ConsciousSubstrateGistComposer>();
 
     // Theme J Phase J.4 (Apr 30, 2026) — CognitiveOutputGate + universal

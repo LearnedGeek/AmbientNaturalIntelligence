@@ -306,7 +306,7 @@ public class AdminCommandHandler : IAdminCommandHandler
                 .FirstOrDefault(IsValidTagAnchor);
         }
 
-        if (!IsValidTagAnchor(thread))
+        if (thread is null || !IsValidTagAnchor(thread))
             return $"Tagged [{note}] — but no Ani-content thread found within last {StaleTagLookbackHours}h to anchor against.";
 
         // Find the last Ani reply and the preceding Mark message
