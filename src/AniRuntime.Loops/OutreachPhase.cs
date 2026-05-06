@@ -278,9 +278,20 @@ public class OutreachPhase
             return;
         }
 
-        // Step 3: Light pronoun fix — only if third-person leaked through
-        var rewritten = await FixPronounsIfNeeded(message, snapshot.CharacterState, ct)
-            .ConfigureAwait(false);
+        // Step 3 (May 6, 2026 — RETIRED): the prior LLM-based pronoun-fix
+        // call (`FixPronounsIfNeeded`) introduced a working-text leak surface
+        // — May 5 outreaches at 09:55 + 12:16 emitted both the corrected
+        // message AND the model's self-explanation ("fixed message with
+        // swapped pronouns:" / "i swapped the pronouns so mark would..."),
+        // both Mark-tagged. The architectural fix is to detect third-person
+        // reference to the addressee at the universal gate via
+        // `DirectAddressInvariant`, which triggers the existing remediation
+        // regen path with a clear hint. No LLM call in the post-hoc fix path
+        // → no working-text leak surface. See
+        // `src/AniRuntime.Loops/Invariants/DirectAddressInvariant.cs` and
+        // `docs/research/model-coreference-ideas.md` for the broader coref
+        // architecture this is a step toward.
+        var rewritten = message;
 
         // Step 3b: Feature 14 v2 — Outbound claim verification (Apr 22, 2026).
         // Extracts claims about the contact from the composed message and corroborates
@@ -626,45 +637,18 @@ public class OutreachPhase
         return false;
     }
 
-    private async Task<string> FixPronounsIfNeeded(
-        string message, CharacterStateDoc character, CancellationToken ct)
-    {
-        var contactName = character.PrimaryContactName ?? "";
-        if (!ContainsThirdPersonReference(message, contactName))
-        {
-            _log.LogDebug("Outreach message already in second person — skipping rewrite");
-            return message;
-        }
-
-        var nameInstruction = string.IsNullOrWhiteSpace(contactName)
-            ? ""
-            : $""" Also change "{contactName}" to "you"/"your" when used as the subject (e.g., "{contactName} can" → "you can").""";
-
-        var system = $"""
-            Fix ONLY the pronouns in this text message. Change "he"/"him"/"his" to "you"/"your".{nameInstruction}
-            Do NOT change anything else. Do NOT add words, commentary, or rewrite the message.
-            Return ONLY the fixed message text — same words, same length, just pronouns swapped.
-            """;
-
-        var rewritten = await _ollama.ChatAsync(system, Array.Empty<ChatMessage>(), message, ct)
-            .ConfigureAwait(false);
-
-        rewritten = CleanOutreachMessage(rewritten);
-
-        if (string.IsNullOrWhiteSpace(rewritten))
-            return message;
-
-        var lengthRatio = (double)rewritten.Length / message.Length;
-        if (lengthRatio < 0.5 || lengthRatio > 1.5)
-        {
-            _log.LogDebug("Pronoun fix rejected — rewrite too different ({Ratio:F2}x length): {Rewritten}",
-                lengthRatio, rewritten);
-            return message;
-        }
-
-        _log.LogDebug("Pronoun fix: {Original} → {Rewritten}", message, rewritten);
-        return rewritten.Trim();
-    }
+    // FixPronounsIfNeeded REMOVED May 6, 2026 — replaced by
+    // DirectAddressInvariant on the universal CognitiveOutputGate. The
+    // method invoked Ollama with a "Return ONLY the fixed message text"
+    // system prompt; the model didn't always follow that instruction
+    // (May 5 09:55 + 12:16 outreaches both leaked the model's self-
+    // explanation into the dispatched message). Architectural fix: detect
+    // at the gate, regenerate via existing remediation path. See
+    // `src/AniRuntime.Loops/Invariants/DirectAddressInvariant.cs`.
+    //
+    // ContainsThirdPersonReference is preserved as `internal static` so
+    // tests and any future producer-side enrichment paths can use it; the
+    // gate invariant uses the same shape internally.
 
     internal OutreachDecision ParseOutreachDecision(string raw)
     {

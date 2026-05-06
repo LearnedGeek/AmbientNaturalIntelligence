@@ -175,6 +175,15 @@ try
     // time-of-day. Distinct from sub-claim 3 (StateNow) which catches
     // past-tense state queries; this one catches present-tense assertions.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, SubstrateTimeOfDayInvariant>();
+    // Theme M / coreference work (May 6, 2026) — direct-address invariant.
+    // Replaces the prior LLM-based pronoun-fix in OutreachPhase that leaked
+    // its working text into the dispatched message twice on May 5. Detects
+    // third-person reference to the addressee (he/him/his/{ContactName})
+    // in contact-facing output (ConversationReply / Outreach / Voice) and
+    // triggers the existing remediation regen path. First step toward the
+    // broader ML-based coreference resolution scoped in
+    // docs/research/model-coreference-ideas.md.
+    builder.Services.AddSingleton<ICognitiveOutputInvariant, DirectAddressInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
     builder.Services.AddSingleton<DesireEngine>();
