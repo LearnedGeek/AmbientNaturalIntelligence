@@ -42,6 +42,8 @@ Decision needed for every existing source. Counts from snapshot `ani-memory-snap
 
 **Recommendation:** auto-classify with default Interior. Sample shows the bucket is dominated by inner-thought content. Cost of misclassifying a Facts-shaped record as Interior is bounded (it just doesn't surface in "what is true about Mark" queries; it remains queryable via Interior path). Cost of the inverse is exactly the Bob Swanson failure. Default-Interior is the safe direction.
 
+**🔒 LOCKED May 7, 2026 — Mark's call: manual review.** *"let's default interior but review these manually. it's slow yes, but we want to be sure to really move forward with certainty."* Migration sequence: build a sample-and-classify review tool (small batches, ~150-300 records/hour) → run review pass → migration script applies Mark's classifications + defaults remaining to Interior. Auto-classify path rejected; certainty over speed. ~13-26 hours of Mark's review time, scheduled per his cadence.
+
 ## 3. Cross-tier retrieval semantics
 
 **Decision needed:** can a single retrieval query span tiers, or are queries tier-scoped?
@@ -61,6 +63,14 @@ Three options:
 - Con: two query modes to maintain.
 
 **Recommendation: A (strict).** The whole point is architectural guarantee against the amplifier. Knobs aren't guarantees. Refactoring cost at call sites is bounded; pays for itself the first time it prevents a kitchen-lights recurrence. Theme N's outreach source-frame detection becomes the call-site declaration mechanism naturally.
+
+**🔒 LOCKED May 7, 2026 — Mark's clarification + accept.** Mark asked: *"Does A mean she doesn't share what she's thinking on interior, or do we have two classes of outreach? If it's two classes that's great, but she should be clear on interior outreach that it's something she was thinking about."* Answer: **two classes (four, by source-frame).** Tier-scoped strict does NOT prevent Ani from sharing interior content; it forces the *frame* to be honest. Per §6, four source-frames map to specific tiers and specific composition framings:
+- `SHARED` → Facts → *"remember when we…"*
+- `ANI_DOMAIN` → Facts (canonical character-seed) → *"the bookstore is…"*
+- `ANI_INTERIOR` → Interior → *"i was just thinking about…"*
+- `WORLD_PERCEPTION` → Facts (rss/weather) → *"i saw this article…"*
+
+Last night's kitchen-lights outreach under this contract would have been forced into `ANI_INTERIOR` frame: *"i was just thinking about how kitchen lights might feel softer at midnight"* — same novel content, honest framing, queries Interior tier not Facts. The mirror-trap caveat (May 6 16:30 CDT) is what `ANI_INTERIOR` exists to prevent.
 
 ## 4. Schema migration approach
 
@@ -116,14 +126,16 @@ This is the §6.14 layer-2 contract for outreach. With the tier interface locked
 
 ## 8. The decisions you're making in one read
 
-1. **§2 NULL bucket strategy:** auto-classify default-Interior. ✅ recommended / ❓ override?
-2. **§3 cross-tier retrieval:** A — tier-scoped strict. ✅ recommended / ❓ override?
-3. **§4 schema migration:** rename + remap, single script. ✅ recommended / ❓ override?
-4. **§5 slice-reader interface:** each slice declares one tier. ✅ recommended / ❓ override?
-5. **§6 source-frame ↔ tier mapping:** as tabled. ✅ recommended / ❓ override?
-6. **§7 cross-tier links:** preserved as-is. ✅ recommended / ❓ override?
+| # | Decision | Status |
+|---|---|---|
+| 1 | **§2 NULL bucket strategy** | 🔒 LOCKED (May 7) — manual review pass; certainty over speed |
+| 2 | **§3 cross-tier retrieval** | 🔒 LOCKED (May 7) — A (tier-scoped strict); two-class outreach via four source-frames per §6 |
+| 3 | **§4 schema migration** | 🔒 LOCKED (May 7) — rename column + remap; single script |
+| 4 | **§5 slice-reader interface** | 🔒 LOCKED (May 7) — each slice declares one tier |
+| 5 | **§6 source-frame ↔ tier mapping** | 🔒 LOCKED (May 7) — as tabled |
+| 6 | **§7 cross-tier links** | 🔒 LOCKED (May 7) — preserved as-is |
 
-Six checkboxes. If you're aligned on all six, lock the contract; streams start same morning. If any is ❓, name the alternative and we settle that one before parallelizing.
+**🔒 CONTRACT LOCKED May 7, 2026 06:30 CDT.** Streams parallelize from here.
 
 ## 9. What unblocks after lock
 
