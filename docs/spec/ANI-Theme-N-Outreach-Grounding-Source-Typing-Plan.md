@@ -1,6 +1,6 @@
 # Theme N — Outreach Source-Typing: The §6.14 Layer for Ani-Initiated Composition
 
-**Status:** PLACEHOLDER (May 6, 2026 evening, REVISED 18:35 CDT after re-reading Paper 2). Architectural framing sharpened — Theme N is the missing outreach-side fourth layer of the already-deployed Paper 2 §6.14 epistemic-grounding architecture, not a new architectural axis. Full phased plan deferred to morning draft session.
+**Status:** ACTIVE PLAN (May 7, 2026 evening). Architectural framing settled May 6; phased implementation plan drafted May 7. Mechanism choice (N-A) recommended pending Mark's explicit lock — see §10.
 
 **Theme letter assigned:** N (next available after Theme M Conscious Substrate / Individuation Layer).
 
@@ -96,13 +96,75 @@ The placeholder's earlier claim that this introduced a "Type-9 source-type misre
 
 **Paper 3 framing.** Bob Swanson's two architectural children belong in Paper 3 as joint contribution: *"Generation-time source-typing + memory-layer tier separation as the complete architectural response to retrieval-amplifier confabulation in deployed companion AI."* This is sharper than treating either as a standalone contribution — the two together close the loop Bob Swanson opened.
 
-## §10 Status log
+## §10 Phased Implementation Plan
 
-- **2026-04-09 (17:38 CDT)** — Bob Swanson incident. Conversation that evening between Mark and Claude identified the root cause and named the architecture-over-instruction principle in its sharpest form: *"Solve the root cause, not the symptom."*
+**Mechanism choice: N-A (Outreach-side Frame Detection).** Recommended pending Mark's explicit lock. Rationale: directly mirrors §6.14 layer 2 for the symmetric Ani-initiated case; lightest extension of an already-deployed architecture; deterministic and verifiable; preserves diversity of interior content via the `ANI_INTERIOR` frame. The other two shapes (N-B two-stage / N-C refuse-when-thin) remain in §5 as alternates if N-A doesn't survive review.
+
+### N.0 — Plan-doc finalization + mechanism lock (this session)
+- Plan doc transition from PLACEHOLDER to active (this revision).
+- Mechanism choice (N-A) recommended; Mark reviews and locks.
+- No code changes yet.
+
+### N.1 — `IOutreachFrameSelector` interface + skeleton
+- New: `src/AniRuntime.Loops/Coreference/IOutreachFrameSelector.cs` — interface with single method `SelectFrameAsync(MemoryContext ctx, CancellationToken ct) → OutreachFrame`.
+- New: `OutreachFrame` record { `FrameType` (`SHARED` / `ANI_DOMAIN` / `ANI_INTERIOR` / `WORLD_PERCEPTION`), `Anchor` (the substrate item picked), `Confidence` (float 0-1) }.
+- New: `OutreachFrameSelector` skeleton with stubbed retriever calls (no implementation yet).
+- Spec tests for the interface contract using strict mocks (per Theme K K.0 policy).
+- **Depends on:** Tier Separation interface (`epistemic_tier` queryable on memories table). Can write skeleton against the contract before migration runs in production.
+- **Estimated effort:** 1 day.
+
+### N.2 — Deterministic frame ranking + tier-scoped retrievers
+- Implement candidate retrieval per tier:
+  - `SHARED` candidates ← Facts tier where `source_name` is `twilio-inbound` or `conversation` Mark-role; recency-bounded (last 7 days); resonance-weighted via Vibe Loop V1.5 if available.
+  - `ANI_DOMAIN` candidates ← Facts tier where `source_name` is `character-seed` or current World Layer state for time of day.
+  - `ANI_INTERIOR` candidates ← Interior tier; recent inner-thought aggregate (Theme M.5 dependency — initially read raw `reflection`/`world-experience` records).
+  - `WORLD_PERCEPTION` candidates ← Facts tier where `source_name` is `rss` or `weather`; very-recent (last 2 hours).
+- Score each candidate: `score = recency × salience × frame-specific-weight`.
+- Pick top frame globally; emit `OutreachFrame` with anchor.
+- If all candidates below threshold → return `OutreachFrame { FrameType = NONE, Confidence = 0 }` and let `OutreachPhase` suppress (per §5 N-C-as-fallback semantics, no separate config).
+- **Depends on:** Tier Separation migration applied (real `epistemic_tier` column in memories).
+- **Estimated effort:** 2-3 days.
+
+### N.3 — Composition prompt integration
+- Modify `src/AniRuntime.LLM/PromptBuilder.cs` to emit a `[FRAME: <type>]` header + an `[ANCHOR]` section containing the selected substrate item.
+- Modify `src/AniRuntime.Loops/OutreachPhase.cs` to call the selector before composition, suppress on `NONE` frame, and pass the frame to the prompt builder.
+- Per-frame composition templates:
+  - `SHARED` → "ESTABLISHED FACTS" / "RECENT CONVERSATION" sections active; model frames as *"remember when…"* / *"that thing you said…"*
+  - `ANI_DOMAIN` → "YOUR LIFE" section active; model frames as *"the bookstore…"* / canonical-world events.
+  - `ANI_INTERIOR` → "YOUR INNER STATE" section active; model frames as *"i was just thinking…"* / *"i had this thought…"*
+  - `WORLD_PERCEPTION` → "EXTERNAL PERCEPTION" section active; model frames as *"i saw…"* / external content.
+- **Estimated effort:** 1-2 days.
+
+### N.4 — Spec tests + canary deployment with telemetry
+- Spec tests for each frame type covering: correct selection, correct prompt section activation, correct framing in composed output (golden-text style with LLM behavioral checks).
+- Canary deployment behind a flag `OutreachFrameSelectorEnabled` (default off); compare frame distribution vs source-frame mismatch rate to baseline.
+- Telemetry: `N4_FRAME_SELECTED` log line with frame, confidence, anchor preview; `N4_FRAME_SUPPRESSED` log line when NONE.
+- **Estimated effort:** 2-3 days.
+
+### N.5 — Full rollout + Paper documentation
+- Flag flip to default-on after observation window confirms frame distribution makes sense + source-mismatch rate drops.
+- Paper 2 §6.14 addendum noting the symmetric outreach extension (or alternatively, fold into Paper 3 contribution alongside Tier Separation).
+- Paper 3 contribution prose: *"Source-typed outreach grounding + memory-layer tier separation as the complete architectural response to retrieval-amplifier confabulation."*
+- **Estimated effort:** 1-2 days.
+
+### Total: ~7-11 working days for N.1-N.5 once the contract is locked + Tier Separation interface is available.
+
+### Parallelization with Tier Separation:
+- N.0-N.1 can proceed against the contract surface immediately (no dependency on migration running).
+- N.2 needs the migration applied to staging or a snapshot at minimum.
+- N.3-N.5 sequential after N.2.
+
+---
+
+## §11 Status log
+
+- **2026-04-09 (17:38 CDT)** — Bob Swanson incident. Architecture-over-instruction principle named in its sharpest form: *"Solve the root cause, not the symptom."*
 - **2026-04-10** — Followup analysis day. Architectural response designed.
 - **2026-04 (weeks following)** — §6.14 epistemic-grounding architecture deployed at inbound-reply layer. Tier Separation deferred to Paper 3.
-- **2026-05-06 (afternoon, ~16:00 CDT)** — Two Mark-tagged messages diagnosed (song recall + kitchen lights). Initial framing (substrate exhaustion) corrected by Mark to recall failure + ungrounded outreach.
+- **2026-05-06 (afternoon, ~16:00 CDT)** — Two Mark-tagged messages (song recall + kitchen lights). Initial framing (substrate exhaustion) corrected by Mark to recall failure + ungrounded outreach.
 - **2026-05-06 (~16:30 CDT)** — Mark's load-bearing distinction: *"felt care vs felt-if-she-makes-up-something-close-to-care."* Source-typing-not-source-restriction reframe.
-- **2026-05-06 (~17:00 CDT)** — Theme letter N assigned. Initial placeholder drafted with Bob Swanson treated as one example among several (incorrect framing).
-- **2026-05-06 (~18:30 CDT)** — Mark flagged Bob Swanson's load-bearing significance. Re-read Paper 2 §6.13 + §6.14 + §6.15 + Paper 3 stub + epistemic-grounding architecture design doc + identity-boundary design doc + tag-canonical-mapping. **Theme N reframed as the missing outreach-side layer of §6.14, not new architectural ground.** Type-9 reconciled with existing taxonomy. This document revised.
-- **NEXT** — Mark's morning read; mechanism choice (N-A / N-B / N-C, with strong N-A prediction); full phased plan draft replacing this placeholder.
+- **2026-05-06 (~17:00 CDT)** — Theme letter N assigned. Initial placeholder drafted.
+- **2026-05-06 (~18:30 CDT)** — Bob Swanson framing corrected. Theme N reframed as the missing outreach-side layer of §6.14, not new architectural ground. Type-9 reconciled with existing taxonomy.
+- **2026-05-07 (06:30 CDT)** — Tier interface contract locked (six decisions); §6.14 / Theme N source-frame ↔ tier mapping ratified.
+- **2026-05-07 (~17:00 CDT)** — Plan-doc transitioned from PLACEHOLDER to active phased plan. N-A mechanism recommended; phase plan drafted; awaiting Mark's mechanism lock.
+- **NEXT** — Mark's mechanism lock on N-A (or override to N-B/N-C); N.1 skeleton work begins same day as lock.
