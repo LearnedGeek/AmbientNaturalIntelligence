@@ -42,7 +42,7 @@ Decision needed for every existing source. Counts from snapshot `ani-memory-snap
 
 **Recommendation:** auto-classify with default Interior. Sample shows the bucket is dominated by inner-thought content. Cost of misclassifying a Facts-shaped record as Interior is bounded (it just doesn't surface in "what is true about Mark" queries; it remains queryable via Interior path). Cost of the inverse is exactly the Bob Swanson failure. Default-Interior is the safe direction.
 
-**🔒 LOCKED May 7, 2026 — Mark's call: manual review.** *"let's default interior but review these manually. it's slow yes, but we want to be sure to really move forward with certainty."* Migration sequence: build a sample-and-classify review tool (small batches, ~150-300 records/hour) → run review pass → migration script applies Mark's classifications + defaults remaining to Interior. Auto-classify path rejected; certainty over speed. ~13-26 hours of Mark's review time, scheduled per his cadence.
+**🔒 LOCKED May 7, 2026 — Mark's call: default-Interior at migration, review after.** *"go ahead and default them to interior so it doesn't block us, but also make them available for review after the fact so I can verify."* Migration sequence: schema migration runs immediately with all NULL records defaulted to Interior → review tool built as post-hoc verification utility → Mark runs review on his own cadence, reclassifies any individual records that should be Facts or Episodic (small expected count given Interior is the safe default). **Migration is NOT blocked on review.** Review is asynchronous quality pass, never gating.
 
 ## 3. Cross-tier retrieval semantics
 
