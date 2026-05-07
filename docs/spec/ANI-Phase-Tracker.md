@@ -17,6 +17,9 @@ The old phase numbers (Core Phase 1-6, LM-Kit Phase 1-6, Reform Phase A-D, World
 
 ## Priority Matrix — All Active Themes and Workstreams (Apr 27, 2026)
 
+> **🚦 MORNING DECISION GATE (May 7, 2026).** The single load-bearing decision blocking parallel work on Tier Separation, Theme N, Theme M.2+, and Theme G Layer 2/3 is the **tier interface contract**. Drafted as a 1-pager with six recommended decisions awaiting Mark's checkboxes: [`ANI-Tier-Interface-Contract-1-Pager.md`](./ANI-Tier-Interface-Contract-1-Pager.md). Lock the contract → streams parallelize same morning. Context: kitchen-lights amplifier on May 6 evening surfaced that tactical purges (4 in 2 weeks: Apr 28 / May 2 / May 4 / May 6) are the wrong steady-state — both root fixes (Tier Separation + Theme N) are designed but unshipped, and the tier contract is what unblocks both in parallel. Mark's directive (May 6 20:25 CDT): *"I'd rather suffer in the short term than create refactoring messes to clean up later"* — no bandaid throttle; tier-first; parallelize after.
+
+
 Every outstanding workstream with an explicit priority. Priorities are assigned by Mark and updated as circumstances change. **P0 = active / in-flight right now. P1 = next-wave / architecturally load-bearing. P2 = medium-term / planned but not imminent. P3 = deferred / gated on prerequisites. P4 = external / background / autonomous.**
 
 ### P0 — Active, in flight right now
