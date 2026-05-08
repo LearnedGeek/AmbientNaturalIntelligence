@@ -130,7 +130,7 @@ This is the §6.14 layer-2 contract for outreach. With the tier interface locked
 |---|---|---|
 | 1 | **§2 NULL bucket strategy** | 🔒 LOCKED (May 7) — manual review pass; certainty over speed |
 | 2 | **§3 cross-tier retrieval** | 🔒 LOCKED (May 7) — A (tier-scoped strict); two-class outreach via four source-frames per §6 |
-| 3 | **§4 schema migration** | 🔒 LOCKED (May 7) — rename column + remap; single script |
+| 3 | **§4 schema migration** | 🔒 LOCKED (May 7) — rename column `tier` → `epistemic_tier`, remap values; single script. Mark's call (May 7 20:45 CDT): explicit rename for research clarity, *"so someone looking at the schema sees the EpistemicTier intent without needing to read the contract."* |
 | 4 | **§5 slice-reader interface** | 🔒 LOCKED (May 7) — each slice declares one tier |
 | 5 | **§6 source-frame ↔ tier mapping** | 🔒 LOCKED (May 7) — as tabled |
 | 6 | **§7 cross-tier links** | 🔒 LOCKED (May 7) — preserved as-is |

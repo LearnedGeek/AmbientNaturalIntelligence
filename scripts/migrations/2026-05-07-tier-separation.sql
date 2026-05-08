@@ -4,6 +4,11 @@
 --            EpistemicTier enum {Facts, Episodic, Interior} per the
 --            Tier Interface Contract 1-Pager (May 7, 2026).
 --
+--            Per Mark's May 7 20:45 CDT decision: column is renamed to
+--            `epistemic_tier` (not kept as `tier`) for research clarity —
+--            future readers of the schema see the EpistemicTier intent
+--            without needing to read the contract.
+--
 -- Source mapping (from contract §2, locked May 7):
 --   twilio-inbound, character-seed, rss, weather              -> Facts
 --   conversation w/ content "Mark said:" / "Mark texted:"     -> Facts
@@ -41,8 +46,9 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 -- Step 1: idempotency guard.
 --
--- We detect "already migrated" as: `tier` is NOT NULL, every row has a value
--- in {Facts,Episodic,Interior}, and no rows still hold 'Standard'. If that
+-- We detect "already migrated" as: `epistemic_tier` exists as a column on
+-- `memories` (i.e. the rename has happened), every row has a value in
+-- {Facts,Episodic,Interior}, and the legacy `tier` column is gone. If that
 -- holds, we insert a value that violates a CHECK constraint, which forces
 -- this transaction to ROLLBACK with a clear message — no destructive ops
 -- have run yet at this point.
@@ -55,11 +61,9 @@ CREATE TEMP TABLE _migration_guard (
 INSERT INTO _migration_guard (proceed)
 SELECT CASE
     WHEN (SELECT COUNT(*) FROM pragma_table_info('memories')
-          WHERE name = 'tier' AND "notnull" = 1) = 1
-     AND (SELECT COUNT(*) FROM memories
-          WHERE tier IS NULL OR tier NOT IN ('Facts','Episodic','Interior')) = 0
+          WHERE name = 'epistemic_tier') = 1
     THEN 0  -- already migrated; CHECK fires, txn aborts cleanly
-    ELSE 1  -- proceed with migration
+    ELSE 1  -- proceed with migration (legacy `tier` column still present)
 END;
 
 -- If we reach here, the guard accepted (proceed=1). Drop it; not needed.
@@ -81,8 +85,8 @@ CREATE TABLE memories_new (
     occurred_at         TEXT    NOT NULL,
     created_at          TEXT    NOT NULL,
     resolved_at         TEXT,
-    tier                TEXT    NOT NULL
-                                CHECK (tier IN ('Facts','Episodic','Interior')),
+    epistemic_tier      TEXT    NOT NULL
+                                CHECK (epistemic_tier IN ('Facts','Episodic','Interior')),
     anchor_reason       TEXT,
     anchored_at         TEXT,
     provenance          TEXT    NOT NULL DEFAULT 'Episodic'
@@ -96,7 +100,7 @@ CREATE TABLE memories_new (
 INSERT INTO memories_new (
     id, type, content, raw_json, importance, relational_valence, embedding,
     is_resolved, source_name, occurred_at, created_at, resolved_at,
-    tier, anchor_reason, anchored_at, provenance
+    epistemic_tier, anchor_reason, anchored_at, provenance
 )
 SELECT
     id, type, content, raw_json, importance, relational_valence, embedding,
@@ -158,9 +162,9 @@ CREATE TEMP TABLE _tier_pop_guard (
 INSERT INTO _tier_pop_guard (ok)
 SELECT CASE
     WHEN (SELECT COUNT(*) FROM memories_new
-          WHERE tier IS NULL
-             OR tier = ''
-             OR tier NOT IN ('Facts','Episodic','Interior')) = 0
+          WHERE epistemic_tier IS NULL
+             OR epistemic_tier = ''
+             OR epistemic_tier NOT IN ('Facts','Episodic','Interior')) = 0
     THEN 1
     ELSE 0
 END;
@@ -173,9 +177,9 @@ DROP TABLE _tier_pop_guard;
 DROP TABLE memories;
 ALTER TABLE memories_new RENAME TO memories;
 
-CREATE INDEX IF NOT EXISTS ix_memories_type     ON memories (type);
-CREATE INDEX IF NOT EXISTS ix_memories_occurred ON memories (occurred_at DESC);
-CREATE INDEX IF NOT EXISTS ix_memories_tier     ON memories (tier);
+CREATE INDEX IF NOT EXISTS ix_memories_type            ON memories (type);
+CREATE INDEX IF NOT EXISTS ix_memories_occurred        ON memories (occurred_at DESC);
+CREATE INDEX IF NOT EXISTS ix_memories_epistemic_tier  ON memories (epistemic_tier);
 
 COMMIT;
 
