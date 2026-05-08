@@ -1,4 +1,19 @@
 -- =============================================================================
+-- ⚠️ SUPERSEDED — DO NOT RUN. Preserved as historical record only.
+--
+-- Discovered May 7 evening after attempted production rollout: tier separation
+-- is *already deployed* at the existing `provenance` column (populated by
+-- ProvenanceBackfill.ClassifyProvenance with Facts/Episodic/Interior values).
+-- This script targeted the wrong column — the `memories.tier` column is a
+-- separate vestigial DecayTier surface (Standard/Anchored, Anchored never
+-- used). Running this script broke service startup because the application's
+-- idempotent schema upgrade logic collided with the recreated table.
+--
+-- See ANI-Tier-Interface-Contract-1-Pager.md §4 (re-locked May 8 06:24 CDT).
+-- Forward path is a focused ProvenanceBackfill.cs reconciliation, not schema
+-- migration.
+-- =============================================================================
+--
 -- Migration: 2026-05-07-tier-separation.sql
 -- Purpose:   Replace legacy `memories.tier` (always 'Standard') with the locked
 --            EpistemicTier enum {Facts, Episodic, Interior} per the

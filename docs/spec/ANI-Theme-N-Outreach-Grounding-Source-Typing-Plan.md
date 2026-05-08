@@ -110,7 +110,7 @@ The placeholder's earlier claim that this introduced a "Type-9 source-type misre
 - New: `OutreachFrame` record { `FrameType` (`SHARED` / `ANI_DOMAIN` / `ANI_INTERIOR` / `WORLD_PERCEPTION`), `Anchor` (the substrate item picked), `Confidence` (float 0-1) }.
 - New: `OutreachFrameSelector` skeleton with stubbed retriever calls (no implementation yet).
 - Spec tests for the interface contract using strict mocks (per Theme K K.0 policy).
-- **Depends on:** Tier Separation interface (`epistemic_tier` queryable on memories table). Can write skeleton against the contract before migration runs in production.
+- **Depends on:** Tier Separation interface (`provenance` queryable on memories table). Can write skeleton against the contract before migration runs in production.
 - **Estimated effort:** 1 day.
 
 ### N.2 — Deterministic frame ranking + tier-scoped retrievers
@@ -122,7 +122,7 @@ The placeholder's earlier claim that this introduced a "Type-9 source-type misre
 - Score each candidate: `score = recency × salience × frame-specific-weight`.
 - Pick top frame globally; emit `OutreachFrame` with anchor.
 - If all candidates below threshold → return `OutreachFrame { FrameType = NONE, Confidence = 0 }` and let `OutreachPhase` suppress (per §5 N-C-as-fallback semantics, no separate config).
-- **Depends on:** Tier Separation migration applied (real `epistemic_tier` column in memories).
+- **Depends on:** Tier Separation migration applied (real `provenance` column in memories).
 - **Estimated effort:** 2-3 days.
 
 ### N.3 — Composition prompt integration
