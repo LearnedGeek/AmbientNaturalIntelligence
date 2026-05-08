@@ -81,10 +81,60 @@ public class ProvenanceBackfillTests
     // ─── Episodic tier ─────────────────────────────────────────────────
 
     [Fact]
-    public void Conversation_RoutesToEpisodic()
+    public void Conversation_2ArgOverload_FallsToEpisodic()
     {
+        // 2-arg overload (no content) preserves prior behavior — conversation
+        // → Episodic without prefix split. Backward compatibility for callers
+        // that haven't migrated to passing content.
         ProvenanceBackfill.ClassifyProvenance("conversation", MemoryType.Episodic)
             .Should().Be(EpistemicTier.Episodic);
+    }
+
+    // ─── Conversation prefix split (Tier Contract §2, locked May 8) ──────
+    //
+    // Mark-side conversation records → Facts (Mark-asserted content).
+    // Ani-side conversation records  → Episodic (Ani-said events).
+    // Load-bearing for the kitchen-lights/Bob-Swanson failure pattern.
+
+    [Theory]
+    [InlineData("Mark said: \"Talk about the kitchen lights?\"")]
+    [InlineData("Mark texted: \"Were we talking about kitchen lights?\"")]
+    public void Conversation_MarkSidePrefix_RoutesToFacts(string content)
+    {
+        ProvenanceBackfill.ClassifyProvenance("conversation", MemoryType.Episodic, content)
+            .Should().Be(EpistemicTier.Facts,
+                "Mark-side conversation content is Mark-asserted; Facts tier");
+    }
+
+    [Theory]
+    [InlineData("I said to Mark: \"hey, just thinking about you\"")]
+    [InlineData("I reached out to Mark: \"good morning love\"")]
+    public void Conversation_AniSidePrefix_RoutesToEpisodic(string content)
+    {
+        ProvenanceBackfill.ClassifyProvenance("conversation", MemoryType.Episodic, content)
+            .Should().Be(EpistemicTier.Episodic,
+                "Ani-side conversation content is Ani-said event; Episodic tier");
+    }
+
+    [Fact]
+    public void Conversation_NullContent_FallsToEpisodic()
+    {
+        // Backward-compatibility path: when content isn't available, conversation
+        // routes to Episodic. Same as 2-arg overload.
+        ProvenanceBackfill.ClassifyProvenance("conversation", MemoryType.Episodic, content: null)
+            .Should().Be(EpistemicTier.Episodic);
+    }
+
+    [Fact]
+    public void Conversation_UnrecognizedPrefix_FallsToEpisodic()
+    {
+        // Mixed-side conversation summary records (e.g. "Conversation (5 messages):
+        // ...") don't match either canonical prefix; safe destination is Episodic.
+        ProvenanceBackfill.ClassifyProvenance(
+            "conversation", MemoryType.Episodic,
+            "Conversation (5 messages): a brief exchange about coffee")
+            .Should().Be(EpistemicTier.Episodic,
+                "unrecognized prefix falls to Episodic — never contaminates Facts");
     }
 
     [Theory]

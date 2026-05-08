@@ -2785,14 +2785,15 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         using (var selectCmd = conn.CreateCommand())
         {
-            selectCmd.CommandText = "SELECT id, source_name, type FROM memories";
+            selectCmd.CommandText = "SELECT id, source_name, type, content FROM memories";
             using var reader = selectCmd.ExecuteReader();
             while (reader.Read())
             {
                 var id = reader.GetString(0);
                 var sourceName = reader.IsDBNull(1) ? null : reader.GetString(1);
                 var type = (MemoryType)reader.GetInt32(2);
-                var tier = ProvenanceBackfill.ClassifyProvenance(sourceName, type);
+                var content = reader.IsDBNull(3) ? null : reader.GetString(3);
+                var tier = ProvenanceBackfill.ClassifyProvenance(sourceName, type, content);
                 idsByTier[tier].Add(id);
             }
         }

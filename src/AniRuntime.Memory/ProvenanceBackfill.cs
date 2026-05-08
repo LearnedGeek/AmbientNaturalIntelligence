@@ -18,20 +18,35 @@ namespace AniRuntime.Memory;
 public static class ProvenanceBackfill
 {
     /// <summary>
-    /// Determines the epistemic tier for a memory record based on its source name and type.
-    /// This is the authoritative backfill heuristic — used both for migrating existing
-    /// memories and as a fallback for any write path that hasn't been explicitly migrated
-    /// to set Provenance at the call site.
+    /// Determines the epistemic tier for a memory record based on its source name, type,
+    /// and (when needed) content. This is the authoritative backfill heuristic — used both
+    /// for migrating existing memories and as a fallback for any write path that hasn't
+    /// been explicitly migrated to set Provenance at the call site.
     /// </summary>
     public static EpistemicTier ClassifyProvenance(MemoryRecord record)
     {
-        return ClassifyProvenance(record.SourceName, record.Type);
+        return ClassifyProvenance(record.SourceName, record.Type, record.Content);
     }
 
     /// <summary>
-    /// Pure-function version for testing — takes source and type directly.
+    /// 2-arg overload — kept for backward compatibility with callers that don't have
+    /// content readily available. Delegates to the 3-arg overload with null content,
+    /// which means the conversation prefix split won't fire.
     /// </summary>
     public static EpistemicTier ClassifyProvenance(string? sourceName, MemoryType type)
+    {
+        return ClassifyProvenance(sourceName, type, content: null);
+    }
+
+    /// <summary>
+    /// Pure-function version for testing — takes source, type, and content directly.
+    /// Content is used only for the conversation-source prefix split (Mark-side
+    /// conversation records → Facts; Ani-side → Episodic). Tier Interface Contract
+    /// §2 (May 7, 2026); load-bearing for the kitchen-lights/Bob-Swanson failure
+    /// pattern where Ani-side mentions of a topic were getting matched as supporting
+    /// evidence for Mark-attributable claims.
+    /// </summary>
+    public static EpistemicTier ClassifyProvenance(string? sourceName, MemoryType type, string? content)
     {
         // Normalize source name for matching. Null/empty source falls through to
         // type-based classification.
@@ -71,12 +86,36 @@ public static class ProvenanceBackfill
         // regardless of source tag. Inner thoughts that lack a source fall here too.
         if (type == MemoryType.InnerThought) return EpistemicTier.Interior;
 
-        // ─── EPISODIC tier ─────────────────────────────────────────────────
-        // Conversation records (both directions) — verbatim what was said.
-        // Conversation source can tag either Mark's message or Ani's reply; both
-        // are Episodic. The Facts tier picks up Mark's assertions via the twilio-inbound
-        // source tag on the same content.
-        if (source == "conversation") return EpistemicTier.Episodic;
+        // ─── Conversation records — split by content prefix ────────────────
+        // Tier Interface Contract §2 (May 7, 2026, locked May 8 06:24 CDT):
+        // Mark-side conversation records → Facts (Mark-asserted content);
+        // Ani-side conversation records → Episodic (Ani-said events).
+        //
+        // Load-bearing for the kitchen-lights/Bob-Swanson failure pattern: when
+        // Ani's outreach made a "shared kitchen lights" claim, the verifier was
+        // matching against Ani-side conversation records that mentioned kitchen
+        // lights and treating them as supporting evidence. With this split,
+        // Ani-side records live in Episodic and don't surface for "what is true
+        // about Mark" Facts-tier queries.
+        //
+        // Content is required for this split. If content is null (legacy 2-arg
+        // overload caller), conversation falls through to Episodic — same
+        // behavior as before this change. The content-aware path is the
+        // architectural improvement.
+        if (source == "conversation")
+        {
+            if (content is not null)
+            {
+                if (content.StartsWith("Mark said:", StringComparison.Ordinal)
+                 || content.StartsWith("Mark texted:", StringComparison.Ordinal))
+                {
+                    return EpistemicTier.Facts;
+                }
+                // Ani-side prefixes ("I said to Mark:", "I reached out to Mark:")
+                // and any other content fall to Episodic below.
+            }
+            return EpistemicTier.Episodic;
+        }
         if (source == "outreach" || source == "outreach-dispatched") return EpistemicTier.Episodic;
 
         // ─── Default ───────────────────────────────────────────────────────
