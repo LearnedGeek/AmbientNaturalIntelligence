@@ -59,7 +59,18 @@ public class TwilioSmsAction : IAniAction
         // replies) so a `///tag` doesn't trigger 180KB+ of ElevenLabs audio
         // synthesis on a meta-confirmation. May 1 fix; Apr 30 07:47:32 ///tag
         // received unwanted voice attachment via this path.
-        if (_enrichment is not null && !decision.IsAdminMeta)
+        //
+        // May 8, 2026: also skip on SafeAcknowledgement fall-through. The
+        // J.5a re-eval gate emits the canonical "mmm, sorry — give me a
+        // second to gather my thoughts." when both the original reply and
+        // the regeneration fail re-eval. Voice-enrichment was attaching
+        // TTS audio of that fall-through text alongside the SMS, producing
+        // Mark-tagged failures on May 7 09:27 + May 8 11:43. Same shape as
+        // the admin-meta skip — the SafeAck text is canonical fall-through
+        // metadata, not a real reply, and shouldn't be voiced.
+        var isSafeAck = decision.Message == GateFallbacks.SafeAcknowledgement;
+
+        if (_enrichment is not null && !decision.IsAdminMeta && !isSafeAck)
         {
             try
             {
@@ -74,6 +85,10 @@ public class TwilioSmsAction : IAniAction
         else if (decision.IsAdminMeta)
         {
             _log.LogDebug("Admin-meta dispatch — skipping media enrichment.");
+        }
+        else if (isSafeAck)
+        {
+            _log.LogDebug("SafeAcknowledgement fall-through — skipping media enrichment.");
         }
 
         var mediaUrls = decision.MediaUrls.Count > 0
