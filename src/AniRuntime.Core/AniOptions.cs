@@ -490,6 +490,29 @@ public class AniOptions
     public bool   ConsciousSubstrateGistEnabled         { get; set; } = false;
     public bool   ConsciousSubstrateGistOutreachEnabled { get; set; } = false;
     public int    ConsciousSubstrateGistMaxTokens       { get; set; } = 200;
+
+    /// <summary>
+    /// Theme N Phase N.3 (May 8, 2026) — wires the
+    /// <see cref="Interfaces.IOutreachFrameSelector"/> into
+    /// <c>OutreachPhase</c> before the composition step. When this flag is
+    /// <c>false</c> (the default and the deployment posture for N.3),
+    /// OutreachPhase behaves exactly as it does pre-N.3: the selector is
+    /// not called, the composition prompt is unchanged, and there is zero
+    /// behavioral delta versus the prior commit. The flag flip is N.4
+    /// scope after the canary-observation window.
+    ///
+    /// When <c>true</c>: the selector runs before composition; on
+    /// <see cref="Models.OutreachFrame.None"/> the outreach is suppressed
+    /// (decay desire 0.30 + 10-minute cooldown — same shape as the
+    /// universal output-gate-fail path); on a real frame, the
+    /// <c>PromptBuilder.BuildOutreachMessagePrompt</c> call receives the
+    /// frame so it can prepend a <c>[FRAME: &lt;type&gt;]</c> header and
+    /// an <c>[ANCHOR]</c> section to the composition user prompt.
+    ///
+    /// See <c>docs/spec/ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md</c>
+    /// §10 N.3 + N.4 for the rollout sequence.
+    /// </summary>
+    public bool OutreachFrameSelectorEnabled { get; set; } = false;
 }
 
 public class OllamaOptions

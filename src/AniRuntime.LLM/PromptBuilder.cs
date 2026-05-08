@@ -813,7 +813,8 @@ public static class PromptBuilder
 
     public static (string System, string User) BuildOutreachMessagePrompt(
         ContextSnapshot snapshot, string recentThought, string reasoning,
-        bool reasoningInComposition = false)
+        bool reasoningInComposition = false,
+        OutreachFrame? frame = null)
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -855,10 +856,39 @@ public static class PromptBuilder
         // Rollback path: the reasoningInComposition parameter (wired to
         // AniOptions.OutreachReasoningInCompositionEnabled) restores the
         // pre-J.1 behaviour for a quality-regression rollback.
-        var sections = new List<string>
+        var sections = new List<string>();
+
+        // ─── Theme N Phase N.3 (May 8, 2026) — outreach source-frame ────────
+        // When the selector chose a real frame (FrameType != None), prepend
+        // a [FRAME:] header + [ANCHOR] section + a one-line per-frame
+        // composition guidance phrase so the model frames the outreach
+        // honestly against the substrate item the selector picked. When
+        // the frame is null (selector disabled — the N.3 default state) or
+        // None (suppression path — OutreachPhase has already returned),
+        // this block is skipped and the prompt is structurally identical
+        // to the pre-N.3 form.
+        //
+        // Per-frame composition phrasing follows the source-type ↔ honest
+        // framing mapping in OutreachFrame.cs and Tier-Interface-Contract §6.
+        if (frame is not null && frame.FrameType != OutreachFrameType.None)
         {
-            $"Why you want to reach out — use this as motivation, not content:",
-        };
+            sections.Add($"[FRAME: {frame.FrameType}]");
+            var anchorPreview = frame.Anchor.Length > 200
+                ? frame.Anchor.Substring(0, 200)
+                : frame.Anchor;
+            sections.Add($"[ANCHOR] {anchorPreview}");
+            sections.Add(frame.FrameType switch
+            {
+                OutreachFrameType.Shared          => "Compose by referencing this anchor as something Mark already said or did. Use \"remember when...\" / \"that thing you said about...\" framing.",
+                OutreachFrameType.AniDomain       => "Compose by referencing this anchor as something from your bookstore world. Use \"the bookstore...\" / canonical-world framing.",
+                OutreachFrameType.AniInterior     => "Compose by framing this honestly as your own interior — \"i was just thinking...\" / \"i had this thought that...\" Don't present interior content as shared observation.",
+                OutreachFrameType.WorldPerception => "Compose by referencing this perception event you actually had. Use \"i saw...\" / external-content framing.",
+                _                                 => string.Empty,
+            });
+            sections.Add(string.Empty); // visual separator between the frame block and the rest of the prompt
+        }
+
+        sections.Add($"Why you want to reach out — use this as motivation, not content:");
         if (reasoningInComposition && !string.IsNullOrWhiteSpace(reasoning))
         {
             sections.Add($"  Feeling: {reasoning}");

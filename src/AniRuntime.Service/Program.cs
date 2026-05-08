@@ -186,6 +186,15 @@ try
     builder.Services.AddSingleton<ICognitiveOutputInvariant, DirectAddressInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
+    // Theme N Phase N.3 (May 8, 2026) — outreach source-frame selector.
+    // Wired into OutreachPhase via constructor injection; gated at runtime
+    // by AniOptions.OutreachFrameSelectorEnabled (default off — registration
+    // is safe because the selector is null-safe and the consumer guards on
+    // the flag before calling it). Flag flip is N.4 scope after canary
+    // observation. See ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md
+    // §10 N.3 for the rollout sequence.
+    builder.Services.AddSingleton<IOutreachFrameSelector, AniRuntime.Loops.Coreference.OutreachFrameSelector>();
+
     builder.Services.AddSingleton<DesireEngine>();
 
     // ── LLM ───────────────────────────────────────────────────────────────────

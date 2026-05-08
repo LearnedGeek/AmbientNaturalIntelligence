@@ -32,6 +32,7 @@ public class OutreachPhase
     private readonly Em9Detector? _em9;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IVibeBiasService? _vibeBias;
+    private readonly IOutreachFrameSelector? _frameSelector;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -58,7 +59,8 @@ public class OutreachPhase
         PersonaSummaryCache? personaCache = null,
         Em9Detector? em9Detector = null,
         ICognitiveOutputGate? outputGate = null,
-        IVibeBiasService? vibeBias = null)
+        IVibeBiasService? vibeBias = null,
+        IOutreachFrameSelector? frameSelector = null)
     {
         _state = state;
         _persist = persist;
@@ -73,6 +75,7 @@ public class OutreachPhase
         _em9 = em9Detector;
         _outputGate = outputGate;
         _vibeBias = vibeBias;
+        _frameSelector = frameSelector;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -227,9 +230,39 @@ public class OutreachPhase
         await VibeBiasObservation.ObserveAsync(
             _vibeBias, snapshot, callSite: "outreach", _log, ct).ConfigureAwait(false);
 
+        // ─── Theme N Phase N.3 (May 8, 2026) — outreach source-frame selection ─
+        //
+        // When OutreachFrameSelectorEnabled is true (off by default for N.3),
+        // run the deterministic frame selector before composition. The
+        // selector returns OutreachFrame.None when substrate is too thin
+        // for any honest frame, and the producer suppresses dispatch in
+        // the same shape as the universal output-gate-fail path (decay
+        // desire 0.30 + 10-minute cooldown). When the selector returns a
+        // real frame, we pass it to PromptBuilder so the composition
+        // prompt gets a [FRAME:] header + [ANCHOR] section + per-frame
+        // composition guidance.
+        //
+        // Flag-OFF default: zero behavioral change vs pre-N.3. The flag
+        // flip is N.4 scope after canary observation.
+        OutreachFrame? selectedFrame = null;
+        if (_aniOptions.OutreachFrameSelectorEnabled && _frameSelector is not null)
+        {
+            selectedFrame = await _frameSelector.SelectFrameAsync(snapshot, ct).ConfigureAwait(false);
+            if (selectedFrame.FrameType == OutreachFrameType.None)
+            {
+                _log.LogInformation(
+                    "OutreachPhase: frame-selector returned None — suppressing outreach (substrate too thin)");
+                await _desire.DecayDesireAsync(0.30f, "frame selector None (substrate too thin)", ct)
+                    .ConfigureAwait(false);
+                await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+                return;
+            }
+        }
+
         // Step 2b: Compose — free-text message generation (no JSON constraint)
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought, decisionReasoning, reasoningInComposition);
+            snapshot, recentThought, decisionReasoning, reasoningInComposition,
+            selectedFrame);
         var message = await _ollama.ChatAsync(
             msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct)
             .ConfigureAwait(false);
