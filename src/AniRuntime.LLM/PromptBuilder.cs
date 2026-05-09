@@ -1268,11 +1268,20 @@ public static class PromptBuilder
     /// conversation_messages).
     ///
     /// Scope — what counts as a claim:
-    ///   mark-action      — Claims the contact DID something (sent X, brought Y, said Z)
-    ///   mark-decision    — Claims the contact DECIDED something
-    ///   shared-event     — Claims an event involving both parties happened
-    ///   shared-decision  — Claims a decision was made jointly
-    ///   shared-presence  — Claims physical or relational co-presence
+    ///   mark-action                    — Claims the contact DID something (sent X, brought Y, said Z)
+    ///   mark-decision                  — Claims the contact DECIDED something
+    ///   shared-event                   — Claims an event involving both parties happened
+    ///   shared-event-with-attribution  — R1 Phase 1 (May 9, 2026): a more specific
+    ///                                    sub-shape of shared-event where the claim
+    ///                                    asserts a specific event with a specific
+    ///                                    actor (X did/told/said Y, we did X with
+    ///                                    canonical character Y). Cosine similarity
+    ///                                    is NOT a valid oracle for this claim type;
+    ///                                    event-shape match is required. See
+    ///                                    ClaimVerificationPhase.IsClaimSupportedAsync
+    ///                                    for the typed-verification flow.
+    ///   shared-decision                — Claims a decision was made jointly
+    ///   shared-presence                — Claims physical or relational co-presence
     ///
     /// Out of scope — what is explicitly NOT a claim for this extractor:
     ///   - Ani's own canonical world (bookstore, Wisconsin, shelving books, waiting for Mark).
@@ -1284,9 +1293,13 @@ public static class PromptBuilder
     ///     a claim about Mark; it's a description of the send.
     ///
     /// Output schema: JSON with a "claims" array. Each claim has `text` (the phrase
-    /// from the message), `type` (one of the five categories), and `key_terms` (the
-    /// specific entities or actions to corroborate against Facts/inbound). If no
-    /// claims about the contact appear, return {"claims": []}.
+    /// from the message), `type` (one of the six categories), `key_terms` (the
+    /// specific entities or actions to corroborate against Facts/inbound), and an
+    /// optional `event_actor` field populated for shared-event-with-attribution
+    /// claims (the named actor performing the asserted action — e.g. "Mia",
+    /// "Mark", "we"). If no claims about the contact appear, return {"claims": []}.
+    /// `event_actor` is an additive nullable field — older parsers ignore it
+    /// without breaking; new typed-verification code reads it when present.
     ///
     /// Notably absent from the prompt: any instruction about what to do with the
     /// claims, any judgment about whether they're true, any ask to regenerate or
@@ -1303,11 +1316,27 @@ public static class PromptBuilder
             be verified by checking what {{contactName}} has actually said or done.
 
             Claim categories:
-              mark-action      — The writer says {{contactName}} did something specific
-              mark-decision    — The writer says {{contactName}} decided something
-              shared-event     — The writer describes an event involving both of them
-              shared-decision  — The writer describes a decision made together
-              shared-presence  — The writer describes being physically or relationally together
+              mark-action                   — The writer says {{contactName}} did something specific
+              mark-decision                 — The writer says {{contactName}} decided something
+              shared-event                  — The writer describes an event involving both of them
+              shared-event-with-attribution — A more specific sub-shape of shared-event:
+                                              the writer asserts a SPECIFIC event with a
+                                              SPECIFIC actor — "X told us Y", "X said Z",
+                                              "we did W with X", or "X picked Y". Use this
+                                              type whenever the claim names an actor
+                                              (a person, including {{contactName}} or
+                                              canonical characters by name) performing a
+                                              specific action or making a specific
+                                              utterance. Do NOT use for general state
+                                              observations ("you seemed tired") or
+                                              temporal claims ("yesterday morning").
+              shared-decision               — The writer describes a decision made together
+              shared-presence               — The writer describes being physically or relationally together
+
+            When in doubt between shared-event and shared-event-with-attribution,
+            prefer shared-event-with-attribution if a specific actor is named
+            performing a specific action (verb + object). The downstream verifier
+            applies stricter checks for this type.
 
             NOT claims (ignore these):
               - The writer's own world or daily life ("shelving books", "at the bookstore")
@@ -1318,15 +1347,21 @@ public static class PromptBuilder
             Output ONLY JSON matching this schema, no commentary:
             {
               "claims": [
-                { "text": "...", "type": "...", "key_terms": ["...", "..."] }
+                { "text": "...", "type": "...", "key_terms": ["...", "..."], "event_actor": "..." }
               ]
             }
 
             The "text" field should be the phrase from the message. The "type" field
-            must be one of the five categories above. The "key_terms" field should
+            must be one of the six categories above. The "key_terms" field should
             list the specific entities or actions that would need to appear in a
             corroborating source (e.g. for "you brought them over" → ["brought",
             "flowers"]; for "we decided on purple" → ["decided", "purple"]).
+
+            The "event_actor" field is REQUIRED for shared-event-with-attribution
+            claims and should name the actor performing the asserted action
+            (e.g. for "Mia told us she picked the tickets" → "Mia"; for
+            "we decided on purple" → "we"). Omit or leave empty for other claim
+            types.
 
             If no claims appear, return { "claims": [] }. Do not fabricate claims to
             fill the array. Do not mark your own uncertainty in the output — the
@@ -1337,6 +1372,52 @@ public static class PromptBuilder
             Message: "{{composedMessage}}"
 
             Extract claims. JSON only.
+            """;
+
+        return (system, user);
+    }
+
+    // ── R1 Phase 1 (May 9, 2026): Typed event-shape verification prompt ────
+
+    /// <summary>
+    /// R1 Phase 1 (May 9, 2026): Strict prompt for verifying whether a
+    /// candidate Mark-asserted record describes the same specific event as
+    /// a <c>shared-event-with-attribution</c> claim.
+    ///
+    /// Motivating empirical case: May 9, 12:54 CDT outreach — *"Mia told us
+    /// she picked out the tickets"*. Verifier's cosine search on the only
+    /// Mark-asserted Mia message (*"...take Mia to school..."*) cleared
+    /// threshold because both contain "Mia" and share register; verifier
+    /// reported "supported"; message dispatched; Mark tagged confab. Cosine
+    /// is necessary but not sufficient for shared-event claims that
+    /// attribute action/speech to an actor — the oracle must be event-shape
+    /// match.
+    ///
+    /// The strict reply contract is JSON-locked: <c>{"same_event": true|false}</c>.
+    /// On parse failure, the caller defaults to <c>false</c> (fail-closed —
+    /// unverified events are treated as unsupported, since the gate's job
+    /// is to suppress confabulation, not to dispatch under uncertainty).
+    /// </summary>
+    public static (string System, string User) BuildEventVerificationPrompt(
+        string claimText, string candidateRecordText, string contactName)
+    {
+        var system = $$"""
+            You verify whether a candidate {{contactName}}-asserted record describes the same
+            specific event as a claim. Reply with JSON: {"same_event": true|false}.
+
+            Topical overlap is NOT same-event. Different time, different actor,
+            different action = different event. Two records that both mention the
+            same person doing different things on different occasions are NOT the
+            same event.
+
+            Reply ONLY the JSON. No commentary, no explanation, no qualifications.
+            """;
+
+        var user = $$"""
+            Claim: "{{claimText}}"
+            Candidate {{contactName}}-asserted record: "{{candidateRecordText}}"
+
+            Does the record describe the same specific event as the claim? JSON only.
             """;
 
         return (system, user);

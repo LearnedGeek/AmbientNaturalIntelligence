@@ -146,12 +146,41 @@ public class ClaimVerificationPhase
     /// Uses the existing semantic search infrastructure (SearchByTierAsync).
     /// A claim is supported if any source produces a result with cosine
     /// similarity at or above ClaimVerificationThreshold.
+    ///
+    /// R1 Phase 1 (May 9, 2026): when the claim type is
+    /// <c>shared-event-with-attribution</c>, cosine similarity is treated as
+    /// necessary-but-not-sufficient. After the cosine pass produces top-k
+    /// candidates above threshold, an additional LLM call per candidate
+    /// asks: *"does record A describe the same event as claim B?"* with a
+    /// JSON-locked yes/no contract. The claim is supported iff at least one
+    /// candidate's event-shape verification returns yes. Fast path: zero
+    /// cosine matches → unsupported, no LLM calls made.
+    ///
+    /// Performance bound: top-3 candidates × shared-event-with-attribution
+    /// claims means ≤3 small LLM calls per such claim (typical claim is
+    /// shorter than the cycle's ~1s composition call). Existing pipeline
+    /// already issues several Ollama calls per cycle — this is acceptable.
+    /// Other claim types (existing five) continue to use cosine-only
+    /// verification, so the fast majority of claim traffic is unchanged.
     /// </summary>
     private async Task<bool> IsClaimSupportedAsync(ExtractedClaim claim, CancellationToken ct)
     {
         var threshold = (float)_options.ClaimVerificationThreshold;
         var topK      = Math.Max(3, _options.ClaimVerificationMaxMemories);
         var queryText = BuildQueryText(claim);
+
+        // R1 Phase 1 — typed verification path. Routed here BEFORE the
+        // legacy three-source cosine-only path so the typed claim type
+        // gets its event-shape oracle, not the cosine oracle. All other
+        // claim types fall through to the legacy path below.
+        if (string.Equals(
+                claim.Type,
+                ClaimTypes.SharedEventWithAttribution,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return await IsSharedEventWithAttributionSupportedAsync(
+                claim, queryText, threshold, topK, ct).ConfigureAwait(false);
+        }
 
         // Source 1: Facts tier semantic search — Mark-asserted records only.
         //
@@ -255,6 +284,122 @@ public class ClaimVerificationPhase
     }
 
     /// <summary>
+    /// R1 Phase 1 (May 9, 2026) — typed event-shape verification for
+    /// <c>shared-event-with-attribution</c> claims. Cosine similarity is
+    /// used to find candidate Mark-asserted records (top-k above
+    /// threshold), then each candidate is presented to a small LLM call
+    /// asking: does record A describe the same specific event as claim B?
+    /// The claim is supported iff at least one candidate's event-shape
+    /// verification returns yes.
+    ///
+    /// Fast path: zero cosine matches → unsupported, no LLM calls made.
+    /// Fail-closed: parse failure on the LLM response is treated as "no"
+    /// (better to suppress than dispatch under uncertainty).
+    /// </summary>
+    private async Task<bool> IsSharedEventWithAttributionSupportedAsync(
+        ExtractedClaim claim, string queryText, float threshold, int topK, CancellationToken ct)
+    {
+        // Step 1: gather candidate Mark-asserted Facts-tier records via
+        // existing cosine search infrastructure. Top-k cap enforced for the
+        // performance bound documented on IsClaimSupportedAsync.
+        var candidates = new List<ScoredMemory>();
+        try
+        {
+            var factsResults = await _search.SearchByTierAsync(
+                queryText, EpistemicTier.Facts, topK, ct).ConfigureAwait(false);
+            foreach (var r in factsResults)
+            {
+                if (r.CosineSimilarity >= threshold && IsMarkAssertedSource(r.Record))
+                    candidates.Add(r);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex,
+                "R1: Facts tier cosine search failed for shared-event-with-attribution claim — treating as no candidates");
+        }
+
+        // Cap at 3 candidates for the documented performance bound. Order
+        // is preserved (highest-similarity first as returned by SearchByTierAsync).
+        if (candidates.Count > 3)
+            candidates = candidates.Take(3).ToList();
+
+        // Step 2: fast-path. Zero candidates means the cosine pre-filter
+        // already established no Mark-asserted record could plausibly
+        // describe this event. No LLM calls; claim is unsupported.
+        if (candidates.Count == 0)
+        {
+            _log.LogInformation(
+                "R1_EVENT_VERIFY claim=\"{Claim}\" candidates_evaluated=0 verified=false (fast path: no cosine matches)",
+                claim.Text);
+            return false;
+        }
+
+        // Step 3: per-candidate event-shape verification. First yes wins.
+        var verified = false;
+        var evaluated = 0;
+        foreach (var cand in candidates)
+        {
+            evaluated++;
+            try
+            {
+                var (system, user) = PromptBuilder.BuildEventVerificationPrompt(
+                    claim.Text, cand.Record.Content ?? string.Empty, "Mark");
+                var raw = await _ollama.ChatJsonAsync(
+                    system, Array.Empty<ChatMessage>(), user, ct).ConfigureAwait(false);
+
+                if (ParseSameEventResponse(raw))
+                {
+                    _log.LogDebug(
+                        "R1: shared-event-with-attribution claim verified by candidate (source={Source}, cosine={Cosine:F2}): \"{Text}\"",
+                        cand.Record.SourceName, cand.CosineSimilarity, claim.Text);
+                    verified = true;
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fail-closed on per-candidate exception: treat as "no".
+                // Logging at Debug since the surrounding loop continues to
+                // evaluate other candidates and the final R1_EVENT_VERIFY
+                // line records the aggregate result.
+                _log.LogDebug(ex,
+                    "R1: event-shape verification LLM call failed for candidate — treating as no");
+            }
+        }
+
+        _log.LogInformation(
+            "R1_EVENT_VERIFY claim=\"{Claim}\" candidates_evaluated={Evaluated} verified={Verified}",
+            claim.Text, evaluated, verified);
+
+        return verified;
+    }
+
+    /// <summary>
+    /// R1 Phase 1: parse the strict JSON-locked event-verification response
+    /// shape <c>{"same_event": true|false}</c>. Fail-closed: any malformed
+    /// or unrecognised payload returns <c>false</c>. The verifier prefers a
+    /// false-negative (suppression of a possibly-true claim) over a
+    /// false-positive (dispatch of a confab) — that is the gate's role.
+    /// </summary>
+    internal static bool ParseSameEventResponse(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson)) return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            if (!doc.RootElement.TryGetProperty("same_event", out var v)) return false;
+            return v.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Compose a retrieval query from the claim text plus key terms. The key
     /// terms usually improve embedding similarity with short, specific sources
     /// like inbound messages or character-seed facts.
@@ -333,9 +478,21 @@ public class ClaimVerificationPhase
                     }
                 }
 
+                // R1 Phase 1 (May 9, 2026): optional event_actor field for
+                // shared-event-with-attribution claims. Null/absent for older
+                // schemas and for claim types that don't carry an actor; the
+                // verifier reads it only when present.
+                string? eventActor = null;
+                if (item.TryGetProperty("event_actor", out var ea)
+                    && ea.ValueKind == JsonValueKind.String)
+                {
+                    var s = ea.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) eventActor = s;
+                }
+
                 if (string.IsNullOrWhiteSpace(text)) continue;
 
-                result.Add(new ExtractedClaim(text, type, keyTerms));
+                result.Add(new ExtractedClaim(text, type, keyTerms, eventActor));
             }
         }
         catch (JsonException)
@@ -349,12 +506,34 @@ public class ClaimVerificationPhase
 
 /// <summary>
 /// A single claim extracted from a composed outbound message.
-/// `Text` is the phrase from the message. `Type` is one of the five claim
-/// categories (mark-action, mark-decision, shared-event, shared-decision,
-/// shared-presence). `KeyTerms` are the specific entities or actions that
-/// would need to appear in a corroborating source.
+/// `Text` is the phrase from the message. `Type` is one of the six claim
+/// categories (mark-action, mark-decision, shared-event,
+/// shared-event-with-attribution, shared-decision, shared-presence).
+/// `KeyTerms` are the specific entities or actions that would need to
+/// appear in a corroborating source. `EventActor` is populated only for
+/// `shared-event-with-attribution` claims (R1 Phase 1, May 9 2026) and
+/// names the actor performing the asserted action (e.g. "Mia", "we").
+/// Optional / nullable so existing call sites and parsers are unaffected.
 /// </summary>
-public record ExtractedClaim(string Text, string Type, IReadOnlyList<string> KeyTerms);
+public record ExtractedClaim(
+    string Text,
+    string Type,
+    IReadOnlyList<string> KeyTerms,
+    string? EventActor = null);
+
+/// <summary>
+/// R1 Phase 1 (May 9, 2026): canonical claim type discriminators. Defined
+/// once so the verifier and the prompt builder agree on string values.
+/// </summary>
+public static class ClaimTypes
+{
+    public const string MarkAction                  = "mark-action";
+    public const string MarkDecision                = "mark-decision";
+    public const string SharedEvent                 = "shared-event";
+    public const string SharedEventWithAttribution  = "shared-event-with-attribution";
+    public const string SharedDecision              = "shared-decision";
+    public const string SharedPresence              = "shared-presence";
+}
 
 /// <summary>
 /// Result of claim verification. `Passed=true` means the composed message can
