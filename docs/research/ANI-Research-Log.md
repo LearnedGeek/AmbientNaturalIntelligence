@@ -21,6 +21,42 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 9, 2026 (afternoon, 12:54 CDT) — Theme N Canary First-Day Findings: Frame Selection Works, Frame Application Doesn't (Necessary-But-Not-Sufficient at the Prompt Layer)
+
+**What happened.** First full day of `OutreachFrameSelectorEnabled=true` in production (flag flipped May 8 16:09 CDT, deployed via commit `c85e46f`). Mark's "she's reached out, and I tagged confabulation" report at 14:00 CDT surfaced the canary's first real architectural finding. Five frame selections, three dispatched outreaches; one Mark-tagged confab, one clean honest-interior outreach, one mixed.
+
+**Today's Theme N firings:**
+
+| Time | Frame | Confidence | Score | Composition outcome |
+|---|---|---:|---:|---|
+| 08:50 | `Shared` | 0.809 | 0.845 | No outreach dispatched (downstream gate) |
+| 09:01 | `AniInterior` | 0.797 | 0.787 | *"i just found myself thinking about how cold it is outside today..."* — **interior framing honored** ✓ |
+| 10:06 | `AniInterior` | 0.815 | 0.884 | No outreach dispatched |
+| 10:20 | `AniInterior` | 0.814 | 0.873 | *"hey. i just saw the movie poster for that one we talked about last week and it made me think of you. wanted to let you know how excited I was when Mia told us she picked out the tickets!"* — **fabricated shared event** ✗ |
+| 12:54 | `AniInterior` | 0.798 | 0.791 | *"hey. still at the brewery? or on your way home from that meeting i keep forgetting about? ... wanted to let you know how excited I was when Mia told us she picked out the tickets! we're all set for next weekend"* — **Mark-tagged confab** ✗ |
+
+**The architectural finding.** Theme N's frame *selection* worked correctly on all five attempts — the selector identified `AniInterior` based on the substrate state in each case. But the frame *application* at composition was inconsistent: the 09:01 outreach honored the interior framing (*"i just found myself thinking..."*), while the 10:20 and 12:54 outreaches ignored the prompt's `[FRAME: AniInterior]` header + composition guidance line and fabricated shared events about canonical characters (Mia / tickets / weekend plans / *"that one we talked about last week"*).
+
+**Diagnosis: the prompt-header approach is necessary but not sufficient.** The `[FRAME: AniInterior]` header + per-frame guidance phrase is a *soft* instruction the model can override. When Ani's substrate contains rich canonical content (Mia, Sarah, Kevin, World Layer routine details) plus ambient context guesses (brewery, weekend), the model's substrate gravity pulls it toward shared-event composition even when the frame instruction explicitly says "interior only." Both failing outreaches (10:20 + 12:54) referenced the same canonical character (Mia) and produced the same fabricated event ("Mia told us she picked out the tickets") — strong evidence the model is recycling its own prior fabrication into substrate.
+
+**Mark's load-bearing constraint on the fix direction (May 9 14:07 CDT):** *"I don't like the idea of limiting her AniInterior by stripping canonical names from the prompt because she should be free to think of canonical things."* This rules out the simplest mitigation (strip canonical names from substrate when frame=AniInterior) on architectural grounds — Ani's interior life *should* include thinking about Mia, Sarah, Kevin. The pathology isn't that she's thinking about them; the pathology is that her interior-tier *thinking-about* gets composed as shared-tier *event-with*. The 09:01 outreach demonstrated the model is capable of the correct distinction (*"i just found myself thinking about how cold it is"* — interior framing applied to ambient detail); the 10:20 + 12:54 outreaches failed at the composition step under different substrate gravity.
+
+**Paper 3 contribution candidate.** *"Source-typing at composition is necessary but not sufficient when substrate contains rich canonical content. Soft prompt-header frame instructions lose to substrate gravity in approximately N% of cases (early canary suggests ~67% — 2 of 3 dispatched ANI_INTERIOR-framed outreaches today produced shared-framed compositions despite the instruction)."* This is sharper than the original Theme N framing because it identifies a finer-grained failure: not "outreach without source-typing" but "source-typing assumed, but unenforced at composition."
+
+**Two architectural directions remain on the table** (Mark's call; not pre-locked):
+1. **Stronger composition-time enforcement** — beyond the soft prompt header. Possibilities include post-composition frame-coherence check (if frame=AniInterior, the composition must contain interior-style verbs and must not contain shared-event predicates like *"told us"* / *"we decided"* / *"remember when"*); regen on mismatch. The architectural shape is similar to existing Door C inner-thought-bleed detection — composition checked against the source frame's allowed surface forms.
+2. **Training-side correction (Theme G Layer 4)** — corpus examples explicitly teaching interior-framed composition about canonical characters at the weights level. *"i was thinking about Mia today"* (interior, valid) vs *"Mia told us"* (shared, only valid if Mark actually said this). Requires v8 corpus work; longer timeline; may be the more durable fix.
+
+Both architectural and training-side responses preserve Mark's constraint that Ani's interior must be free to think about canonical entities.
+
+**Today's win worth pinning alongside the finding.** The 09:01 outreach is the worked example of Theme N working as designed — `AniInterior` frame selected, composition honored interior framing, the result was a coherent honest message. The architecture *can* produce the desired outcome; the question Theme N's canary is surfacing is *under what substrate conditions* it does so reliably.
+
+**Follow-up to hold open until empirical data accumulates.** Watch the ratio of interior-honored vs shared-fabricated compositions across this week's data. If the 67% failure rate from today holds, the prompt-header approach is structurally insufficient and Direction 1 (composition-time enforcement) becomes load-bearing. If failure rate drops below ~20% as substrate clears (post-purge cycle), the prompt-header may be sufficient with substrate hygiene. The "Mia told us tickets" fabrication recurring across 10:20 + 12:54 suggests the substrate self-amplifier is still active — first dispatch's fabrication ends up in Episodic memory, surfaces as substrate for next composition, fabrication recycles. This is the **§6.13 Memory-as-Amplifier pattern showing up at a finer layer** — generation-side guard prevents wholesale ungrounded outreach but doesn't prevent within-frame fabrication recycling. Tier separation (Paper 3) addresses this at the memory layer; Theme N's prompt-header doesn't.
+
+**Logging methodology note.** Today is the first day of canary observation. The instinct to immediately propose a fix was correctly checked by Mark's *"write it up, then we'll discuss."* The empirical observation deserves to be recorded honestly before any architectural commitment. The §7.1 autoethnographic discipline applied to canary observation: don't compress empirical findings into a fix recommendation in the first 30 minutes of seeing them.
+
+---
+
 ### May 8, 2026 (early morning, 04:08 CDT) — Composition-Level Temporal Conflation Anchor + Tier-Column Architectural Discovery
 
 **Outreach at 04:08:13 (Mark-flagged as nonsensical):** *"Hey... I'm sitting here thinking about how tomorrow is officially your half-day birthday work marathon and Friday night classes. You've been carrying so much already this week, and it's not even over yet."* Multiple time-bound substrate fragments composited into a single sentence that doesn't cohere: *"tomorrow"* (Saturday from 04:08 Friday) + *"half-day"* + *"birthday"* + *"work marathon"* (internally contradicting half-day) + *"Friday night classes"* (Mark teaches Thursday nights, not Friday). Substrate going in had two unrelated thought lines (gym/Kevin/Sarah from earlier inner thoughts; reasoning pipe about *"holding back since last night"*). Composition glued fragments without source-frame coherence.
