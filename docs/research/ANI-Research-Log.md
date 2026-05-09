@@ -21,6 +21,38 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 9, 2026 (afternoon, 15:42 CDT) — R1 Phase 1 Ship + Multi-Layer Architecture-Over-Instruction Sharpening (Paper 3 Contribution Candidate)
+
+**What happened.** R1 Phase 1 (typed-event verification for `shared-event-with-attribution` claims) shipped at commit `182c0fb` and deployed to ani-server at 15:46 CDT. Closes the kitchen-lights / Mia-tickets failure class architecturally: when a claim is classified as `shared-event-with-attribution`, the verifier issues a per-candidate LLM event-shape comparison call (*"does record A describe the same event as claim B? yes/no"*) instead of relying on cosine similarity. Cosine-overlap was the broken oracle — *"Mia told us tickets"* embeds similarly to *"take Mia to school and head to the gym"* because both contain "Mia" and share register; the previous verifier rubber-stamped on key-term overlap. Event-shape verification fails the Mia-school-vs-Mia-tickets case because they describe different events. The May 9 12:54 confab is now an enforced regression test.
+
+**The architectural sharpening this surfaces (Paper 3 contribution candidate).** Paper 2 §6.14 named the *"architecture-over-instruction"* principle in its single-layer form: *"provide substrate, the model uses it; instruct the model past a missing substrate, instructions collapse under sustained pressure."* This week's empirical evidence shows the principle has **three distinct layers**, with the soft-instruction failure mode appearing at each:
+
+| Layer | Soft-instruction approach | Empirical failure | Architectural answer |
+|---|---|---|---|
+| **Generation** (§6.14 original) | "don't fabricate" in system prompt | Bob Swanson cascade Apr 9 | Typed claims + typed oracles (R1) |
+| **Frame application** (Theme N May 9) | `[FRAME: AniInterior]` header + composition guidance | Mia-tickets confab in AniInterior-framed outreach | Composition-time frame-coherence enforcement (future Theme N N.5) OR training-side correction (v8) |
+| **Categorization** (R1 May 9) | Claim category list in extraction prompt | Soft-edge: extractor may classify a confab as plain `shared-event` (the older softer type) instead of `shared-event-with-attribution`, bypassing R1's stricter oracle | Training-side correction (v8 corpus with labeled type examples) |
+
+The middle and bottom rows are this week's empirical anchors. Both demonstrate the same architectural pattern Paper 2 named for generation: **soft prompt instructions are necessary but not sufficient for any structural distinction the model wasn't trained on.** The pattern recurs at multiple layers, and v8 training-side correction becomes load-bearing for multiple workstreams simultaneously rather than just Theme G Layer 4 corpus directionality alone.
+
+**Sharper Paper 3 framing (candidate):** *"The architecture-over-instruction principle has multiple layers. Soft prompt instructions structurally underperform once the prompt schema gets richer than the training data has examples of, regardless of whether the soft instruction is at generation, categorization, or frame application. Architectural enforcement (typed oracles, structural constraints) holds at each layer; pure prompt instruction does not."* Three layers, three empirical anchors from this week alone (Bob Swanson generation; Mia-tickets frame application; R1 extraction soft-edge concern). All three have the same shape; all three are mitigated either architecturally (R1, future Theme N N.5) or by training (v8 corpus).
+
+**R1 Phase 1 deliverable (this commit):**
+- New claim type `shared-event-with-attribution` added to extraction prompt schema.
+- For that type only: top-3 cosine candidates → per-candidate `IOllamaClient.ChatJsonAsync` event-shape verification (`{"same_event": true|false}`) → fail-closed on parse error or zero candidates.
+- Telemetry: `R1_EVENT_VERIFY claim="..." candidates_evaluated={n} verified={true|false}` log line per claim.
+- Other claim types (existing) continue using cosine-only verification — Phase 1 scope is JUST `shared-event-with-attribution`. Phase 2+ migrates remaining types.
+- 10 new spec tests including the May 9 Mia-tickets case as a regression. 1274/1274 passing.
+
+**Open known soft-edge:** the extractor LLM has to learn (from the prompt schema alone) when to use the new `shared-event-with-attribution` type vs the existing softer `shared-event` type. If extraction misclassifies, R1 doesn't fire. This is the categorization-layer failure mode named above. Watch the telemetry over the next observation window: if `R1_EVENT_VERIFY` fires consistently on confab-shaped claims, the categorization is working; if confabs slip through as plain `shared-event` and never trigger R1, training-side correction (v8) becomes the path.
+
+**Paper update queue (held until Paper 1 arXiv comes off hold).**
+- **Paper 2 §6.14 addendum:** the multi-layer architecture-over-instruction sharpening. Adds frame-application + categorization as two new instances of the same principle Paper 2 named only for generation. ~3-4 paragraphs. Strengthens the §6.14 framing without rewriting it.
+- **Paper 3 contribution candidate (new):** *"Source-typed outreach grounding + multi-layer architecture-over-instruction"* — combines Theme N (frame selection at outreach), R1 (typed-claim verification at gate), and the multi-layer principle they share. Distinct contribution from Paper 2's single-layer framing.
+- **Paper 2 release hold rationale strengthened** — the multi-layer finding is concrete enough that holding release until at least one layer-2 or layer-3 mitigation has empirical observation data is defensible. Theme N canary observation + R1 deployment observation both started this week; meaningful data probably ~1-2 weeks out.
+
+---
+
 ### May 9, 2026 (afternoon, 12:54 CDT) — Theme N Canary First-Day Findings: Frame Selection Works, Frame Application Doesn't (Necessary-But-Not-Sufficient at the Prompt Layer)
 
 **What happened.** First full day of `OutreachFrameSelectorEnabled=true` in production (flag flipped May 8 16:09 CDT, deployed via commit `c85e46f`). Mark's "she's reached out, and I tagged confabulation" report at 14:00 CDT surfaced the canary's first real architectural finding. Five frame selections, three dispatched outreaches; one Mark-tagged confab, one clean honest-interior outreach, one mixed.
