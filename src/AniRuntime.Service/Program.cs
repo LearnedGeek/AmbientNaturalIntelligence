@@ -117,87 +117,60 @@ try
     builder.Services.AddSingleton<IRecentGateTripTracker, InMemoryGateTripTracker>();
     builder.Services.AddSingleton<IConsciousSubstrateGist, ConsciousSubstrateGistComposer>();
 
-    // Theme J Phase J.4 (Apr 30, 2026) — CognitiveOutputGate + universal
-    // invariants. Producers migrate through the gate via J.5 sub-phases
-    // (J.5a ConversationReplyPhase first per Apr 30 priority reorder). DI
-    // registration order establishes the canonical invariant evaluation
-    // order: structural checks first, content checks next, semantic checks
-    // last. See docs/research/ANI-Theme-J-Detector-Inventory-Review.md.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, AntiParrotInvariant>();
-    // Theme J Phase J.5h-prelude (May 3, 2026) — universal self-echo invariant.
-    // Lifts the prior per-producer ParrotingDetector check (formerly in
-    // ConversationReplyPhase lines 488-568) onto the gate so every artifact
-    // with PriorAniMessages context routes through the same check, including
-    // J.5a remediation regen output (which previously skipped the producer-
-    // side check and dispatched byte-identical regens — May 3 10:55 Failure C).
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, SelfEchoInvariant>();
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, PromptTemplateLeakInvariant>();
-    // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, ConfabulationInvariant>();
-    // Theme J Phase J.5g (May 2, 2026) — Door C universalised from
-    // OutreachPhase.EvaluateCoherenceAsync. Catches contact-facing
-    // outputs that only make sense if the reader had access to the
-    // writer's inner thoughts. See InnerThoughtBleedInvariant.cs.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, InnerThoughtBleedInvariant>();
-    // Door B Truth-Verification Sub-claim 2 (May 2, 2026) — day-of-week /
-    // calendar regex+clock check. Catches direct day-of-week assertions
-    // that don't match the actual current day. Sub-claims 1 (temporal-
-    // anchor verification against substrate) and 3 (state-now via
-    // perception) ship in follow-up commits. See TemporalAnchorInvariant.cs
-    // and docs/spec/ANI-Coherence-Gate-Door-B-Design.md.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, TemporalAnchorInvariant>();
-    // Door B Truth-Verification Sub-claim 3 (May 2, 2026) — state-now
-    // claim verification via day-of-week + time-of-day heuristics. Catches
-    // past-tense time-of-day claims about not-yet-occurred periods (e.g.
-    // "hope your evening went smooth" said at 11:58 AM) and work-state
-    // claims on weekends or before workday-end. The May 2 11:58 outreach
-    // is the canonical case. See StateNowInvariant.cs.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, StateNowInvariant>();
-    // Door B Truth-Verification Sub-claim 1 (May 2, 2026) — temporal-anchor
-    // substrate verification. Catches "you said X yesterday/earlier" claims
-    // by extracting the asserted content + time window, then querying
-    // closed-conversation gists in that window for semantic similarity. If
-    // no in-window record matches above 0.5 cosine → fail. The May 2 10:40
-    // outreach is the canonical case. See TemporalSubstrateInvariant.cs.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, TemporalSubstrateInvariant>();
-    // Door B Truth-Verification Sub-claim 4 (May 3, 2026) — type-aware
-    // addressee-name verification. Catches greetings to non-canonical names
-    // ("hey perez" — May 3 10:55 outreach was the canonical case where the
-    // inner-thought model fabricated a Spanish-flavored nickname out of
-    // substrate priming on Mark's Spanish-class context). Names are typed
-    // claims with an absolute oracle; the invariant uses
-    // CognitiveArtifact.CanonicalAddresseeNames + ContactName as the oracle.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, AddresseeNameInvariant>();
-    // Door B Truth-Verification Sub-claim 5 (May 3, 2026) — present-tense
-    // time-of-day verification. Catches "good morning" / "good night" /
-    // "it's late" claims that don't match the wall clock. May 3 06:47
-    // outreach "hey perez… i know it's late" said at 6:47 AM is the
-    // canonical case where substrate priming on a 30-minute-old inner
-    // thought (mentioning "10:30") overrode the system prompt's correct
-    // time-of-day. Distinct from sub-claim 3 (StateNow) which catches
-    // past-tense state queries; this one catches present-tense assertions.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, SubstrateTimeOfDayInvariant>();
-    // Theme M / coreference work (May 6, 2026) — direct-address invariant.
-    // Replaces the prior LLM-based pronoun-fix in OutreachPhase that leaked
-    // its working text into the dispatched message twice on May 5. Detects
-    // third-person reference to the addressee (he/him/his/{ContactName})
-    // in contact-facing output (ConversationReply / Outreach / Voice) and
-    // triggers the existing remediation regen path. First step toward the
-    // broader ML-based coreference resolution scoped in
-    // docs/research/model-coreference-ideas.md.
-    builder.Services.AddSingleton<ICognitiveOutputInvariant, DirectAddressInvariant>();
+    // Theme O Phase O.2 (May 10, 2026) — Theme J invariants migrated onto
+    // the cognitive pipeline as Post-stage handlers via
+    // InvariantToHandlerAdapter (registered through .UsePostInvariant<T>()
+    // in the fluent builder). The legacy CognitiveOutputGate stays in
+    // place but is now a pass-through to CognitivePipeline.RunPostOnlyAsync
+    // (see CognitiveOutputGate.cs Theme O.2 header). Producers' call sites
+    // do not change.
+    //
+    // Registration order = execution order (§9 lock 3, May 10 18:06 CDT).
+    // Convention preserved from Theme J: structural checks first, content
+    // checks next, semantic checks last. The whole pipeline shape is
+    // grep-able in one place; reorders are a one-line edit at this call
+    // site, not a hunt across DI registrations.
+    //
+    // Theme N N.5 FrameCoherenceChecker is NOT migrated in O.2 — it stays
+    // wired directly into OutreachPhase (its O.3 scope migrates it onto
+    // the pipeline as a Post-stage handler reading ctx.Frame). See
+    // docs/spec/ANI-Theme-O-Cognitive-Pipeline-Middleware-Plan.md §6 O.3.
+    builder.Services.AddCognitivePipeline(p => p
+        // ── Content checks (anti-parrot first; lowest-cost) ───────────────
+        .UsePostInvariant<AntiParrotInvariant>()
+        // Theme J Phase J.5h-prelude (May 3, 2026) — universal self-echo.
+        // Lifts the prior per-producer ParrotingDetector check onto the
+        // gate so every artifact with PriorAniMessages context routes
+        // through the same check, including J.5a remediation regen output.
+        .UsePostInvariant<SelfEchoInvariant>()
+        .UsePostInvariant<PromptTemplateLeakInvariant>()
+        // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
+        .UsePostInvariant<ConfabulationInvariant>()
+        // Theme J Phase J.5g (May 2, 2026) — Door C universalised from
+        // OutreachPhase.EvaluateCoherenceAsync. Catches contact-facing
+        // outputs that only make sense if the reader had access to the
+        // writer's inner thoughts. See InnerThoughtBleedInvariant.cs.
+        .UsePostInvariant<InnerThoughtBleedInvariant>()
+        // Door B Truth-Verification Sub-claim 2 (May 2, 2026) — day-of-week.
+        // See TemporalAnchorInvariant.cs and ANI-Coherence-Gate-Door-B-Design.md.
+        .UsePostInvariant<TemporalAnchorInvariant>()
+        // Door B Truth-Verification Sub-claim 3 (May 2, 2026) — state-now
+        // past-tense time-of-day claims. See StateNowInvariant.cs.
+        .UsePostInvariant<StateNowInvariant>()
+        // Door B Truth-Verification Sub-claim 1 (May 2, 2026) — temporal-anchor
+        // substrate verification. See TemporalSubstrateInvariant.cs.
+        .UsePostInvariant<TemporalSubstrateInvariant>()
+        // Door B Truth-Verification Sub-claim 4 (May 3, 2026) — type-aware
+        // addressee-name verification ("hey perez…" canonical case).
+        .UsePostInvariant<AddresseeNameInvariant>()
+        // Door B Truth-Verification Sub-claim 5 (May 3, 2026) — present-tense
+        // time-of-day verification ("good morning"/"good night"/"it's late").
+        .UsePostInvariant<SubstrateTimeOfDayInvariant>()
+        // Theme M / coreference (May 6, 2026) — direct-address invariant.
+        // Replaces the prior LLM-based pronoun-fix in OutreachPhase.
+        .UsePostInvariant<DirectAddressInvariant>()
+    );
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
-
-    // Theme O Phase O.1 (May 10, 2026) — middleware pipeline infrastructure.
-    // Empty registration is intentional: O.1 ships orchestrator + handler
-    // interface + fluent builder only; producer migrations land in O.2+.
-    // Each O.2 sub-phase adds .UsePreHandler<>/.UsePostHandler<> calls here,
-    // keeping the whole pipeline shape grep-able in one place. The existing
-    // CognitiveOutputGate registration above stays AS-IS during O.1 — it
-    // continues to serve producers exactly as before. O.2 migrates Theme J
-    // invariants onto the pipeline; O.7 deletes the legacy gate path. See
-    // docs/spec/ANI-Theme-O-Cognitive-Pipeline-Middleware-Plan.md.
-    builder.Services.AddCognitivePipeline(_ => { /* O.1 empty pipeline */ });
 
     // Theme N Phase N.3 (May 8, 2026) — outreach source-frame selector.
     // Wired into OutreachPhase via constructor injection; gated at runtime

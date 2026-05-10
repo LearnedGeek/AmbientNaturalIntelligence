@@ -23,11 +23,16 @@ public sealed class CognitivePipelineBuilder
     private readonly IServiceCollection _services;
 
     /// <summary>
-    /// Internal list of handler types in registration order. The DI
-    /// extension method resolves each in this order at runtime to feed the
-    /// <see cref="CognitivePipeline"/> constructor.
+    /// Internal list of handler factories in registration order. The DI
+    /// extension method invokes each in this order at runtime to feed the
+    /// <see cref="CognitivePipeline"/> constructor. Stored as factories
+    /// (not raw types) so handler registrations that need wrapping — e.g.
+    /// Theme O.2's <see cref="UsePostInvariant{TInvariant}"/> which wraps
+    /// an <see cref="ICognitiveOutputInvariant"/> in an
+    /// <see cref="InvariantToHandlerAdapter"/> — can express the
+    /// resolution + wrapping in one place.
     /// </summary>
-    internal List<Type> HandlerTypes { get; } = new();
+    internal List<Func<IServiceProvider, ICognitivePipelineHandler>> HandlerFactories { get; } = new();
 
     internal CognitivePipelineBuilder(IServiceCollection services)
     {
@@ -60,6 +65,45 @@ public sealed class CognitivePipelineBuilder
         return this;
     }
 
+    /// <summary>
+    /// Theme O Phase O.2 (May 10, 2026) — register an existing Theme J
+    /// <see cref="ICognitiveOutputInvariant"/> as a Post-stage pipeline
+    /// handler. Adds <typeparamref name="TInvariant"/> to the DI container
+    /// (as itself, singleton) and wraps it in an
+    /// <see cref="InvariantToHandlerAdapter"/> at resolution time. The
+    /// invariant's <see cref="ICognitiveOutputInvariant.Name"/> and
+    /// <see cref="ICognitiveOutputInvariant.AppliesTo"/> flow through the
+    /// adapter unchanged so telemetry + dispatch logic match the prior
+    /// gate behaviour exactly.
+    ///
+    /// **Why this exists**: every existing invariant is already implemented
+    /// against <see cref="ICognitiveOutputInvariant"/>. Forcing each one to
+    /// also implement <see cref="ICognitivePipelineHandler"/> directly
+    /// would either require dual interfaces on every invariant class or
+    /// one wrapper class per invariant. The adapter + this builder
+    /// extension collapse both to a single line at the call site
+    /// (<c>p.UsePostInvariant&lt;SelfEchoInvariant&gt;()</c>) while
+    /// preserving the existing class hierarchy.
+    /// </summary>
+    public CognitivePipelineBuilder UsePostInvariant<TInvariant>()
+        where TInvariant : class, ICognitiveOutputInvariant
+    {
+        // Register the invariant in DI as itself so we can resolve it at
+        // pipeline-construction time. NOTE: we do NOT register it as
+        // ICognitiveOutputInvariant — Theme O.2 owns the invariant
+        // wiring; the legacy CognitiveOutputGate constructor now takes the
+        // pipeline, not an IEnumerable<ICognitiveOutputInvariant>.
+        _services.AddSingleton<TInvariant>();
+
+        // Factory wraps the invariant in the adapter at resolution time.
+        HandlerFactories.Add(sp =>
+        {
+            var invariant = sp.GetRequiredService<TInvariant>();
+            return new InvariantToHandlerAdapter(invariant);
+        });
+        return this;
+    }
+
     private void RegisterHandler<T>(PipelineStage expected) where T : class, ICognitivePipelineHandler
     {
         // Validate stage by instantiating a temporary probe. We use
@@ -77,10 +121,11 @@ public sealed class CognitivePipelineBuilder
         // Register the handler as itself (singleton) so the pipeline can
         // resolve it. Registration order = execution order.
         _services.AddSingleton<T>();
-        // Also expose via ICognitivePipelineHandler so the CognitivePipeline
-        // constructor's IEnumerable<ICognitivePipelineHandler> sees it.
+        // Also expose via ICognitivePipelineHandler so consumers that
+        // enumerate IEnumerable<ICognitivePipelineHandler> directly (rare,
+        // mostly tests) still see it.
         _services.AddSingleton<ICognitivePipelineHandler>(sp => sp.GetRequiredService<T>());
-        HandlerTypes.Add(typeof(T));
+        HandlerFactories.Add(sp => sp.GetRequiredService<T>());
     }
 
     /// <summary>
@@ -132,16 +177,17 @@ public static class CognitivePipelineServiceCollectionExtensions
         var builder = new CognitivePipelineBuilder(services);
         configure(builder);
 
-        // Resolve handlers in REGISTRATION ORDER. The default
-        // IEnumerable<T> enumeration in MEDI preserves registration order,
-        // but we explicitly project through the recorded HandlerTypes list
-        // to make the contract immune to MEDI internal changes.
-        var orderedTypes = builder.HandlerTypes.ToList();
+        // Resolve handlers in REGISTRATION ORDER. Each factory either
+        // resolves a direct ICognitivePipelineHandler implementation
+        // (Use{Pre,Post}Handler<T>) or resolves an ICognitiveOutputInvariant
+        // + wraps it in InvariantToHandlerAdapter (Theme O.2
+        // UsePostInvariant<T>). Snapshotted into a stable list so the
+        // factory closure does not capture builder state that could change
+        // post-configure.
+        var orderedFactories = builder.HandlerFactories.ToList();
         services.AddSingleton(sp =>
         {
-            var handlers = orderedTypes
-                .Select(t => (ICognitivePipelineHandler)sp.GetRequiredService(t))
-                .ToList();
+            var handlers = orderedFactories.Select(f => f(sp)).ToList();
             var log = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CognitivePipeline>>();
             return new CognitivePipeline(handlers, log);
         });

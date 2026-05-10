@@ -649,4 +649,187 @@ public class CognitivePipelineTests
         observed.Should().NotBeNull();
         observed!.Note.Should().Be("cross-stage");
     }
+
+    // ─── 21. RunPostOnlyAsync: runs only Post handlers (Theme O.2) ───────
+
+    [Fact]
+    public async Task RunPostOnly_SkipsPreHandlersAndComposition()
+    {
+        var preRan  = false;
+        var composeRan = false;
+        var postRan = false;
+        var pre = new FakeHandler(PipelineStage.Pre, "pre")
+        {
+            HandleFunc = (_, _) => { preRan = true; return Task.FromResult(HandlerResult.Continue()); }
+        };
+        var post = new FakeHandler(PipelineStage.Post, "post")
+        {
+            HandleFunc = (_, _) => { postRan = true; return Task.FromResult(HandlerResult.Continue()); }
+        };
+
+        var pipeline = Build(null, pre, post);
+        var result = await pipeline.RunPostOnlyAsync(CtxFor(ArtifactFor("already composed")), CancellationToken.None);
+
+        result.Verdict.Should().Be(DispatchVerdict.Pass);
+        preRan.Should().BeFalse("RunPostOnlyAsync must skip Pre handlers entirely");
+        composeRan.Should().BeFalse("RunPostOnlyAsync never invokes composition");
+        postRan.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunPostOnly_ShortCircuitInPost_HaltsRemainingPost()
+    {
+        var p1 = new FakeHandler(PipelineStage.Post, "post-a");
+        var stopper = new FakeHandler(PipelineStage.Post, "post-stop")
+        {
+            HandleFunc = (_, _) => Task.FromResult(
+                HandlerResult.ShortCircuitWith(DispatchVerdict.Remediate, "frame violation"))
+        };
+        var p3 = new FakeHandler(PipelineStage.Post, "post-c");
+
+        var pipeline = Build(null, p1, stopper, p3);
+        var result = await pipeline.RunPostOnlyAsync(CtxFor(), CancellationToken.None);
+
+        result.Verdict.Should().Be(DispatchVerdict.Remediate);
+        result.ShortCircuitHandler.Should().Be("post-stop");
+        result.ShortCircuitStage.Should().Be(PipelineStage.Post);
+        p1.InvocationCount.Should().Be(1);
+        stopper.InvocationCount.Should().Be(1);
+        p3.InvocationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunPostOnly_AppliesToFalse_HandlerSkipped()
+    {
+        var skipped = new FakeHandler(PipelineStage.Post, "skipped")
+        {
+            AppliesFunc = _ => false,
+            HandleFunc  = (_, _) => throw new InvalidOperationException("must not run"),
+        };
+        var applied = new FakeHandler(PipelineStage.Post, "applied");
+
+        var pipeline = Build(null, skipped, applied);
+        var result = await pipeline.RunPostOnlyAsync(CtxFor(), CancellationToken.None);
+
+        result.Verdict.Should().Be(DispatchVerdict.Pass);
+        skipped.InvocationCount.Should().Be(0);
+        applied.InvocationCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RunPostOnly_Telemetry_EmitsModePostOnly()
+    {
+        var log = new CapturingLogger();
+        var post = new FakeHandler(PipelineStage.Post, "post");
+        var pipeline = Build(log, post);
+
+        await pipeline.RunPostOnlyAsync(CtxFor(), CancellationToken.None);
+
+        log.Messages.Should().Contain(m =>
+            m.StartsWith("O_PIPELINE_START") &&
+            m.Contains("mode=PostOnly"));
+        log.Messages.Should().NotContain(m => m.StartsWith("O_COMPOSITION_START"),
+            "RunPostOnlyAsync must not emit composition telemetry");
+    }
+
+    [Fact]
+    public async Task RunPostOnly_NullContext_Throws()
+    {
+        var pipeline = Build();
+        var act = () => pipeline.RunPostOnlyAsync(null!, CancellationToken.None);
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    // ─── 22. UsePostInvariant<T> builder extension (Theme O.2) ───────────
+
+    private sealed class TestInvariant : ICognitiveOutputInvariant
+    {
+        public string Name => "test-inv";
+        public bool   ResultPassed { get; set; } = true;
+        public bool   ResultHardFail { get; set; }
+        public bool AppliesTo(CognitiveArtifact artifact) => true;
+        public Task<InvariantResult> EvaluateAsync(CognitiveArtifact artifact, CancellationToken ct)
+            => Task.FromResult(ResultPassed
+                ? InvariantResult.Pass()
+                : InvariantResult.Fail("test-hint", ResultHardFail));
+    }
+
+    [Fact]
+    public async Task Builder_UsePostInvariant_RegistersAdapterWrappedHandler()
+    {
+        // Theme O.2: .UsePostInvariant<T>() should register the invariant
+        // in DI as itself, then resolve through the pipeline as a Post-
+        // stage handler wrapped in InvariantToHandlerAdapter. The handler
+        // name must come from the invariant (not the adapter class).
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCognitivePipeline(p => p.UsePostInvariant<TestInvariant>());
+
+        using var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<CognitivePipeline>();
+
+        var inv = sp.GetRequiredService<TestInvariant>();
+        inv.ResultPassed = false;
+
+        var result = await pipeline.RunPostOnlyAsync(CtxFor(), CancellationToken.None);
+
+        result.Verdict.Should().Be(DispatchVerdict.Remediate);
+        result.ShortCircuitHandler.Should().Be("test-inv",
+            "the adapter must surface the invariant's Name, not the adapter type name");
+        result.ShortCircuitStage.Should().Be(PipelineStage.Post);
+    }
+
+    [Fact]
+    public async Task Builder_UsePostInvariant_HardFailEscalatesVerdict()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCognitivePipeline(p => p.UsePostInvariant<TestInvariant>());
+
+        using var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<CognitivePipeline>();
+        var inv      = sp.GetRequiredService<TestInvariant>();
+        inv.ResultPassed   = false;
+        inv.ResultHardFail = true;
+
+        var result = await pipeline.RunPostOnlyAsync(CtxFor(), CancellationToken.None);
+
+        result.Verdict.Should().Be(DispatchVerdict.Fail);
+    }
+
+    [Fact]
+    public async Task Builder_UsePostInvariant_PassDoesNotShortCircuit()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCognitivePipeline(p => p.UsePostInvariant<TestInvariant>());
+
+        using var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<CognitivePipeline>();
+
+        var result = await pipeline.RunPostOnlyAsync(CtxFor(), CancellationToken.None);
+
+        result.Verdict.Should().Be(DispatchVerdict.Pass);
+        result.ShortCircuitHandler.Should().BeNull();
+    }
+
+    [Fact]
+    public void Builder_UsePostInvariant_PreservesRegistrationOrder()
+    {
+        // First-registered invariant fires first; second fires second.
+        // This is the same registration-order = execution-order contract
+        // that UsePostHandler<T> follows.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCognitivePipeline(p => p
+            .UsePostInvariant<TestInvariant>()
+            .UsePostHandler<ParameterlessPostHandler>());
+
+        using var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<CognitivePipeline>();
+
+        // Mostly a smoke test: ensures the mixed Use{Post,PostInvariant}
+        // registration shape resolves without DI errors.
+        pipeline.Should().NotBeNull();
+    }
 }

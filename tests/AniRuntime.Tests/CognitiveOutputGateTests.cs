@@ -1,6 +1,7 @@
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.Loops;
+using AniRuntime.Loops.Pipeline;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -41,8 +42,22 @@ public class CognitiveOutputGateTests
         return mock;
     }
 
+    /// <summary>
+    /// Theme O Phase O.2 (May 10, 2026) — gate constructor changed from
+    /// IEnumerable&lt;ICognitiveOutputInvariant&gt; to a CognitivePipeline.
+    /// This helper preserves the existing "build a gate from invariants"
+    /// shape that all gate tests use by wrapping each invariant in an
+    /// <see cref="InvariantToHandlerAdapter"/> and feeding the resulting
+    /// handlers into a <see cref="CognitivePipeline"/>. The pipeline runs
+    /// Post-only via the gate's pass-through; tests still assert the same
+    /// verdict + fired-name contract.
+    /// </summary>
     private static CognitiveOutputGate Build(params ICognitiveOutputInvariant[] invariants)
-        => new(invariants, NullLogger<CognitiveOutputGate>.Instance);
+    {
+        var handlers = invariants.Select(i => (ICognitivePipelineHandler)new InvariantToHandlerAdapter(i)).ToList();
+        var pipeline = new CognitivePipeline(handlers, NullLogger<CognitivePipeline>.Instance);
+        return new CognitiveOutputGate(pipeline, NullLogger<CognitiveOutputGate>.Instance);
+    }
 
     // ── Empty / trivial cases ──────────────────────────────────────────
 
@@ -124,49 +139,74 @@ public class CognitiveOutputGateTests
     }
 
     [Fact]
-    public async Task Evaluate_MultipleFails_AggregatesHintsAndNames()
+    public async Task Evaluate_MultipleFails_FirstFailureShortCircuits()
     {
+        // Theme O Phase O.2 (May 10, 2026) behaviour shift: the pipeline
+        // short-circuits on the FIRST failing handler rather than aggregating
+        // every fired invariant. Documented in the Theme O plan §6 — each
+        // failure is surfaced individually with telemetry pinpointing the
+        // exact handler; producers re-evaluate after remediation regen so a
+        // second invariant that would have fired re-fires on the regen if
+        // it still applies. Pre-O.2 this test asserted aggregation.
         var failA = InvariantMock("a", true, InvariantResult.Fail("alpha-hint"));
-        var failB = InvariantMock("b", true, InvariantResult.Fail("beta-hint"));
+        var failB = new Mock<ICognitiveOutputInvariant>(MockBehavior.Strict);
+        failB.SetupGet(i => i.Name).Returns("b");
+        failB.Setup(i => i.AppliesTo(It.IsAny<CognitiveArtifact>())).Returns(true);
 
         var result = await Build(failA.Object, failB.Object).EvaluateAsync(ArtifactFor());
 
         result.Verdict.Should().Be(OutputGateVerdict.Remediate);
-        result.FiredInvariants.Should().Equal("a", "b");
-        result.RemediationHint.Should().Contain("alpha-hint").And.Contain("beta-hint");
+        result.FiredInvariants.Should().Equal("a");
+        result.RemediationHint.Should().Be("alpha-hint");
+        failB.Verify(i => i.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()), Times.Never,
+            "post-O.2 the pipeline short-circuits on the first failing handler");
     }
 
     [Fact]
     public async Task Evaluate_HardFail_EscalatesToFailVerdict()
     {
-        var soft = InvariantMock("soft", true, InvariantResult.Fail("soft-hint"));
+        // Theme O Phase O.2 (May 10, 2026): hard-fail still escalates the
+        // verdict to Fail; in the new short-circuit model the hard-fail
+        // invariant simply has to be the FIRST failing invariant (or no
+        // soft-fail invariant precedes it). Ordering is deterministic so
+        // tests can rely on it.
         var hard = InvariantMock("hard", true, InvariantResult.Fail("hard-hint", hard: true));
 
-        var result = await Build(soft.Object, hard.Object).EvaluateAsync(ArtifactFor());
+        var result = await Build(hard.Object).EvaluateAsync(ArtifactFor());
 
         result.Verdict.Should().Be(OutputGateVerdict.Fail,
-            "any hard-fail invariant escalates the verdict regardless of other soft-fails");
-        result.FiredInvariants.Should().Equal("soft", "hard");
+            "hard-fail invariant escalates the verdict from Remediate to Fail");
+        result.FiredInvariants.Should().Equal("hard");
+        result.RemediationHint.Should().Be("hard-hint");
     }
 
     // ── Exception containment ─────────────────────────────────────────
 
     [Fact]
-    public async Task Evaluate_InvariantThrows_TreatedAsPassForThatArtifact()
+    public async Task Evaluate_InvariantThrows_ShortCircuitsFail()
     {
+        // Theme O Phase O.2 (May 10, 2026) behaviour shift: the pipeline's
+        // orchestrator catches handler exceptions and short-circuits with
+        // verdict=Fail. The pre-O.2 gate logged + treated as Pass. The new
+        // behaviour is intentional: an invariant that throws is producing
+        // an unknown result; treating that as "Pass" was masking observability
+        // bugs. The Fail short-circuit surfaces the failure in
+        // O_HANDLER_END warning logs and prevents dispatch.
         var throwing = new Mock<ICognitiveOutputInvariant>(MockBehavior.Strict);
         throwing.SetupGet(i => i.Name).Returns("throws");
         throwing.Setup(i => i.AppliesTo(It.IsAny<CognitiveArtifact>())).Returns(true);
         throwing.Setup(i => i.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("invariant bug"));
 
-        var clean = InvariantMock("clean", true, InvariantResult.Pass());
+        var clean = new Mock<ICognitiveOutputInvariant>(MockBehavior.Strict);
+        clean.SetupGet(i => i.Name).Returns("clean");
+        clean.Setup(i => i.AppliesTo(It.IsAny<CognitiveArtifact>())).Returns(true);
 
         var result = await Build(throwing.Object, clean.Object).EvaluateAsync(ArtifactFor());
 
-        result.Verdict.Should().Be(OutputGateVerdict.Pass,
-            "exception in one invariant must NOT block the artifact — observability bugs in invariants stay non-fatal");
-        result.FiredInvariants.Should().BeEmpty();
+        result.Verdict.Should().Be(OutputGateVerdict.Fail);
+        result.FiredInvariants.Should().Equal("throws");
+        clean.Verify(i => i.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Cancellation ──────────────────────────────────────────────────
@@ -175,19 +215,26 @@ public class CognitiveOutputGateTests
     public async Task Evaluate_CancellationRequested_ShortCircuitsRemainingInvariants()
     {
         // First invariant cancels mid-evaluation; subsequent invariants must not run.
+        // Post-O.2 the pipeline's orchestrator catches the resulting
+        // OperationCanceledException and short-circuits with Fail; the
+        // legacy gate treated it as Pass. Both behaviours stop downstream
+        // invariants — the test verifies that contract.
         using var cts = new CancellationTokenSource();
         var first = new Mock<ICognitiveOutputInvariant>(MockBehavior.Strict);
         first.SetupGet(i => i.Name).Returns("first");
         first.Setup(i => i.AppliesTo(It.IsAny<CognitiveArtifact>())).Returns(true);
         first.Setup(i => i.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
-             .Callback(() => cts.Cancel())
-             .ReturnsAsync(InvariantResult.Pass());
+             .Callback<CognitiveArtifact, CancellationToken>((_, _) => cts.Cancel())
+             .ThrowsAsync(new OperationCanceledException());
 
-        var second = InvariantMock("second", true, InvariantResult.Pass());
+        var second = new Mock<ICognitiveOutputInvariant>(MockBehavior.Strict);
+        second.SetupGet(i => i.Name).Returns("second");
+        second.Setup(i => i.AppliesTo(It.IsAny<CognitiveArtifact>())).Returns(true);
 
         var result = await Build(first.Object, second.Object).EvaluateAsync(ArtifactFor(), cts.Token);
 
-        result.Verdict.Should().Be(OutputGateVerdict.Pass);
+        // Pipeline short-circuits on cancellation with Fail verdict.
+        result.Verdict.Should().Be(OutputGateVerdict.Fail);
         second.Verify(i => i.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

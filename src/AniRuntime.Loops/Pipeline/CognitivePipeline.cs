@@ -66,8 +66,8 @@ public sealed class CognitivePipeline
         var pipelineSw = Stopwatch.StartNew();
 
         _log.LogInformation(
-            "O_PIPELINE_START producer={Producer} artifact_id={ArtifactId}",
-            producer, artifactId);
+            "O_PIPELINE_START producer={Producer} artifact_id={ArtifactId} mode={Mode}",
+            producer, artifactId, "Full");
 
         // ── Pre stage ─────────────────────────────────────────────────────
         var preRan = 0;
@@ -134,6 +134,66 @@ public sealed class CognitivePipeline
         _log.LogInformation(
             "O_PIPELINE_END producer={Producer} result=Pass duration_ms={Duration} pre_handlers={Pre} post_handlers={Post}",
             producer, pipelineSw.ElapsedMilliseconds, preRan, postRanCount);
+
+        return DispatchResult.Pass();
+    }
+
+    /// <summary>
+    /// Theme O Phase O.2 (May 10, 2026) — pass-through for callers that
+    /// operate on already-composed artifacts (the legacy
+    /// <see cref="ICognitiveOutputGate"/> evaluator path). Skips Pre handlers
+    /// AND composition entirely; runs Post handlers only against the artifact
+    /// already populated on <paramref name="ctx"/>.
+    ///
+    /// Telemetry shape matches <see cref="RunAsync"/> with
+    /// <c>mode=PostOnly</c> on the <c>O_PIPELINE_START</c> line so log
+    /// readers can distinguish the two evaluation modes; short-circuit +
+    /// <see cref="ICognitivePipelineHandler.AppliesTo"/> semantics are
+    /// identical.
+    /// </summary>
+    public async Task<DispatchResult> RunPostOnlyAsync(
+        CognitivePipelineContext ctx,
+        CancellationToken        ct)
+    {
+        if (ctx           is null) throw new ArgumentNullException(nameof(ctx));
+        if (ctx.Artifact  is null) throw new ArgumentException("ctx.Artifact must be populated before RunPostOnlyAsync.", nameof(ctx));
+
+        var producer = ctx.Artifact.ProducerKind;
+        var artifactId = ctx.Artifact.GeneratedAt.ToUnixTimeMilliseconds();
+        var pipelineSw = Stopwatch.StartNew();
+
+        _log.LogInformation(
+            "O_PIPELINE_START producer={Producer} artifact_id={ArtifactId} mode={Mode}",
+            producer, artifactId, "PostOnly");
+
+        // ── Post stage only ───────────────────────────────────────────────
+        var postRanCount = 0;
+        foreach (var handler in _postHandlers)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return EmitEndShortCircuit(producer, pipelineSw, preRan: 0, postRanCount,
+                    stage: PipelineStage.Post, handler: "<cancelled>", reason: "cancellation requested");
+            }
+
+            if (!handler.AppliesTo(ctx.Artifact)) continue;
+
+            postRanCount++;
+            var (result, hadException) = await InvokeHandlerAsync(handler, ctx, ct).ConfigureAwait(false);
+            if (result.ShortCircuit)
+            {
+                return EmitEndShortCircuit(producer, pipelineSw, preRan: 0, postRanCount,
+                    stage: PipelineStage.Post, handler: handler.Name,
+                    reason: result.Reason ?? (hadException ? "handler threw" : "short-circuit"),
+                    verdict: result.Verdict ?? DispatchVerdict.Fail);
+            }
+        }
+
+        // ── Pass ──────────────────────────────────────────────────────────
+        pipelineSw.Stop();
+        _log.LogInformation(
+            "O_PIPELINE_END producer={Producer} result=Pass duration_ms={Duration} pre_handlers={Pre} post_handlers={Post}",
+            producer, pipelineSw.ElapsedMilliseconds, 0, postRanCount);
 
         return DispatchResult.Pass();
     }

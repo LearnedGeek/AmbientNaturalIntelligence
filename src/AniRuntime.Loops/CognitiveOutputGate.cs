@@ -1,43 +1,58 @@
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Loops.Pipeline;
 using Microsoft.Extensions.Logging;
 
 namespace AniRuntime.Loops;
 
 /// <summary>
 /// Theme J Phase J.4 (Apr 30, 2026) — default
-/// <see cref="ICognitiveOutputGate"/> implementation.
+/// <see cref="ICognitiveOutputGate"/> implementation. **Theme O Phase O.2
+/// (May 10, 2026)**: rewired as a pass-through to the cognitive pipeline's
+/// Post stage. Producers still call <see cref="EvaluateAsync"/> exactly
+/// as before; internally each call now goes through
+/// <see cref="CognitivePipeline.RunPostOnlyAsync"/>, which runs the same
+/// Theme J invariants wrapped in
+/// <see cref="InvariantToHandlerAdapter"/>.
 ///
-/// Evaluates a fixed-order list of registered invariants, applying only
-/// those whose <see cref="ICognitiveOutputInvariant.AppliesTo"/>
-/// predicate matches the artifact. Aggregates results into a single
-/// <see cref="OutputGateResult"/> with per-invariant fire annotations
-/// and a producer-readable remediation hint.
+/// **Why preserve the gate surface during O.2**: producers (OutreachPhase,
+/// ConversationReplyPhase, voice) call <see cref="EvaluateAsync"/> in
+/// many places; rewriting all of them is O.4+ scope. Keeping the existing
+/// surface lets O.2 ship the consolidation safely under the existing
+/// tests and producer call-sites. The gate vanishes entirely in O.7.
 ///
-/// **Failure containment**: an invariant that throws is logged and
-/// treated as Pass for that artifact — observability bugs in invariants
-/// MUST NOT block pipelines from dispatching. The verdict will surface
-/// the exception in logs; producers continue.
+/// **Semantic mapping** (pipeline DispatchResult → OutputGateResult):
+/// <list type="bullet">
+///   <item><description>Pass → <see cref="OutputGateVerdict.Pass"/> with empty
+///   <see cref="OutputGateResult.FiredInvariants"/>.</description></item>
+///   <item><description>Remediate → <see cref="OutputGateVerdict.Remediate"/>
+///   with <see cref="DispatchResult.ShortCircuitHandler"/> as the single
+///   fired-invariant entry and <see cref="DispatchResult.Reason"/> as the
+///   remediation hint.</description></item>
+///   <item><description>Fail → <see cref="OutputGateVerdict.Fail"/> with same
+///   shape as Remediate.</description></item>
+/// </list>
 ///
-/// **Order**: invariants run in DI registration order. Convention from
-/// the Theme J plan: structural checks first (data-shape invariants
-/// like source attribution), content checks next (anti-parrot,
-/// prompt-template leak), semantic checks last (confabulation, claim
-/// verification — heavier, often LLM-bound). DI registration in
-/// <c>Program.cs</c> establishes the canonical order.
+/// **Aggregation difference vs the pre-O.2 implementation**: the old gate
+/// ran ALL applicable invariants and aggregated their fired names + hints;
+/// the pipeline short-circuits on the first failing handler. This is an
+/// intentional behaviour shift documented in the Theme O plan §6: each
+/// failure is surfaced individually as it happens (with telemetry pointing
+/// at the exact handler), and producers re-evaluate after remediation
+/// regen anyway, so the second invariant that would have fired on the
+/// original output will fire on the regen if it still applies.
 /// </summary>
 public sealed class CognitiveOutputGate : ICognitiveOutputGate
 {
-    private readonly IReadOnlyList<ICognitiveOutputInvariant> _invariants;
-    private readonly ILogger<CognitiveOutputGate>             _log;
+    private readonly CognitivePipeline                 _pipeline;
+    private readonly ILogger<CognitiveOutputGate>      _log;
 
     public CognitiveOutputGate(
-        IEnumerable<ICognitiveOutputInvariant> invariants,
-        ILogger<CognitiveOutputGate>           log)
+        CognitivePipeline                  pipeline,
+        ILogger<CognitiveOutputGate>       log)
     {
-        _invariants = invariants?.ToList()
-            ?? new List<ICognitiveOutputInvariant>();
-        _log        = log;
+        _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+        _log      = log;
     }
 
     public async Task<OutputGateResult> EvaluateAsync(
@@ -51,55 +66,39 @@ public sealed class CognitiveOutputGate : ICognitiveOutputGate
             return OutputGateResult.Pass();
         }
 
-        var fired = new List<string>();
-        var hints = new List<string>();
-        var hardFail = false;
-
-        foreach (var invariant in _invariants)
+        // Build a minimal pipeline context. The Snapshot field is required-
+        // init on CognitivePipelineContext; existing post-stage handlers
+        // (Theme J invariants) read the artifact only — they do NOT touch
+        // the snapshot — so a default empty instance is safe here. Pre-stage
+        // handlers (Theme N selector) are skipped entirely via
+        // RunPostOnlyAsync, so they never observe this placeholder either.
+        var ctx = new CognitivePipelineContext
         {
-            if (ct.IsCancellationRequested) break;
-            if (!invariant.AppliesTo(artifact)) continue;
+            Artifact  = artifact,
+            Snapshot  = new ContextSnapshot(),
+            StartedAt = DateTimeOffset.UtcNow,
+        };
 
-            InvariantResult result;
-            try
-            {
-                result = await invariant.EvaluateAsync(artifact, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex,
-                    "CognitiveOutputGate: invariant '{Name}' threw — treating as Pass for this artifact.",
-                    invariant.Name);
-                continue;
-            }
+        var dispatch = await _pipeline.RunPostOnlyAsync(ctx, ct).ConfigureAwait(false);
 
-            if (!result.Passed)
-            {
-                fired.Add(invariant.Name);
-                if (!string.IsNullOrWhiteSpace(result.RemediationHint))
-                    hints.Add(result.RemediationHint);
-                if (result.IsHardFail) hardFail = true;
-            }
-        }
-
-        if (fired.Count == 0)
+        if (dispatch.Verdict == OutputGateVerdict.Pass)
         {
             _log.LogDebug("CognitiveOutputGate: {Producer}/{Sink} passed all applicable invariants.",
                 artifact.ProducerKind, artifact.IntendedSink);
             return OutputGateResult.Pass();
         }
 
-        var verdict = hardFail ? OutputGateVerdict.Fail : OutputGateVerdict.Remediate;
+        var firedName = dispatch.ShortCircuitHandler ?? "<unknown>";
+        var hint      = dispatch.Reason ?? string.Empty;
         _log.LogInformation(
             "CognitiveOutputGate: {Producer}/{Sink} → {Verdict}; fired={Fired}; hint=\"{Hint}\"",
-            artifact.ProducerKind, artifact.IntendedSink, verdict,
-            string.Join(",", fired), string.Join(" | ", hints));
+            artifact.ProducerKind, artifact.IntendedSink, dispatch.Verdict, firedName, hint);
 
         return new OutputGateResult
         {
-            Verdict          = verdict,
-            FiredInvariants  = fired,
-            RemediationHint  = hints.Count == 0 ? null : string.Join(" | ", hints),
+            Verdict          = dispatch.Verdict,
+            FiredInvariants  = new[] { firedName },
+            RemediationHint  = string.IsNullOrEmpty(hint) ? null : hint,
         };
     }
 }
