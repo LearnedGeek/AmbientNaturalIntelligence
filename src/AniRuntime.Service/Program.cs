@@ -6,6 +6,7 @@ using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using AniRuntime.Loops;
+using AniRuntime.Loops.Coreference;
 using AniRuntime.Loops.Invariants;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
@@ -194,6 +195,16 @@ try
     // observation. See ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md
     // §10 N.3 for the rollout sequence.
     builder.Services.AddSingleton<IOutreachFrameSelector, AniRuntime.Loops.Coreference.OutreachFrameSelector>();
+
+    // Theme N Phase N.5 (May 10, 2026) — post-composition frame-coherence
+    // checker. Architectural complement to IOutreachFrameSelector: the
+    // selector picks the frame BEFORE composition; the checker enforces
+    // the composition MATCHES the frame. Reusable across producer paths
+    // (OutreachPhase + future N.6 reactive-share + future N.7
+    // ConversationReplyPhase). Phase 1 wired into OutreachPhase only;
+    // gated by the same OutreachFrameSelectorEnabled flag as N.3. See
+    // ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md §10 N.5.
+    builder.Services.AddSingleton<IFrameCoherenceChecker, AniRuntime.Loops.Coreference.FrameCoherenceChecker>();
 
     builder.Services.AddSingleton<DesireEngine>();
 
