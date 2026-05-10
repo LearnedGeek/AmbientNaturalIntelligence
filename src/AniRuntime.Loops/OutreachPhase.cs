@@ -33,6 +33,8 @@ public class OutreachPhase
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IVibeBiasService? _vibeBias;
     private readonly IOutreachFrameSelector? _frameSelector;
+    private readonly IFrameCoherenceChecker? _frameChecker;
+    private readonly IClosedConversationStore? _closedStore;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -60,7 +62,9 @@ public class OutreachPhase
         Em9Detector? em9Detector = null,
         ICognitiveOutputGate? outputGate = null,
         IVibeBiasService? vibeBias = null,
-        IOutreachFrameSelector? frameSelector = null)
+        IOutreachFrameSelector? frameSelector = null,
+        IFrameCoherenceChecker? frameChecker = null,
+        IClosedConversationStore? closedStore = null)
     {
         _state = state;
         _persist = persist;
@@ -76,6 +80,8 @@ public class OutreachPhase
         _outputGate = outputGate;
         _vibeBias = vibeBias;
         _frameSelector = frameSelector;
+        _frameChecker = frameChecker;
+        _closedStore = closedStore;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -302,6 +308,55 @@ public class OutreachPhase
             return;
         }
 
+        // ─── Theme N Phase N.5 (May 10, 2026) — frame-coherence check ─────────
+        //
+        // Companion to N.3's frame-aware composition prompt. The May 9 canary
+        // produced multiple Mark-tagged confabs where the frame was selected
+        // correctly (AniInterior, high confidence) but the composition
+        // ignored the prompt header + per-frame guidance and produced
+        // shared-event predicates anyway ("Mia told us", "we talked",
+        // "we're all set for", "you're probably sitting on the couch").
+        //
+        // Per-claim verification (R1) cannot catch whole-message-shape
+        // failures because each claim individually cosine-matches
+        // something. The architectural mechanism that catches *this*
+        // failure shape is post-composition frame-coherence: does the
+        // message-as-a-whole respect the frame's allowed surface forms?
+        //
+        // Phase 1 ships SUPPRESSION on coherence violation, not regen-
+        // with-hint. Mark's "better silence than ungrounded reach"
+        // directive (May 6) — a future enhancement could feed the hint
+        // back into a regen path. Same suppression shape as the universal
+        // output-gate-fail path (decay desire 0.30 + 10-minute cooldown).
+        //
+        // Gated behind the same OutreachFrameSelectorEnabled flag as N.3 —
+        // when the flag is off, no frame is selected, so the checker is
+        // never reached. The IFrameCoherenceChecker dependency is
+        // optional so test-rigs that don't wire it still work.
+        if (_aniOptions.OutreachFrameSelectorEnabled
+            && _frameChecker is not null
+            && selectedFrame is not null
+            && selectedFrame.FrameType != OutreachFrameType.None
+            && selectedFrame.FrameType != OutreachFrameType.Shared)
+        {
+            var coherence = _frameChecker.CheckCoherence(message, selectedFrame);
+            var violationsList = string.Join("; ", coherence.Violations);
+            if (!coherence.IsCoherent)
+            {
+                _log.LogWarning(
+                    "N5_FRAME_COHERENCE result=Violation frame={Frame} violations=\"{Violations}\" — suppressing dispatch.",
+                    selectedFrame.FrameType, violationsList);
+                await _desire.DecayDesireAsync(0.30f, $"frame coherence violation ({selectedFrame.FrameType})", ct)
+                    .ConfigureAwait(false);
+                await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+                return;
+            }
+
+            _log.LogDebug(
+                "N5_FRAME_COHERENCE result=Coherent frame={Frame}",
+                selectedFrame.FrameType);
+        }
+
         // Outreach echo guard: check against recent outreach messages to prevent duplicates
         // across cycles. The conversation echo guard only checks within a thread — this
         // catches the same message composed in separate outreach cycles.
@@ -508,9 +563,85 @@ public class OutreachPhase
         _log.LogInformation("Reactive share triggered: {Summary} (relevance={Relevance:F2})",
             shareable.Summary, shareable.ContactRelevance);
 
+        // ─── Theme N Phase N.6 (May 10, 2026) — reactive-share frame wiring ─
+        //
+        // The reactive-share path predates Theme N and ran outside N.3's
+        // OutreachPhase wiring. May 10 06:38 + 07:23 dispatched messages
+        // ("hey! just saw this and immediately thought of you...") failed
+        // Mark's copy-paste-to-a-friend test even though they were
+        // technically grounded — a third-party reader had no hook for
+        // what *"this"* refers to. N.6 fixes this by extending the
+        // selector + frame-aware composition to this code path.
+        //
+        // Flag-OFF default mirrors N.3: when OutreachFrameSelectorEnabled
+        // is false or the selector is not wired, this block is a no-op
+        // and behavior is identical to pre-N.6 (zero behavioral change
+        // unless the flag is on).
+        //
+        // For RSS shares the selector almost always returns
+        // WORLD_PERCEPTION (the article itself is fresh substrate; the
+        // selector's recency × salience easily clears the suppression
+        // floor). The OutreachFrame.None branch is rare for this path —
+        // the article IS the anchor — but possible if substrate is
+        // genuinely thin (e.g., zero perceptions reach the selector
+        // because something upstream stripped them). On None we suppress
+        // and return false, mirroring the OutreachPhase suppression
+        // shape.
+        OutreachFrame? selectedFrame = null;
+        string? sharedTopicGist = null;
+        if (_aniOptions.OutreachFrameSelectorEnabled && _frameSelector is not null)
+        {
+            // Surface the most recent closed-conversation gist for the
+            // shared-topic anchor in the WORLD_PERCEPTION composition
+            // guidance (N.6.2). Failure here is non-fatal — we just
+            // proceed without a shared topic, and the prompt falls
+            // through to the clean-external-observation branch.
+            ClosedConversationRecord? recentClosed = null;
+            if (_closedStore is not null)
+            {
+                try
+                {
+                    var recent = await _closedStore.GetRecentAsync(limit: 1, ct).ConfigureAwait(false);
+                    recentClosed = recent.FirstOrDefault();
+                    sharedTopicGist = recentClosed?.Gist;
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug(ex, "Reactive share: closed-conversation lookup failed — proceeding without shared-topic anchor");
+                }
+            }
+
+            // Build a minimal ContextSnapshot for the selector. The
+            // reactive-share path runs before the cycle's full snapshot
+            // is built (CognitiveCycleProcessor.cs:189 vs :196), so we
+            // synthesize the substrate the selector actually reads:
+            // Perceptions (the article = substrate, expected to drive
+            // the WORLD_PERCEPTION pick) + RecentClosedConversation
+            // (no-op on the selector's frame choice; carried for the
+            // composition path's shared-topic refinement).
+            var selectorSnapshot = new ContextSnapshot
+            {
+                CharacterState           = charState,
+                Perceptions              = perceptions,
+                RecentClosedConversation = recentClosed,
+                BuiltAt                  = DateTimeOffset.UtcNow,
+            };
+
+            selectedFrame = await _frameSelector.SelectFrameAsync(selectorSnapshot, ct).ConfigureAwait(false);
+            if (selectedFrame.FrameType == OutreachFrameType.None)
+            {
+                _log.LogInformation(
+                    "Reactive share: frame-selector returned None — suppressing share (substrate too thin)");
+                return false;
+            }
+        }
+
         // Generate the share message (with mood coloring)
         var currentMood = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-        var prompt = PromptBuilder.BuildReactiveSharePrompt(charState, shareable.Summary, currentMood);
+        var prompt = PromptBuilder.BuildReactiveSharePrompt(
+            charState, shareable.Summary, currentMood,
+            frame: selectedFrame,
+            sharedTopicGist: sharedTopicGist);
         var message = await _ollama.ChatAsync(
             prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
             .ConfigureAwait(false);

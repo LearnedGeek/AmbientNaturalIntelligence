@@ -1103,7 +1103,9 @@ public static class PromptBuilder
     }
 
     public static (string System, string User) BuildReactiveSharePrompt(
-        CharacterStateDoc character, string itemSummary, EmotionalState? emotionalState = null)
+        CharacterStateDoc character, string itemSummary, EmotionalState? emotionalState = null,
+        OutreachFrame? frame = null,
+        string? sharedTopicGist = null)
     {
         var contact = string.IsNullOrWhiteSpace(character.PrimaryContactName) ? "them" : character.PrimaryContactName;
 
@@ -1137,12 +1139,65 @@ public static class PromptBuilder
             "remember when we watched that game together?" ← invented shared experience
             """;
 
-        var user = $"""
-            You just saw this:
-            {itemSummary}
+        // ─── Theme N Phase N.6 (May 10, 2026) — reactive-share source-frame ─
+        //
+        // Empirical motivation: May 10 06:38 + 07:23 RSS-triggered shares
+        // dispatched messages that failed Mark's copy-paste-to-a-friend test
+        // (e.g. *"hey! just saw this and immediately thought of you (and
+        // mark if h..."*) — technically grounded (real article) but lacking
+        // any anchor a substrate-naive reader could parse. The same shape
+        // of fix N.3 applied to OutreachPhase: when the selector returned a
+        // real frame (here: typically WORLD_PERCEPTION since RSS is the
+        // anchor), prepend a [FRAME:] header + [ANCHOR] section so the
+        // composition prompt is structurally tied to the article.
+        //
+        // The N.6 refinement vs the N.3 WORLD_PERCEPTION guidance: when a
+        // recent shared topic from conversation history is genuinely
+        // relevant, instruct the model to tie the share to it (*"you
+        // mentioned X yesterday — saw this on the topic"*). When no shared
+        // topic exists, instruct the model to frame as a clean external
+        // observation rather than pretending to join an in-flight
+        // conversation. The shared-topic substrate is
+        // <c>snapshot.RecentClosedConversation.Gist</c> — surfaced by the
+        // producer when present, omitted when absent.
+        //
+        // When frame is null (selector disabled — the N.6-default path) or
+        // None (suppression path — producer has already returned), this
+        // block is skipped and the prompt is structurally identical to the
+        // pre-N.6 form.
+        var sections = new List<string>();
+        if (frame is not null && frame.FrameType != OutreachFrameType.None)
+        {
+            sections.Add($"[FRAME: {frame.FrameType}]");
+            var anchorPreview = frame.Anchor.Length > 200
+                ? frame.Anchor.Substring(0, 200)
+                : frame.Anchor;
+            sections.Add($"[ANCHOR] {anchorPreview}");
 
-            Text {contact} about it — share it like you'd share something cool with someone you love:
-            """;
+            // Per-frame composition guidance. WORLD_PERCEPTION is the
+            // expected frame for RSS-triggered shares; the other frames
+            // are reachable in principle (e.g., a perception event whose
+            // selector-score loses to a stronger Shared/AniDomain item)
+            // and are wired through the same shape as N.3 for consistency.
+            sections.Add(frame.FrameType switch
+            {
+                OutreachFrameType.WorldPerception => string.IsNullOrWhiteSpace(sharedTopicGist)
+                    ? "Compose by referencing this perception event you actually had. Use \"i saw...\" / external-content framing. There is no recent shared topic relevant here — frame as a clean external observation; do NOT pretend to be joining an in-flight conversation."
+                    : $"Compose by referencing this perception event you actually had. Use \"i saw...\" / external-content framing. A recent shared topic from your conversation history is genuinely relevant — anchor to it (e.g. \"you mentioned [topic] yesterday — saw this on it\"). Recent shared topic gist: {sharedTopicGist}",
+                OutreachFrameType.Shared          => "Compose by referencing this anchor as something Mark already said or did. Use \"remember when...\" / \"that thing you said about...\" framing.",
+                OutreachFrameType.AniDomain       => "Compose by referencing this anchor as something from your bookstore world. Use \"the bookstore...\" / canonical-world framing.",
+                OutreachFrameType.AniInterior     => "Compose by framing this honestly as your own interior — \"i was just thinking...\" / \"i had this thought that...\" Don't present interior content as shared observation.",
+                _                                 => string.Empty,
+            });
+            sections.Add(string.Empty); // visual separator
+        }
+
+        sections.Add($"You just saw this:");
+        sections.Add(itemSummary);
+        sections.Add(string.Empty);
+        sections.Add($"Text {contact} about it — share it like you'd share something cool with someone you love:");
+
+        var user = string.Join("\n", sections);
 
         return (system, user);
     }
