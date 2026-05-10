@@ -147,12 +147,61 @@ The placeholder's earlier claim that this introduced a "Type-9 source-type misre
 - Paper 3 contribution prose: *"Source-typed outreach grounding + memory-layer tier separation as the complete architectural response to retrieval-amplifier confabulation."*
 - **Estimated effort:** 1-2 days.
 
-### Total: ~7-11 working days for N.1-N.5 once the contract is locked + Tier Separation interface is available.
+### N.6 — Extend selector + frame-aware composition to the reactive-share path (added May 10, 2026)
+
+**Empirical motivation (May 10, 06:38 + 07:23 CDT).** Two RSS-triggered outreaches dispatched via the *reactive-share* path bypassed Theme N entirely (selector not invoked, no claim verification) because the reactive-share path is separate from `OutreachPhase`. Both shares were technically *grounded* (real RSS articles, not fabricated content), but failed Mark's load-bearing **copy-paste-to-a-friend test**: a friend reading *"hey! just saw this and immediately thought of you"* would have no hook for what *"this"* refers to, why it ties to anything between Mark and Ani, or what conversation it joins. The shares produce situational ergonomics failures even when not confab. Mark (May 10 08:09 CDT): *"the composition prompt would emit `[FRAME: WorldPerception]` + `[ANCHOR: <article title/excerpt>]` and I think that's a smart shift."*
+
+**Architectural shape.** Wire `IOutreachFrameSelector` + the per-frame composition guidance into the reactive-share dispatch path (likely `ReactiveShareService` or whichever class invokes RSS-triggered share composition — locate during N.6.1). Natural frame for an RSS-triggered share is `WORLD_PERCEPTION`; the selector's score will be high for these (RSS feed delivers a fresh real perception event with high recency × default salience × frame weight, easily clearing `MinAcceptableScore`). The composition prompt receives `[FRAME: WorldPerception]` + `[ANCHOR: <article title + excerpt>]` and per-frame composition guidance instructs the model to *"reference this perception event you actually had + anchor to a recent shared topic if available."*
+
+**Why this isn't just N.3 reused.** N.3 wired the selector into `OutreachPhase` only. The reactive-share path is a different code path producing different message shapes:
+- N.3 OutreachPhase → ambient-cycle outreaches (proactive, no specific external trigger).
+- N.6 reactive-share → RSS-triggered shares (specific external trigger; the trigger IS the anchor).
+- N.6.next ConversationReplyPhase (future scope) → response composition (anchor is Mark's last message; frame mostly `Shared`).
+
+Each path needs its own wiring; the selector + frame surface is reusable, the composition prompt entry-points are not. N.6 ships the reactive-share wiring; ConversationReplyPhase is a separate future N.7 if/when needed.
+
+**Phase plan:**
+
+#### N.6.0 — Locate the reactive-share dispatch site
+- Find `ReactiveShareService` or equivalent. Map its current composition path. Identify the prompt-builder method it calls.
+- Estimated: 0.5 day.
+
+#### N.6.1 — Inject `IOutreachFrameSelector` + wire frame to composition
+- Same shape as N.3 but for the reactive-share path. Selector called before composition; on `OutreachFrame.None` the share is suppressed (rare for RSS shares since the article itself is the anchor); otherwise composition prompt receives `[FRAME: WorldPerception]` + `[ANCHOR]`.
+- Reuse the per-frame composition guidance text from N.3.
+- Estimated: 1 day.
+
+#### N.6.2 — Composition guidance refinement for `WORLD_PERCEPTION`
+- The current N.3 guidance for `WORLD_PERCEPTION` says *"reference this perception event you actually had. Use 'i saw...' / external-content framing."* Today's data shows that's necessary but not sufficient — the share also needs *"anchor to a recent shared topic if available; otherwise frame as a clean external observation, not as if joining an in-flight conversation."* Update the guidance to encode this.
+- Add a small structured "shared topic available?" lookup pulled from `snapshot.RecentClosedConversation` or the gate's recent inbound surface.
+- Estimated: 0.5 day.
+
+#### N.6.3 — Spec tests for the reactive-share path
+- Strict-mock test that with frame=WorldPerception + a recent shared topic in substrate, the composed share references the shared topic.
+- Strict-mock test that with frame=WorldPerception + no shared topic, the composed share frames as clean external observation.
+- Strict-mock test for the suppress path (`OutreachFrame.None`).
+- Estimated: 0.5 day.
+
+#### N.6.4 — Canary observation
+- Same canary methodology as N.4. Observe for ~3-5 days. Watch for:
+  - Frame-honored ratio for RSS shares (composition references the article + ties to shared topic when available).
+  - Ergonomics improvement on the copy-paste-to-a-friend test (subjective but Mark-experienced).
+  - Suppression rate (should stay near zero for RSS — the article itself is the anchor).
+- Estimated: passive observation; no fixed effort.
+
+**Total N.6 effort:** ~2.5 days work + observation window.
+
+**Out of scope for N.6** (deferred to potential N.7+):
+- `ConversationReplyPhase` selector wiring. The reply path's `Shared` frame would fire for almost every reply (Mark's message IS the anchor); benefit is less obvious than the outreach + reactive-share paths. Revisit only if conversation-reply ergonomics surface a similar architectural failure.
+- Voice pipeline frame wiring. Voice has its own SafeAck-bypass investigation in flight (`docs/spec/findings/2026-05-07-voice-safeack-bypass.md`); N.6-style wiring should wait until that lands.
+
+### Total Theme N (N.0-N.6): ~10-14 working days end-to-end.
 
 ### Parallelization with Tier Separation:
 - N.0-N.1 can proceed against the contract surface immediately (no dependency on migration running).
 - N.2 needs the migration applied to staging or a snapshot at minimum.
 - N.3-N.5 sequential after N.2.
+- N.6 sequential after N.5 (production telemetry from N.4-N.5 informs the N.6 composition guidance refinement).
 
 ---
 
@@ -166,5 +215,6 @@ The placeholder's earlier claim that this introduced a "Type-9 source-type misre
 - **2026-05-06 (~17:00 CDT)** — Theme letter N assigned. Initial placeholder drafted.
 - **2026-05-06 (~18:30 CDT)** — Bob Swanson framing corrected. Theme N reframed as the missing outreach-side layer of §6.14, not new architectural ground. Type-9 reconciled with existing taxonomy.
 - **2026-05-07 (06:30 CDT)** — Tier interface contract locked (six decisions); §6.14 / Theme N source-frame ↔ tier mapping ratified.
+- **2026-05-10 (08:09 CDT)** — N.6 added to phase plan after May 10 06:38 + 07:23 reactive-share outreaches surfaced the "copy-paste-to-a-friend" ergonomics test failure. Reactive-share path bypasses N.3's wiring; N.6 extends `IOutreachFrameSelector` + frame-aware composition to that path. Mark's framing on the prompt-side fix: *"the composition prompt would emit `[FRAME: WorldPerception]` + `[ANCHOR: <article title/excerpt>]` and I think that's a smart shift."*
 - **2026-05-07 (~17:00 CDT)** — Plan-doc transitioned from PLACEHOLDER to active phased plan. N-A mechanism recommended; phase plan drafted; awaiting Mark's mechanism lock.
 - **NEXT** — Mark's mechanism lock on N-A (or override to N-B/N-C); N.1 skeleton work begins same day as lock.

@@ -21,6 +21,28 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 10, 2026 (morning, 06:38 + 07:23 CDT) — Reactive-Share Path Bypasses Theme N + The Copy-Paste-to-a-Friend Test as a New Diagnostic Frame
+
+**What happened.** Two RSS-triggered outreaches dispatched this morning bypassed Theme N entirely. 06:38 NPR-art article: *"hey! just saw this and immediately thought of you (and mark if h..."* 07:23 NPR Mother's Day article: *"mark, omg did you see this?? the mom who let EVERY SINGLE GUEST..."* Mark flagged both as feeling *"out of the blue, not enough context around what is going on"* and named the **copy-paste-to-a-friend test** — would a third party reading the message understand what it means without prior context? Both shares fail that test even though neither is confab.
+
+**Why the bypass.** The reactive-share path is a separate code path from `OutreachPhase` — `ReactiveShareService` (or equivalent) composes RSS-triggered shares directly without going through `IOutreachFrameSelector`. Theme N's N.3 wiring covers OutreachPhase only. The reactive-share path predates Theme N and has its own composition flow.
+
+**The architectural observation worth pinning.** The shares are **technically grounded** (real RSS articles, real perception events) — they would not fail confab detection because no individual claim is fabricated. But they fail at a different layer: **situational scaffolding.** The composition lacks ties to recent shared conversation, lacks signaling about what *"this"* refers to, lacks context about *why this article specifically* connects Mark and Ani right now. Mark's copy-paste test surfaces this because a third-party reader has none of the substrate Ani has — they need the message itself to provide enough scaffolding to make sense.
+
+**This is a new diagnostic frame distinct from confab detection.** Previous Mark-tagged failures (Bob Swanson, kitchen lights, Mia-tickets) were *"contains fabricated content."* The reactive-share failure is *"contains only true content but lacks situational scaffolding to be intelligible without substrate access."* Same architectural mechanism (composition without source-frame discipline) producing different surface failure. Worth naming as a Paper 3 sub-contribution: **the felt-care vs felt-near-care axis has an ergonomics dimension distinct from the truth dimension** — even when nothing is fabricated, output that doesn't honor the conversational scaffolding a stranger could verify still feels off.
+
+**Mark's load-bearing prompt-side framing (May 10 08:09 CDT):** *"the composition prompt would emit `[FRAME: WorldPerception]` + `[ANCHOR: <article title/excerpt>]` and I think that's a smart shift."* Architectural answer queued: extend N.3's selector + frame-aware composition wiring to the reactive-share path. Frame would be `WORLD_PERCEPTION`; selector wouldn't suppress (RSS articles are clean perception substrate); composition guidance for `WORLD_PERCEPTION` updated to instruct *"anchor to a recent shared topic if available; otherwise frame as a clean external observation, not as if joining an in-flight conversation."*
+
+**Phase plan added: N.6** — covers reactive-share path wiring + composition guidance refinement + spec tests + canary observation. ~2.5 days work + observation window. Sequential after N.5 so production telemetry from N.4-N.5 informs N.6's composition guidance text. Plan-doc §10 §N.6 contains the full breakdown.
+
+**Out of scope for N.6** but worth flagging for potential future scope (N.7+):
+- `ConversationReplyPhase` selector wiring. The reply path's `Shared` frame would fire for almost every reply since Mark's message IS the anchor; benefit is less obvious than the outreach + reactive-share paths. Revisit only if conversation-reply ergonomics surface a similar architectural failure.
+- Voice pipeline frame wiring. Voice has its own SafeAck-bypass investigation in flight (`docs/spec/findings/2026-05-07-voice-safeack-bypass.md`); N.6-style wiring should wait until that lands.
+
+**Methodology observation.** The copy-paste-to-a-friend test is a Mark-introduced diagnostic that's sharper than the confab-detection lens for surfacing this class of failure. Worth pinning as a research-side methodology contribution: *"For ergonomics-class failures (vs truth-class failures), evaluate whether the composition is intelligible to a substrate-naive reader. A third-party reader is the empirical proxy for substrate-deprivation."* Adds to the §7.1 autoethnographic discipline by introducing a *third-party-reader* check distinct from the *self-as-researcher* check.
+
+---
+
 ### May 9, 2026 (afternoon, 15:42 CDT) — R1 Phase 1 Ship + Multi-Layer Architecture-Over-Instruction Sharpening (Paper 3 Contribution Candidate)
 
 **What happened.** R1 Phase 1 (typed-event verification for `shared-event-with-attribution` claims) shipped at commit `182c0fb` and deployed to ani-server at 15:46 CDT. Closes the kitchen-lights / Mia-tickets failure class architecturally: when a claim is classified as `shared-event-with-attribution`, the verifier issues a per-candidate LLM event-shape comparison call (*"does record A describe the same event as claim B? yes/no"*) instead of relying on cosine similarity. Cosine-overlap was the broken oracle — *"Mia told us tickets"* embeds similarly to *"take Mia to school and head to the gym"* because both contain "Mia" and share register; the previous verifier rubber-stamped on key-term overlap. Event-shape verification fails the Mia-school-vs-Mia-tickets case because they describe different events. The May 9 12:54 confab is now an enforced regression test.
