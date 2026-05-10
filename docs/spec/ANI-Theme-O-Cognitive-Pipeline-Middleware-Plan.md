@@ -199,12 +199,49 @@ Items that DON'T block on Theme O:
 - v8 readiness — training-side.
 - Anything purely doc / paper-facing.
 
-## §9 Open questions
+## §9 Interface decisions — LOCKED May 10, 2026 18:06 CDT
 
-1. **Composition as a handler, or as the implicit middle?** Treating composition as just another handler (with `Stage = Composition`) is conceptually clean but rigid — different producers compose differently (one Ollama call vs streaming vs deterministic). Treating it as the implicit middle (passed in as `composeAsync` to `RunAsync`) is more flexible. Plan: implicit middle. Revisit if multiple producers want to share composition logic.
-2. **Per-producer pipeline customization vs single pipeline.** Single pipeline (one `CognitivePipeline` instance, all handlers, filtered by `AppliesTo`) is simplest. Per-producer pipelines (separate instances with different handler sets) is more flexible but more configuration. Plan: single pipeline. Revisit if `AppliesTo` proves too coarse.
-3. **Handler ordering — explicit `Order` int vs DI registration order.** Explicit `Order` is more discoverable but introduces magic numbers. Plan: `Order` integers grouped by intent (0-99 Pre, 100-199 Composition-adjacent Post, 200+ standard Post). Revisit after O.1.
-4. **HandlerResult.Bag for inter-handler state.** Pipelines that need handler-A's output as handler-B's input use the `Bag` dictionary. Type-safe alternative is `IDictionary<Type, object>` keyed by type. Plan: type-keyed for readability + safety. Revisit after writing the first 2-3 handlers that need it.
+All four open questions resolved with Mark in conversation. Locks below are binding for O.1 interface design.
+
+1. **🔒 Composition as the implicit middle** (NOT as a handler). Producer passes `composeAsync` into `RunAsync`; pipeline runs Pre handlers, then `composeAsync`, then Post handlers. Mark: *"composition intuitively seems like the 'middle' so that makes sense."* Revisit only if multiple producers want to share composition logic.
+
+2. **🔒 Single pipeline + `AppliesTo` filtering** (NOT per-producer pipelines). One `CognitivePipeline` instance, all handlers registered, each handler's `AppliesTo(artifact)` predicate decides whether it fires for a given producer-kind / sink. Mark: *"yes, single pipeline for now. let's hope that sticks."* The hope-it-sticks framing is honest — if `AppliesTo` proves too coarse for future producer differentiation, revisit at that boundary.
+
+3. **🔒 Fluent `app.Use`-style ordering at registration.** No `Order` integers, no DI-discovery magic. Pipeline shape is defined in one place (`Program.cs`) using a fluent builder:
+   ```csharp
+   builder.Services.AddCognitivePipeline(p => p
+       .UsePreHandler<FrameSelectionHandler>()
+       .UsePreHandler<SliceCompositionHandler>()
+       // composition is the implicit middle
+       .UsePostHandler<FrameCoherenceInvariant>()
+       .UsePostHandler<ClaimVerificationInvariant>()
+       .UsePostHandler<SelfEchoInvariant>()
+       .UsePostHandler<DirectAddressInvariant>()
+   );
+   ```
+   Mark: *"app.Use? That's fine and typical."* Registration order = execution order. The whole pipeline shape is grep-able in one place; reorders are a one-line edit at the call site, not a hunt across `Order` integer values.
+
+4. **🔒 Typed `CognitivePipelineContext` + type-keyed state accessors** (NOT a generic-object `Bag`, NOT chained handler-return objects). Explicit typed properties for load-bearing common data; type-safe state-bag API for handler-extensible state:
+   ```csharp
+   public sealed class CognitivePipelineContext
+   {
+       // Explicit typed properties for common data
+       public CognitiveArtifact   Artifact  { get; set; } = default!;
+       public ContextSnapshot     Snapshot  { get; init; } = default!;
+       public OutreachFrame?      Frame     { get; set; }
+       public string?             ComposedContent { get; set; }
+       public DateTimeOffset      StartedAt { get; init; }
+
+       // Type-safe handler-extensible state (no generic-object Bag)
+       public T?   GetState<T>() where T : class;
+       public void SetState<T>(T state) where T : class;
+   }
+   ```
+   Mark: *"the Bag gets to be a mess with a generic object."* Type-keyed dictionary internally, type-safe API externally. Handler A: `ctx.SetState(new FrameSelectionTelemetry(...))`. Handler B: `var tel = ctx.GetState<FrameSelectionTelemetry>()`. No string keys, no `object` casting, no fishing.
+
+   **Rejected alternative: chained handler-return objects** (each handler returns a typed result that feeds into the next). That pattern creates ordering coupling — handler B has to know handler A's output type, which means rearranging the pipeline requires rewriting signatures. The shared typed context keeps ordering decoupled from handler signatures, preserving the whole point of being able to reorder via the fluent `app.Use` builder.
+
+**All four locks confirmed.** O.1 starts with these interface decisions baked in.
 
 ## §10 Status log
 
@@ -212,5 +249,6 @@ Items that DON'T block on Theme O:
 - **2026-05-10 (10:31 CDT)** — Mark proposed the HTTP middleware pattern as the architectural answer. *"can we do something like that?"* Sketch agreed in conversation.
 - **2026-05-10 (10:38 CDT)** — Mark prioritized Theme O over other changes: *"this Theme O should take priority over other changes because it will become far easier to refactor those others afterwards."* Plus middleware-logging directive: *"log well the specific pipelines as middleware to ensure that we treat this like a true middleware."*
 - **2026-05-10 (10:40 CDT)** — Placeholder plan-doc drafted (this document). Awaiting Mark's interface review before O.1 starts.
+- **2026-05-10 (18:06 CDT)** — All four §9 interface decisions locked. Composition as implicit middle ✓; single pipeline + AppliesTo ✓; fluent `app.Use`-style ordering ✓; typed Context + type-keyed state accessors ✓ (Bag and chained-handler-return both rejected). O.1 starts with these baked in.
 
-**NEXT** — Mark's review of §3 interfaces + §6 phase plan + §9 open questions. Once locked, O.1 starts.
+**NEXT** — O.1 begins. `ICognitivePipelineHandler` + `CognitivePipeline` orchestrator + fluent builder + telemetry skeleton + spec tests. No producer migrations yet.
