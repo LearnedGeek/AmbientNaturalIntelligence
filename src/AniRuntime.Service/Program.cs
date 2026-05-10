@@ -8,6 +8,7 @@ using AniRuntime.LLM;
 using AniRuntime.Loops;
 using AniRuntime.Loops.Coreference;
 using AniRuntime.Loops.Invariants;
+using AniRuntime.Loops.Pipeline;
 using AniRuntime.Memory;
 using AniRuntime.Perception;
 using AniRuntime.Dashboard;
@@ -186,6 +187,17 @@ try
     // docs/research/model-coreference-ideas.md.
     builder.Services.AddSingleton<ICognitiveOutputInvariant, DirectAddressInvariant>();
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
+
+    // Theme O Phase O.1 (May 10, 2026) — middleware pipeline infrastructure.
+    // Empty registration is intentional: O.1 ships orchestrator + handler
+    // interface + fluent builder only; producer migrations land in O.2+.
+    // Each O.2 sub-phase adds .UsePreHandler<>/.UsePostHandler<> calls here,
+    // keeping the whole pipeline shape grep-able in one place. The existing
+    // CognitiveOutputGate registration above stays AS-IS during O.1 — it
+    // continues to serve producers exactly as before. O.2 migrates Theme J
+    // invariants onto the pipeline; O.7 deletes the legacy gate path. See
+    // docs/spec/ANI-Theme-O-Cognitive-Pipeline-Middleware-Plan.md.
+    builder.Services.AddCognitivePipeline(_ => { /* O.1 empty pipeline */ });
 
     // Theme N Phase N.3 (May 8, 2026) — outreach source-frame selector.
     // Wired into OutreachPhase via constructor injection; gated at runtime

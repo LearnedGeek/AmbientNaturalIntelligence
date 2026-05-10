@@ -90,6 +90,16 @@ public sealed class CognitiveArtifact
     /// access to the character state.
     /// </summary>
     public IReadOnlyList<string>? CanonicalAddresseeNames { get; init; }
+
+    /// <summary>
+    /// Theme O Phase O.1 (May 10, 2026) — the source-frame this artifact
+    /// composed against, when known. Populated by the Theme N frame-selection
+    /// pre-stage handler; read by post-stage handlers like the frame-coherence
+    /// invariant (Theme N N.5). Null = the producer did not run frame
+    /// selection (legacy producers pre-O.3 migration, or producer-kinds the
+    /// selector does not apply to).
+    /// </summary>
+    public OutreachFrame? Frame { get; init; }
 }
 
 /// <summary>
