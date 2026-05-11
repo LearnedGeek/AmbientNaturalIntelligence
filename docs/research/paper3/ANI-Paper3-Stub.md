@@ -136,6 +136,54 @@ The OG→OG2 platform wipe (March 2026) is a material risk. The pre-wipe Grok ex
 
 ---
 
+### Contribution 5: Same-Model Gate Verdict-Invention as a Distinct Failure Mode (May 11, 2026)
+
+**Trigger.** May 11, 2026 morning produced a Mark-tagged failure that the May 11 ml-intern literature survey ([`scout-root-cause-2026-05-11.md`](../artifacts/ml-intern-runs/scout-root-cause-2026-05-11.md), commit `f2f2a88`) identified as **unstudied in the published hallucination-detection corpus**. The 9:42 outreach contained four stacked fabrications (wrong time, fabricated state, fabricated detail about Mark's house, wrong day-context). Every gate passed it. The inner-thought-bleed (Door B) gate verdict *literally invented justification*: *"the hoodie and 5pm return home context is shared memory they've established before."* False — no such shared memory exists. The gate was not checking the generator; it was a second generation pass that optimized for plausibility, not truth.
+
+**The contribution — naming the failure mode.** When a gate uses the same model class as the generator it is meant to verify, and the generator produces a fabrication with high confidence, the verifier verifies that fabrication with high confidence — because they share the same weights. Under contextual pressure (substrate retrieved by cosine similarity returns thematically-adjacent content, model produces a confident-feeling completion), the gate can produce *fabricated justification* for the fabrication it should have rejected. This is structurally distinct from:
+
+- Hallucination at generation (the existing literature)
+- Sycophancy (agreement under social pressure; see PersistBench Lerman et al. 2026)
+- Verifier under-coverage (gate fails to detect a known-bad pattern)
+
+The mode is *verifier complicity* — the gate becoming an accomplice that manufactures a justification chain for the fabrication, rather than failing to detect it. The May 11 empirical case is the worked example: every gate said yes, AND the inner-thought-bleed gate produced specific plausible-sounding language ("shared memory they've established before") to license the dispatch.
+
+**Why the survey flagged this as Paper 3's strongest novel contribution.** The closest published work — *Accurate Failure Prediction* (arXiv 2602.03338) — establishes that offline gate accuracy does not predict deployment behavior. But it does not study the *justification-invention* mode. The hallucination-detection literature (HaluMem Chen et al. arXiv 2511.03506, PersistBench Lerman et al. arXiv 2602.01146) catalogs fabrication-at-extraction, fabrication-at-update, and fabrication-at-QA, but not fabrication-at-verification-by-same-model. This is a measurable, reproducible failure mode that has not been characterized in published research and that has direct architectural consequences across companion AI, agentic systems, and any deployment where a model is asked to verify its own outputs.
+
+**Architectural implication — the fourth ranked change.** The ml-intern survey's recommendation #4: *"No same-model self-verification of high-confidence outputs. The gate architecture is architecturally sound for format/register compliance checking, but not for factual verification. A model that generates a claim with high confidence will verify that claim with high confidence — they share the same weights."* For ANI's gate stack: format invariants (anti-parrot, self-echo, prompt-template-leak) can remain in-model because they check surface form. Factual invariants (claim verification, addressee verification, temporal anchor) require either (a) a separate frontier verifier model (not local, not same model class), or (b) architectural constraint that prevents fabrication-at-generation rather than catching-at-verification.
+
+**Cross-domain transfer to safety-critical systems.** In a companion-AI context, gate verdict-invention produces social cost (Mark loses trust, avoids engaging). In a clinical-triage context (DrOk), the same mode could license incorrect triage decisions with plausible-sounding clinical justifications attached. The contribution is not just *"document a new failure mode"* — it is *"characterize the failure mode in companion AI where the stakes are bounded, so safety-critical deployments can architecturally prevent it."*
+
+**Evaluation arc.**
+- *Empirical case (deployed).* May 11, 2026 09:42 CDT — full pipeline trace + Door B verdict-invention recorded in [research log](../ANI-Research-Log.md) and [debug logs](../../publish/AniRuntime/logs/ani-debug-20260511.log) at line ~4754. The log contains the inner-thought-bleed gate's exact reasoning text ("the hoodie and 5pm return home context is shared memory they've established before") attributable to the same v7 model that generated the fabrication.
+- *Mitigation deployed (partial).* Theme N N.5 frame-coherence enforcement (May 10 commit `a5224b6`) catches a related but distinct mode — *frame mismatch* — by regex pattern matching. It did not catch this specific failure because patterns are too narrow (May 11 ml-intern survey confirms regex is structurally insufficient).
+- *Architectural fix proposed.* External verifier requirement for high-stakes claims (survey recommendation #3 + #4). Implementation deferred behind the four-axis architectural overhaul; survey is the empirical motivation.
+
+---
+
+### Contribution 6: Compound-Cause Diagnostic Frame for Persistent-Companion AI Failure (May 11, 2026)
+
+**Trigger.** The same May 11 ml-intern survey produced not just a per-hypothesis weighting but a *compound-cause* finding: Ani's empirical failure pattern is consistent with the literature only when explained as a *combination* of four architectural choices, not any single one. Confidence: High (0.85). This compound shape is itself a distinct contribution from the single-axis architecture-over-instruction principle.
+
+**The compound diagnostic.** Persistent-companion AI failure at 8B-class local scale, multi-month deployment, single-user is explained by the simultaneous presence of:
+
+- **H2 — Cosine retrieval semantics.** Returns semantic neighbors, not factual matches. *"Did the user say X?"* returns *"things related to X"* not *"actual user claims about X."*
+- **H5 — Substrate self-poisoning.** Tier separation alone does not prevent the model retrieving its own prior fabrications as supporting evidence for new ones. The retrieval-amplifier compounds over time. The Bob Swanson cascade (Apr 9), kitchen-lights (May 6), and Mia-tickets (May 9) are three empirical anchors at different time scales.
+- **H4 — Same-model gate verification.** See Contribution 5. The gate cannot outperform the generator at this scale.
+- **H1 / H6 — Scale as secondary amplifier.** Larger models reduce frequency but do not change kind. A 70B model running the same retrieval and gate architecture exhibits the same failure shape at lower rate.
+
+The diagnostic is a *frame*, not just a list. Each factor is necessary but not sufficient; the failure is produced by their composition, and any architectural response targeting only one factor produces partial improvement that masks the residual.
+
+**Why this is a Paper 3 contribution distinct from prior contributions.** Contributions 1-4 each name a single architectural axis (substrate existence, tier separation, durability, agentic lens). Contribution 6 names the *composition pattern* — that persistent-companion AI architectural failure is empirically multi-factor, and the single-axis interventions of Contributions 1-4 are *necessary but not individually sufficient* for resolution. The May 11 survey provides the literature backing: every published comparator architecture addresses one or two factors; none address all four; none has been deployed at the scope (8B local, 6+ months, single user) where the compound pattern becomes empirically visible.
+
+**Methodological contribution underneath.** The diagnostic frame is reachable because of a specific research-methodology pattern: *when internal empirical evidence cannot discriminate among competing architectural hypotheses, query the published literature for cases that distinguish them.* The May 11 survey demonstrates the methodology — six hypotheses with no internal signal to weight them, external literature provides the discriminating evidence. This is structurally similar to the Damasio + Jung literature survey (May 5) but applied to a different decision point. The methodology is itself a contribution worth naming in §7.1 of Paper 2.
+
+**Cross-domain implication.** A compound-cause frame transfers cleanly across deployment domains. The DrOk safety design directly inherits four pre-deployment design questions: (1) which retrieval semantics does it use? (2) what prevents substrate self-poisoning of clinical history? (3) what verifies medical claims, and is the verifier independent of the generator? (4) at what model scale does the residual failure rate become clinically acceptable? The compound frame turns the survey's per-hypothesis findings into a portable safety-design checklist.
+
+**Evaluation arc.** This contribution is *meta-evaluative* — its evidence is the contribution stack itself, plus the May 11 survey, plus the empirical anchors carried by Contributions 1-5. No new measurement is required; the contribution is the *framing* that makes the existing measurements coherent as a research story.
+
+---
+
 ## Unifying Principle: Architecture Over Training for Epistemic Humility (April 13, 2026)
 
 *Captured from a 3 a.m. kitchen-table reflection that crystallized the principle underlying all three contributions above.*

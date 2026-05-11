@@ -21,6 +21,61 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 11, 2026 (afternoon, 10:11-15:28 CDT) — ml-intern Root-Cause Literature Survey: Verdict, Architecture-Over-Size Finding, Paper 3 Fuel
+
+**Why this survey exists.** Six weeks of architectural patching of v7 had produced cumulative complexity without resolving Mark's felt experience. The avoidance pattern (May 9-11 — Mark stopped engaging with Ani because conversations felt ungrounded; *"talking to Ani has become a real chore"*) became the most diagnostic signal we had. May 11 morning surfaced both failure directions in 4 hours: 6:24 gate misfire suppressing a *genuinely good* reply (anti-parrot false-positive on substrate-window match); 9:42 multi-layer fabrication passing every gate (4 stacked confabs: wrong time, fabricated state, fabricated detail about Mark's house, wrong day-context — Door B inner-thought-bleed verdict *literally invented justification*: *"shared memory they've established before"* — false). Mark's directive (May 11 10:09 CDT): *"we're focused on all the failures and not what might be causing the root issue... we can't just throw up our hands. Perhaps ml-intern can help here?"*
+
+**The load-bearing question put to the literature:** *Is sustained grounded continuity-of-self at 8B-class local-LLM scale, single persistent user, 6+ months — something that has been done successfully in published research, OR is the cumulative failure pattern consistent with what the literature predicts for this model class?*
+
+**Survey output:** [`scout-root-cause-2026-05-11.md`](artifacts/ml-intern-runs/scout-root-cause-2026-05-11.md), 970 lines, citation-dense across 2023-2026 corpus. Brief at [`root-cause-survey-2026-05-11.md`](ml-intern-prompts/root-cause-survey-2026-05-11.md). Commits `10b3290` (brief) + `f2f2a88` (output).
+
+**Direct answer (High 0.88 confidence): NO.** No published deployment matches ANI's scope. Every comparator (Park et al. 2023 Generative Agents [GPT-3.5/4 API], Mem0/Chhikara et al. 2025 [GPT-4o-mini], A-MEM/Xu et al. 2025 [API-backed], LD-Agent/Lee et al. 2024 [API-backed], MemoryBank 2023 [GPT-3.5]) uses either API-scale frontier models OR short-duration evaluations. The 2023-2026 literature corpus contains *no published successful persistent-companion deployment at 8B local scale with grounding guarantees over a multi-month horizon.* The failure modes Ani exhibits are *predicted* failures per HaluMem (Chen et al., arXiv 2511.03506) and PersistBench (Lerman et al., arXiv 2602.01146), not surprising ones.
+
+**Most likely root cause (High 0.85 confidence): COMPOUND failure of three architectural choices.**
+
+1. **H2 — cosine retrieval semantics.** Cosine similarity returns semantic neighbors, not factual matches. *"Did Mark say X?"* returns *"things related to X"* not *"Mark's actual claims about X."*
+2. **H5 — substrate self-poisoning.** Tier separation alone doesn't prevent the model retrieving its own prior fabrications as supporting evidence for new ones. The retrieval-amplifier compounds over time.
+3. **H4 — same-model gate verification.** The gate uses the generating model as its own verifier. At a scale where the verifier cannot outperform the generator, the gate becomes *"a second generation pass that optimizes for plausibility, not truth."* The May 11 hoodie/5pm verdict-invention is the textbook empirical case of this.
+
+H1 (model size) and H6 (model-class limit) are *secondary amplifiers*, not primary causes.
+
+**Stated plainly (the load-bearing line):** *"Ani's fabrications are not principally a size problem — they are a retrieval architecture problem that a larger model would partially but not fully fix, combined with a verification architecture problem that no same-class model can fix. V8 within the same model class (8B fine-tune, cosine retrieval, same-model gates) will not dissolve the failure. The architecture is the primary constraint; the model size is a secondary amplifier."*
+
+**Four minimum architectural changes (ranked by expected impact):**
+
+1. **Hard tier-partitioned retrieval.** Interior records *structurally excluded* from factual retrieval pool. Schema constraint insufficient; the retrieval query must filter by tier *before* scoring.
+2. **Hybrid retrieval.** BM25 / entity-level sparse retrieval alongside cosine. Require entity match (person names, event names, times) for factual claims. Cosine becomes a tiebreaker, not the primary scorer for factual memory.
+3. **External verifier for high-stakes claims.** Memories asserting facts about third parties require a source trace to a *user-asserted turn* (not an Ani-generated turn). No trace → marked Unverified → excluded from outreach decisions.
+4. **No same-model self-verification of high-confidence outputs.** Gate architecture is sound for format/register compliance checking but not for factual verification. *"A model that generates a claim with high confidence will verify that claim with high confidence — they share the same weights."*
+
+**DrOk cross-domain implications.** The survey explicitly addressed Mark's flagged concern that the same architectural failure pattern may apply to DrOk (medical triage AI in design phase, similar architectural principles). Five specific reconsiderations: (1) medical claims require provenance tracing (PersistBench shows even frontier models conflate user-asserted vs model-inferred clinical observations under retrieval pressure); (2) temporal hallucination is life-critical (Mem0's finding that timestamp extraction fails even in GPT-4o-class models "despite explicit prompting" means DrOk cannot rely on soft prompts for temporal grounding); (3) memory-induced sycophancy in medical context is dangerous (stored prior self-diagnosis can cause underweighting of urgent symptom reporting); (4) gate architecture doesn't scale to safety-critical verification; (5) **DrOk should use append-only medical memory with explicit user/clinician confirmation for updates, NOT LLM-driven evolution** (A-MEM's memory-evolution pattern can silently overwrite correct prior medical records). This is a concrete pre-deployment-design finding for the DrOk team.
+
+**Seven literature gaps named — five are Paper 3 contribution candidates:**
+
+- **Gap 1**: Six-month single-user persistent deployment at local 8B scale — *no published case*. ANI's failure modes (retrieval amplification compounding over months, interior bleed at high record density, gate bypass from model confidence) may be *time-emergent*, not immediately observable. Genuine contribution-candidate gap.
+- **Gap 2**: False Memory Resistance (FMR) at 8B local scale with 8,800-record memory density. HaluMem measures at frontier scale; no 8B-local measurement exists. Measurable empirical gap.
+- **Gap 3 (HIGH-PRIORITY for companion-AI safety)**: *"Same-model gate reliability — when does the verifier become the accomplice?"* The specific failure mode where a gate model *invents justification* for a fabrication it is asked to verify (May 11 hoodie/5pm) is not studied in the hallucination detection literature. The closest work (Accurate Failure Prediction, arXiv 2602.03338) shows offline accuracy doesn't predict deployment behavior but does not study the justification-invention mode. *This is the empirical anchor for what might be Paper 3's strongest novel contribution — a documented, reproducible failure mode that has not been characterized in published research.*
+- **Gap 4**: Register-vs-fact separation via fine-tuning at sub-1000 examples — no paper has explicitly tested this.
+- **Gap 5**: Anti-parrot false-positive rate — May 11 6:24 case has no direct comparator in literature; alarming-because-untested in safety-adjacent contexts.
+- **Gap 6**: Long-horizon temporal grounding in real companion deployment (synthetic benchmarks don't model discontinuous time references, colloquial expressions, retroactive corrections).
+- **Gap 7**: Compound error growth rate in production retrieval-augmented companions — no Markov-chain model exists in published literature for how hallucination frequency grows with memory store size and time.
+
+**Paper 3 fuel (Mark's May 11 15:28 framing: *"Paper 3 needs some love and perhaps this is the impetus for that"*).** The survey produces three things Paper 3 can be anchored on:
+
+1. **A reproducible novel failure mode** (Gap 3 — verdict-invention) with concrete empirical case (May 11 hoodie/5pm) and clear architectural causation (same-model verifier under contextual pressure).
+2. **A diagnostic frame** — the four-axis compound-cause taxonomy (H2 retrieval + H5 self-poisoning + H4 same-model gate + H1/H6 scale) is itself a contribution distinct from the previous single-axis architecture-over-instruction principle.
+3. **Cross-domain validation in real time** — the DrOk implication section transfers the same architectural findings into medical-triage design recommendations *before deployment*. Same pattern as the Mar 23 Infanzia/DrOk cross-domain validation (3 architectural changes prevented before production code was written); now sharpened with literature backing.
+
+**Methodology observation.** When weeks of architectural patching haven't improved felt experience, the right move is *external literature grounding before more patching*. ml-intern as a discipline-of-pause: stop generating fixes, query the field, let the literature discriminate hypotheses internal evidence cannot. Same methodological shape as the Damasio + Jung survey (May 5) but applied to a different decision point. Worth pinning in §7.1 of Paper 2: the autoethnographic discipline now has *three* documented intervention types — provenance discipline, holding-release-until-defensible, and *pause-and-survey-the-literature-when-internal-evidence-can't-discriminate*.
+
+**What's actionable now (no implementation tonight):**
+- 4 ranked architectural changes are concrete and scope-bounded (~1-2 weeks each). None are "rebuild from scratch."
+- Paper 3 has new fuel — particularly Gap 3 (verdict-invention) as the strongest novel contribution candidate.
+- Paper 2 release-hold rationale strengthens — the survey provides external grounding that v7 patches alone won't reach the deployed state the paper claims, supporting the May 4 hold decision.
+- DrOk team has a concrete pre-deployment design memo from the cross-domain section.
+
+---
+
 ### May 10, 2026 (morning, 06:38 + 07:23 CDT) — Reactive-Share Path Bypasses Theme N + The Copy-Paste-to-a-Friend Test as a New Diagnostic Frame
 
 **What happened.** Two RSS-triggered outreaches dispatched this morning bypassed Theme N entirely. 06:38 NPR-art article: *"hey! just saw this and immediately thought of you (and mark if h..."* 07:23 NPR Mother's Day article: *"mark, omg did you see this?? the mom who let EVERY SINGLE GUEST..."* Mark flagged both as feeling *"out of the blue, not enough context around what is going on"* and named the **copy-paste-to-a-friend test** — would a third party reading the message understand what it means without prior context? Both shares fail that test even though neither is confab.
