@@ -29,13 +29,17 @@ namespace AniRuntime.Tests;
 /// 5. Graceful degradation on API timeout / API exception / parse failure
 ///    — Continue + <c>P_VERIFIER_FALLBACK</c> telemetry with
 ///    "local judgment gates remain active" callout (additive framing).
-/// 6. Substrate forwarding — <c>GroundedFacts</c> + <c>AnchoredMemories</c>
-///    only. <c>ContactRecentMessages</c> is NOT used (plan-doc §9.1).
+/// 6. Substrate retrieval (P.3.2, May 12 2026) — handler uses
+///    <see cref="IMemorySearch.SearchByTierAsync"/> keyed to the composed
+///    reply text. Snapshot's <c>GroundedFacts</c> / <c>AnchoredMemories</c>
+///    pools are NOT read. <c>ContactRecentMessages</c> is NOT read.
+///    Anchored records (<see cref="DecayTier.Anchored"/>) split into the
+///    request's <c>CanonicalSubstrate</c> field; non-anchored Facts split
+///    into <c>MarkAssertedSubstrate</c>.
 ///
-/// Strict mock for <see cref="IFrontierVerifierClient"/> — every test
-/// declares its exact expected interaction with the verifier (or asserts
-/// the verifier is never called, when AppliesTo is supposed to gate it
-/// out).
+/// Strict mock for <see cref="IFrontierVerifierClient"/> + strict mock
+/// for <see cref="IMemorySearch"/> — every test declares its exact
+/// expected interaction (or asserts the call is never made).
 /// </summary>
 public class FrontierVerifierHandlerTests
 {
@@ -113,6 +117,42 @@ public class FrontierVerifierHandlerTests
         CreatedAt  = DateTimeOffset.UtcNow.AddDays(-30),
     };
 
+    /// <summary>
+    /// Build a strict <see cref="IMemorySearch"/> mock for the P.3.2
+    /// retrieval surface. <paramref name="hits"/> is the ranked list the
+    /// handler will receive (each as a <see cref="ScoredMemory"/>). The
+    /// mock asserts <see cref="EpistemicTier.Facts"/> is the requested
+    /// tier — handler must NOT call any other tier or any non-tier
+    /// search method (strict mode catches that).
+    /// </summary>
+    private static Mock<IMemorySearch> SearchMock(IEnumerable<ScoredMemory> hits)
+    {
+        var mock = new Mock<IMemorySearch>(MockBehavior.Strict);
+        mock.Setup(s => s.SearchByTierAsync(
+                It.IsAny<string>(),
+                EpistemicTier.Facts,
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(hits.ToList());
+        return mock;
+    }
+
+    /// <summary>Default: empty retrieval pool.</summary>
+    private static Mock<IMemorySearch> EmptySearchMock() =>
+        SearchMock(Array.Empty<ScoredMemory>());
+
+    /// <summary>
+    /// Strict mock with no <c>SearchByTierAsync</c> setup — if HandleAsync
+    /// reaches retrieval the call fails the test with <c>MockException</c>.
+    /// Use for tests that gate out before retrieval (flag-off, wrong
+    /// sink/producer at AppliesTo, empty content, cancellation pre-call).
+    /// </summary>
+    private static Mock<IMemorySearch> NeverCalledSearchMock() =>
+        new(MockBehavior.Strict);
+
+    private static ScoredMemory Hit(MemoryRecord record, float composite = 0.7f, float cosine = 0.7f) =>
+        new(record, composite, cosine);
+
     /// <summary>Per-question response: q1..q5 all clean (no violations).</summary>
     private static FrontierVerifierResult NoViolations() => new(
         AnyViolation: false,
@@ -170,8 +210,9 @@ public class FrontierVerifierHandlerTests
         // are still running in parallel (plan-doc §9.1) — they have zero
         // knowledge of this flag.
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
+        var search = NeverCalledSearchMock();
         var handler = new FrontierVerifierHandler(
-            client.Object, Options(flagOn: false), new CapturingLogger());
+            client.Object, search.Object, Options(flagOn: false), new CapturingLogger());
 
         handler.AppliesTo(ArtifactFor()).Should().BeFalse(
             "FrontierVerifierEnabled=false must gate the cloud handler out; local gates run independently");
@@ -186,7 +227,8 @@ public class FrontierVerifierHandlerTests
     public void AppliesTo_NonDispatchSink_ReturnsFalse(CognitiveOutputSink sink)
     {
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        var search = NeverCalledSearchMock();
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), new CapturingLogger());
 
         handler.AppliesTo(ArtifactFor(sink: sink)).Should().BeFalse(
             "frontier verifier only applies to dispatch-bound artifacts (the actual SMS/voice surface)");
@@ -203,7 +245,8 @@ public class FrontierVerifierHandlerTests
     public void AppliesTo_WrongProducerKind_ReturnsFalse(CognitiveProducerKind producer)
     {
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        var search = NeverCalledSearchMock();
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), new CapturingLogger());
 
         handler.AppliesTo(ArtifactFor(producer: producer)).Should().BeFalse(
             "frontier verifier only applies to contact-facing producers (Reply / Outreach / Voice)");
@@ -216,7 +259,8 @@ public class FrontierVerifierHandlerTests
     public void AppliesTo_DispatchProducers_ReturnsTrue(CognitiveProducerKind producer)
     {
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        var search = NeverCalledSearchMock();
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), new CapturingLogger());
 
         handler.AppliesTo(ArtifactFor(producer: producer)).Should().BeTrue();
     }
@@ -229,8 +273,9 @@ public class FrontierVerifierHandlerTests
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ReturnsAsync(NoViolations());
+        var search = EmptySearchMock();
         var log = new CapturingLogger();
-        var handler = new FrontierVerifierHandler(client.Object, Options(), log);
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), log);
 
         var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
 
@@ -253,8 +298,9 @@ public class FrontierVerifierHandlerTests
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ReturnsAsync(verdict);
+        var search = EmptySearchMock();
         var log = new CapturingLogger();
-        var handler = new FrontierVerifierHandler(client.Object, Options(), log);
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), log);
 
         var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
 
@@ -277,8 +323,9 @@ public class FrontierVerifierHandlerTests
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ReturnsAsync(MultiViolation());
+        var search = EmptySearchMock();
         var log = new CapturingLogger();
-        var handler = new FrontierVerifierHandler(client.Object, Options(), log);
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), log);
 
         var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
 
@@ -303,8 +350,9 @@ public class FrontierVerifierHandlerTests
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new TimeoutException("Anthropic /v1/messages timed out after 30000ms"));
+        var search = EmptySearchMock();
         var log = new CapturingLogger();
-        var handler = new FrontierVerifierHandler(client.Object, Options(), log);
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), log);
 
         var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
 
@@ -324,8 +372,9 @@ public class FrontierVerifierHandlerTests
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new HttpRequestException("Anthropic returned 503"));
+        var search = EmptySearchMock();
         var log = new CapturingLogger();
-        var handler = new FrontierVerifierHandler(client.Object, Options(), log);
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), log);
 
         var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
 
@@ -345,8 +394,9 @@ public class FrontierVerifierHandlerTests
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new InvalidOperationException(
                   "Verifier response missing field 'q3'."));
+        var search = EmptySearchMock();
         var log = new CapturingLogger();
-        var handler = new FrontierVerifierHandler(client.Object, Options(), log);
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), log);
 
         var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
 
@@ -363,16 +413,21 @@ public class FrontierVerifierHandlerTests
     [Fact]
     public async Task HandleAsync_EmptyContent_SkipsVerifierAndReturnsContinue()
     {
-        // Strict mock — no setup. If HandleAsync calls VerifyAsync the
-        // test fails with MockException.
+        // Strict mocks — no setup on either. If HandleAsync reaches
+        // retrieval or the verifier, the test fails with MockException.
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        var search = NeverCalledSearchMock();
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), new CapturingLogger());
 
         var result = await handler.HandleAsync(CtxFor(ArtifactFor(content: "")), CancellationToken.None);
 
         result.ShortCircuit.Should().BeFalse();
         client.Verify(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()),
             Times.Never, "empty content has nothing to verify; verifier must not be called");
+        search.Verify(s => s.SearchByTierAsync(
+                It.IsAny<string>(), It.IsAny<EpistemicTier>(),
+                It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never, "empty content short-circuits before retrieval too");
     }
 
     // ─── 11. Cancellation propagates ─────────────────────────────────────
@@ -386,41 +441,68 @@ public class FrontierVerifierHandlerTests
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new OperationCanceledException(cts.Token));
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        // Retrieval succeeds (empty) so the OCE comes from the verifier
+        // call — that's the path the test pins (orchestrator handles OCE
+        // tied to the caller's ct).
+        var search = EmptySearchMock();
+        var handler = new FrontierVerifierHandler(client.Object, search.Object, Options(), new CapturingLogger());
 
         var act = async () => await handler.HandleAsync(CtxFor(), cts.Token);
         await act.Should().ThrowAsync<OperationCanceledException>(
             "the pipeline orchestrator handles cancellation; the handler must not swallow it as a fallback");
     }
 
-    // ─── 12. Substrate — GroundedFacts + AnchoredMemories surface ────────
+    // ─── 12. Substrate — post-hoc retrieval keyed to composed reply ──────
 
     [Fact]
-    public async Task HandleAsync_BuildsRequestFromCanonicalSnapshotPools()
+    public async Task HandleAsync_BuildsRequestViaPostHocRetrievalKeyedToComposedReply()
     {
         FrontierVerifierRequest? captured = null;
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
               .ReturnsAsync(NoViolations());
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
 
-        var groundedFacts = new List<MemoryRecord>
+        // Mixed hit list: two regular Facts records + two anchored records.
+        // P.3.2 simplification — anchored character seeds carry
+        // provenance=Facts (so they surface in the single Facts-tier search)
+        // AND tier=Anchored (so the handler splits them into the
+        // CanonicalSubstrate field). Order in this list is the ranked
+        // composite-score order the handler will receive.
+        var hits = new List<ScoredMemory>
         {
-            // Order matters: handler should recency-sort and take top 10.
-            MemoryFact("Mark mentioned a tough day yesterday", DateTimeOffset.UtcNow.AddHours(-2)),
-            MemoryFact("Mark teaches Spanish on Tuesdays",     DateTimeOffset.UtcNow.AddDays(-3)),
+            Hit(MemoryFact("Mark mentioned a tough day yesterday")),
+            Hit(AnchoredMemory("Ani is a bookstore clerk in a small Wisconsin town")),
+            Hit(MemoryFact("Mark teaches Spanish on Tuesdays")),
+            Hit(AnchoredMemory("Mark lives in Wisconsin")),
         };
-        var anchoredMemories = new List<MemoryRecord>
-        {
-            AnchoredMemory("Mark lives in Wisconsin"),
-            AnchoredMemory("Ani is a bookstore clerk in a small Wisconsin town"),
-        };
+
+        string? capturedQuery = null;
+        int     capturedTopK  = -1;
+        var search = new Mock<IMemorySearch>(MockBehavior.Strict);
+        search.Setup(s => s.SearchByTierAsync(
+                It.IsAny<string>(), EpistemicTier.Facts,
+                It.IsAny<int>(), It.IsAny<CancellationToken>()))
+              .Callback<string, EpistemicTier, int, CancellationToken>(
+                  (q, _, k, _) => { capturedQuery = q; capturedTopK = k; })
+              .ReturnsAsync(hits);
+
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
 
         var ctx = CtxFor(
-            artifact:          ArtifactFor(content: "morning! just thinking about you."),
-            groundedFacts:     groundedFacts,
-            anchoredMemories:  anchoredMemories,
+            artifact: ArtifactFor(content: "morning! just thinking about you."),
+            // Snapshot pools populated to verify the handler does NOT read
+            // them — P.3.2 routes through IMemorySearch, not the snapshot
+            // pool slices.
+            groundedFacts: new List<MemoryRecord>
+            {
+                MemoryFact("SNAPSHOT_FACT_should_not_appear"),
+            },
+            anchoredMemories: new List<MemoryRecord>
+            {
+                AnchoredMemory("SNAPSHOT_ANCHOR_should_not_appear"),
+            },
             canonicalContacts: new List<string> { "Sarah", "Kevin" });
         await handler.HandleAsync(ctx, CancellationToken.None);
 
@@ -428,16 +510,34 @@ public class FrontierVerifierHandlerTests
         captured!.ComposedMessage.Should().Be("morning! just thinking about you.");
         captured.AddresseeCanonicalName.Should().Be("Mark");
 
-        // Mark-asserted block reflects GroundedFacts (canonical Mark-only),
-        // not ContactRecentMessages.
+        // Retrieval was keyed to the composed reply text — not perceptions,
+        // not the cycle's snapshot query. This is the P.3.2 invariant.
+        capturedQuery.Should().Be("morning! just thinking about you.",
+            "the verifier substrate is retrieved against the composed reply (P.3.2), not snapshot-keyed");
+        capturedTopK.Should().BeGreaterOrEqualTo(10,
+            "P.3.2 starts at top-N=20; >=10 is the floor sanity check");
+
+        // MarkAssertedSubstrate gets the non-anchored Facts records.
         captured.MarkAssertedSubstrate.Should().Contain("tough day yesterday");
         captured.MarkAssertedSubstrate.Should().Contain("Spanish on Tuesdays");
+        captured.MarkAssertedSubstrate.Should().NotContain("bookstore clerk",
+            "anchored records split into CanonicalSubstrate, not MarkAssertedSubstrate");
+        captured.MarkAssertedSubstrate.Should().NotContain("Mark lives in Wisconsin",
+            "anchored records split into CanonicalSubstrate, not MarkAssertedSubstrate");
 
-        // Canonical block reflects AnchoredMemories.
+        // CanonicalSubstrate gets the anchored (DecayTier.Anchored) records.
         captured.CanonicalSubstrate.Should().Contain("Wisconsin");
         captured.CanonicalSubstrate.Should().Contain("bookstore clerk");
 
-        // Known contacts reflect CharacterStateDoc.CanonicalContacts.
+        // Snapshot-pool reads are forbidden — verify those records never
+        // reached the verifier (P.3.2 architectural correction).
+        captured.MarkAssertedSubstrate.Should().NotContain("SNAPSHOT_FACT_should_not_appear",
+            "handler must NOT read Snapshot.GroundedFacts — retrieval is post-hoc semantic only");
+        captured.CanonicalSubstrate.Should().NotContain("SNAPSHOT_ANCHOR_should_not_appear",
+            "handler must NOT read Snapshot.AnchoredMemories — retrieval is post-hoc semantic only");
+
+        // Known contacts still flow from CharacterStateDoc.CanonicalContacts
+        // (identity scaffolding, not claim-grounding substrate — unchanged).
         captured.KnownContacts.Should().Contain("Sarah");
         captured.KnownContacts.Should().Contain("Kevin");
 
@@ -456,12 +556,15 @@ public class FrontierVerifierHandlerTests
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
               .ReturnsAsync(NoViolations());
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        // Retrieval returns empty so we can detect any leak unambiguously.
+        var search = EmptySearchMock();
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
 
         // Stuff the artifact's ContactRecentMessages with content that, if
         // the handler were reading it, would leak into MarkAssertedSubstrate.
         // Plan-doc §9.1 forbids this — the handler reads only canonical
-        // snapshot pools.
+        // retrieval substrate.
         var artifact = ArtifactFor(
             content:    "hey, how's the morning going?",
             markRecent: new[] { "SHOULD_NOT_APPEAR_IN_SUBSTRATE_alpha", "SHOULD_NOT_APPEAR_IN_SUBSTRATE_beta" });
@@ -471,43 +574,87 @@ public class FrontierVerifierHandlerTests
 
         captured.Should().NotBeNull();
         captured!.MarkAssertedSubstrate.Should().NotContain("SHOULD_NOT_APPEAR_IN_SUBSTRATE",
-            "the handler must not consult artifact.ContactRecentMessages — canonical snapshot pools only (plan-doc §9.1)");
+            "the handler must not consult artifact.ContactRecentMessages — canonical retrieval only (plan-doc §9.1)");
+        captured.CanonicalSubstrate.Should().NotContain("SHOULD_NOT_APPEAR_IN_SUBSTRATE",
+            "ContactRecentMessages must not leak through CanonicalSubstrate either");
     }
 
-    // ─── 14. Substrate — empty pools render as empty strings ─────────────
+    // ─── 14. Substrate — empty retrieval renders as empty strings ────────
 
     [Fact]
-    public async Task HandleAsync_EmptyCanonicalPools_RenderAsEmptyStrings()
+    public async Task HandleAsync_EmptyRetrieval_RendersSubstrateAsEmptyStrings()
     {
         FrontierVerifierRequest? captured = null;
         var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
         client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
               .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
               .ReturnsAsync(NoViolations());
-        var handler = new FrontierVerifierHandler(client.Object, Options(), new CapturingLogger());
+        // No retrieval hits — and the snapshot pools (which the handler
+        // must NOT read) are stuffed with content to catch any regression.
+        var search = EmptySearchMock();
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
 
-        // Snapshot with no canonical substrate at all. Plan-doc §9.1: empty
-        // is the correct rendering — no fallback to other sources.
         var ctx = CtxFor(
-            groundedFacts:     new List<MemoryRecord>(),
-            anchoredMemories:  new List<MemoryRecord>(),
-            recentExchanges:   new List<MemoryRecord>
+            groundedFacts: new List<MemoryRecord>
             {
-                // Even if RecentExchanges contains content, the handler
-                // must NOT fall back to it.
-                MemoryFact("FALLBACK_LEAK_should_not_appear"),
+                MemoryFact("LEAK_FACT_should_not_appear"),
+            },
+            anchoredMemories: new List<MemoryRecord>
+            {
+                AnchoredMemory("LEAK_ANCHOR_should_not_appear"),
+            },
+            recentExchanges: new List<MemoryRecord>
+            {
+                MemoryFact("LEAK_RECENT_should_not_appear"),
             },
             canonicalContacts: new List<string>());
         await handler.HandleAsync(ctx, CancellationToken.None);
 
         captured.Should().NotBeNull();
         captured!.MarkAssertedSubstrate.Should().BeEmpty(
-            "no Facts-tier records → empty substrate; no fallback to RecentExchanges");
+            "no retrieval hits → empty Mark-asserted substrate; no fallback to snapshot pools");
         captured.CanonicalSubstrate.Should().BeEmpty(
-            "no Anchored records → empty canonical substrate");
+            "no anchored retrieval hits → empty canonical substrate; no fallback to Snapshot.AnchoredMemories");
         captured.KnownContacts.Should().BeEmpty(
             "no CanonicalContacts seeded → empty known-contacts; no derivation from runtime");
-        captured.MarkAssertedSubstrate.Should().NotContain("FALLBACK_LEAK",
-            "RecentExchanges must not leak into the verifier prompt (plan-doc §9.1)");
+        captured.MarkAssertedSubstrate.Should().NotContain("LEAK_",
+            "snapshot pools / RecentExchanges must not leak into the verifier prompt");
+        captured.CanonicalSubstrate.Should().NotContain("LEAK_",
+            "snapshot pools must not leak into the verifier prompt");
+    }
+
+    // ─── 15. Substrate — retrieval failure degrades to empty, not throw ──
+
+    [Fact]
+    public async Task HandleAsync_RetrievalFailure_RendersEmptySubstrate_AndVerifierStillRuns()
+    {
+        FrontierVerifierRequest? captured = null;
+        var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
+        client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
+              .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
+              .ReturnsAsync(NoViolations());
+
+        // Retrieval throws — handler must continue with empty substrate
+        // rather than propagate. The verifier call still happens (the
+        // graceful-degradation contract isolates retrieval failure from
+        // verifier failure).
+        var search = new Mock<IMemorySearch>(MockBehavior.Strict);
+        search.Setup(s => s.SearchByTierAsync(
+                It.IsAny<string>(), EpistemicTier.Facts,
+                It.IsAny<int>(), It.IsAny<CancellationToken>()))
+              .ThrowsAsync(new InvalidOperationException("simulated retrieval failure"));
+
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
+
+        var result = await handler.HandleAsync(CtxFor(), CancellationToken.None);
+
+        result.ShortCircuit.Should().BeFalse(
+            "retrieval failure must not short-circuit; the verifier still gets the composed reply");
+        captured.Should().NotBeNull(
+            "verifier is invoked even when retrieval fails — substrate just renders empty");
+        captured!.MarkAssertedSubstrate.Should().BeEmpty();
+        captured.CanonicalSubstrate.Should().BeEmpty();
     }
 }

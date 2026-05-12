@@ -41,28 +41,66 @@ namespace AniRuntime.Loops.Pipeline;
 /// dispatch — cloud absence reduces defense-in-depth by one layer, NOT
 /// to zero.
 ///
-/// **Substrate sources (plan-doc §9.1):** canonically-Mark-asserted only.
-/// <see cref="ContextSnapshot.GroundedFacts"/> (Facts-tier records:
-/// character seeds, perception events, user-asserted content) +
-/// <see cref="ContextSnapshot.AnchoredMemories"/> (foundation memories
-/// that never fade). NO fallback to <c>RecentExchanges</c>. NO
-/// role-filter on Episodic records. NO reading the artifact's
-/// <c>ContactRecentMessages</c>. The right architectural fix for
-/// substrate gaps is to populate the canonical sources correctly at
-/// retrieval-time, never to filter at construction-time.
+/// **Substrate sources (plan-doc §9.1 + P.3.2, May 12 2026):**
+/// canonically-Mark-asserted only, retrieved **post-hoc** by semantic
+/// similarity against the composed reply text (<c>ctx.Artifact.Content</c>).
+/// The retrieval surface is the same <see cref="IMemorySearch.SearchByTierAsync"/>
+/// the composition pipeline uses, so the same three-way scoring
+/// (cosine + importance + recency — Feature 20) decides which records
+/// reach the verifier. Anchored character seeds surface naturally
+/// because their boosted importance + cosine against claim-bearing
+/// content ranks them high.
+///
+/// P.3.2 explicitly REPLACES the prior snapshot-pool reads
+/// (<c>Snapshot.GroundedFacts.OrderByDescending(CreatedAt).Take(10)</c>
+/// and <c>Snapshot.AnchoredMemories.Take(10)</c>). Those pools were
+/// chronological-recency slices keyed to the cycle's perceptions, not
+/// to the message about to ship — they routinely missed Anchored
+/// foundation records (bookstore/Wisconsin/hoodie) the verifier needed
+/// to confirm claims. The retrieval source is now what the model is
+/// about to assert, scored against the entire Facts pool.
+///
+/// <c>CharacterState.CanonicalContacts</c> remains the source for
+/// <c>KnownContacts</c> (unchanged). NO fallback to
+/// <c>RecentExchanges</c>. NO role-filter on Episodic records. NO
+/// reading the artifact's <c>ContactRecentMessages</c>.
+///
+/// Substrate-split note: <c>SearchByTierAsync</c> filters by
+/// <see cref="EpistemicTier"/> (the <c>provenance</c> column), while
+/// the foundation-memory flag lives on <see cref="DecayTier"/> (a
+/// separate column). Character seeds carry <c>provenance=Facts</c>
+/// AND <c>tier=Anchored</c>, so a single Facts-tier search returns
+/// both regular Facts records and anchored foundation records in one
+/// ranked list. The handler splits that list by
+/// <see cref="DecayTier.Anchored"/> to populate the request's two
+/// substrate fields (<c>MarkAssertedSubstrate</c> = non-anchored;
+/// <c>CanonicalSubstrate</c> = anchored). The prompt shape is
+/// unchanged — that's P.3.3 territory.
 /// </summary>
 public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
 {
+    /// <summary>
+    /// Top-N records to retrieve against the composed reply text. 20 is
+    /// the P.3.2 starting target — large enough that a claim with any
+    /// substrate support in the Facts pool surfaces, small enough that
+    /// the verifier prompt stays bounded. Splits across regular Facts +
+    /// anchored character seeds after retrieval (see class XML).
+    /// </summary>
+    private const int VerifierRetrievalTopK = 20;
+
     private readonly IFrontierVerifierClient            _client;
+    private readonly IMemorySearch                      _search;
     private readonly AniOptions                         _options;
     private readonly ILogger<FrontierVerifierHandler>   _log;
 
     public FrontierVerifierHandler(
         IFrontierVerifierClient            client,
+        IMemorySearch                      search,
         IOptions<AniOptions>               options,
         ILogger<FrontierVerifierHandler>   log)
     {
         _client  = client  ?? throw new ArgumentNullException(nameof(client));
+        _search  = search  ?? throw new ArgumentNullException(nameof(search));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _log     = log     ?? throw new ArgumentNullException(nameof(log));
     }
@@ -103,7 +141,7 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
         if (string.IsNullOrWhiteSpace(ctx.Artifact.Content))
             return HandlerResult.Continue("empty content — nothing to verify");
 
-        var request = BuildRequest(ctx);
+        var request = await BuildRequestAsync(ctx, ct).ConfigureAwait(false);
 
         var sw = Stopwatch.StartNew();
         FrontierVerifierResult result;
@@ -158,32 +196,73 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
         return HandlerResult.Continue("frontier verifier pass");
     }
 
-    // ─── Substrate rendering (plan-doc §9.1: canonical sources only) ─────
+    // ─── Substrate retrieval (plan-doc §9.1 + P.3.2: post-hoc semantic) ──
 
     /// <summary>
-    /// Build the verifier request from the snapshot's canonical-Mark-only
-    /// pools. Substrate sources match plan-doc §9.1 — Facts-tier
-    /// <see cref="ContextSnapshot.GroundedFacts"/> for Mark-asserted, and
-    /// <see cref="ContextSnapshot.AnchoredMemories"/> for canonical. No
-    /// other sources are read. Empty pools render as empty strings.
+    /// Build the verifier request. Substrate is retrieved POST-HOC by
+    /// semantic similarity against the composed reply text (P.3.2,
+    /// May 12 2026) so the verifier sees the records most relevant to
+    /// the message the model is about to ship, not whatever the cycle's
+    /// perception-keyed snapshot pools happened to contain.
+    ///
+    /// One <see cref="IMemorySearch.SearchByTierAsync"/> call against
+    /// <see cref="EpistemicTier.Facts"/> returns both regular Facts
+    /// records and anchored character seeds in a single ranked list
+    /// (anchored records carry <c>provenance=Facts</c> AND
+    /// <c>tier=Anchored</c>). The handler splits that list by
+    /// <see cref="DecayTier.Anchored"/> so the existing two-field
+    /// request shape (<c>MarkAssertedSubstrate</c> +
+    /// <c>CanonicalSubstrate</c>) is preserved — verifier prompt
+    /// changes are P.3.3 territory.
+    ///
+    /// <c>CharacterState.CanonicalContacts</c> still sources
+    /// <c>KnownContacts</c> — that's identity scaffolding, not
+    /// claim-grounding substrate.
     /// </summary>
-    private static FrontierVerifierRequest BuildRequest(CognitivePipelineContext ctx)
+    private async Task<FrontierVerifierRequest> BuildRequestAsync(
+        CognitivePipelineContext ctx, CancellationToken ct)
     {
-        var snapshot = ctx.Snapshot;
-        var artifact = ctx.Artifact;
+        var artifact     = ctx.Artifact;
+        var character    = ctx.Snapshot?.CharacterState;
+        var composedText = artifact.Content ?? string.Empty;
 
+        // Post-hoc retrieval keyed to the composed reply. Same scoring
+        // surface (cosine + importance + Feature 20 recency) the
+        // composition pipeline uses.
+        IReadOnlyList<ScoredMemory> factsHits;
+        try
+        {
+            var results = await _search
+                .SearchByTierAsync(composedText, EpistemicTier.Facts, VerifierRetrievalTopK, ct)
+                .ConfigureAwait(false);
+            factsHits = results.ToList();
+        }
+        catch (Exception ex)
+        {
+            // Retrieval failure is non-fatal — render with empty
+            // substrate and let the verifier work with what it has. The
+            // graceful-degradation path in HandleAsync still catches a
+            // verifier-side failure if one follows.
+            _log.LogWarning(ex,
+                "P_VERIFIER_RETRIEVAL_FAILED — continuing with empty substrate");
+            factsHits = Array.Empty<ScoredMemory>();
+        }
+
+        // Split the single Facts-tier pool by DecayTier so the existing
+        // two-field request shape is preserved. Anchored records
+        // (foundation memories — character seeds, world layer canon) go
+        // to CanonicalSubstrate; everything else goes to
+        // MarkAssertedSubstrate.
         var markAsserted = RenderRecords(
-            snapshot?.GroundedFacts?
-                .OrderByDescending(f => f.CreatedAt)
-                .Take(10));
+            factsHits.Where(h => h.Record.DecayTier != DecayTier.Anchored)
+                     .Select(h => h.Record));
 
         var canonical = RenderRecords(
-            snapshot?.AnchoredMemories?.Take(10));
-
-        var character = snapshot?.CharacterState;
+            factsHits.Where(h => h.Record.DecayTier == DecayTier.Anchored)
+                     .Select(h => h.Record));
 
         var addressee = !string.IsNullOrWhiteSpace(character?.PrimaryContactName)
-            ? character.PrimaryContactName
+            ? character!.PrimaryContactName
             : string.Empty;
 
         var knownContacts = character?.CanonicalContacts is { Count: > 0 } contacts
@@ -196,7 +275,7 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
         var localTime = artifact.GeneratedAt.LocalDateTime;
 
         return new FrontierVerifierRequest(
-            ComposedMessage:        artifact.Content,
+            ComposedMessage:        composedText,
             MarkAssertedSubstrate:  markAsserted,
             CanonicalSubstrate:     canonical,
             CurrentTime:            artifact.GeneratedAt,
