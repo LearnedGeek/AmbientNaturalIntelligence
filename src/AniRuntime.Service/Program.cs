@@ -82,6 +82,11 @@ try
     builder.Services.Configure<ImageOptions>(config.GetSection("Images"));
     builder.Services.Configure<EmergenceOptions>(config.GetSection("Emergence"));
     builder.Services.Configure<DiagnosticOptions>(config.GetSection("Diagnostic"));
+    // Theme P Phase P.1 (May 11, 2026) — cross-class verifier config.
+    // Real API key set in appsettings.Development.json on ani-server
+    // (committed config carries a placeholder). See plan-doc §4 lock 7
+    // for the FrontierVerifierEnabled emergency-kill semantics.
+    builder.Services.Configure<AnthropicOptions>(config.GetSection("Anthropic"));
 
     // ── Core services ─────────────────────────────────────────────────────────
     // ISP: Single SqliteMemoryService instance registered against all interfaces.
@@ -169,8 +174,23 @@ try
         // Theme M / coreference (May 6, 2026) — direct-address invariant.
         // Replaces the prior LLM-based pronoun-fix in OutreachPhase.
         .UsePostInvariant<DirectAddressInvariant>()
+        // Theme P Phase P.1 (May 11, 2026) — cross-class cloud verifier as
+        // ADDITIONAL post-stage handler (plan-doc §9.1 additive framing).
+        // All local invariants above continue to fire unchanged; the cloud
+        // handler runs on top as defense-in-depth. Position in the chain
+        // does not affect correctness — registration order only determines
+        // which handler short-circuits first on a multi-violation case.
+        // Self-gates via AniOptions.FrontierVerifierEnabled; never reaches
+        // into other handlers' applicability.
+        .UsePostHandler<FrontierVerifierHandler>()
     );
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
+
+    // Theme P Phase P.1 (May 11, 2026) — Anthropic Sonnet verifier client.
+    // Typed HttpClient so the AnthropicVerifierClient receives a properly-
+    // disposed client with retry/timeout policies (Anthropic's API expects
+    // x-api-key + anthropic-version headers, configured in the client's ctor).
+    builder.Services.AddHttpClient<IFrontierVerifierClient, AnthropicVerifierClient>();
 
     // Theme N Phase N.3 (May 8, 2026) — outreach source-frame selector.
     // Wired into OutreachPhase via constructor injection; gated at runtime

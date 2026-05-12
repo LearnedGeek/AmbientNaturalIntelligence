@@ -513,6 +513,28 @@ public class AniOptions
     /// §10 N.3 + N.4 for the rollout sequence.
     /// </summary>
     public bool OutreachFrameSelectorEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Theme P Phase P.1 (May 11, 2026) — emergency kill switch for the
+    /// cross-class verification cloud handler (see plan-doc §4 lock 7,
+    /// architectural correction §9.1).
+    ///
+    /// When <c>true</c> (the shipping default), <c>FrontierVerifierHandler</c>
+    /// is active as an ADDITIONAL post-stage handler on top of the
+    /// existing local judgment invariants. Both stacks fire on every
+    /// dispatch — additive defense in depth.
+    ///
+    /// When <c>false</c>, ONLY the cloud handler is skipped. Local
+    /// judgment gates (InnerThoughtBleed, AddresseeName, TemporalAnchor,
+    /// StateNow, SubstrateTimeOfDay, ClaimVerificationPhase, plus the
+    /// format gates) continue to fire as they did before Theme P. The
+    /// flag is a cloud-handler kill switch, not a path-routing toggle.
+    ///
+    /// Flag flip is the rollback path if the cloud verifier produces too
+    /// many false-positive remediations or if cost calibration becomes a
+    /// concern. Restart-required.
+    /// </summary>
+    public bool FrontierVerifierEnabled { get; set; } = true;
 }
 
 public class OllamaOptions

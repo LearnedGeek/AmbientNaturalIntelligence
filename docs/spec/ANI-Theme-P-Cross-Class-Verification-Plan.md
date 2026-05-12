@@ -14,26 +14,34 @@ Survey H4: a model that generates a claim with high confidence will verify that 
 
 This preserves the project's local-first thesis. *"Local-first"* is not *"all components run locally"* — it is *"the AI you're in relationship with runs locally."* Verification is infrastructure. Theme P is the architectural pattern that surgically separates the two.
 
-## §2 What stays local vs what moves to cloud
+## §2 What stays local, and what is added in the cloud
 
-The gate stack splits cleanly into two categories. Theme P only moves the second category.
+> **Architectural correction (May 11 21:36 CDT)** — see §9.1. The original §2 framing said *"judgment gates MOVE TO CLOUD"* (replacement). That framing forced flag-gating local invariants from inside the cloud handler's flag, which forced fallback semantics on cloud error, which forced substrate filtering in BuildRequest to keep the two stacks in sync. Three bandaids traceable to one architectural mistake. The corrected framing below is **additive**: the cloud verifier is defense-in-depth, not replacement.
 
-**Format / register gates — STAY LOCAL** (cheap, fast, reliable; these check surface form, not factual judgment):
+**Everything that runs today STAYS LOCAL, UNCHANGED.**
+
+Format / register gates — stay local because they check surface form, not factual judgment:
 - `SelfEchoInvariant` — verbatim repetition detection.
 - `AntiParrotInvariant` — lifts from contact message.
 - `DirectAddressInvariant` — third-person reference to addressee.
 - `PromptTemplateLeakInvariant` — prompt-instruction leakage.
 - `FrameCoherenceChecker` (N.5) — shared-event predicates under non-shared frame.
 
-These don't fail via verdict-invention because they don't make factual judgments — they match patterns. Local Llama handles them fine.
-
-**Judgment gates — MOVE TO CLOUD** (these require semantic judgment; same-model verification fails per H4):
+Judgment gates — also stay local, also unchanged, also still firing on every dispatch:
 - `ClaimVerificationPhase` / R1 — *"is this claim supported by Mark-asserted memory?"*
 - `InnerThoughtBleed` (Door B) — *"does this output reveal inner content Mark wouldn't infer?"*
 - `AddresseeNameInvariant` — *"is this addressee name a known contact?"*
 - `TemporalAnchorInvariant`, `StateNowInvariant`, `SubstrateTimeOfDayInvariant` — *"do temporal claims match substrate?"*
 
-These four (effectively six gates that ask judgment questions) get **consolidated into one cloud verification call per dispatch.**
+**What Theme P ADDS is the FrontierVerifierHandler** — a Post-stage `ICognitivePipelineHandler` that runs in parallel to the existing local invariants on every dispatch-bound artifact. The handler routes the composed message through Anthropic Sonnet (different training class than the local Ani-v7 Llama generator) so a non-same-class verifier can catch the high-confidence fabrications local same-class verification gets fooled on per H4.
+
+The two stacks fire **independently** on every dispatch:
+- Local judgment invariants run as they do today. No flag-gating, no constructor changes, no `AppliesTo` rewrites. The hard-revert restored them to their pre-`afa2384` state and they stay that way.
+- `FrontierVerifierHandler` runs additionally. It consults ONLY its own `FrontierVerifierEnabled` flag in its own `AppliesTo` — never reaches into other handlers' applicability.
+
+Any short-circuit (from any handler, local or cloud) blocks dispatch. Cloud failure = no problem: local gates remain active. The two paths are not a replacement choice; they are layered defense.
+
+This is the only framing under which substrate construction in the cloud handler can stay clean: the handler renders ONLY canonically-Mark-asserted records (`ContextSnapshot.GroundedFacts` Facts-tier records + `ContextSnapshot.AnchoredMemories` foundation records). No fallback to `RecentExchanges`. No role-filter on episodic records. No reading the artifact's `ContactRecentMessages`. If those sources aren't already shaped right, the architectural fix is to populate them right at retrieval-time, never to filter them at construction-time.
 
 ## §3 The consolidated verification call
 
@@ -102,13 +110,13 @@ Aggregation rule on the handler side:
 
 3. **🔒 Consolidated single-call verification.** One API call per dispatch with all judgment questions answered together via structured JSON. NOT one call per gate.
 
-4. **🔒 Graceful degradation on API errors.** If the cloud verifier is unreachable or errors, fall back to existing local judgment gates. The handler logs `P_VERIFIER_FALLBACK` so degradation is observable. Active gating doesn't mean single-point-of-failure dispatch.
+4. **🔒 Graceful degradation on API errors — simple because local gates are always active.** If the cloud verifier is unreachable or errors, the handler logs `P_VERIFIER_FALLBACK` and returns `Continue`. No special-case substrate routing is required: the existing local judgment gates have been running on the same dispatch in parallel, so the cloud's absence means defense-in-depth is reduced by one layer, not that judgment is silently skipped. Active gating doesn't mean single-point-of-failure dispatch.
 
-5. **🔒 Format gates stay local.** SelfEcho, AntiParrot, DirectAddress, PromptTemplateLeak, FrameCoherenceChecker all unchanged. The cloud verifier replaces only the *judgment* invariants.
+5. **🔒 Format gates stay local.** SelfEcho, AntiParrot, DirectAddress, PromptTemplateLeak, FrameCoherenceChecker all unchanged. The cloud verifier ADDS a layer; it does not replace these (or any other) local invariants.
 
-6. **🔒 Theme O pipeline integration.** `FrontierVerifierHandler` is a `Post`-stage `ICognitivePipelineHandler` registered via `.UsePostHandler<FrontierVerifierHandler>()` in Program.cs. The existing Theme O middleware infrastructure (commits `0edbf64` + `b68b597`) supports this directly.
+6. **🔒 Theme O pipeline integration.** `FrontierVerifierHandler` is a `Post`-stage `ICognitivePipelineHandler` registered via `.UsePostHandler<FrontierVerifierHandler>()` in Program.cs. The existing Theme O middleware infrastructure (commits `0edbf64` + `b68b597`) supports this directly. Position in the chain doesn't affect correctness — both stacks fire to completion absent a short-circuit; ordering only determines which handler short-circuits first on a multi-violation case.
 
-7. **🔒 Emergency rollback flag.** `AniOptions.FrontierVerifierEnabled` (default `true`). Flip to `false` and restart service → handler skips the API call and the existing local judgment gates run instead. Single-line settings change.
+7. **🔒 Emergency rollback flag — symmetric and clean.** `AniOptions.FrontierVerifierEnabled` (default `true`). Flip to `false` and restart service → ONLY the `FrontierVerifierHandler.AppliesTo` returns false; the cloud handler is skipped. Local judgment gates remain active either way (they never knew about the flag). The flag is a cloud-handler kill switch, not a path-routing toggle.
 
 ## §5 Phase plan
 
@@ -118,13 +126,14 @@ Aggregation rule on the handler side:
 
 ### P.1 — `FrontierVerifierHandler` implementation (~1-2 hours via agent)
 - New file `src/AniRuntime.Loops/Pipeline/FrontierVerifierHandler.cs`.
-- New file `src/AniRuntime.Core/Interfaces/IFrontierVerifierClient.cs` — interface abstracting the Anthropic SDK call so spec tests can mock it.
-- New file `src/AniRuntime.LLM/AnthropicVerifierClient.cs` — concrete implementation using Anthropic SDK.
-- New flag `OutreachOptions.FrontierVerifierEnabled` (default `true`).
-- New flag `OutreachOptions.AnthropicApiKey` (read from appsettings.Development.json on server).
-- DI registration in `Program.cs`.
-- Spec tests: `FrontierVerifierHandlerTests.cs` — covers all five question types + parse failure + API error fallback + flag-off bypass.
-- Local judgment gates (`ClaimVerificationPhase`, `InnerThoughtBleed`-Door-B, `AddresseeNameInvariant`, `TemporalAnchorInvariant`, `StateNowInvariant`, `SubstrateTimeOfDayInvariant`) — handlers deactivated via flag check OR simply removed from the post-stage pipeline registration. Decision: **flag-gated deactivation** so emergency rollback is symmetric — flip `FrontierVerifierEnabled = false` to reactivate the local gates.
+- New file `src/AniRuntime.Core/Interfaces/IFrontierVerifierClient.cs` — interface + DTOs abstracting the Anthropic call so spec tests can mock it.
+- New file `src/AniRuntime.LLM/AnthropicOptions.cs` — config DTO.
+- New file `src/AniRuntime.LLM/AnthropicVerifierClient.cs` — concrete implementation using raw HttpClient (no SDK dependency).
+- New flag `AniOptions.FrontierVerifierEnabled` (default `true`).
+- New `AnthropicOptions` section in appsettings.json (placeholder ApiKey; real key set on server in appsettings.Development.json).
+- DI registration in `Program.cs` — `Configure<AnthropicOptions>` + `AddHttpClient<IFrontierVerifierClient, AnthropicVerifierClient>()` + append `.UsePostHandler<FrontierVerifierHandler>()` to the existing `AddCognitivePipeline` block.
+- Spec tests: `FrontierVerifierHandlerTests.cs` — covers all five question types + parse failure + API error fallback + flag-off bypass + cancellation propagation + substrate forwarding.
+- Local judgment gates (`ClaimVerificationPhase`, `InnerThoughtBleedInvariant`, `AddresseeNameInvariant`, `TemporalAnchorInvariant`, `StateNowInvariant`, `SubstrateTimeOfDayInvariant`) — UNCHANGED. No flag-gating. They continue to fire on every dispatch as they do today. The cloud verifier is additive defense, not replacement.
 
 ### P.2 — Ship + active immediately (same evening if P.1 lands clean)
 - Push commits.
@@ -172,4 +181,22 @@ These two log shapes are the empirical anchor for Paper 3's before/after measure
 - **2026-05-11 (10:11-15:28 CDT)** — ml-intern root-cause survey runs. Recommendation #4 (no same-model self-verification) is the architectural axis Theme P implements.
 - **2026-05-11 (18:00-19:18 CDT)** — Mark + Claude work through option space (local vs cloud, Sonnet vs Grok, sizing of A/B, gate-count concerns). Decisions converge on cross-class verification with Anthropic Sonnet as primary, Grok deferred to A/B phase.
 - **2026-05-11 (19:18 CDT)** — Plan-doc drafted. Mark's directive: ship active immediately, no shadow-mode observation period. Iteration replaces observation.
-- **NEXT** — Mark walks §4 locks; once confirmed, P.1 agent spawned.
+- **2026-05-11 (19:52 CDT)** — First P.1 implementation lands in commit `afa2384` (local-only, not pushed). The handler ships, but with three structural bandaids tracing back to the *"judgment gates MOVE TO CLOUD"* framing in the original §2: (1) the local invariants' `AppliesTo` predicates were rewritten to consult `FrontierVerifierEnabled` so the two stacks alternated rather than both firing; (2) substrate construction added a fallback to `ContextSnapshot.RecentExchanges` with role-filtering when the artifact's `ContactRecentMessages` was empty; (3) the constructors of six invariant classes (`InnerThoughtBleedInvariant`, `AddresseeNameInvariant`, `TemporalAnchorInvariant`, `StateNowInvariant`, `SubstrateTimeOfDayInvariant`, `ClaimVerificationPhase`) took on a new optional `IOptions<AniOptions>` dependency. Mark caught the bandaid pattern before push: *"no more bandaids… a failure now could kill this project to be honest."*
+- **2026-05-11 (21:36 CDT)** — Hard-revert of `afa2384`. Plan-doc §2 corrected to additive framing (see §9.1). P.1 re-implemented as defense-in-depth: local invariants restored to their pre-`afa2384` state and stay there; the cloud verifier runs ADDITIONALLY as another post-stage handler in the Theme O pipeline.
+- **NEXT** — Mark walks §4 locks (now simpler — locks 4 and 7 lost their fallback complications); once confirmed, deploy.
+
+## §9 Architectural corrections
+
+### §9.1 — May 11 21:36 CDT — additive framing replaces replacement framing
+
+**What the original framing said:** §2 listed two categories of gates — "format gates STAY LOCAL" and "judgment gates MOVE TO CLOUD." The verb *move* was the load-bearing word. It implied replacement, which forced the implementation into a shape where exactly one stack ran per dispatch — cloud when the flag was true, local when the flag was false — and the boundary between the two was managed by a single shared flag (`FrontierVerifierEnabled`).
+
+**Why that was wrong:** the H4 critique (same-model verification can't reliably catch high-confidence fabrications) is a defense-in-depth argument, not a replacement argument. A different verifier class catches *additional* fabrications — it doesn't make the existing local checks worse. Replacing local judgment with cloud judgment loses signal on every cloud outage and forces the rest of the system to defend against the loss (the fallback substrate route, the role-filtered RecentExchanges, the constructor changes on six invariants).
+
+**The corrected framing — both stacks fire on every dispatch:**
+1. Local judgment gates run as they have since Theme J. No flag-gating. No constructor changes. No `AppliesTo` rewrites. Their post-stage handler registrations are untouched.
+2. `FrontierVerifierHandler` runs additionally. It is a separate post-stage handler with its own `AppliesTo` that consults ONLY `AniOptions.FrontierVerifierEnabled`. The flag never leaks into any other handler's behavior.
+3. Any short-circuit (from any handler in either stack) blocks dispatch. Cloud failure means defense-in-depth is reduced by one layer; it does NOT mean judgment-tier coverage disappears for that dispatch.
+4. Substrate construction in the cloud handler reads only canonically-Mark-asserted records — `ContextSnapshot.GroundedFacts` (Facts-tier records: character seeds, perception events, user-asserted content) and `ContextSnapshot.AnchoredMemories` (foundation memories that never fade). No fallback to `RecentExchanges`. No role-filter on Episodic records. No reading the artifact's `ContactRecentMessages`. If those canonical sources are empty, the prompt slot is empty — the right architectural fix is to populate them at retrieval-time, not to filter at construction-time.
+
+**Why this future-proofs against the same trap:** any future-Claude (or future-Mark) reading §2 will see "additive defense in depth" instead of "judgment gates MOVE TO CLOUD" and won't be tempted into the same chain of bandaids. The flag-gating, the fallback, the substrate filtering — all three were downstream of a single architectural word choice. Fixing the word fixes the chain.

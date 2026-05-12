@@ -33,6 +33,24 @@ public class CharacterStateDoc
     // Primary connection — the person this character reaches out to
     public string PrimaryContactName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Theme P Phase P.1 (May 11, 2026) — canonical contact names recognized
+    /// as legitimate addressees beyond <see cref="PrimaryContactName"/>.
+    /// Sourced ONLY from character seed data (e.g. Sarah, Kevin, Mia, Karen
+    /// per Paper 2 §5.23 + §6.15 World Layer). Never derived from runtime
+    /// conversation, never filtered from episodic memory — populated as part
+    /// of seed loading and treated as canonical Mark-asserted state.
+    ///
+    /// Read by <c>FrontierVerifierHandler</c> when constructing the
+    /// "Known contacts" line of the cross-class verification prompt so the
+    /// verifier can distinguish legitimate canonical addressees from
+    /// fabricated names (the May 3 10:55 "hey perez…" failure shape).
+    /// Empty list means no seeded canonical contacts beyond the primary;
+    /// the prompt's Known-contacts line renders empty in that case (no
+    /// fallback to other sources — additive defense per plan-doc §9.1).
+    /// </summary>
+    public List<string> CanonicalContacts { get; set; } = new();
+
     // Relationship layer — grows through experience
     [JsonPropertyName("learnedAboutMark")]
     public List<string> LearnedAboutContact  { get; set; } = new();
