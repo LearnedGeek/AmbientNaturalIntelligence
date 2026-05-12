@@ -103,6 +103,15 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
         MaxReactiveSharesPerDay       = 10,
         ReactiveShareCooldownMinutes  = 0.0,
         OutreachFrameSelectorEnabled  = selectorEnabled,
+        // Pin night-hour options so DesireEngine.IsNightHours() is
+        // deterministically false (hour >= 0 && hour < 0 is false for
+        // every hour). Without this the test result depends on the
+        // runner's local wall clock — between 22:00 and 05:59 local
+        // OutreachPhase.TryReactiveShareAsync short-circuits before the
+        // selector is invoked. Pre-existing N.6 oversight surfaced by
+        // P.1 deploy hitting the self-hosted runner at 05:53 local.
+        NightStartHour                = 0,
+        NightEndHour                  = 0,
     });
 
     private static List<PerceptionEvent> BuildHighRelevanceRssPerception(string articleSummary) =>
