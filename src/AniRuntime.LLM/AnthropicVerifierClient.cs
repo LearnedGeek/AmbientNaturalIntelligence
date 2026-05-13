@@ -135,7 +135,13 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
         "dispatch. You evaluate whether the composed message contains fabrications, " +
         "unsupported claims, or temporal/factual errors. Reply ONLY with structured " +
         "JSON. Be strict: if a claim cannot be verified from the provided substrate, " +
-        "mark it unsupported.";
+        "mark it unsupported.\n\n" +
+        "If both substrate blocks are empty, this means retrieval did not find " +
+        "sufficiently-similar substrate for any claim. In that case, return " +
+        "verdict='pass' with all q1–q5 violation=false and reason='no substrate " +
+        "retrieved above similarity threshold — claims cannot be evaluated from " +
+        "available evidence' — do NOT treat empty substrate as confirmation of " +
+        "fabrication.";
 
     internal static string BuildUserPrompt(FrontierVerifierRequest request)
     {

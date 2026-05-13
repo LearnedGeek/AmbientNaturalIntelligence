@@ -228,12 +228,18 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
 
         // Post-hoc retrieval keyed to the composed reply. Same scoring
         // surface (cosine + importance + Feature 20 recency) the
-        // composition pipeline uses.
+        // composition pipeline uses. P.4 (May 12 2026): retrieval is
+        // floored at MinCosineThresholdVerifier so only meaningful
+        // similarity reaches Sonnet's q1–q5 evaluation — see the
+        // AnthropicVerifierClient system-prompt clause for the
+        // empty-substrate-after-filter interpretation contract.
         IReadOnlyList<ScoredMemory> factsHits;
         try
         {
             var results = await _search
-                .SearchByTierAsync(composedText, EpistemicTier.Facts, VerifierRetrievalTopK, ct)
+                .SearchByTierAsync(
+                    composedText, EpistemicTier.Facts, VerifierRetrievalTopK, ct,
+                    minCosine: (float)_options.MinCosineThresholdVerifier)
                 .ConfigureAwait(false);
             factsHits = results.ToList();
         }

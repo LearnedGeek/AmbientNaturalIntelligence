@@ -944,6 +944,145 @@ public class SqliteMemoryServiceTests : AniTestBase
         ranked[1].Record.Id.Should().Be(newNoise.Id);
     }
 
+    // ── Theme P P.4 (May 12, 2026) — cosine threshold floor ──────────────
+    //
+    // Production debug-log analysis (May 11–12 2026, n=440 top-1 cosines)
+    // confirmed two-thirds of queries have a top match below cosine 0.70.
+    // No threshold floor existed; both verifier and composition consumed
+    // noise. P.4 adds a per-call minCosine parameter to SearchByTierAsync
+    // that filters records below the floor BEFORE the top-K cut, on RAW
+    // cosine (not composite — composite can be inflated by importance/recency
+    // on semantically-unrelated records).
+
+    [Fact]
+    public async Task SearchByTier_MinCosine_ExcludesRecordsBelowThreshold()
+    {
+        // SPEC: SearchByTierAsync with minCosine=0.7 must exclude records
+        // whose raw cosine to the query embedding falls below 0.7, even if
+        // their composite score would otherwise rank them in the top-K.
+        var dbName = $"ani-test-{Guid.NewGuid():N}";
+        var queryEmbedding   = new float[] { 1.0f, 0.0f, 0.0f };
+        var highCosineVector = new float[] { 1.0f, 0.0f, 0.0f }; // cosine = 1.0
+        var lowCosineVector  = new float[] { 0.5f, 0.866f, 0.0f }; // cosine ≈ 0.5
+        var ollama = new Mock<IOllamaClient>(MockBehavior.Strict);
+        ollama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(queryEmbedding);
+
+        using var svc = CreateServiceWithOllama(dbName, ollama.Object);
+
+        var highCosineRecord = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "high-cosine record",
+            Importance  = 0.5f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow.AddHours(-1),
+            Embedding   = highCosineVector,
+        };
+        var lowCosineRecord = new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            // Importance jacked up — without the raw-cosine filter, the
+            // composite would lift this above the floor.
+            Content     = "low-cosine record with inflated importance",
+            Importance  = 1.0f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow,
+            Embedding   = lowCosineVector,
+        };
+
+        await svc.SaveAsync(highCosineRecord);
+        await svc.SaveAsync(lowCosineRecord);
+
+        var ranked = (await svc.SearchByTierAsync(
+            "any query", EpistemicTier.Facts, topK: 5,
+            minCosine: 0.7f)).ToList();
+
+        ranked.Should().HaveCount(1,
+            "P.4 floor must exclude the low-cosine record even though importance would otherwise lift its composite");
+        ranked[0].Record.Id.Should().Be(highCosineRecord.Id,
+            "only the record above the raw-cosine floor should remain");
+        ranked[0].CosineSimilarity.Should().BeGreaterOrEqualTo(0.7f);
+    }
+
+    [Fact]
+    public async Task SearchByTier_MinCosine_NoRecordsCrossThreshold_ReturnsEmpty()
+    {
+        // SPEC: when every candidate falls below the floor, the result set
+        // is empty. This is the "insufficient evidence to evaluate" shape
+        // the verifier prompt is now calibrated to interpret correctly
+        // (see AnthropicVerifierClient empty-substrate clause).
+        var dbName = $"ani-test-{Guid.NewGuid():N}";
+        var queryEmbedding  = new float[] { 1.0f, 0.0f, 0.0f };
+        var lowCosineVector = new float[] { 0.3f, 0.954f, 0.0f }; // cosine = 0.3
+        var ollama = new Mock<IOllamaClient>(MockBehavior.Strict);
+        ollama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(queryEmbedding);
+
+        using var svc = CreateServiceWithOllama(dbName, ollama.Object);
+
+        await svc.SaveAsync(new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "below-threshold A",
+            Importance  = 0.9f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow,
+            Embedding   = lowCosineVector,
+        });
+        await svc.SaveAsync(new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "below-threshold B",
+            Importance  = 0.9f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow.AddHours(-2),
+            Embedding   = lowCosineVector,
+        });
+
+        var ranked = (await svc.SearchByTierAsync(
+            "any query", EpistemicTier.Facts, topK: 5,
+            minCosine: 0.75f)).ToList();
+
+        ranked.Should().BeEmpty(
+            "every candidate below the floor → empty result (insufficient-evidence shape)");
+    }
+
+    [Fact]
+    public async Task SearchByTier_DefaultMinCosine_PreservesPreP4Behavior()
+    {
+        // REGRESSION: omitting minCosine (default 0.0f) preserves the
+        // pre-P.4 behaviour for any consumer that has not migrated.
+        // A weakly-related record still surfaces in top-K when no floor
+        // is in effect — that's the no-filter case the existing
+        // ClaimVerification call sites still rely on.
+        var dbName = $"ani-test-{Guid.NewGuid():N}";
+        var queryEmbedding  = new float[] { 1.0f, 0.0f, 0.0f };
+        var lowCosineVector = new float[] { 0.3f, 0.954f, 0.0f }; // cosine = 0.3
+        var ollama = new Mock<IOllamaClient>(MockBehavior.Strict);
+        ollama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(queryEmbedding);
+
+        using var svc = CreateServiceWithOllama(dbName, ollama.Object);
+
+        await svc.SaveAsync(new MemoryRecord
+        {
+            Type        = MemoryType.Episodic,
+            Content     = "weakly-related but should still surface",
+            Importance  = 0.5f,
+            Provenance  = EpistemicTier.Facts,
+            OccurredAt  = DateTimeOffset.UtcNow,
+            Embedding   = lowCosineVector,
+        });
+
+        // Default minCosine — no floor.
+        var ranked = (await svc.SearchByTierAsync(
+            "any query", EpistemicTier.Facts, topK: 5)).ToList();
+
+        ranked.Should().HaveCount(1,
+            "default minCosine=0.0f preserves pre-P.4 behaviour — no filter applied");
+    }
+
     [Fact]
     public async Task SearchByTier_Episodic_StillUsesRecency()
     {

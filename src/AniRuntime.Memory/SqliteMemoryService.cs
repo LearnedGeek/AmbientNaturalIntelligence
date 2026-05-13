@@ -1557,9 +1557,17 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// Epistemic Grounding (Apr 10, 2026): Tier-scoped semantic search. Returns only
     /// memories whose provenance matches the requested tier. Used by prompt builders
     /// to populate the Facts / Episodic / Interior sections from their correct pools.
+    ///
+    /// Theme P Phase P.4 (May 12, 2026) — <paramref name="minCosine"/> is the
+    /// per-call retrieval noise floor. Records whose RAW cosine to the query
+    /// embedding falls below this value are excluded BEFORE the top-K cut.
+    /// Filtering on raw cosine (not composite) is deliberate: composite can
+    /// be inflated by importance/recency on semantically-unrelated records.
+    /// Default 0.0f preserves the pre-P.4 behaviour for any unmigrated caller.
     /// </summary>
     public async Task<IEnumerable<ScoredMemory>> SearchByTierAsync(
-        string query, EpistemicTier tier, int topK = 5, CancellationToken ct = default)
+        string query, EpistemicTier tier, int topK = 5, CancellationToken ct = default,
+        float minCosine = 0.0f)
     {
         if (_ollama is null)
         {
@@ -1596,22 +1604,37 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         // rationale. Episodic + Interior keep recency in their composite.
         var includeRecency = tier != EpistemicTier.Facts;
 
-        var ranked = candidates
+        // Theme P P.4 (May 12, 2026) — score every dimensional-match candidate,
+        // then apply the raw-cosine noise floor BEFORE the top-K cut. The
+        // pre-filter count lets us measure how often the floor activates so
+        // the per-consumer thresholds can be tuned against production data.
+        var scored = candidates
             .Where(r => r.Embedding is not null && r.Embedding.Length == queryEmbedding.Length)
             .Select(r =>
             {
-                var cosine = CosineSimilarity(queryEmbedding, r.Embedding!);
+                var cosine    = CosineSimilarity(queryEmbedding, r.Embedding!);
                 var composite = ComputeRetrievalScore(queryEmbedding, r, includeRecency);
                 return new ScoredMemory(r, composite, cosine);
             })
+            .ToList();
+
+        var passingFloor = minCosine > 0f
+            ? scored.Where(s => s.CosineSimilarity >= minCosine).ToList()
+            : scored;
+
+        var droppedByFloor = scored.Count - passingFloor.Count;
+
+        var ranked = passingFloor
             .OrderByDescending(x => x.CompositeScore)
             .Take(topK)
             .ToList();
 
         _log.LogDebug(
-            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, includeRecency={IncludeRecency}",
+            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}",
             tier, candidates.Count, ranked.Count,
-            ranked.Count > 0 ? ranked[0].CompositeScore : 0f, includeRecency);
+            ranked.Count > 0 ? ranked[0].CompositeScore   : 0f,
+            ranked.Count > 0 ? ranked[0].CosineSimilarity : 0f,
+            includeRecency, minCosine, droppedByFloor);
 
         return ranked;
     }

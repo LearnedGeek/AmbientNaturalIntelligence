@@ -44,10 +44,21 @@ public interface IMemorySearch
     /// - <see cref="EpistemicTier.Interior"/> for Ani's voice, mood, self-concept, and
     ///   reflective continuity. Full creative latitude, structurally isolated from facts.
     ///
+    /// Theme P Phase P.4 (May 12, 2026) — <paramref name="minCosine"/> is a
+    /// per-call retrieval noise floor. Records whose raw cosine similarity to
+    /// the query embedding falls below this value are excluded BEFORE top-K
+    /// is taken. The filter is applied on raw cosine (not on composite
+    /// score) because composite can be inflated by importance/recency on
+    /// semantically-unrelated records. Default <c>0.0f</c> preserves the
+    /// pre-P.4 behaviour for any consumer that has not migrated. Per-consumer
+    /// calibration lives in <see cref="AniOptions.MinCosineThresholdVerifier"/>
+    /// and <see cref="AniOptions.MinCosineThresholdComposition"/>.
+    ///
     /// See docs/spec/design/ANI-Epistemic-Grounding-Architecture.md for the full design.
     /// </summary>
     Task<IEnumerable<ScoredMemory>> SearchByTierAsync(
-        string query, EpistemicTier tier, int topK = 5, CancellationToken ct = default);
+        string query, EpistemicTier tier, int topK = 5, CancellationToken ct = default,
+        float minCosine = 0.0f);
 
     /// <summary>
     /// Epistemic Grounding: Non-scored tier retrieval for callers that just need recent

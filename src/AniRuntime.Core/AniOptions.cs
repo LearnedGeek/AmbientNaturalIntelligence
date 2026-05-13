@@ -71,6 +71,32 @@ public class AniOptions
     // by importance/recency of semantically unrelated memories.
     public double RetrievalConfidenceFloor  { get; set; } = 0.60;
 
+    // ── Theme P Phase P.4 (May 12, 2026) — retrieval noise floor ─────────
+    //
+    // Per-consumer cosine-similarity threshold for SearchByTierAsync. The
+    // production debug-log analysis (May 11–12 2026, n=440 top-1 cosines)
+    // confirmed H2 from the May 11 ml-intern survey: 67% of queries have a
+    // TOP match under cosine 0.70 — the system's strongest evidence for
+    // two-thirds of queries is "topically adjacent," not "evidence-bearing."
+    // No minimum-cosine filter existed on the main retrieval paths before
+    // P.4. Both the verifier (asks "is this claim supported?") and
+    // composition (uses substrate as grounding) consumed noise.
+    //
+    // The fix: per-consumer thresholds calibrated to the measured distribution.
+    //   • Verifier path (FrontierVerifierHandler): only meaningful similarity
+    //     reaches Sonnet's q1–q5 evaluation. Empty substrate after filtering
+    //     means "insufficient evidence to evaluate," not "no support =
+    //     fabricated" — see AnthropicVerifierClient system-prompt clause.
+    //   • Composition path (ContextBuilder Facts retrieval): allows
+    //     topically-adjacent substrate but excludes basically-unrelated.
+    //
+    // Raw cosine, not composite — composite can be inflated by importance/
+    // recency on semantically-unrelated records. The filter applies BEFORE
+    // top-K is taken, so a strong record below the floor still cannot bubble
+    // up just because the K slots were otherwise empty.
+    public double MinCosineThresholdVerifier    { get; set; } = 0.75;
+    public double MinCosineThresholdComposition { get; set; } = 0.65;
+
     // Agentic Lens Layer 1 Phase 1a: retrieval origin observability.
     // When enabled, ContextBuilder emits a per-cycle log line with the origin
     // distribution of the relevant-memory retrieval pool (Caregiver / OwnOutput

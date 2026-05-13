@@ -210,7 +210,8 @@ public class ContextBuilderStructuredSummaryTests : AniTestBase
             OccurredAt = DateTimeOffset.UtcNow.AddDays(-35),
         };
         MockMemory.Setup(m => m.SearchByTierAsync(
-                It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(new[] { new ScoredMemory(wctcFact, 0.85f, 0.82f) });
 
         var builder = Build(conversation: null);
@@ -235,7 +236,8 @@ public class ContextBuilderStructuredSummaryTests : AniTestBase
         // the perception summary as the query when in conversation mode.
         MockMemory.Verify(m => m.SearchByTierAsync(
             It.Is<string>(q => q.Contains("teach tonight")),
-            EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+            It.IsAny<float>()),
             Times.Once,
             "Facts-tier search must run with the perception summary as query in conversation mode");
     }
@@ -249,7 +251,8 @@ public class ContextBuilderStructuredSummaryTests : AniTestBase
         // inline. Skipping Interior is the one half of the Apr 30 fix that
         // stayed (Facts opened up; Interior stays closed).
         MockMemory.Setup(m => m.SearchByTierAsync(
-                It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(Array.Empty<ScoredMemory>());
 
         var builder = Build(conversation: null);
@@ -268,7 +271,8 @@ public class ContextBuilderStructuredSummaryTests : AniTestBase
             perceptions, CancellationToken.None, conversationMode: true);
 
         MockMemory.Verify(m => m.SearchByTierAsync(
-            It.IsAny<string>(), EpistemicTier.Interior, It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), EpistemicTier.Interior, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+            It.IsAny<float>()),
             Times.Never,
             "Interior tier search must NOT run in conversation mode — inner-thought substrate would pollute composition with stale mood drift.");
     }
@@ -281,10 +285,12 @@ public class ContextBuilderStructuredSummaryTests : AniTestBase
         // the conversation-mode behaviour for Facts; ambient behaviour is
         // unchanged.
         MockMemory.Setup(m => m.SearchByTierAsync(
-                It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(Array.Empty<ScoredMemory>());
         MockMemory.Setup(m => m.SearchByTierAsync(
-                It.IsAny<string>(), EpistemicTier.Interior, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), EpistemicTier.Interior, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(Array.Empty<ScoredMemory>());
 
         var builder = Build(conversation: null);
@@ -303,10 +309,12 @@ public class ContextBuilderStructuredSummaryTests : AniTestBase
             perceptions, CancellationToken.None, conversationMode: false);
 
         MockMemory.Verify(m => m.SearchByTierAsync(
-            It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), EpistemicTier.Facts, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+            It.IsAny<float>()),
             Times.Once);
         MockMemory.Verify(m => m.SearchByTierAsync(
-            It.IsAny<string>(), EpistemicTier.Interior, It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), EpistemicTier.Interior, It.IsAny<int>(), It.IsAny<CancellationToken>(),
+            It.IsAny<float>()),
             Times.Once,
             "Ambient mode preserves the pre-Apr-30 dual-tier retrieval behaviour.");
     }

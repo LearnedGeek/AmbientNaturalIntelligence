@@ -143,17 +143,25 @@ public class ContextBuilder
                 var searchQuery = string.Join(". ", perceptions.Select(p => p.Summary));
 
                 // Facts: tier-scoped semantic search for grounded claims.
-                // Always run — see comment above.
+                // Always run — see comment above. Theme P P.4 (May 12, 2026):
+                // floored at MinCosineThresholdComposition so substrate that
+                // is only weakly-related (or basically unrelated) does not
+                // reach the composition prompt as grounding.
                 var factResults = await _search.SearchByTierAsync(
-                    searchQuery, EpistemicTier.Facts, 5, ct).ConfigureAwait(false);
+                    searchQuery, EpistemicTier.Facts, 5, ct,
+                    minCosine: (float)_aniOptions.MinCosineThresholdComposition).ConfigureAwait(false);
                 groundedFacts = factResults.Select(s => s.Record).ToList();
 
                 if (!conversationMode)
                 {
                     // Interior: tier-scoped semantic search for voice/mood continuity.
-                    // Skipped in conversation mode (see comment above).
+                    // Skipped in conversation mode (see comment above). Same P.4
+                    // composition floor — Interior records that aren't similar
+                    // enough to today's perceptions just shouldn't surface as
+                    // mood/voice context.
                     var interiorResults = await _search.SearchByTierAsync(
-                        searchQuery, EpistemicTier.Interior, 5, ct).ConfigureAwait(false);
+                        searchQuery, EpistemicTier.Interior, 5, ct,
+                        minCosine: (float)_aniOptions.MinCosineThresholdComposition).ConfigureAwait(false);
                     interiorContext = interiorResults.Select(s => s.Record).ToList();
                 }
             }

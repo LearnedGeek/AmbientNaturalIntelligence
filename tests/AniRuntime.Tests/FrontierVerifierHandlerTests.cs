@@ -132,7 +132,8 @@ public class FrontierVerifierHandlerTests
                 It.IsAny<string>(),
                 EpistemicTier.Facts,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(hits.ToList());
         return mock;
     }
@@ -426,7 +427,8 @@ public class FrontierVerifierHandlerTests
             Times.Never, "empty content has nothing to verify; verifier must not be called");
         search.Verify(s => s.SearchByTierAsync(
                 It.IsAny<string>(), It.IsAny<EpistemicTier>(),
-                It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()),
             Times.Never, "empty content short-circuits before retrieval too");
     }
 
@@ -479,12 +481,14 @@ public class FrontierVerifierHandlerTests
 
         string? capturedQuery = null;
         int     capturedTopK  = -1;
+        float   capturedMinCosine = -1f;
         var search = new Mock<IMemorySearch>(MockBehavior.Strict);
         search.Setup(s => s.SearchByTierAsync(
                 It.IsAny<string>(), EpistemicTier.Facts,
-                It.IsAny<int>(), It.IsAny<CancellationToken>()))
-              .Callback<string, EpistemicTier, int, CancellationToken>(
-                  (q, _, k, _) => { capturedQuery = q; capturedTopK = k; })
+                It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
+              .Callback<string, EpistemicTier, int, CancellationToken, float>(
+                  (q, _, k, _, m) => { capturedQuery = q; capturedTopK = k; capturedMinCosine = m; })
               .ReturnsAsync(hits);
 
         var handler = new FrontierVerifierHandler(
@@ -516,6 +520,8 @@ public class FrontierVerifierHandlerTests
             "the verifier substrate is retrieved against the composed reply (P.3.2), not snapshot-keyed");
         capturedTopK.Should().BeGreaterOrEqualTo(10,
             "P.3.2 starts at top-N=20; >=10 is the floor sanity check");
+        capturedMinCosine.Should().BeApproximately(0.75f, 0.001f,
+            "P.4 (May 12, 2026): verifier retrieval must pass MinCosineThresholdVerifier (0.75) so only meaningful substrate reaches q1–q5 evaluation");
 
         // MarkAssertedSubstrate gets the non-anchored Facts records.
         captured.MarkAssertedSubstrate.Should().Contain("tough day yesterday");
@@ -642,7 +648,8 @@ public class FrontierVerifierHandlerTests
         var search = new Mock<IMemorySearch>(MockBehavior.Strict);
         search.Setup(s => s.SearchByTierAsync(
                 It.IsAny<string>(), EpistemicTier.Facts,
-                It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
               .ThrowsAsync(new InvalidOperationException("simulated retrieval failure"));
 
         var handler = new FrontierVerifierHandler(
@@ -656,5 +663,74 @@ public class FrontierVerifierHandlerTests
             "verifier is invoked even when retrieval fails — substrate just renders empty");
         captured!.MarkAssertedSubstrate.Should().BeEmpty();
         captured.CanonicalSubstrate.Should().BeEmpty();
+    }
+
+    // ─── 16. Theme P P.4 — minCosine=0.75 passed to retrieval ────────────
+
+    [Fact]
+    public async Task HandleAsync_RetrievalCall_PassesVerifierCosineThreshold()
+    {
+        // P.4 (May 12, 2026) pin: every retrieval call from the verifier
+        // handler must pass the verifier-tier cosine floor (default 0.75)
+        // so only meaningful substrate reaches q1–q5 evaluation. The floor
+        // is sourced from AniOptions.MinCosineThresholdVerifier, not a
+        // hard-coded literal — toggling the option must change the call.
+        float capturedMinCosine = -1f;
+        var search = new Mock<IMemorySearch>(MockBehavior.Strict);
+        search.Setup(s => s.SearchByTierAsync(
+                It.IsAny<string>(), EpistemicTier.Facts,
+                It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
+              .Callback<string, EpistemicTier, int, CancellationToken, float>(
+                  (_, _, _, _, m) => capturedMinCosine = m)
+              .ReturnsAsync(Array.Empty<ScoredMemory>());
+
+        var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
+        client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(NoViolations());
+
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
+
+        await handler.HandleAsync(CtxFor(), CancellationToken.None);
+
+        capturedMinCosine.Should().BeApproximately(0.75f, 0.001f,
+            "verifier retrieval is floored at MinCosineThresholdVerifier (0.75) so q1–q5 evaluates only meaningful substrate");
+    }
+
+    // ─── 17. Theme P P.4 — threshold-filtered-empty produces empty substrate fields ──
+
+    [Fact]
+    public async Task HandleAsync_RetrievalFilteredEmpty_ProducesEmptySubstrateFields()
+    {
+        // P.4 pin: when the threshold floor filters every candidate (i.e.,
+        // SearchByTierAsync returns an empty enumerable because nothing
+        // crossed the cosine floor), BuildRequestAsync must produce a
+        // FrontierVerifierRequest whose MarkAssertedSubstrate AND
+        // CanonicalSubstrate are both empty strings. This is the shape
+        // the AnthropicVerifierClient empty-substrate clause is calibrated
+        // to interpret as "insufficient evidence to evaluate" rather than
+        // "no support = fabricated."
+        FrontierVerifierRequest? captured = null;
+        var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
+        client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
+              .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
+              .ReturnsAsync(NoViolations());
+
+        // Threshold filtered everything → empty enumerable. Same return
+        // shape as "no candidates exist at all" — the handler cannot
+        // distinguish, and per the contract it should not try.
+        var search = EmptySearchMock();
+
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
+
+        await handler.HandleAsync(CtxFor(), CancellationToken.None);
+
+        captured.Should().NotBeNull();
+        captured!.MarkAssertedSubstrate.Should().BeEmpty(
+            "threshold-filtered-empty Facts pool → empty MarkAssertedSubstrate; the verifier prompt reads this as insufficient evidence, not as fabrication confirmation");
+        captured.CanonicalSubstrate.Should().BeEmpty(
+            "threshold-filtered-empty pool → empty CanonicalSubstrate (anchored records share the same Facts-tier retrieval surface)");
     }
 }

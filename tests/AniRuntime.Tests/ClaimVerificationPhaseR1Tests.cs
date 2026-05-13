@@ -116,7 +116,8 @@ public class ClaimVerificationPhaseR1Tests
                 It.IsAny<string>(),
                 EpistemicTier.Facts,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(new[]
             {
                 Scored(MarkAssertedRecord("Mark texted: 'heading to the store for groceries on my way home'"), 0.78f),
@@ -164,7 +165,8 @@ public class ClaimVerificationPhaseR1Tests
                 It.IsAny<string>(),
                 EpistemicTier.Facts,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(new[]
             {
                 // The single Mark-asserted Mia record from the live DB. Cosine
@@ -216,7 +218,8 @@ public class ClaimVerificationPhaseR1Tests
                 It.IsAny<string>(),
                 EpistemicTier.Facts,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(Array.Empty<ScoredMemory>());
 
         var result = await Build().VerifyAsync(
@@ -268,7 +271,8 @@ public class ClaimVerificationPhaseR1Tests
                 It.IsAny<string>(),
                 EpistemicTier.Facts,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(new[]
             {
                 Scored(MarkAssertedRecord(
@@ -354,7 +358,8 @@ public class ClaimVerificationPhaseR1Tests
                 It.IsAny<string>(),
                 EpistemicTier.Facts,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(new[]
             {
                 Scored(MarkAssertedRecord(
@@ -370,7 +375,8 @@ public class ClaimVerificationPhaseR1Tests
                 It.IsAny<string>(),
                 EpistemicTier.Episodic,
                 It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
             .ReturnsAsync(Array.Empty<ScoredMemory>());
 
         var result = await Build().VerifyAsync(
