@@ -25,6 +25,8 @@ public class VoiceConversationService
     private readonly IOllamaClient _ollama;
     private readonly OllamaOptions _ollamaOptions;
     private readonly VoiceOptions _voiceOptions;
+    private readonly AniOptions _aniOptions;
+    private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly ILogger<VoiceConversationService> _log;
 
     private readonly ISessionNotifier _notifier;
@@ -41,19 +43,23 @@ public class VoiceConversationService
         IOptions<OllamaOptions> ollamaOptions,
         IOptions<VoiceOptions> voiceOptions,
         ISessionNotifier notifier,
-        ILogger<VoiceConversationService> log)
+        ILogger<VoiceConversationService> log,
+        IOptions<AniOptions>? aniOptions        = null,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
-        _voiceHandler   = voiceHandler;
-        _tts            = tts;
-        _cache          = cache;
-        _state          = state;
-        _search         = search;
-        _conversations  = conversations;
-        _ollama         = ollama;
-        _ollamaOptions  = ollamaOptions.Value;
-        _voiceOptions   = voiceOptions.Value;
-        _notifier       = notifier;
-        _log            = log;
+        _voiceHandler      = voiceHandler;
+        _tts               = tts;
+        _cache             = cache;
+        _state             = state;
+        _search            = search;
+        _conversations     = conversations;
+        _ollama            = ollama;
+        _ollamaOptions     = ollamaOptions.Value;
+        _voiceOptions      = voiceOptions.Value;
+        _aniOptions        = aniOptions?.Value ?? new AniOptions();
+        _epistemicRenderer = epistemicRenderer;
+        _notifier          = notifier;
+        _log               = log;
     }
 
     /// <summary>
@@ -184,7 +190,8 @@ public class VoiceConversationService
             allMessages.AddRange(session.PendingMessages.ToArray());
 
             // Step 4: Generate reply via LLM (8B conversation model — trained for direct dialogue)
-            var prompt = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread ?? new ConversationThread());
+            var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
+            var prompt = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread ?? new ConversationThread(), rendererForPrompt);
             var reply = await _ollama.ChatAsync(
                 prompt.System, allMessages.TakeLast(10).Select(m =>
                     new ChatMessage(m.Role == Roles.Mark ? "user" : "assistant", m.Content)),

@@ -29,15 +29,21 @@ public class InnerThoughtPhase
     private readonly IOllamaClient _ollama;
     private readonly ILogger<InnerThoughtPhase> _log;
     private readonly ICognitiveOutputGate? _outputGate;
+    private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
+    private readonly bool _epistemicFramingEnabled;
 
     public InnerThoughtPhase(
         IOllamaClient ollama,
         ILogger<InnerThoughtPhase> log,
-        ICognitiveOutputGate? outputGate = null)
+        ICognitiveOutputGate? outputGate = null,
+        Microsoft.Extensions.Options.IOptions<AniOptions>? aniOptions = null,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         _ollama = ollama;
         _log = log;
         _outputGate = outputGate;
+        _epistemicRenderer = epistemicRenderer;
+        _epistemicFramingEnabled = aniOptions?.Value.EpistemicFramingEnabled ?? false;
     }
 
     /// <summary>
@@ -47,7 +53,8 @@ public class InnerThoughtPhase
     public async Task<(string Thought, string? Reflection, float Valence)> RunAsync(
         ContextSnapshot snapshot, CancellationToken ct)
     {
-        var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+        var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
+        var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);
         var thought = await _ollama.InnerMonologueChatAsync(
             thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);

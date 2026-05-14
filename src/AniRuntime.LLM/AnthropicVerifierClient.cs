@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -33,6 +34,8 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
 {
     private readonly HttpClient                       _http;
     private readonly AnthropicOptions                 _options;
+    private readonly IEpistemicSubstrateRenderer?     _epistemicRenderer;
+    private readonly bool                             _epistemicFramingEnabled;
     private readonly ILogger<AnthropicVerifierClient> _log;
 
     // Anthropic's JSON uses snake_case field names (max_tokens, etc.). The
@@ -49,11 +52,15 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
     public AnthropicVerifierClient(
         HttpClient                       http,
         IOptions<AnthropicOptions>       options,
-        ILogger<AnthropicVerifierClient> log)
+        ILogger<AnthropicVerifierClient> log,
+        IOptions<AniOptions>?            aniOptions        = null,
+        IEpistemicSubstrateRenderer?     epistemicRenderer = null)
     {
         _http    = http ?? throw new ArgumentNullException(nameof(http));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _log     = log ?? throw new ArgumentNullException(nameof(log));
+        _epistemicRenderer       = epistemicRenderer;
+        _epistemicFramingEnabled = aniOptions?.Value.EpistemicFramingEnabled ?? false;
 
         // Configure base URL and required headers if the caller hasn't.
         if (_http.BaseAddress is null && !string.IsNullOrWhiteSpace(_options.BaseUrl))
@@ -80,7 +87,8 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
             _options.Model, request.ComposedMessage?.Length ?? 0);
 
         var system = BuildSystemPrompt();
-        var user   = BuildUserPrompt(request);
+        var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
+        var user   = BuildUserPrompt(request, rendererForPrompt);
 
         var payload = new
         {
@@ -143,7 +151,8 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
         "available evidence' — do NOT treat empty substrate as confirmation of " +
         "fabrication.";
 
-    internal static string BuildUserPrompt(FrontierVerifierRequest request)
+    internal static string BuildUserPrompt(FrontierVerifierRequest request,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         // Renders the plan-doc §3 user prompt VERBATIM. Field labels and
         // bracketed section headers are preserved exactly; only the
@@ -166,6 +175,19 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
         sb.Append("- Day of week: ").Append(request.CurrentDayOfWeek).Append('\n');
         sb.Append("- Addressee canonical name: ").Append(request.AddresseeCanonicalName).Append('\n');
         sb.Append("- Known contacts: ").Append(request.KnownContacts).Append("\n\n");
+
+        // Theme M slice migration (FC-006): when supplied, prepend the
+        // three-axis-rule slice as a structural classifier the verifier
+        // applies to every claim. The slice encodes Subject × Modality ×
+        // Substrate axes + worked verdicts — language q1–q5 structurally
+        // cannot ask. Adding this primes the verifier with the rule before
+        // the narrow questions.
+        if (epistemicRenderer is not null)
+        {
+            var ruleSlice = epistemicRenderer.RenderThreeAxisRuleSlice(request.AddresseeCanonicalName);
+            sb.Append(ruleSlice);
+            sb.Append("\n\n");
+        }
 
         sb.Append("[QUESTIONS]\n");
         sb.Append("1. Does the message claim a shared event (Mark + Ani together) that is\n");

@@ -25,6 +25,7 @@ public class VoiceTurnPipeline
     private readonly OllamaOptions _ollamaOptions;
     private readonly AniOptions _aniOptions;
     private readonly ICognitiveOutputGate? _outputGate;
+    private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly ILogger<VoiceTurnPipeline> _log;
 
     public VoiceTurnPipeline(
@@ -34,15 +35,17 @@ public class VoiceTurnPipeline
         IOptions<OllamaOptions> ollamaOptions,
         IOptions<AniOptions> aniOptions,
         ILogger<VoiceTurnPipeline> log,
-        ICognitiveOutputGate? outputGate = null)
+        ICognitiveOutputGate? outputGate = null,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
-        _memory        = memory;
-        _conversations = conversations;
-        _ollama        = ollama;
-        _ollamaOptions = ollamaOptions.Value;
-        _aniOptions    = aniOptions.Value;
-        _outputGate    = outputGate;
-        _log           = log;
+        _memory            = memory;
+        _conversations     = conversations;
+        _ollama            = ollama;
+        _ollamaOptions     = ollamaOptions.Value;
+        _aniOptions        = aniOptions.Value;
+        _outputGate        = outputGate;
+        _epistemicRenderer = epistemicRenderer;
+        _log               = log;
     }
 
     /// <summary>
@@ -101,8 +104,9 @@ public class VoiceTurnPipeline
             // The full voice prompt (BuildVoiceReplyPrompt) injected memories and
             // shared experiences that competed with the conversation for the model's
             // attention, producing confabulation and non-sequiturs.
+            var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
             var prompt = PromptBuilder.BuildLeanConversationPrompt(
-                snapshot, thread ?? new ConversationThread());
+                snapshot, thread ?? new ConversationThread(), rendererForPrompt);
 
             var tokenBuffer = new TokenBuffer();
             var fullReply = new StringBuilder();

@@ -11,7 +11,9 @@ namespace AniRuntime.LLM;
 /// </summary>
 public static class PromptBuilder
 {
-    public static (string System, string User) BuildInnerThoughtPrompt(ContextSnapshot snapshot)
+    public static (string System, string User) BuildInnerThoughtPrompt(
+        ContextSnapshot snapshot,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var cs = snapshot.CharacterState;
 
@@ -112,8 +114,16 @@ public static class PromptBuilder
         var ittStructured = snapshot.StructuredConversationSummary;
         if (ittStructured is { Turns.Count: > 0 })
         {
-            sections.Add("Something that just happened (each line tagged with who said it — this should color your thoughts naturally, but stay in your own voice):");
-            sections.Add(ittStructured.ToPromptString());
+            if (epistemicRenderer is not null)
+            {
+                var threadSlice = epistemicRenderer.RenderActiveThreadSlice(ittStructured, cs.PrimaryContactName ?? "the contact");
+                if (!string.IsNullOrEmpty(threadSlice)) sections.Add(threadSlice);
+            }
+            else
+            {
+                sections.Add("Something that just happened (each line tagged with who said it — this should color your thoughts naturally, but stay in your own voice):");
+                sections.Add(ittStructured.ToPromptString());
+            }
         }
         else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
         {
@@ -174,8 +184,23 @@ public static class PromptBuilder
         // The model sees what it already generated so coworkers, routines, and places persist.
         if (snapshot.RecentWorldExperiences.Count > 0)
         {
-            sections.Add("Recent things that happened in your world (build on these, don't contradict them):");
-            sections.AddRange(snapshot.RecentWorldExperiences.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            if (epistemicRenderer is not null)
+            {
+                // Theme M slice migration: route world-experience rendering
+                // through AniWorldSlice so self-world latitude framing is
+                // centralized. Inner-thought is a first-person introspection
+                // context, but the latitude principle still applies.
+                var worldSlice = epistemicRenderer.RenderAniWorldSlice(
+                    occupation:             cs.Occupation,
+                    natureGrounding:        null, // already in system prompt for inner thought
+                    recentWorldExperiences: snapshot.RecentWorldExperiences);
+                if (!string.IsNullOrEmpty(worldSlice)) sections.Add(worldSlice);
+            }
+            else
+            {
+                sections.Add("Recent things that happened in your world (build on these, don't contradict them):");
+                sections.AddRange(snapshot.RecentWorldExperiences.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            }
         }
 
         // World Layer: when a world seed is present, the prompt shifts from
@@ -444,7 +469,18 @@ public static class PromptBuilder
         var decisionStructured = snapshot.StructuredConversationSummary;
         if (decisionClosed is not null && !string.IsNullOrWhiteSpace(decisionClosed.Gist))
         {
-            context.Add(RenderClosedConversationContextDecision(decisionClosed, contact));
+            // Theme M slice migration: route closed-conversation rendering
+            // through the slice when renderer is supplied so callback-support
+            // framing is centralized (FC-011 deferred consumer).
+            if (epistemicRenderer is not null)
+            {
+                var closedSlice = epistemicRenderer.RenderClosedConversationSlice(decisionClosed, contact);
+                if (!string.IsNullOrEmpty(closedSlice)) context.Add(closedSlice);
+            }
+            else
+            {
+                context.Add(RenderClosedConversationContextDecision(decisionClosed, contact));
+            }
         }
         else if (decisionStructured is { Turns.Count: > 0 })
         {
@@ -487,7 +523,8 @@ public static class PromptBuilder
     /// "The ambient cognition engine is a telescope. Conversation needs glasses."
     /// </summary>
     public static (string System, string User) BuildLeanConversationPrompt(
-        ContextSnapshot snapshot, ConversationThread thread)
+        ContextSnapshot snapshot, ConversationThread thread,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -529,23 +566,45 @@ public static class PromptBuilder
         // adjacent to the task, where model attention is strongest. V7 training
         // heavily includes confident work-discussion examples; buried instructions
         // lose to fine-tuning. Adjacency improves override strength.
-        var facts = snapshot.GroundedFacts
-            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
-            .Take(6)
-            .ToList();
-
         var user = new System.Text.StringBuilder();
-        if (facts.Count > 0)
+        if (epistemicRenderer is not null)
         {
-            user.AppendLine($"[FACTS] about {contact} and the world — only these may be asserted:");
-            foreach (var m in facts)
-                user.AppendLine($"  - {FormatMemoryWithTime(m)}");
-            user.AppendLine();
+            // Theme M slice migration: route Facts rendering through the
+            // IEpistemicSubstrateRenderer so the FC-005 "only these may be
+            // asserted" discipline lives in a single source of truth shared
+            // across all prompt builders.
+            var factsBlock = epistemicRenderer.RenderMarkAssertedFactsSlice(snapshot.GroundedFacts, contact);
+            if (!string.IsNullOrEmpty(factsBlock))
+            {
+                user.AppendLine(factsBlock);
+                user.AppendLine();
+            }
+            else
+            {
+                user.AppendLine($"[FACTS]: nothing specific retrieved for this moment.");
+                user.AppendLine();
+            }
         }
         else
         {
-            user.AppendLine($"[FACTS]: nothing specific retrieved for this moment.");
-            user.AppendLine();
+            // Legacy inline rendering (flag-off path, byte-identical pre-spike).
+            var facts = snapshot.GroundedFacts
+                .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+                .Take(6)
+                .ToList();
+
+            if (facts.Count > 0)
+            {
+                user.AppendLine($"[FACTS] about {contact} and the world — only these may be asserted:");
+                foreach (var m in facts)
+                    user.AppendLine($"  - {FormatMemoryWithTime(m)}");
+                user.AppendLine();
+            }
+            else
+            {
+                user.AppendLine($"[FACTS]: nothing specific retrieved for this moment.");
+                user.AppendLine();
+            }
         }
 
         // Immediate constraint — positioned adjacent to the task, not buried in RULES.
@@ -568,7 +627,8 @@ public static class PromptBuilder
     /// This is the "telescope" prompt — powerful but heavy for active conversation.
     /// </summary>
     public static (string System, string User) BuildConversationReplyPrompt(
-        ContextSnapshot snapshot, ConversationThread thread)
+        ContextSnapshot snapshot, ConversationThread thread,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var cs      = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -647,20 +707,36 @@ public static class PromptBuilder
         // Verified facts — Facts tier (character seeds, perception events,
         // user-asserted content, anchored memories). This is the ONLY pool the
         // model should condition on when making factual claims about {contact}.
-        var facts = snapshot.GroundedFacts
-            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
-            .Take(8)
-            .ToList();
-        if (facts.Count > 0)
+        if (epistemicRenderer is not null)
         {
-            sections.Add("[FACTS] about " + contact + " and the world — only these may be asserted:");
-            sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            // Theme M slice migration: route Facts rendering through the
+            // IEpistemicSubstrateRenderer so FC-005 discipline is centralized.
+            var factsBlock = epistemicRenderer.RenderMarkAssertedFactsSlice(snapshot.GroundedFacts, contact);
+            if (!string.IsNullOrEmpty(factsBlock))
+            {
+                sections.Add(factsBlock);
+            }
+            else
+            {
+                sections.Add("[FACTS]: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
+            }
         }
         else
         {
-            // Explicit null-result signal so the model knows it has no retrieved
-            // grounding — architectural permission to say "I don't know."
-            sections.Add("[FACTS]: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
+            // Legacy inline rendering (flag-off path).
+            var facts = snapshot.GroundedFacts
+                .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+                .Take(8)
+                .ToList();
+            if (facts.Count > 0)
+            {
+                sections.Add("[FACTS] about " + contact + " and the world — only these may be asserted:");
+                sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            }
+            else
+            {
+                sections.Add("[FACTS]: (no grounding memories retrieved — avoid asserting specifics about " + contact + "'s life)");
+            }
         }
 
         // YOUR INTERIOR — Interior tier (inner thoughts, reflections, mood,
@@ -696,7 +772,8 @@ public static class PromptBuilder
     /// to stay within Twilio's response timeout.
     /// </summary>
     public static (string System, string User) BuildVoiceReplyPrompt(
-        ContextSnapshot snapshot, ConversationThread thread)
+        ContextSnapshot snapshot, ConversationThread thread,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var cs      = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -746,10 +823,21 @@ public static class PromptBuilder
                 .Take(remainingSlots)
                 .ToList();
 
+            // Theme M slice migration: route profile-memories (the Mark-asserted
+            // facts surface for voice) through IEpistemicSubstrateRenderer when
+            // available so FC-005 discipline is consistent across voice + text.
             if (profileMemories.Count > 0)
             {
-                sections.Add($"Things you know about {contact}:");
-                sections.AddRange(profileMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+                if (epistemicRenderer is not null)
+                {
+                    var slice = epistemicRenderer.RenderMarkAssertedFactsSlice(profileMemories, contact);
+                    if (!string.IsNullOrEmpty(slice)) sections.Add(slice);
+                }
+                else
+                {
+                    sections.Add($"Things you know about {contact}:");
+                    sections.AddRange(profileMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+                }
             }
             if (relevantMemories.Count > 0)
             {
@@ -825,7 +913,8 @@ public static class PromptBuilder
     public static (string System, string User) BuildOutreachMessagePrompt(
         ContextSnapshot snapshot, string recentThought, string reasoning,
         bool reasoningInComposition = false,
-        OutreachFrame? frame = null)
+        OutreachFrame? frame = null,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -912,18 +1001,39 @@ public static class PromptBuilder
         // about {contact}'s life. Explicit null-result signal when empty.
         // Rephrased from prior *"WHAT IS TRUE"* directive header — see
         // PromptBuilder.cs:606-614 for context on the May 3 leak fix.
-        var facts = snapshot.GroundedFacts
-            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
-            .Take(6)
-            .ToList();
-        if (facts.Count > 0)
+        if (epistemicRenderer is not null)
         {
-            sections.Add($"\n[FACTS] about {contact} and the world — only these may be asserted:");
-            sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            // Theme M slice migration: Facts rendering routed through the
+            // IEpistemicSubstrateRenderer for FC-002 / FC-004 / FC-005
+            // discipline consolidation. The slice includes a blank-line
+            // separator inside its header so the rendered block reads
+            // identically to the legacy inline form.
+            var factsBlock = epistemicRenderer.RenderMarkAssertedFactsSlice(snapshot.GroundedFacts, contact);
+            if (!string.IsNullOrEmpty(factsBlock))
+            {
+                sections.Add("\n" + factsBlock);
+            }
+            else
+            {
+                sections.Add($"\n[FACTS]: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
+            }
         }
         else
         {
-            sections.Add($"\n[FACTS]: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
+            // Legacy inline rendering (flag-off path).
+            var facts = snapshot.GroundedFacts
+                .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+                .Take(6)
+                .ToList();
+            if (facts.Count > 0)
+            {
+                sections.Add($"\n[FACTS] about {contact} and the world — only these may be asserted:");
+                sections.AddRange(facts.Select(m => $"  - {FormatMemoryWithTime(m)}"));
+            }
+            else
+            {
+                sections.Add($"\n[FACTS]: (no grounding memories retrieved — avoid asserting specifics about {contact}'s life)");
+            }
         }
 
         // YOUR INTERIOR — Interior tier (inner thoughts, mood, self-concept,
@@ -962,14 +1072,30 @@ public static class PromptBuilder
         var structured = snapshot.StructuredConversationSummary;
         if (closed is not null && !string.IsNullOrWhiteSpace(closed.Gist))
         {
-            sections.Add($"\nIMPORTANT — You recently talked with {contact}. The relational gist is paraphrased below; the verbatim transcript is intentionally not included to avoid lifting {contact}'s words into your own message:");
-            sections.Add(RenderClosedConversationContextComposition(closed, contact));
+            if (epistemicRenderer is not null)
+            {
+                var closedSlice = epistemicRenderer.RenderClosedConversationSlice(closed, contact);
+                if (!string.IsNullOrEmpty(closedSlice)) sections.Add("\n" + closedSlice);
+            }
+            else
+            {
+                sections.Add($"\nIMPORTANT — You recently talked with {contact}. The relational gist is paraphrased below; the verbatim transcript is intentionally not included to avoid lifting {contact}'s words into your own message:");
+                sections.Add(RenderClosedConversationContextComposition(closed, contact));
+            }
             sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
         }
         else if (structured is { Turns.Count: > 0 })
         {
-            sections.Add($"\nIMPORTANT — You recently talked with {contact}. Each line is tagged with who said it; do not lift {contact}'s exact words into your own message:");
-            sections.Add(structured.ToPromptString());
+            if (epistemicRenderer is not null)
+            {
+                var threadSlice = epistemicRenderer.RenderActiveThreadSlice(structured, contact);
+                if (!string.IsNullOrEmpty(threadSlice)) sections.Add("\n" + threadSlice);
+            }
+            else
+            {
+                sections.Add($"\nIMPORTANT — You recently talked with {contact}. Each line is tagged with who said it; do not lift {contact}'s exact words into your own message:");
+                sections.Add(structured.ToPromptString());
+            }
             sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
         }
 

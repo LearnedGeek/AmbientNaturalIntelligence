@@ -276,9 +276,10 @@ public class OutreachPhase
         }
 
         // Step 2b: Compose — free-text message generation (no JSON constraint)
+        var rendererForComposition = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, recentThought, decisionReasoning, reasoningInComposition,
-            selectedFrame);
+            selectedFrame, rendererForComposition);
         var message = await _ollama.ChatAsync(
             msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct)
             .ConfigureAwait(false);

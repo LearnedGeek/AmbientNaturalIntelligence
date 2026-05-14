@@ -50,6 +50,11 @@ public class ConversationReplyPhase
     // the §4.8 tension-state slice. Recorded at the three exit points of
     // EvaluateAndRemediateReplyAsync (Pass / RemediatedOk / FellThroughToSafeAck).
     private readonly IRecentGateTripTracker? _gateTripTracker;
+    // Theme M follow-on (2026-05-14) — IEpistemicSubstrateRenderer. Sibling
+    // to IConsciousSubstrateGist; renders substrate slices with explicit
+    // epistemic framing for FC-002 / FC-004 / FC-005 / FC-006. Gated by
+    // AniOptions.EpistemicFramingEnabled.
+    private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
@@ -83,7 +88,8 @@ public class ConversationReplyPhase
         ICognitiveOutputGate? outputGate = null,
         IVibeBiasService? vibeBias = null,
         IConsciousSubstrateGist? consciousGist = null,
-        IRecentGateTripTracker? gateTripTracker = null)
+        IRecentGateTripTracker? gateTripTracker = null,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         _state = state;
         _persist = persist;
@@ -110,6 +116,7 @@ public class ConversationReplyPhase
         _vibeBias = vibeBias;
         _consciousGist = consciousGist;
         _gateTripTracker = gateTripTracker;
+        _epistemicRenderer = epistemicRenderer;
         _log = log;
     }
 
@@ -259,9 +266,10 @@ public class ConversationReplyPhase
         // No memory grounding check — the conversation provides all context.
         var replyTemperature = _ollamaOptions.CreativeTemperature;
 
+        var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
-            : PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+            : PromptBuilder.BuildLeanConversationPrompt(snapshot, thread, rendererForPrompt);
 
         // Epistemic Grounding debug (Apr 10): log the full user prompt so we can
         // verify the WHAT IS TRUE section is populated with useful facts. Remove
@@ -436,7 +444,8 @@ public class ConversationReplyPhase
                     {
                         // Regenerate with memory context
                         snapshot.RelevantMemory = grounded;
-                        var groundedPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                        var rendererForRegen = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
+                        var groundedPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread, rendererForRegen);
                         var groundedReply = await _ollama.ChatAsync(
                             groundedPrompt.System, snapshot.RecentHistory, groundedPrompt.User, ct, replyTemperature)
                             .ConfigureAwait(false);
@@ -460,7 +469,8 @@ public class ConversationReplyPhase
                         _log.LogInformation("No grounding memories found — regenerating with null-result injection");
                         try
                         {
-                            var nullResultPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
+                            var rendererForNullRegen = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
+                            var nullResultPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread, rendererForNullRegen);
                             var augmentedSystem = nullResultPrompt.System +
                                 "\n\nIMPORTANT: Your previous draft contained a claim that has no support in memory or conversation history. " +
                                 "Respond again to the user's message without asserting unverified specifics. " +
