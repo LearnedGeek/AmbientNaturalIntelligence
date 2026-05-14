@@ -1,5 +1,6 @@
 # Phase 5c Design: Automatic Model Generation Pipeline
 
+**Tracked in:** [#32](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/32) (Phase 5c — Mar 15 design; superseded by AutoGrowth Mar 25 as current authoritative design)
 **Date:** March 15, 2026
 **Status:** Design Complete, Awaiting Implementation (depends on Phase 5a/5b streaming voice + emergence layer E1)
 **Authors:** Mark McArthey, Claude (pair design session)

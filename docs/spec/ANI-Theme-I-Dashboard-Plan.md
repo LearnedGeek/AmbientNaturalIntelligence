@@ -1,5 +1,6 @@
 # Theme I — Dashboard as Research Tool: Implementation Plan
 
+**Tracked in:** [#29](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/29)
 **Status:** Draft for review. Not yet approved for implementation.
 **Authored:** April 26, 2026 (dogfood Claude instance, after Mark's Apr 26 design conversation).
 **Parent context:** Apr 23 — Mark named the dashboard rework as a sibling workstream; held off as *"a larger discussion for later."* Apr 26 — Mark reopened the discussion with explicit goals: shareable content (in person + online), at-a-glance comprehension across two perspectives (algorithmic + as-if-person), and direct support for Paper 2 / Paper 3 figure production.

@@ -1,5 +1,6 @@
 # Theme K — Test Spec-Coverage Migration (TDD + Strict Mocks)
 
+**Tracked in:** [#28](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/28)
 **Drafted:** April 28, 2026
 **Status:** Phase K.2 shipped (IMemoryService strict-mock migration). K.3 queued.
 **Origin:** Apr 28 silence-policy regression diagnosis. NO test in the suite covered the LastContactInbound invariant; the bug was latent for weeks. Mark's framing: *"I think we're acting like junior developers here and writing code, then writing tests to match. We should be taking a TDD approach... we should also be using mockbehavior strict on all tests."*

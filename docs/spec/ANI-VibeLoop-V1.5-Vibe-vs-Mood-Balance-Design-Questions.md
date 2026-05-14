@@ -1,7 +1,8 @@
 # Vibe Loop V1.5 — Vibe-vs-Mood Balance Design Questions
 
+**Tracked in:** [#31](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/31) (questions RESOLVED in V1.5 plan; this doc is historical reference)
 **Drafted:** April 29, 2026 21:10 CDT
-**Status:** Open design questions; **gates V1.5 implementation**.
+**Status:** Open design questions; **gates V1.5 implementation**. — RESOLVED May 2 2026 11:00-11:24 CDT; see `ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md` for the locked decisions.
 **Origin:** Mark Apr 29 21:00 CDT during V1.4 implementation. Surfaced before V1.5 (retrieval-time biasing) starts so the bias function isn't shaped wrong.
 **Companion docs:** `ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md` (parent plan), `ANI-Phase-Tracker.md` (Vibe Loop matrix row).
 

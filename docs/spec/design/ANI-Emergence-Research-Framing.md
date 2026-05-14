@@ -1,4 +1,5 @@
 # ANI Emergence Layer — Research Framing
+**Tracked in:** [#23](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/23) (Paper 2 — this is Mar 15 framing material absorbed into the current draft)
 **Status:** Draft 0.1 — Initial framing for next paper
 **Date:** March 15, 2026
 **Author:** Mark McArthey, TC (Training/Design Claude)

@@ -1,5 +1,6 @@
 # Phase 6 Design: Memory Reform — From Flat Store to Living Memory
 
+**Tracked in:** [#33](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/33)
 **Date:** March 23, 2026 (v1), April 10, 2026 (v1.1 — complementary note added)
 **Status:** Design Complete, Awaiting Implementation. **Relationship to Epistemic Grounding Architecture (Apr 10):** complementary, not competing. See note below.
 **Authors:** Mark McArthey, Claude (pair design session)

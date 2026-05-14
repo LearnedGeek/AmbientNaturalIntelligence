@@ -1,4 +1,5 @@
 # ANI Self-Improvement Pipeline — Planned Feature
+**Tracked in:** [#32](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/32) (Phase 5c — Mar 13 original concept; evolved into AutoModel + AutoGrowth)
 **Status:** Design / Planned
 **Authors:** Mark McArthey, Claude (research instance)
 **Date:** March 13, 2026

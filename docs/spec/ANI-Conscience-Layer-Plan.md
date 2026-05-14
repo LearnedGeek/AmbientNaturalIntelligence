@@ -1,5 +1,6 @@
 # Conscience Layer — Reflective Companion Voice — Phased Implementation Plan
 
+**Tracked in:** [#30](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/30)
 **Status:** Plan drafted Apr 27, 2026 — implementation **explicitly gated on Theme J J.6 closing first**, per Mark's Apr 24 confirmation: *"I think the Conscience Layer is P2, but we should implement this refactor first before such a large implementation."*
 
 **Source design:** `docs/spec/ANI-Phase-Tracker.md` §"Conscience Layer — Reflective Companion Voice (Apr 21, 2026)" — the design body that this plan implements.

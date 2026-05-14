@@ -1,5 +1,6 @@
 # Vibe Loop V1.5 — Retrieval-Time Biasing
 
+**Tracked in:** [#31](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/31)
 **Drafted:** May 2, 2026 11:24 CDT
 **Status:** Plan drafted; V1.5.0 decisions locked from May 2 11:00–11:24 CDT design conversation; V1.5.1 implementation can begin once Mark green-lights.
 **Origin:** Mark Apr 29 21:00 CDT vibe-vs-mood balance question (captured in companion design doc), resolved in May 2 11:00–11:24 CDT design conversation post J.5 ship + emotional-saturation calibration deploy.

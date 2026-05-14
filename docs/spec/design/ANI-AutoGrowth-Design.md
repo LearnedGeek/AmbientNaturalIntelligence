@@ -1,5 +1,6 @@
 # Phase 5c Design: Automatic Model Growth Pipeline
 
+**Tracked in:** [#32](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/32) (current authoritative Phase 5c design)
 **Date:** March 25, 2026
 **Status:** Design Complete, Awaiting Implementation
 **Authors:** Mark McArthey, Claude (pair design session)
