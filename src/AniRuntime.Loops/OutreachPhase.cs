@@ -35,6 +35,7 @@ public class OutreachPhase
     private readonly IOutreachFrameSelector? _frameSelector;
     private readonly IFrameCoherenceChecker? _frameChecker;
     private readonly IClosedConversationStore? _closedStore;
+    private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly AniOptions _aniOptions;
     private readonly ILogger<OutreachPhase> _log;
 
@@ -64,7 +65,8 @@ public class OutreachPhase
         IVibeBiasService? vibeBias = null,
         IOutreachFrameSelector? frameSelector = null,
         IFrameCoherenceChecker? frameChecker = null,
-        IClosedConversationStore? closedStore = null)
+        IClosedConversationStore? closedStore = null,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         _state = state;
         _persist = persist;
@@ -82,6 +84,7 @@ public class OutreachPhase
         _frameSelector = frameSelector;
         _frameChecker = frameChecker;
         _closedStore = closedStore;
+        _epistemicRenderer = epistemicRenderer;
         _aniOptions = aniOptions.Value;
         _log = log;
     }
@@ -152,7 +155,14 @@ public class OutreachPhase
         }
 
         // Step 1: Decision — should Ani reach out? (JSON, no message required)
-        var outreachPrompt = PromptBuilder.BuildOutreachPrompt(snapshot, recentThought, _desire.IsNightHours());
+        // Theme M follow-on (2026-05-14): when EpistemicFramingEnabled is on,
+        // route the active-thread substrate block through IEpistemicSubstrateRenderer
+        // so the model sees FC-004 epistemic-asymmetry framing instead of the
+        // legacy "each line tagged with who said it" rendering. Flag-off path
+        // is byte-identical to pre-spike behavior.
+        var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
+        var outreachPrompt = PromptBuilder.BuildOutreachPrompt(
+            snapshot, recentThought, _desire.IsNightHours(), rendererForPrompt);
         var raw            = await _ollama.ChatJsonAsync(
             outreachPrompt.System, snapshot.RecentHistory, outreachPrompt.User, ct)
             .ConfigureAwait(false);

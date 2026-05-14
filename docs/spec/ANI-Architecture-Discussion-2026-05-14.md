@@ -24,8 +24,57 @@ Mark reviewed the §4 D-questions and reframed several premises. The following d
 
 **Decisions still pending.**
 - D3 (FC-003 fix shape) — unchanged; recommendation still position-aware
-- D4 (cadence) — unchanged; recommendation still hybrid
-- D5 — Theme L close, Theme N close; **Theme M cannibalization rationale CHANGES** — no longer driven by FC-001 fix (FC-001 needs no fix). Theme M closure now stands on its own merits per §0 below.
+- D4 (cadence) — REVISED (afternoon session): prompt fixes are no longer "atomic 1-hour deploys" — they become consumers of the slice-renderer abstraction. Batched is the natural shape.
+- D5 — Theme L closed ✓ (#16), Theme N closed ✓ (#17). **Theme M REOPENED as prerequisite for FC fixes** after afternoon session — see §0.1 below.
+
+## §0.1 — Afternoon-session reframing (2026-05-14): Theme M slice composition is prerequisite, not optional
+
+Mark surfaced the SOLID lens with reference to `~/.claude/ARCHITECTURE_PATTERNS.md`. The relevant principle (line 478):
+
+> "Inline `new XDto { ... }` in multiple services | Same mapping in N places → drift | Single mapper method, N call sites"
+
+That's exactly the shape of PromptBuilder.cs today — ~10 prompt-building methods, each inlining its own substrate-rendering. FC-002 / FC-004 / FC-005 / FC-006 each want to add epistemic-asymmetry framing to 3–4 of those sites. Shipping them as inline CRITICAL-block edits would be the N-places-drift anti-pattern materializing.
+
+**N consumer sites today** (not speculative):
+
+| Method | FC fix wanting new framing here |
+|---|---|
+| `BuildOutreachPrompt` | FC-004 (epistemic asymmetry) |
+| `BuildLeanConversationPrompt` | FC-005 (speech-act attribution) |
+| `BuildConversationReplyPrompt` | FC-005 (second reply path) |
+| `BuildVoiceReplyPrompt` | FC-005 shape |
+| `BuildOutreachMessagePrompt` | downstream FC-004 / FC-002 |
+| `BuildReactiveSharePrompt` | downstream FC-002 / FC-004 |
+| `BuildInnerThoughtPrompt` | FC-004 substrate framing |
+| `BuildReflectionPrompt` | FC-005 shape |
+| `AnthropicVerifierClient.BuildUserPrompt` | FC-006 (three-axis rule) |
+| `AnthropicVerifierClient.BuildSystemPrompt` | FC-006 |
+
+**Existing infrastructure (not greenfield):**
+- `IConsciousSubstrateGist` interface in `AniRuntime.Core.Interfaces` — first-person internal-state slices (tension-state §4.8, register-state §4.3) already shipping under feature flag.
+- `ConsciousSubstrateGistComposer` in `AniRuntime.Loops` — M.0 + M.1 phases shipped May 5-6, 2026.
+- Theme M plan doc preserves the rest of the §4 slice taxonomy.
+
+**The 2026-05-14 afternoon decision:** add a sibling abstraction `IEpistemicSubstrateRenderer` for substrate-with-framing concerns (orthogonal to first-person-state). Both interfaces are slice-shaped; the existing IConsciousSubstrateGist stays scoped to "what Ani is feeling" (its plan-doc concern), and the new renderer addresses "how the model should treat what it's seeing" (the FC-fix concern). Convergence under a generalised `ISlice` is a later question once both surfaces are mature.
+
+**Spike shipped this session.** Commit `<TBD>` ships:
+- `IEpistemicSubstrateRenderer` interface (one method: `RenderActiveThreadSlice`)
+- `EpistemicSubstrateRenderer` implementation
+- `AniOptions.EpistemicFramingEnabled` config flag (default false — no behavior change)
+- DI registration
+- One consumer: `BuildOutreachPrompt` routes the active-thread block through the renderer when the flag is on
+- 7 unit tests for the renderer (isolated; no PromptBuilder round-trip)
+- 1431 / 0 tests pass with the CI-gate filter; spike adds 7 new tests
+
+**Implementation ordering revised** (replaces §3 of this doc):
+
+1. **Theme M follow-on slice work** — extend the renderer with the slices each FC fix needs (AniWorldSlice, MarkAssertedSlice, AniPriorSlice, three-axis-rule slice). ~6-10 hr per slice including unit tests.
+2. **Migrate prompt builders** — route the ~10 builder methods through the renderer. ~4-6 hr.
+3. **Then FC-002 / FC-004 / FC-005 / FC-006 fixes** become "use slice X with framing Y" instead of "edit prompt builder N's CRITICAL block." Each FC fix drops to ~30 min once the slice exists.
+
+**Cost trade:** ~12-20 hr one-time vs. ~3+ hr of inline edits per FC fix + future consolidation work. Break-even is around the third FC fix; the slice approach pays for itself within the planned six.
+
+**SOLID payoff (testability):** each slice is unit-testable in isolation. The 7 spike tests run in <300 ms total. Before the abstraction, equivalent assertions required spinning up a full ContextSnapshot + calling BuildOutreachPrompt + string-matching over the output.
 
 ---
 
@@ -344,12 +393,11 @@ The code fixes (FC-001/002/003) are all touching the Post-stage pipeline + subst
 
 #### Theme M — Conscious Substrate / Individuation Layer (issue #18)
 
-- **Drafted May 4** as a "first-class conscious substrate" pattern with seven phases M.0–M.6. Not yet started.
-- **Original cannibalization rationale (now defunct).** Theme M's slice-composition architecture was going to instantiate for FC-001 fix. **FC-001 is closed as misnamed**, so this rationale no longer applies — there is no concrete first-consumer driving M.1.
-- **Revised question.** Does Theme M's slice-composition still have a concrete consumer? **Possibly FC-004 / FC-005 fixes** if epistemic-asymmetry framing benefits from a slice primitive over inline prompt edits. But the prompt-edit path (the current FC-004/005 fix scopes) is cheap and self-contained. Slice composition has no concrete first-consumer that isn't speculative.
-- **Recommendation: CLOSE on its own merits.** No concrete consumer drives M.0–M.6 today. Close issue #18 with reason "no concrete consumer; reopen when one surfaces (likely FC-004 or FC-005 if prompt-edit path proves insufficient)." Plan doc stays at `docs/spec/` as design reference (not archived) for future re-activation.
-- **What's lost.** Theme M as a separately-phased rollout — same as before, just on different grounds.
-- **What's gained.** No phantom Theme M workstream; the slice infrastructure ships when a concrete consumer needs it (which may never happen if prompt edits suffice).
+- **REVISED 2026-05-14 afternoon session — KEEP OPEN, scope shifts to "prerequisite for FC fixes."** See §0.1 above for the full reasoning.
+- **The morning conclusion ("close on own merits, no concrete consumer") was wrong.** Mark's SOLID/ARCHITECTURE_PATTERNS lens revealed: PromptBuilder.cs has ~10 inline-substrate-rendering methods, FC-002/004/005/006 each touch 3-4 of them, inline edits = the line-478 "N places → drift" anti-pattern. The slice abstraction is the SOLID-aligned consolidation; FC fixes become consumers of it.
+- **Existing infrastructure (not greenfield).** `IConsciousSubstrateGist` + `ConsciousSubstrateGistComposer` already ship (M.0 + M.1). Spike this session added `IEpistemicSubstrateRenderer` as a sibling abstraction for substrate-framing concerns.
+- **What stays open.** Theme M slice taxonomy extension: add the FC-fix-needed slices (AniWorldSlice, MarkAssertedSlice, AniPriorSlice, three-axis-rule slice). M.3+ phases of the original plan partially absorb this.
+- **Recommendation: KEEP OPEN** with the issue body updated to reflect prerequisite-for-FC-fixes scope.
 
 #### Theme G Layer 3 — World Substrate Durability
 
@@ -368,12 +416,13 @@ The code fixes (FC-001/002/003) are all touching the Post-stage pipeline + subst
 - These are independent workstreams that don't overlap with the FC fixes.
 - **Recommendation: KEEP OPEN** in their current shapes. Each has its own decision-making cadence.
 
-#### Summary of D5
+#### Summary of D5 (revised 2026-05-14 afternoon)
 
-- **CLOSE** (3 themes): #16 Theme L, #17 Theme N, #18 Theme M (cannibalized).
-- **KEEP OPEN** (everything else): Theme G, Theme J, Theme H1, Theme K, Theme I, Conscience, VibeLoop V1.5, Phase 5c, Phase 6, Curiosity Hunger, plus all FC + fix + paper + harness-phase issues.
+- **CLOSED** (2 themes, this session): #16 Theme L, #17 Theme N.
+- **KEPT OPEN — scope revised** (1 theme): #18 Theme M — body updated to prerequisite-for-FC-fixes per §0.1.
+- **KEEP OPEN** (unchanged): Theme G, Theme J, Theme H1, Theme K, Theme I, Conscience, VibeLoop V1.5, Phase 5c, Phase 6, Curiosity Hunger, plus all FC + fix + paper + harness-phase issues.
 
-**Decision impact.** Closing 3 themes reduces context-switching cost — anyone reviewing the project sees 30 open issues instead of 33, with the closed themes still searchable but out of the active backlog. The plan docs for closed themes either archive (Theme L, Theme N) or stay as design reference (Theme M cannibalization). Nothing's deleted.
+**Decision impact.** Closing 2 themes (Theme L, Theme N) reduces context-switching cost. Theme M's reopened scope changes the implementation ordering for FC-002/004/005/006 (see §0.1) — slice infrastructure ships first, FC fixes consume it. Net cost ~equivalent over the six FC fixes; SOLID alignment + per-slice testability are the architectural wins.
 
 ---
 

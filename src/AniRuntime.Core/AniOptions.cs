@@ -517,6 +517,29 @@ public class AniOptions
     public bool   ConsciousSubstrateGistOutreachEnabled { get; set; } = false;
     public int    ConsciousSubstrateGistMaxTokens       { get; set; } = 200;
 
+    // Theme M follow-on (2026-05-14) — epistemic-asymmetry substrate framing
+    // via IEpistemicSubstrateRenderer. Distinct from the IConsciousSubstrateGist
+    // axis above: that interface ships first-person internal-state slices
+    // (tension-state, register-state — "what Ani is feeling"); this flag
+    // controls explicit-framing rendering of EXISTING substrate blocks
+    // ("how the model should treat what it's seeing"). FC-004 / FC-005
+    // both consume this surface.
+    //
+    // When enabled, prompt builders that have been migrated through the
+    // renderer (OutreachPhase first, then BuildLeanConversationPrompt, then
+    // BuildConversationReplyPrompt, then verifier prompt) use the
+    // EpistemicSubstrateRenderer's framed output instead of the inline
+    // "each line tagged with who said it" rendering.
+    //
+    // Default off — the spike ships the abstraction + one consumer
+    // (BuildOutreachPrompt) so the seam is provable. Flag flips on after
+    // Mark + Claude review the rendered output on a real cycle and confirm
+    // it doesn't degrade decision quality.
+    //
+    // Anti-pattern this addresses: ~/.claude/ARCHITECTURE_PATTERNS.md line 478
+    // ("Inline X in multiple services / Same mapping in N places → drift").
+    public bool   EpistemicFramingEnabled { get; set; } = false;
+
     /// <summary>
     /// Theme N Phase N.3 (May 8, 2026) — wires the
     /// <see cref="Interfaces.IOutreachFrameSelector"/> into

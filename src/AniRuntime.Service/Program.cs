@@ -122,6 +122,15 @@ try
     builder.Services.AddSingleton<IRecentGateTripTracker, InMemoryGateTripTracker>();
     builder.Services.AddSingleton<IConsciousSubstrateGist, ConsciousSubstrateGistComposer>();
 
+    // Theme M follow-on (2026-05-14) — IEpistemicSubstrateRenderer renders
+    // substrate slices with explicit epistemic framing (Mark-asserted vs.
+    // Ani-prior vs. self-world). Sibling to IConsciousSubstrateGist:
+    // orthogonal concerns (this is *how to treat substrate*; that is *what
+    // Ani is feeling*). Consumed by OutreachPhase (and other prompt-building
+    // producers in follow-on commits) when AniOptions.EpistemicFramingEnabled
+    // is true. Stateless; singleton.
+    builder.Services.AddSingleton<IEpistemicSubstrateRenderer, EpistemicSubstrateRenderer>();
+
     // Theme O Phase O.2 (May 10, 2026) — Theme J invariants migrated onto
     // the cognitive pipeline as Post-stage handlers via
     // InvariantToHandlerAdapter (registered through .UsePostInvariant<T>()

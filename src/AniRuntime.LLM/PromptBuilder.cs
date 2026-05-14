@@ -1,4 +1,5 @@
 using AniRuntime.Core;
+using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 
 namespace AniRuntime.LLM;
@@ -395,7 +396,8 @@ public static class PromptBuilder
     }
 
     public static (string System, string User) BuildOutreachPrompt(
-        ContextSnapshot snapshot, string recentThought, bool isNightTime = false)
+        ContextSnapshot snapshot, string recentThought, bool isNightTime = false,
+        IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
@@ -446,7 +448,16 @@ public static class PromptBuilder
         }
         else if (decisionStructured is { Turns.Count: > 0 })
         {
-            context.Add($"You recently talked with {contact} (each line tagged with who said it):\n{decisionStructured.ToPromptString()}");
+            // Theme M follow-on (2026-05-14) — when the epistemic renderer is
+            // supplied (caller has flag enabled + DI-injected the service),
+            // route through it to get FC-004 epistemic-asymmetry framing
+            // applied. Otherwise keep the legacy inline rendering verbatim
+            // so the seam is fully backward-compatible until the flag flips.
+            // See IEpistemicSubstrateRenderer for the SOLID rationale.
+            var threadBlock = epistemicRenderer is not null
+                ? epistemicRenderer.RenderActiveThreadSlice(decisionStructured, contact)
+                : $"You recently talked with {contact} (each line tagged with who said it):\n{decisionStructured.ToPromptString()}";
+            context.Add(threadBlock);
         }
 
         if (snapshot.OpenLoops.Count > 0)
