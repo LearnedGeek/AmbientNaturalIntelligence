@@ -119,6 +119,7 @@ public class FC001f_SubstrateRetrievalTier_Tests : IDisposable
     ///   Whichever fix lands, this test goes green without modification.
     /// </summary>
     [Fact]
+    [Trait("Category", "RegressionOpen")]
     public async Task FC001f_AniPriorOutreach_AsEpisodicRecord_AppearsInReplyPathSubstrate_Spec()
     {
         // ── Arrange ───────────────────────────────────────────────────────

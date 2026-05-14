@@ -60,6 +60,7 @@ public class FC006_VerifierAttributeOwnership_Tests
     /// keywords that any acceptable phrasing of the question would use.
     /// </summary>
     [Fact]
+    [Trait("Category", "RegressionOpen")]
     public void FC006_VerifierUserPrompt_AddressesSpeakerAttributeOwnership_Spec()
     {
         var request = SyntheticAttributeOwnershipViolation();

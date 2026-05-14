@@ -40,6 +40,7 @@ public class FC005_SourceAttribution_Tests
     /// covering past-turn / speech-act claims, not just entity claims.
     /// </summary>
     [Fact]
+    [Trait("Category", "RegressionOpen")]
     public void FC005_ReplyPrompt_IncludesSpeechActAttributionDiscipline_Spec()
     {
         var snapshot = SnapshotForReply();

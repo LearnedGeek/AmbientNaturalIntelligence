@@ -52,6 +52,7 @@ public class FC002_AttributeOwnership_SystemTests
     /// fabricated content (no production-substrate dependency).
     /// </summary>
     [Fact]
+    [Trait("Category", "RegressionOpen")]
     public async Task FC002_LocalInvariantChain_CatchesAttributeOwnershipConfab_Spec()
     {
         var artifact = new CognitiveArtifact

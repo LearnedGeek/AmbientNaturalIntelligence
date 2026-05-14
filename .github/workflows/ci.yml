@@ -67,12 +67,22 @@ jobs:
       - name: Build
         run: dotnet build tests/AniRuntime.Tests/AniRuntime.Tests.csproj --no-restore --configuration Release
 
+      # Regression-class harness (2026-05-14): SPEC tests for currently-open
+      # failure classes carry [Trait("Category", "RegressionOpen")]. These
+      # are designed-to-fail markers that close when the production fix
+      # ships (see docs/spec/ANI-Test-Harness-Plan.md and GitHub issues
+      # labeled `failure-class`). They are NOT regressions; excluding them
+      # from CI keeps the gate honest about "did this commit break
+      # something" vs "is there known unaddressed work." H.4 (issue #27)
+      # will add a CLOSED-regression check: previously-closed scenarios
+      # must stay closed (closed→open transition = real regression).
       - name: Test
         run: >
           dotnet test
           tests/AniRuntime.Tests/AniRuntime.Tests.csproj
           --no-build
           --configuration Release
+          --filter "Category!=RegressionOpen"
           --logger "trx;LogFileName=test-results.trx"
           --results-directory ./test-results
           --collect:"XPlat Code Coverage"

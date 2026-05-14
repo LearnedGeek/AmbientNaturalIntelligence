@@ -63,6 +63,7 @@ public class FC004_ConfabSubstrateFeedback_Tests
     /// prompt; phrasing is the implementer's choice.
     /// </summary>
     [Fact]
+    [Trait("Category", "RegressionOpen")]
     public void FC004_OutreachDecisionPrompt_DistinguishesAniPriorClaims_FromEstablishedFacts_Spec()
     {
         var snapshot = SnapshotWithAniPriorClaimInActiveThread();

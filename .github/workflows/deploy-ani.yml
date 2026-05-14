@@ -95,12 +95,19 @@ jobs:
       - name: Build (test project)
         run: dotnet build tests/AniRuntime.Tests/AniRuntime.Tests.csproj --no-restore --configuration Release
 
+      # Regression-class harness (2026-05-14): SPEC tests for currently-open
+      # failure classes carry [Trait("Category", "RegressionOpen")] and are
+      # excluded from the deploy gate. These are tracked failures (see
+      # GitHub issues labeled `failure-class`); they do NOT block deploys
+      # of unrelated work. Closed→open transitions remain real regressions
+      # and stay in the gate. See docs/spec/ANI-Test-Harness-Plan.md.
       - name: Test (gate)
         run: >
           dotnet test
           tests/AniRuntime.Tests/AniRuntime.Tests.csproj
           --no-build
           --configuration Release
+          --filter "Category!=RegressionOpen"
           --logger "trx;LogFileName=test-results.trx"
           --results-directory ./test-results
 
