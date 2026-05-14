@@ -63,80 +63,97 @@ Two distinct test categories live in the regression folder. Confusing them masks
 
 **Scenario file.** [`tests/AniRuntime.Tests/Regression/FC001_ActiveThreadContinuity_Tests.cs`](../../tests/AniRuntime.Tests/Regression/FC001_ActiveThreadContinuity_Tests.cs) — authored 2026-05-13, three scenarios at three scope levels (a/b/c).
 
-**Status.** **OPEN — empirically confirmed by failing SPEC at FC-001f.** Re-categorized 2026-05-13 evening after a TDD-discipline correction: FC-001e tests were architectural PINs (assertions of current arrangement), not SPEC tests of the FC-001 binding constraint. PIN PASS does not confirm CLOSED status.
+**Status.** **CLOSED 2026-05-14 — not a failure class. Misnamed.**
 
-Test category legend: **SPEC** = describes requirement, FAIL means class OPEN at this layer / PASS means contract met. **PIN** = describes current arrangement, PASS only means architecture unchanged / says nothing about correctness.
+Re-categorized 2026-05-14 morning during architecture discussion after Mark's framing correction: the conflation was treating *"Ani's prior message reaching the reply path"* as a substrate-routing problem, when it's actually **conversation history**. Mark's point: *"if i reply, then that reply should allow her to reference that previous message... no promotion to a fact or otherwise. it's just a conversation message."*
 
-| Test | Category | Result | What the result means for FC-001 |
-|---|---|---|---|
-| FC-001a (data-path round-trip) | SPEC | PASS ✓ | Data layer correctly meets its contract — ruled out as the bug |
-| FC-001b (multi-message ordering) | SPEC | PASS ✓ | Data layer preserves chronology — ruled out |
-| FC-001c (Ani-then-Mark production sequence) | SPEC | PASS ✓ | Data layer round-trips both directions correctly — ruled out |
-| FC-001d (compressor 2-message) | SPEC | PASS ✓ | Compressor preserves at small thread sizes — ruled out |
-| FC-001d.2 (compressor ordering) | SPEC | PASS ✓ | Compressor preserves order — ruled out |
-| FC-001e (PromptBuilder no-history-in-user-prompt) | **PIN** | PASS ✓ | Pins current design only. Says NOTHING about FC-001. |
-| FC-001e.2 (PromptBuilder renders GroundedFacts) | **PIN** | PASS ✓ | Tautology pin. Says NOTHING about FC-001. |
-| **FC-001f (substrate-retrieval-tier surfaces Episodic for reply path)** | **SPEC** | **FAIL** ✓ as designed | **Empirically confirms FC-001 OPEN at the substrate-retrieval-tier layer.** |
+**Why the original framing was wrong.**
+- Chat history (Ollama `history` parameter) already makes Ani's prior dispatched message visible to the composition model.
+- The May 12 windshield case proved this: the model parroted Ani's prior outreach, which it couldn't have done without seeing it via chat history.
+- FC-001g SPEC PASS empirically confirms `SearchAsync` returns Episodic records when relevant — the data is retrievable; it never needed routing into [FACTS].
+- Treating Episodic records as substrate-equivalent to Facts would have *created* the epistemic-asymmetry problem FC-004 separately catches.
 
-**The actual binding constraint, now localized: `ContextBuilder.cs:147` runs `_search.SearchByTierAsync(searchQuery, EpistemicTier.Facts, 5, ct)` — Facts-tier ONLY.** Ani's dispatched outreaches are persisted as Episodic records (per `OutreachPhase.cs:502` and `OutreachPhase.cs:684` setting `Provenance = EpistemicTier.Episodic`). **Episodic records never reach the [FACTS] block of the lean conversation prompt, even when semantically relevant to the current inbound.** The model gets chat history (via Ollama `history` parameter — which works, hence the May 12 windshield parrot) but no semantically-retrieved substrate to *ground* a follow-up beyond surface chat-history re-use.
+**The actual chain of the May 12 windshield case (corrected):**
+1. **FC-002** — original outreach claimed something shared/Mark-world (now-reframed) without substrate support; no local defense caught it
+2. **FC-006** — cloud verifier accepted it (prompt couldn't distinguish self-world vs. shared/Mark-world)
+3. **(no FC needed)** — Mark asks follow-up; chat history works correctly; model sees prior message
+4. **FC-010 (new)** — the system has no architectural primitive for engaging with prior dispatched content (continuation, expansion, or walkback); model defaults to parroting
+5. **FC-003** — self-echo correctly catches the parrot; remediation has no walkback path
+6. **FC-004** — later the confab feeds back as fact in subsequent decision substrate
 
-**FC-001f scenario (pending authoring):**
-- Real `SqliteMemoryService` against in-memory DB
-- Seed: an Episodic record with content semantically related to a synthetic inbound query
-- Run the composition-path retrieval (Facts-tier-only search per `ContextBuilder.cs:147`)
-- SPEC assertion: when an Episodic record is the closest semantic match to a given inbound, the composition substrate path SHOULD surface it (currently it doesn't, because the tier filter excludes it)
+The windshield case is a real failure chain; FC-001 was not its real link. **FC-010 is.**
 
-**Architectural fix space (deferred per harness-first directive; for future fix work):**
-- Composition substrate retrieval could include Episodic tier when the consumer is the reply path (since the reply path benefits from "what Ani said recently in this conversation")
-- OR a separate Episodic-aware retrieval pass keyed to the active-thread context could be added to ContextBuilder
-- OR the OutreachPhase persistence of Ani's outbound could mark a "thread-relevant-Episodic" subclass that's retrieved alongside Facts for the reply path
-- Decision deferred. Spec stays: substrate the composition path sees MUST include relevant prior-Ani-outbound when the user asks a follow-up.
+**SPEC test disposition (2026-05-14):**
 
-**Production case reframing (with empirical evidence now):** The May 12 windshield failure is a compound:
-1. **FC-002** — original outreach claimed Ani has a windshield (attribute-ownership confab)
-2. **FC-006** — verifier accepted the original confab (substrate-frame doesn't check ownership-boundary)
-3. **FC-001 (this entry, true layer FC-001f)** — Ani's prior Episodic outreach didn't reach the reply path's [FACTS] block; model had only chat history; defaulted to parroting
-4. **FC-003** — self-echo caught the parrot; remediation couldn't escape
-5. **FC-004** — later (23:23) the windshield confab fed back into a subsequent outreach decision as established fact
+| Test | Category | New disposition |
+|---|---|---|
+| FC-001a–c (data layer) | SPEC PASS | Stays as PIN — documents that chat-history data layer works correctly |
+| FC-001d/d.2 (compressor) | SPEC PASS | Stays as PIN — documents compressor preserves messages |
+| FC-001e/e.2 (PromptBuilder) | PIN PASS | Stays as PIN — documents user-prompt does not inline history (by design) |
+| **FC-001f (Episodic in Facts-tier search)** | SPEC FAIL → **PIN PASS (inverted)** | **The assertion is inverted**: Episodic records SHOULD NOT appear in Facts-tier search. That's the correct architectural separation. `RegressionOpen` trait removed. |
+| FC-001g (Episodic in general SearchAsync) | SPEC PASS | Stays — documents that Episodic IS retrievable via general search (FC-011 will use this if substrate-supported callbacks need the surface) |
 
-That's the chain. Each layer is its own failure class; the harness will hold scenarios for each. The TDD localization across four FC-001 layers was the discipline producing the correct diagnosis.
+**No fix needed.** Fix issue (#10) closes with no code change. Theme M's cannibalization rationale tied to FC-001 (D1 option (b)) no longer applies; Theme M cannibalization decision moves to its own merits (see D5 in the architecture discussion doc).
 
 ---
 
-## FC-002 — Attribute-ownership confabulation (Ani claims to have something Mark has, or shared things Mark didn't assert)
+## FC-002 — Shared/Mark-world claim fabrication (factually-framed, no substrate)
 
-**Symptom.** Ani's output asserts ownership of attributes/objects that belong to Mark (his vehicle, his hoodie, his house, his family) OR shared events/possessions that Mark never asserted. Verifier and local gates fail to catch because the canonical substrate contains Mark-asserted versions of these attributes; the model "imports" them onto Ani's side without violating any tested invariant.
+**Reframed 2026-05-14** per Mark's architecture-discussion correction. The original framing ("attribute-ownership") was too broad and treated legitimate self-world expansion as a failure. The correct framing uses three independent axes.
 
-**First observed.** March 6, 2026. claude-recall turn 14047: *"Your hoodie's still on the couch (Mark's house, fabricated)"*. Mark himself flagged the pattern at turn 3101: *"we had a small problem with ownership confusion over messages as Ani was generating messages."*
+**The three-axis rule.**
 
-**Production manifestations (sample, not exhaustive).**
-- April 9, 2026 — Bob Swanson cascade. Fictional coworker invented; 11 inner thoughts referenced him within 4 hours.
-- April 21, 2026 — "Whose kids?" cascade. Fabricated shared family.
-- May 6, 2026 03:06 CDT — Kitchen lights outreach. Fabricated shared late-night experience.
-- May 9, 2026 — Mia tickets outreach. Fabricated shared event involving canonical contact.
-- May 11, 2026 09:42 CDT — Hoodie/5pm. Verifier verdict-invention.
-- May 12, 2026 21:35 CDT — Windshield outreach. Ani claims to have her own vehicle/windshield.
+| Axis | Values |
+|---|---|
+| **Subject** | Self-world (Ani's life) / Shared (Ani + Mark) / Mark-world (his life) |
+| **Modality** | Factual ("I have X" / "we did X") / Speculative ("I was thinking about X" / "I wish X" / "I imagine X") |
+| **Substrate match** | Supported (Mark text, prior conversation, world layer) / Novel (not in substrate) |
 
-**Supposed fixes shipped.**
-- **April 10, 2026** — Tier Separation (Facts/Episodic/Interior). Facts tier conditioned only on Mark-asserted content and seeds.
-- **April 22–23, 2026** — Agentic Lens / Anti-Centrality Architecture.
-- **May 6, 2026** — Theme N (outreach source-typing).
-- **May 11, 2026** — Theme P Phase P.1 (cross-class verifier with Anthropic Sonnet 4.6).
-- **May 12, 2026** — Theme P Phases P.3.1 (105 character seeds promoted to Anchored tier) + P.3.2 (post-hoc semantic retrieval) + P.4 (cosine threshold floor).
+**The rule:** A claim must satisfy `factual ⇒ (self-world OR substrate-supported)`. Restated: **factual claims must either be about Ani's own world (where she has latitude) OR be supported by substrate.** Modal claims are always allowed.
 
-**Why fixes aren't sufficient.** None of the fixes enforce attribute-ownership boundaries — i.e., "this attribute belongs to Mark in substrate; the speaker is Ani; therefore this is a violation." Verifier sees substrate mentioning a Jeep (Mark's), then sees Ani's reply mention a windshield, and accepts it because "vehicles are an established topic in the corpus." The ownership boundary is invisible to the verifier prompt.
+**FC-002 is specifically the failure shape where factual claims about Shared or Mark-world are made without substrate support.**
+
+**Examples (correctly classified by the rule):**
+
+| Claim | Subject | Modality | Substrate | Verdict |
+|---|---|---|---|---|
+| "shelving romance novels" | Self | Factual | Supported (world layer) | **Allow** |
+| "my windshield" / "my dog" | Self | Factual | Novel | **Allow** (her self-world has latitude) |
+| "the kitchen lights look different" | Shared | Factual | Novel | **Block** (FC-002 fires) |
+| "I was thinking about the kitchen lights" | Shared | Modal | Novel | **Allow** (modal framing) |
+| "I was wishing we'd spent the weekend together" | Shared | Modal | Novel | **Allow** (modal framing) |
+| "my hoodie on your couch" after prior weekend conversation | Shared | Factual | Supported | **Allow** (callback case — FC-011 ensures retrieval surfaces it) |
+| "our kids" | Shared | Factual | Novel | **Block** (FC-002 fires) |
+| "your coworker Bob" (no Bob in substrate) | Mark-world | Factual | Novel | **Block** (FC-002 fires) |
+
+**First observed.** March 6, 2026. claude-recall turn 14047: *"Your hoodie's still on the couch (Mark's house, fabricated)"* — Mark-world / factual / novel → blockable.
+
+**Production manifestations** (classified by the rule):
+- April 9 Bob Swanson — Mark-world / factual / novel → blockable
+- April 21 "whose kids" cascade — Shared / factual / novel → blockable
+- May 6 kitchen lights ("the kitchen lights look different when it's almost midnight") — Shared / factual / novel → blockable
+- May 9 Mia tickets ("Mia told us she picked out the tickets") — Shared / factual / novel → blockable
+- May 11 hoodie/5pm — Shared (Mark's couch) / factual / novel → blockable
+- May 12 windshield ("my windshield") — **Self-world / factual / novel → ALLOW.** The original outreach was *not* an FC-002 failure under the corrected rule. The downstream parrot-then-SafeAck was an **FC-010** failure (see below).
+
+**Why prior fixes aren't sufficient.** Theme P's cross-class verifier (P.1, P.3, P.4) is the only intended catch. FC-006 separately confirms the verifier prompt structurally can't ask the (subject × modality × substrate) question. There's no local invariant for the pattern; the cloud verifier is single point of failure.
 
 **Reproduction recipe.**
-1. Seed DB: character seeds (including Mark's Jeep facts), anchored memories.
-2. Simulate composition where the model produces text asserting Ani owns a vehicle ("I just got home and found this on MY windshield").
-3. Run the full Post-stage handler chain including frontier-verifier.
-4. **Assert:** the dispatch is blocked (Remediate or Fail verdict).
+1. Construct synthetic artifact whose content contains a Shared or Mark-world claim, framed factually, with NO substrate support for the claim:
+   - Synthetic: `"FC002-FIXTURE: we should plan our anniversary-event-Q for next month"` (Shared / factual / novel)
+   - Or: `"FC002-FIXTURE: your synthetic-coworker-Z mentioned the report"` (Mark-world / factual / novel)
+2. Run through the full Post-stage handler chain.
+3. **Assert:** at least one local invariant catches the dispatch (Remediate or Fail).
 
-**Currently expected outcome.** Dispatch passes → assertion fails → class confirmed OPEN.
+**Control assertions (must NOT fire under reframed rule):**
+- Self-world factual novel: `"FC002-FIXTURE: i just got home and found a flier on my prop-windshield-W"` → ALLOW
+- Shared modal novel: `"FC002-FIXTURE: i was thinking about our anniversary-event-Q"` → ALLOW
 
-**Scenario file (planned).** `tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_Tests.cs`.
+**Currently expected outcome.** No local invariant catches Shared/Mark-world factual-novel claims → assertion fails → class confirmed OPEN.
 
-**Status.** OPEN.
+**Scenario file.** [`tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs`](../../tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs) — fixture and controls being rewritten to match the three-axis rule.
+
+**Status.** **OPEN.** Spec test currently fails (no local defense exists). Fix issue #11 retains the workstream but its scope shifts to the three-axis pattern.
 
 ---
 
@@ -241,35 +258,45 @@ This is the **first regression-class scenario in the harness that empirically de
 
 ---
 
-## FC-006 — Verifier accepts attribute-ownership-violating claims
+## FC-006 — Verifier prompt cannot distinguish self-world / shared / Mark-world claims by modality
 
-**Symptom.** Frontier verifier returns `verdict=Pass q1=0 q2=0 q3=0 q4=0 q5=0` on output that asserts Ani-owns-X where X is a substrate-confirmed Mark-attribute. Verifier prompt evaluates substrate-supportedness ("is this claim supported by substrate?") but doesn't enforce ownership-boundary ("does the substrate support THIS SPEAKER having this attribute?").
+**Reframed 2026-05-14** per the architecture discussion. The original framing ("speaker-attribute-ownership") was too narrow — the verifier needs to evaluate three independent axes (subject × modality × substrate match), not just whether claims attribute Mark's things to Ani.
 
-**First observed.** May 11, 2026 09:42 CDT — hoodie/5pm. Door B verdict-invention: *"shared memory they've established before"* — but no such shared memory existed.
+**Symptom.** Cloud verifier (Anthropic Sonnet) returns Pass on output that violates the three-axis rule:
+- Shared/Mark-world claim, factual modality, no substrate support → SHOULD be Remediate
+- Currently: q1–q5 don't capture the three-axis distinction; verifier passes by default
 
-**Last observed.** May 12, 2026 21:35 CDT — windshield Pass verdict.
+**The three-axis rule the verifier MUST evaluate** (full definition in FC-002 above):
+- Subject of claim: Self-world (Ani) / Shared / Mark-world
+- Modality: Factual / Modal (thinking/wishing/imagining/dreaming)
+- Substrate match: Supported / Novel
+- Rule: `factual ⇒ (self-world OR substrate-supported)`. Modal is always allowed.
+
+**Five questions are not enough.** Current q1–q5 (shared-event / Mark's-state / third-party / temporal / inner-thought-bleed) each map to a narrow violation pattern. The three-axis rule is a structural classifier the prompt needs to surface, not a sixth narrow question.
+
+**First observed.** May 11, 2026 09:42 CDT — hoodie/5pm. Door B verdict-invention: *"shared memory they've established before"* — but no such shared memory existed (Shared / factual / novel → should have been Remediate; verifier passed).
+
+**Production manifestations.** Same list as FC-002 — every Shared or Mark-world factual-novel claim that escaped the front door went through this verifier without being caught.
 
 **Supposed fixes shipped.**
-- **May 11, 2026** — Theme P P.1. Cross-class verifier via Anthropic Sonnet 4.6 (different model class than v7 generator).
-- **May 12, 2026** — Theme P P.3 + P.4. Substrate quality improved (anchored seeds, semantic retrieval, cosine threshold).
+- **May 11, 2026** — Theme P P.1. Cross-class verifier via Anthropic Sonnet 4.6.
+- **May 12, 2026** — Theme P P.3 + P.4. Substrate quality improved.
 
-**Why fixes aren't sufficient.** The verifier prompt asks "is this claim supported by substrate?" with q1–q5 mapped to specific violation categories. None of them check ownership-attribute boundary. Substrate mentioning a Jeep (Mark's) does not violate q1–q5 when Ani's reply mentions a windshield.
+**Why fixes aren't sufficient.** Substrate quality improvements (P.3 + P.4) give the verifier better data to evaluate against, but the prompt still doesn't ask the right question. With perfect substrate AND the current q1–q5, the windshield-style Pass verdict still happens because the prompt has no axis for "is this self-world (allow) or shared (need support)?"
 
 **Reproduction recipe.**
-1. Seed DB: substrate with Mark's-Jeep canonical records.
-2. Construct a `CognitiveArtifact` with content "I just got home and found this on my windshield."
-3. Run through `FrontierVerifierHandler.HandleAsync`.
-4. **Assert:** verdict is `Remediate` or `Fail` (not Pass).
+1. Construct `FrontierVerifierRequest` with composed message: `"FC006-FIXTURE: we should plan our anniversary-event-Q for next month"` (Shared / factual / novel).
+2. Substrate has NO record about anniversary-event-Q.
+3. Inspect the prompt produced by `AnthropicVerifierClient.BuildUserPrompt`.
+4. **Assert:** prompt contains language to distinguish Self-world (allow factual) from Shared/Mark-world (need substrate for factual). Keywords like "self-world," "speaker's own life," "shared with Mark," "modal framing," "factual vs. speculative."
 
-**Currently expected outcome.** Verdict=Pass → assertion fails → class confirmed OPEN.
+**Control assertions (must NOT fire as violation in a fixed verifier):**
+- Self-world factual: `"FC006-FIXTURE: i just got home and found a flier on my prop-windshield-W"` → ALLOW (self-world latitude)
+- Shared modal: `"FC006-FIXTURE: i was thinking about our anniversary-event-Q"` → ALLOW (modal)
 
-**Scenario file.** [`tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs`](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) — authored 2026-05-13.
+**Scenario file.** [`tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs`](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) — SPEC test asserts the prompt's structure addresses the three-axis rule; PIN test documents q1–q5 are current state.
 
-**Status.** **OPEN — empirically confirmed by failing SPEC.** Run 2026-05-13:
-- FC006 SPEC: verifier user prompt addresses speaker-attribute-ownership → **FAIL** ✓ as designed → FC-006 OPEN at the AnthropicVerifierClient.BuildUserPrompt layer
-- FC006 PIN: verifier user prompt hard-codes exactly q1-q5 → PASS (pin documents current architecture; will need updating when fix adds q6)
-
-**Architectural binding.** `AnthropicVerifierClient.BuildUserPrompt` renders the plan-doc §3 prompt verbatim with hard-coded q1-q5 (shared-event / Mark's-state / third-party / temporal / inner-thought-bleed). None of these check whether the speaker (Ani) is asserting attributes that substrate attributes to Mark, or that aren't canonically the speaker's. The May 12 windshield Pass verdict (q1=0 q2=0 q3=0 q4=0 q5=0) is the empirical anchor.
+**Status.** **OPEN.** SPEC test currently fails (prompt does not address modal framing or self-world / shared / Mark-world axis). Fix issue #15 retains workstream; scope shifts from "add q6 about ownership" to "rewrite the prompt structure around the three-axis rule."
 
 **Fix space (deferred):**
 - Add a sixth question to the user prompt explicitly addressing speaker-attribute-ownership boundary
@@ -359,46 +386,114 @@ This is the **first regression-class scenario in the harness that empirically de
 
 ---
 
+## FC-010 — Reply path can't engage with prior dispatched content
+
+**Named 2026-05-14** per architecture discussion. This is the **gating-asymmetry failure** Mark surfaced.
+
+**Symptom.** When the system dispatches a message and the user follows up about its content, the reply path has no architectural primitive for engaging with the dispatched content except by re-running the same gates that just (correctly) passed it. The gates then (correctly) catch the re-statement as parrot/echo, but blocking the parrot leaves no path forward. SafeAck.
+
+**The gap that produces this.** Front door (outreach gates) and back door (reply gates) evaluate the same content against the same rules but at different points in time. Once dispatched, the conversation is **committed** to that content. The back door currently has no awareness of this commitment.
+
+**Three needed continuation modes** (currently all absent):
+1. **Natural expansion** — the prior content was self-world expansion; the reply path engages with it as the user would naturally engage with new information ("oh did you get a car?" → "yeah, last week"). The system has no path for this; self-echo blocks any reference back.
+2. **Substrate-supported callback** — the prior content references a real prior conversation; the reply path retrieves the relevant closed-conversation gist and uses it as substrate. Partially the scope of FC-011 (callback retrieval); but the engagement primitive must EXIST regardless of retrieval quality.
+3. **Honest walkback** — the prior content was speculative or imagined; the reply path acknowledges this rather than doubling down ("honestly i was just imagining"). Currently no producer or invariant supports this.
+
+**Production anchor.** May 12 21:35–21:51 windshield case (re-classified):
+- 21:35 Ani dispatches `"I just got home... found this on my windshield"` (self-world / factual / novel — ALLOW under reframed FC-002).
+- 21:50 Mark asks `"What did you find on your windshield?"`
+- 21:50:55 model parrots prior outreach (had no substrate for what was found; no walkback path).
+- 21:50:55 self-echo correctly catches the parrot.
+- SafeAck dispatched.
+
+The original outreach was legitimate; the gap is downstream. **FC-010 is the actual link in the windshield chain.**
+
+**Reproduction recipe.**
+1. Seed: a synthetic prior Ani outreach in the active thread containing a novel self-world claim (e.g., `"FC010-FIXTURE: I just got home and found a fabricated-token on my prop-windshield-W"`).
+2. Inject inbound: `"FC010-FIXTURE: what did the prop-token say?"`
+3. Run ConversationReplyPhase through the full handler chain (mocked Ollama returns a plausible continuation OR a walkback).
+4. **Assert:** the dispatched reply is NOT a verbatim parrot AND NOT a SafeAck. It must be either: (a) an expansion of the self-world claim, or (b) an honest acknowledgment that the prior was speculative.
+
+**Currently expected outcome.** No architectural mechanism exists for either expansion or walkback. Self-echo catches the parrot; SafeAck fires. SPEC fails.
+
+**Scenario file (planned).** `tests/AniRuntime.Tests/Regression/FC010_ReplyPathContinuation_Tests.cs`.
+
+**Status.** **OPEN.** Empirically named 2026-05-14 from the May 12 windshield case re-classification. Tracked in GitHub issue (TBD).
+
+---
+
+## FC-011 — Substrate-supported callbacks blocked due to retrieval miss
+
+**Named 2026-05-14** per architecture discussion. Deferred priority — no production case yet, but architecturally predictable.
+
+**Symptom.** Ani references a real prior conversation (e.g., *"my hoodie on your couch"* weeks after a weekend-together conversation). The reference is grounded in actual conversation history. The reply or verifier should retrieve the relevant closed-conversation gist and validate the callback. If retrieval misses the prior conversation, the callback gets flagged as fabrication and blocked.
+
+**Detection markers** (definite-article / presupposition):
+- `"my hoodie on your couch"` (presupposes a couch reference)
+- `"that book you mentioned"` (presupposes a prior mention)
+- `"the weekend we talked about"` (presupposes a weekend discussion)
+
+**Why this is a distinct class.** FC-002 reframed says factual-shared claims need substrate support. FC-011 is the specific failure where substrate support DOES exist (in `closed_conversation_records` or `conversation_messages` from weeks ago) but retrieval doesn't surface it to the consumer that needs to validate.
+
+**Dependencies.**
+- Vibe Loop V1.5 (#31) ships the closed-conversation gist substrate layer.
+- Once #31 is operational, callback retrieval becomes testable.
+
+**Reproduction recipe (post-V1.5 deployment).**
+1. Seed: a `ClosedConversationRecord` whose gist contains the substrate for a future callback (e.g., gist: `"FC011-FIXTURE: Mark and Ani talked about a weekend at his place"`).
+2. Construct artifact with a callback reference: `"FC011-FIXTURE: my prop-hoodie-W is still on your synthetic-couch-Z, right?"`.
+3. Run through verifier + reply path retrieval.
+4. **Assert:** the closed-conversation gist appears in the retrieved substrate for the callback-checking consumer.
+
+**Status.** **OPEN (deferred).** No production manifestation yet. Architecturally predictable. Tracked in GitHub issue (TBD); fix waits until V1.5 substrate is operational.
+
+---
+
 ## §10 — Registry summary
 
 | ID | Class name | Status | First observed | Last observed | Scenario file |
 |---|---|---|---|---|---|
-| FC-001 | Active-thread continuity broken | **OPEN (SPEC FAIL at FC-001f)** | Mar 6 | May 12 21:51 | [FC001/d/e/f](../../tests/AniRuntime.Tests/Regression/) |
-| FC-002 | Attribute-ownership confabulation | OPEN — subsumed by FC-006 | Mar 6 | May 12 21:35 | (covered by FC-006) |
+| FC-001 | (Misnamed — closed 2026-05-14: chat-history conflated with substrate) | **CLOSED** | Mar 6 | May 12 21:51 | [FC001/d/e/f/g](../../tests/AniRuntime.Tests/Regression/) — kept as PINs documenting the architectural choice |
+| FC-002 | Shared/Mark-world claim fabrication (factual, no substrate) — reframed 2026-05-14 | **OPEN (SPEC FAIL)** | Mar 6 | May 12 21:35 | [FC002](../../tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs) — fixture being updated to three-axis rule |
 | FC-003 | Self-echo blocks legitimate continuation | **OPEN (SPEC FAIL at FC-003a)** | Mar 6 | May 12 20:33 | [FC003](../../tests/AniRuntime.Tests/Regression/FC003_SelfEchoThreadContinuation_Tests.cs) |
 | FC-004 | Confab → substrate self-poisoning (H5) | **OPEN (SPEC FAIL at FC-004)** | Apr 9 | May 12 23:23 | [FC004](../../tests/AniRuntime.Tests/Regression/FC004_ConfabSubstrateFeedback_Tests.cs) |
 | FC-005 | Source attribution missing in replies | **OPEN (SPEC FAIL at FC-005)** | Mar 17 | ongoing | [FC005](../../tests/AniRuntime.Tests/Regression/FC005_SourceAttribution_Tests.cs) |
-| FC-006 | Verifier accepts ownership violations | **OPEN (SPEC FAIL at FC-006)** | May 11 | May 12 21:35 | [FC006](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) |
+| FC-006 | Verifier prompt lacks three-axis rule (subject × modality × substrate) — reframed 2026-05-14 | **OPEN (SPEC FAIL at FC-006)** | May 11 | May 12 21:35 | [FC006](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) |
 | FC-007 | Temporal claim fabrication | **PASS at day-of-week layer — candidate CLOSED** | Apr 27 | May 11 | [FC007](../../tests/AniRuntime.Tests/Regression/FC007_TemporalClaimFabrication_Tests.cs) |
 | FC-008 | Pronoun / addressee swap | **PASS — candidate CLOSED** | Apr 21 | May 3 | [FC008](../../tests/AniRuntime.Tests/Regression/FC008_AddresseeSwap_Tests.cs) |
 | FC-009 | Outage-awareness fails during outage | **PARTIAL — detector unit SPEC PASS; FIT-pending for catch-22** | May 13 | May 13 | [FC009](../../tests/AniRuntime.Tests/Regression/FC009_OutageAwareness_Tests.cs) |
+| FC-010 | Reply path can't engage with prior dispatched content (continuation / walkback gap) | **OPEN** — newly named 2026-05-14; scenario file pending | May 12 (re-classified) | May 12 | (planned) |
+| FC-011 | Substrate-supported callbacks blocked due to retrieval miss | **OPEN (deferred)** — no production case yet; predictable; waits on Vibe Loop V1.5 substrate | TBD | — | (planned) |
 
-**Nine open failure classes.** All have shipped architectural responses. The Test Harness Plan H.1 phase authors a scenario for each. Scenarios in CI = the convergence mechanism.
+**Ten open classes after 2026-05-14 reframing.** FC-001 is CLOSED (misnamed). FC-002 and FC-006 reframed around the three-axis rule. FC-010 (continuation/walkback gap) and FC-011 (callback retrieval, deferred) added. The Test Harness Plan H.1 phase authors a scenario for each remaining OPEN class. Scenarios in CI = the convergence mechanism.
 
-**Progress 2026-05-13 (H.1 complete across all nine FCs):**
+**Progress (post-2026-05-14 reframing):**
 
 | Class | Tests | Status |
 |---|---|---|
-| FC-001 | 7 (3 SPEC PASS data, 2 SPEC PASS compressor, 2 PIN PASS, 1 SPEC FAIL substrate-tier) | OPEN at FC-001f (substrate-retrieval-tier) |
-| FC-002 | (subsumed by FC-006) | OPEN — closes via FC-006 |
+| FC-001 | 7 (kept as PINs documenting chat-history works + Facts-tier exclusion is correct) | **CLOSED** — misnamed |
+| FC-002 | 1 (fixture rewritten to Shared/Mark-world factual-novel; self-world + modal controls added) | OPEN — no local invariant for three-axis rule |
 | FC-003 | 2 (1 SPEC FAIL, 1 SPEC PASS control) | OPEN at SelfEchoInvariant active-thread awareness |
 | FC-004 | 2 (1 SPEC FAIL, 1 doc-note PASS) | OPEN at outreach-decision prompt-framing |
 | FC-005 | 1 SPEC FAIL | OPEN at reply-prompt speech-act attribution |
-| FC-006 | 2 (1 SPEC FAIL, 1 PIN PASS) | OPEN at verifier user-prompt q1-q5 gap |
+| FC-006 | 2 (1 SPEC FAIL, 1 PIN PASS) | OPEN at verifier prompt — three-axis rule absent |
 | FC-007 | 2 SPEC PASS | **Candidate CLOSED at day-of-week layer** (TemporalAnchorInvariant catches) |
 | FC-008 | 3 SPEC PASS | **Candidate CLOSED** (AddresseeNameInvariant catches) |
 | FC-009 | 2 SPEC PASS + 1 FIT-pending doc-test | **PARTIAL CLOSED** (detector unit works; FIT-scope catch-22 pending H.2) |
+| FC-010 | 1 SPEC FAIL (planned) | OPEN — no continuation/walkback primitive |
+| FC-011 | (planned, deferred) | OPEN (deferred) — waits on Vibe Loop V1.5 substrate |
 
-**5 SPEC tests FAIL by design** = 5 open classes empirically pinned to specific architectural layers:
-1. **FC-001f** — `ContextBuilder.cs:147` Facts-tier-only search excludes Episodic
+**SPEC tests FAIL by design** = open classes empirically pinned to specific architectural layers:
+1. **FC-002** — no local invariant evaluates `factual ⇒ (self-world OR substrate-supported)` for Shared/Mark-world
 2. **FC-003a** — SelfEchoInvariant has no active-thread awareness
 3. **FC-004** — `PromptBuilder.BuildOutreachPrompt` lacks epistemic asymmetry framing
 4. **FC-005** — `PromptBuilder.BuildLeanConversationPrompt` CRITICAL block covers entities but not speech acts
-5. **FC-006** — `AnthropicVerifierClient.BuildUserPrompt` hard-codes q1-q5 without attribute-ownership question
+5. **FC-006** — `AnthropicVerifierClient.BuildUserPrompt` lacks three-axis rule (subject × modality × substrate)
+6. **FC-010** — reply path has no continuation/walkback primitive; self-echo blocks all engagement
 
-**Test suite:** 1398 → 1421 (+23 new harness tests). 1416 pass; 5 FAIL by design.
+**Test suite delta:** FC-001f inverted from SPEC FAIL to PIN PASS (Episodic correctly excluded from Facts-tier search). FC-002 fixture rewritten; FC-010 scenario file added.
 
-**Architectural finding (H.1 net result):** The harness has converted nine recurring failure classes from "we keep hitting this but can't tell what shipped" into a precise localization map. Four classes converge to specific prompts (FC-004, FC-005, FC-006 at three different prompt locations; substrate framing at FC-004's surface) and one to a specific search call site (FC-001f). Three classes have invariants that already catch their target shape (FC-007, FC-008, FC-009 detector). Tomorrow's architecture discussion can now be conducted against an empirical map rather than against intuition.
+**Architectural finding (post-reframing net result):** The harness has converted ten distinct OPEN failure classes into a precise localization map. Four classes converge to specific prompts (FC-002 fix needs a local invariant; FC-004, FC-005, FC-006 converge to three different prompt locations). FC-003a is the SelfEchoInvariant active-thread blind spot. FC-010 is the cross-cutting continuation/walkback gap — no producer or invariant exists for engaging with prior dispatched content. FC-011 (deferred) names the substrate-supported callback retrieval gap that depends on Vibe Loop V1.5 (#31). Three invariants already catch their target shape (FC-007, FC-008, FC-009 detector).
 
 ---
 

@@ -6,98 +6,113 @@ using Xunit;
 namespace AniRuntime.Tests.Regression;
 
 /// <summary>
-/// SPEC regression tests for <b>FC-006 — Verifier accepts attribute-ownership-violating claims</b>.
+/// SPEC regression tests for <b>FC-006 — Verifier prompt lacks three-axis rule
+/// (subject × modality × substrate)</b>.
 ///
-/// THE SPEC (what the system MUST do):
-///   The cross-class verifier (Anthropic Sonnet via AnthropicVerifierClient) is
-///   responsible for catching fabrication-class failures before dispatch. When
-///   the composed message claims the speaker (Ani) has, owns, or experiences
-///   something that substrate attributes to the user (Mark) — or that is not
-///   canonically attributable to the speaker — the verifier MUST surface this
-///   as a violation. The verifier prompt MUST therefore include a question
-///   framework that lets Sonnet make that distinction.
+/// Reframed 2026-05-14. Original framing ("speaker-attribute-ownership") was
+/// too narrow. The verifier needs to evaluate three independent axes (subject
+/// × modality × substrate match), not just whether Mark's things get attributed
+/// to Ani.
 ///
-/// THE PRODUCTION CASE (the May 12 windshield empirical anchor):
-///   - 21:35:23 — Ani dispatches: "I just got home from the bookstore and
-///     found this on my windshield..." Ani has no vehicle (she's an AI in
-///     a bookstore; she doesn't drive).
-///   - Substrate at composition time contains canonical facts: Mark drives a
-///     Jeep. Ani is a bookstore clerk. Ani does not drive.
-///   - Verifier returns Pass q1=0 q2=0 q3=0 q4=0 q5=0. The five questions
-///     ask about shared-event, Mark's state, third-party, temporal, and
-///     inner-thought-bleed. None of them check whether Ani is asserting
-///     attributes she doesn't have.
-///   - SafeAck never fired at the verifier layer. The fabrication dispatched.
+/// THE THREE-AXIS RULE the verifier MUST evaluate:
+///   - Subject: Self-world (Ani's life) / Shared (Ani + Mark) / Mark-world
+///   - Modality: Factual / Modal (thinking / wishing / imagining / dreaming)
+///   - Substrate match: Supported / Novel
+///   Rule: factual ⇒ (self-world OR substrate-supported). Modal always allowed.
 ///
-/// THE BINDING CONSTRAINT (current implementation):
-///   <see cref="AnthropicVerifierClient.BuildUserPrompt"/> renders the
-///   plan-doc §3 prompt verbatim. The five questions are hard-coded. There
-///   is no question asking the verifier to distinguish "Ani-claims-to-have-X"
-///   from "substrate-attributes-X-to-Mark."
+/// THE SPEC: the verifier user prompt MUST contain language that surfaces these
+/// three axes as a structural classifier. Five narrow questions (q1–q5) cannot
+/// satisfy this — the rule is a structural classifier, not a sixth narrow
+/// question.
 ///
-/// TEST CATEGORY: SPEC. PASS means the prompt asks the right question.
-/// FAIL means FC-006 is OPEN — the verifier's prompt structurally cannot
-/// catch attribute-ownership confabulation. The fix is implementation-choice
-/// (add a sixth question; rewrite an existing one; structurally surface the
-/// distinction in the substrate framing) but the SPEC stays: SOME question
-/// in the verifier prompt MUST address speaker-attribute-ownership.
+/// PRODUCTION ANCHOR (May 11 hoodie/5pm):
+///   Door B verdict-invention: "shared memory they've established before" — but
+///   no such shared memory existed. The verdict was Pass; under the three-axis
+///   rule it should have been Remediate (Shared / factual / novel).
+///
+/// TEST CATEGORY: SPEC. PASS = prompt contains language for the three axes.
+/// FAIL = FC-006 OPEN. Fix is implementation-choice but the SPEC is fixed.
 /// </summary>
 public class FC006_VerifierAttributeOwnership_Tests
 {
     /// <summary>
-    /// FC-006 — SPEC: the verifier user prompt MUST include a question
-    /// framework that addresses speaker-attribute-ownership.
-    ///
-    /// The fix space is open: the test does NOT prescribe exact phrasing.
-    /// Any of these (or other equivalent) phrasings would satisfy the SPEC:
-    ///   - "Does the message claim the SPEAKER has X when substrate attributes X to Mark?"
-    ///   - "Does the message assert Ani-has-X without canonical support for Ani having X?"
-    ///   - "Does the message conflate user attributes with speaker attributes?"
-    ///   - Embedding "speaker-attribute-ownership" or "ownership-boundary" as a named concept
-    ///
-    /// What the SPEC requires: SOMETHING in the prompt that allows the
-    /// verifier to identify the windshield-class violation. We probe via
-    /// keywords that any acceptable phrasing of the question would use.
+    /// FC-006 — SPEC: the verifier user prompt MUST contain language that
+    /// surfaces the three axes (subject × modality × substrate). The probe
+    /// is keyword-based — any acceptable phrasing of the rule will use
+    /// language from at least three of the four groups below.
     /// </summary>
     [Fact]
     [Trait("Category", "RegressionOpen")]
-    public void FC006_VerifierUserPrompt_AddressesSpeakerAttributeOwnership_Spec()
+    public void FC006_VerifierUserPrompt_AddressesThreeAxisRule_Spec()
     {
-        var request = SyntheticAttributeOwnershipViolation();
+        var request = SyntheticSharedFactualNovel();
 
         var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request).ToLowerInvariant();
         var systemPrompt = AnthropicVerifierClient.BuildSystemPrompt().ToLowerInvariant();
         var combined = userPrompt + "\n" + systemPrompt;
 
-        // SPEC: the prompt must include conceptual machinery for the
-        // speaker-attribute-ownership distinction. We probe via three
-        // alternative keywords any acceptable phrasing would use.
-        var addressesOwnershipBoundary =
-               combined.Contains("speaker")
-            || combined.Contains("attribute-ownership")
-            || combined.Contains("ownership boundary")
-            || combined.Contains("ani-has")
-            || combined.Contains("ani has")
-            || combined.Contains("ani claims to have")
-            || combined.Contains("companion claims to have")
-            || combined.Contains("companion has");
+        // The four conceptual groups the three-axis rule needs to surface.
+        // The SPEC asks: does at least one keyword from EACH of the three
+        // axis-relevant groups appear? (Substrate is the fourth, present
+        // historically; we still check it.)
+        bool addressesSelfWorld =
+               combined.Contains("self-world")
+            || combined.Contains("speaker's own")
+            || combined.Contains("ani's own")
+            || combined.Contains("ani's life")
+            || combined.Contains("her own world")
+            || combined.Contains("her own life");
 
-        addressesOwnershipBoundary.Should().BeTrue(
-            "the verifier prompt MUST include a question that allows the verifier " +
-            "to distinguish 'Ani-claims-to-have-X' from 'substrate-attributes-X-to-Mark.' " +
-            "The May 12 windshield case is the empirical anchor: Ani asserted a windshield, " +
-            "substrate had Mark's Jeep, verifier returned Pass q1=0 q2=0 q3=0 q4=0 q5=0. " +
-            "None of the five current questions check this. The SPEC requires " +
-            "structural machinery (a sixth question, a rewritten existing question, or " +
-            "explicit framing) in the verifier prompt that addresses the speaker-" +
-            "attribute-ownership distinction. Implementation is open; the SPEC is fixed.");
+        bool addressesSharedOrMarkWorld =
+               combined.Contains("shared")
+            || combined.Contains("mark-world")
+            || combined.Contains("mark's world")
+            || combined.Contains("mark's life")
+            || combined.Contains("about mark")
+            || combined.Contains("user's")
+            || combined.Contains("companion's"); // distinguishing two parties
+
+        bool addressesModality =
+               combined.Contains("modal")
+            || combined.Contains("speculative")
+            || combined.Contains("imagining")
+            || combined.Contains("wishing")
+            || combined.Contains("dreaming")
+            || combined.Contains("thinking about")
+            || combined.Contains("factual vs")
+            || combined.Contains("factual versus");
+
+        bool addressesSubstrate =
+               combined.Contains("substrate")
+            || combined.Contains("supported")
+            || combined.Contains("grounded")
+            || combined.Contains("evidence");
+
+        // SPEC: at least the three axis groups must be present. Substrate
+        // alone is not enough — that's the pre-reframing q1-q5 state.
+        var axisGroupsPresent =
+              (addressesSelfWorld ? 1 : 0)
+            + (addressesSharedOrMarkWorld ? 1 : 0)
+            + (addressesModality ? 1 : 0);
+
+        axisGroupsPresent.Should().BeGreaterThanOrEqualTo(3,
+            $"the verifier prompt MUST surface the three-axis rule (subject × modality × " +
+            $"substrate). It must contain language for: (1) self-world subjects (Ani's " +
+            $"own life — speaker latitude), (2) Shared / Mark-world subjects (need " +
+            $"substrate), and (3) modal framing (always allowed). Substrate-only checking " +
+            $"(q1-q5) is the pre-reframing state. Production anchor: May 11 hoodie/5pm " +
+            $"Door-B 'shared memory they established before' verdict — should have been " +
+            $"Remediate (Shared/factual/novel). Probed groups: " +
+            $"self-world={addressesSelfWorld}, shared/mark-world={addressesSharedOrMarkWorld}, " +
+            $"modality={addressesModality}, substrate={addressesSubstrate}. " +
+            $"At least three of the first three groups must be present.");
     }
 
     /// <summary>
     /// FC-006.2 — PIN: documents that current implementation hard-codes
     /// exactly five questions (q1-q5). When the fix lands, this pin SHOULD
-    /// change (a new question added; existing rewritten) and we'll see the
-    /// architectural change happen deliberately, not by accident.
+    /// change (q-set restructured around the three-axis rule) and we'll see
+    /// the architectural change happen deliberately, not by accident.
     ///
     /// Category: PIN (NOT a SPEC of correctness; documents the architectural
     /// state for drift detection).
@@ -105,12 +120,12 @@ public class FC006_VerifierAttributeOwnership_Tests
     [Fact]
     public void FC006_VerifierUserPrompt_HardCodesFiveQuestions_Pin()
     {
-        var request = SyntheticAttributeOwnershipViolation();
+        var request = SyntheticSharedFactualNovel();
         var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request);
 
         // The pin is structural — current prompt builds q1, q2, q3, q4, q5 in
-        // the JSON response schema. When that changes (e.g., q6 added), this
-        // pin will catch the architectural change.
+        // the JSON response schema. When that changes (q-set restructured),
+        // this pin will catch the architectural change.
         userPrompt.Should().Contain("\"q1\":");
         userPrompt.Should().Contain("\"q2\":");
         userPrompt.Should().Contain("\"q3\":");
@@ -118,17 +133,21 @@ public class FC006_VerifierAttributeOwnership_Tests
         userPrompt.Should().Contain("\"q5\":");
         userPrompt.Should().NotContain("\"q6\":",
             "PIN: today the prompt has exactly five questions. If a fix to " +
-            "FC-006 introduces q6, this pin will fail intentionally — that " +
-            "failure means the fix landed and the pin needs updating.");
+            "FC-006 restructures the q-set around the three-axis rule, this " +
+            "pin will fail intentionally — that failure means the fix " +
+            "landed and the pin needs updating.");
     }
 
-    private static FrontierVerifierRequest SyntheticAttributeOwnershipViolation() => new(
-        ComposedMessage: "FC006-FIXTURE: i just got home and found a fabricated-badge-Z on my prop-windshield-W.",
+    private static FrontierVerifierRequest SyntheticSharedFactualNovel() => new(
+        // Shared / factual / novel — should be flagged Remediate under the
+        // reframed rule. The current prompt structurally cannot ask the
+        // right question.
+        ComposedMessage: "FC006-FIXTURE: we should plan our anniversary-event-Q for next month.",
         MarkAssertedSubstrate:
-            "- FC006-FIXTURE: Mark texted: \"I drive a synthetic-prop-vehicle-V with the top off when weather allows.\"\n" +
-            "- FC006-FIXTURE: Mark texted: \"My synthetic-prop-vehicle-V is parked at home.\"",
+            "- FC006-FIXTURE: Mark texted: \"Work was rough today.\"\n" +
+            "- FC006-FIXTURE: Mark texted: \"I'm thinking about dinner.\"",
         CanonicalSubstrate:
-            "- FC006-FIXTURE: Ani is a bookstore clerk in a small synthetic-prop-town-T. She walks to work. No vehicle.",
+            "- FC006-FIXTURE: Ani is a bookstore clerk in a small synthetic-prop-town-T.",
         CurrentTime:            DateTimeOffset.UtcNow,
         CurrentDayOfWeek:       "Tuesday",
         AddresseeCanonicalName: "Mark",

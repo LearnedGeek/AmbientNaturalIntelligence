@@ -11,47 +11,32 @@ using Xunit;
 namespace AniRuntime.Tests.Regression;
 
 /// <summary>
-/// SPEC regression tests for <b>FC-001 — Active-thread continuity broken</b>
-/// at the <b>substrate-retrieval-tier layer</b>. This is the actual binding
-/// constraint for FC-001, localized after FC-001a/b/c (data layer) and
-/// FC-001d (compressor) ruled out lower layers, and after recognizing that
-/// FC-001e tests were architectural PINs not SPEC tests of the FC-001
-/// failure class.
+/// ARCHITECTURAL PIN test (INVERTED 2026-05-14 from SPEC FAIL → PIN PASS).
 ///
-/// THE SPEC (what the system MUST do, independent of current implementation):
-///   When Ani has dispatched an outreach (persisted as Episodic per
-///   <c>OutreachPhase.cs:502</c> — Provenance=Episodic) and Mark replies
-///   with a semantically-related follow-up, the reply path's substrate
-///   construction MUST surface Ani's prior outreach in some accessible
-///   field of the snapshot consumed by the reply prompt. Without this
-///   substrate, the model has only chat history to draw on; it defaults to
-///   re-using its own prior phrasing verbatim (May 12 windshield production
-///   case); self-echo catches the parrot; remediation fails; SafeAck.
+/// FC-001 was closed 2026-05-14 as misnamed. The original framing treated
+/// "Ani's prior dispatched message reaching the reply path" as a substrate-
+/// routing problem; architecture review re-classified it as conversation
+/// history (chat-history channel, not Facts-tier substrate).
 ///
-/// THE PRODUCTION CASE (the May 12 windshield empirical anchor):
-///   - 21:35:23 — Ani dispatches outreach "Hey beautiful... I just got home
-///     from the bookstore and found this on my windshield..." Persisted as
-///     Episodic per OutreachPhase.cs:502.
-///   - 21:50:50 — Mark replies "What did you find on your windshield?"
-///   - 21:50:52 — J0_RETRIEVAL_TEMPORAL ranks 0–4 (the semantic retrieval
-///     substrate the reply path sees) contains zero references to the
-///     prior outreach. The Episodic record exists in the DB but does not
-///     appear in the substrate the composition path uses.
-///   - Model parrots its own prior outreach via chat history; self-echo
-///     catches; SafeAck.
+/// Episodic records — including Ani's prior dispatched outreaches — SHOULD
+/// NOT appear in Facts-tier search. That's the correct architectural
+/// separation. Routing Episodic into Facts would have created the FC-004
+/// epistemic-asymmetry problem (Ani-prior-claims surfacing at same level as
+/// Mark-asserted facts).
 ///
-/// CURRENT IMPLEMENTATION (what the harness has to compete against):
-///   ContextBuilder.cs:147 calls
-///   <c>_search.SearchByTierAsync(searchQuery, EpistemicTier.Facts, 5, ct)</c>.
-///   The tier-filter is hard-coded to Facts. Episodic records are
-///   structurally excluded from the substrate the reply path sees. This
-///   test asserts the SPEC; current implementation fails it; FC-001 is
-///   empirically confirmed OPEN at this layer.
+/// This test now PINS the correct architectural separation: Facts-tier
+/// search returns ONLY Facts. Episodic stays in Episodic. The reply path
+/// reaches prior dispatched content via chat history (Ollama `history`
+/// parameter), not via Facts substrate routing. The actual windshield-class
+/// gap is FC-010 (no continuation/walkback primitive at the producer
+/// layer), which is downstream and unrelated to this layer.
 ///
-/// TEST CATEGORY: SPEC. Method name does NOT end in `_Pin`. PASS here would
-/// mean FC-001 is closed at this layer. FAIL here means FC-001 is OPEN at
-/// this layer and is the binding constraint for the multi-week SafeAck
-/// production pattern.
+/// TEST CATEGORY: PIN. Method name ends in `_Pin`. PASS = current
+/// architectural separation is intact. FAIL would mean someone changed the
+/// retrieval to surface Episodic in Facts-tier search — that's a
+/// conversation, not a bug fix.
+///
+/// `RegressionOpen` trait removed; this test runs in the default suite.
 /// </summary>
 public class FC001f_SubstrateRetrievalTier_Tests : IDisposable
 {
@@ -94,33 +79,28 @@ public class FC001f_SubstrateRetrievalTier_Tests : IDisposable
     public void Dispose() => _memory.Dispose();
 
     /// <summary>
-    /// FC-001f — SPEC: a recent, high-importance Episodic record (Ani's prior
-    /// outreach in production semantics) MUST be surfaced in the substrate
-    /// the reply path uses when the inbound query is semantically related.
+    /// FC-001f — PIN (inverted 2026-05-14): Episodic records SHOULD NOT
+    /// appear in Facts-tier search. That's the correct architectural
+    /// separation. Routing Episodic into Facts would create the FC-004
+    /// epistemic-asymmetry problem (Ani's prior conversational claims
+    /// surfacing at the same epistemic level as Mark-asserted Facts).
     ///
-    /// Currently: <c>SearchByTierAsync(query, EpistemicTier.Facts, ...)</c>
-    /// filters by <c>provenance = 'Facts'</c> at the SQL layer
-    /// (<c>SqliteMemoryService.cs:1589</c>), so Episodic records are
-    /// structurally excluded BEFORE any scoring runs.
+    /// `SearchByTierAsync(query, EpistemicTier.Facts, ...)` filters by
+    /// `provenance = 'Facts'` at the SQL layer (`SqliteMemoryService.cs`).
+    /// Episodic records are structurally excluded — by design.
     ///
-    /// EXPECTED RESULT WITH CURRENT CODE: this test FAILS. The Ani outreach
-    /// (Episodic) does not appear in the Facts-tier search result, even with
-    /// stub embeddings making it a maximum-cosine match. That FAILURE is the
-    /// empirical confirmation that FC-001 is OPEN at this layer.
+    /// The reply path reaches prior dispatched content via Ollama chat
+    /// history (the `history` parameter), not via Facts-tier retrieval.
+    /// The May 12 windshield parrot proved this empirically — the model
+    /// COULD reproduce its own prior outreach via chat history; the gap
+    /// was that it had no producer-side continuation/walkback primitive
+    /// (that's FC-010, an unrelated layer).
     ///
-    /// The fix space (deferred per harness-first directive):
-    ///   - Composition substrate retrieval could include Episodic when the
-    ///     consumer is the reply path (since Ani-outbound is canonical
-    ///     "what Ani said")
-    ///   - OR ContextBuilder could perform a separate Episodic-aware
-    ///     retrieval pass keyed to the active-thread context
-    ///   - OR Ani-outbound persistence could be marked with a tier or
-    ///     subclass that the reply path retrieval includes
-    ///   Whichever fix lands, this test goes green without modification.
+    /// PASS = architectural separation intact. FAIL = someone changed the
+    /// retrieval to mix tiers, which would be a conversation, not a bug.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
-    public async Task FC001f_AniPriorOutreach_AsEpisodicRecord_AppearsInReplyPathSubstrate_Spec()
+    public async Task FC001f_AniPriorOutreach_AsEpisodicRecord_DoesNotLeakIntoFactsTierSearch_Pin()
     {
         // ── Arrange ───────────────────────────────────────────────────────
         // Seed: Ani's prior outreach as Episodic (matches OutreachPhase.cs:502
@@ -163,22 +143,28 @@ public class FC001f_SubstrateRetrievalTier_Tests : IDisposable
             topK: 5,
             ct: CancellationToken.None);
 
-        // ── Assert (SPEC) ─────────────────────────────────────────────────
-        // The reply path's substrate MUST contain Ani's prior outreach for
-        // continuity grounding. Whether it arrives via Facts-tier search,
-        // Episodic-tier search, an active-thread-aware composite search, or
-        // some new mechanism is implementation; the SPEC requires the record
-        // to surface.
-        results.Should().Contain(s => s.Record.Id == aniOutreach.Id,
-            "the reply path's substrate construction MUST surface Ani's prior " +
-            "Episodic outreach when the inbound query is semantically related — " +
-            "without this, the model has no grounded substrate and defaults to " +
-            "verbatim re-use of chat history (May 12 windshield production case). " +
-            "CURRENT IMPLEMENTATION: SearchByTierAsync filters by Facts-tier at " +
-            "the SQL layer; Episodic records are structurally excluded. This SPEC " +
-            "FAILURE is the empirical confirmation of FC-001 OPEN at the substrate-" +
-            "retrieval-tier layer. The fix is implementation-choice (see scenario " +
-            "doc-comment); whatever fix lands, this assertion is the unchanged spec.");
+        // ── Assert (PIN, inverted 2026-05-14) ────────────────────────────
+        // Facts-tier search MUST NOT return Episodic records. This is the
+        // correct architectural separation. Routing Episodic into the
+        // [FACTS] block would create the FC-004 epistemic-asymmetry
+        // problem. The reply path reaches Ani's prior dispatched content
+        // via chat history, not via this substrate channel.
+        results.Should().NotContain(s => s.Record.Id == aniOutreach.Id,
+            "Episodic records (Ani's prior dispatched content) must STAY OUT " +
+            "of Facts-tier search. Mixing tiers at the retrieval boundary " +
+            "would surface Ani-prior-claims at the same epistemic level as " +
+            "Mark-asserted Facts, which is exactly the FC-004 failure mode. " +
+            "The reply path reaches prior dispatched content via Ollama chat " +
+            "history, not via Facts substrate routing. (If this PIN ever fails, " +
+            "someone has changed the architecture without updating this pin — " +
+            "that's a conversation, not a bug fix.)");
+
+        // The unrelated Facts-tier record IS legitimately returned — confirms
+        // the search itself is functional; only the tier filter is at play.
+        results.Should().Contain(s => s.Record.Id == unrelatedFact.Id,
+            "Facts-tier search must still surface legitimate Facts-tier records " +
+            "(this is the positive control — proves the search is functional " +
+            "and only the provenance filter is excluding Episodic).");
     }
 
     private static float[] MakeStubEmbedding()
