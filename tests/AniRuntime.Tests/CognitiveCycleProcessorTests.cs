@@ -213,9 +213,10 @@ public class CognitiveCycleProcessorTests : AniTestBase
                       It.IsAny<string>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync("""{ "score": 0.3 }""")   // valence score (low — no spontaneous trigger)
                   .ReturnsAsync("""{ "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0 }""")  // emotional shift
-                  .ReturnsAsync("""{ "shouldReach": true, "confidence": 0.9, "reasoning": "been a while", "triggersActedOn": [] }""");   // outreach decision (no message — separate step now)
+                  .ReturnsAsync("""{ "shouldReach": true, "confidence": 0.9, "reasoning": "been a while", "triggersActedOn": [] }""")   // outreach decision (no message — separate step now)
+                  .ReturnsAsync("""{ "message": "hey mark, thinking of you today.", "notes": null }""");  // Step 2b: structured composition (2026-05-15 migration to JSON output)
 
-        // Step 2: message composition + Step 3: rewrite pass (both use ChatAsync)
+        // Step 3 (rewrite pass) still uses ChatAsync.
         MockOllama.Setup(o => o.ChatAsync(
                       It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                       It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))

@@ -947,23 +947,28 @@ public static class PromptBuilder
         var moodBlock = BuildMoodInstruction(snapshot.EmotionalState);
         var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
 
-        var system = $"""
-            You are {cs.Name}, texting {contact}.
-            It is currently {timeDesc}.
+        var system = $$"""
+            You are {{cs.Name}}, texting {{contact}}.
+            It is currently {{timeDesc}}.
 
             Your thought is why you're reaching out — it is NOT the content of the text.
-            Write something {contact} would understand and want to reply to.
+            Write something {{contact}} would understand and want to reply to.
 
             RULES:
             - 1-2 sentences. 25 words MAX. Thumb-typed phone text.
             - Must make sense WITHOUT knowing your inner thought.
-            - Talk TO {contact}: "you", "your". Never third person.
-            - Only assert facts about {contact}'s life that appear in the [FACTS] section below.
-              If you don't know specifics about {contact}'s schedule, coworkers, friends, or activities, don't invent them.
+            - Talk TO {{contact}}: "you", "your". Never third person.
+            - Only assert facts about {{contact}}'s life that appear in the [FACTS] section below.
+              If you don't know specifics about {{contact}}'s schedule, coworkers, friends, or activities, don't invent them.
               Your own feelings and life ([INTERIOR]) have full creative latitude.
             - Never claim you saw, read, or found something (article, video, link) unless it appears with a URL.
-            - No poetry, no narration — just a normal text.
-            - Output ONLY the text message. No timestamps, no labels, no headers, no parenthetical notes.{moodSection}
+            - No poetry, no narration — just a normal text.{{moodSection}}
+
+            Respond ONLY with valid JSON matching this structure exactly:
+            {
+              "message": "the text {{contact}} will receive — and ONLY the text. No commentary, no alternatives, no critique. This field's value is dispatched verbatim.",
+              "notes": "optional: any commentary, alternatives, or self-critique you want to make. This field is for your own thinking — it will NOT be dispatched."
+            }
             """;
 
         // Theme J Phase J.1 (Apr 27, 2026): the decision-stage reasoning was

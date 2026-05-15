@@ -95,12 +95,19 @@ public class OutreachPhaseFrameCoherenceTests : AniTestBase
     /// </summary>
     private void SetupOllamaForDecisionAndCompose()
     {
+        // 2026-05-15: outreach composition migrated from ChatAsync to
+        // ChatJsonAsync. First call = decision JSON, second call =
+        // composition JSON with .message=ComposedMessage.
+        var compositionJson = $"{{\"message\": \"{ComposedMessage}\", \"notes\": null}}";
         MockOllama
-            .Setup(o => o.ChatJsonAsync(
+            .SetupSequence(o => o.ChatJsonAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DecisionShouldReachJson);
+            .ReturnsAsync(DecisionShouldReachJson)
+            .ReturnsAsync(compositionJson);
 
+        // ChatAsync may still be reached for downstream rewrite passes;
+        // return the same message so post-composition flow works.
         MockOllama
             .Setup(o => o.ChatAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),

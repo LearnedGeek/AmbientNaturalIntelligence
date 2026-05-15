@@ -275,16 +275,25 @@ public class OutreachPhase
             }
         }
 
-        // Step 2b: Compose — free-text message generation (no JSON constraint)
+        // Step 2b: Compose — JSON-structured message generation (2026-05-15).
+        // Migrated from free-text to JSON output: model puts the dispatchable
+        // text in `.message` and any commentary/alternatives/critique in
+        // `.notes`. Only `.message` reaches Twilio. This eliminates the
+        // class of training artifacts where the model emits multi-paragraph
+        // commentary alongside the message (May 15 10:47 case).
         var rendererForComposition = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
         var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, recentThought, decisionReasoning, reasoningInComposition,
             selectedFrame, rendererForComposition);
-        var message = await _ollama.ChatAsync(
+        var rawJson = await _ollama.ChatJsonAsync(
             msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct)
             .ConfigureAwait(false);
 
-        message = CleanOutreachMessage(message);
+        var (composedMessage, composedNotes) = ParseOutreachComposition(rawJson);
+        if (!string.IsNullOrWhiteSpace(composedNotes))
+            _log.LogDebug("Outreach composition notes (not dispatched): {Notes}", composedNotes);
+
+        var message = CleanOutreachMessage(composedMessage);
         _log.LogInformation("Outreach message composed: {Message}", message);
 
         // Step 2c: ML confabulation check on composed message (same gate as conversation)
@@ -869,6 +878,65 @@ public class OutreachPhase
     /// Strips meta-commentary the model adds when roleplaying the act of texting.
     /// </summary>
     private static string? CleanOutreachMessage(string? raw) => Core.Utilities.MessageCleaner.Clean(raw);
+
+    /// <summary>
+    /// Parse the JSON-structured outreach composition output (2026-05-15).
+    /// Returns (message, notes). The model produces:
+    /// <code>
+    ///   {
+    ///     "message": "the dispatched text",
+    ///     "notes":   "optional commentary, NOT dispatched"
+    ///   }
+    /// </code>
+    /// Only <c>.message</c> is dispatched. <c>.notes</c> is logged at Debug
+    /// for observability. If parsing fails (model returned non-JSON or
+    /// missing the field), falls back to the raw string for the message —
+    /// graceful degradation; the cleaner downstream catches the worst
+    /// shapes.
+    /// </summary>
+    internal static (string? Message, string? Notes) ParseOutreachComposition(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return (raw, null);
+
+        try
+        {
+            // Strip optional ```json fences (some models wrap their JSON).
+            var trimmed = raw.Trim();
+            if (trimmed.StartsWith("```"))
+            {
+                var firstNewline = trimmed.IndexOf('\n');
+                if (firstNewline > 0) trimmed = trimmed[(firstNewline + 1)..];
+                if (trimmed.EndsWith("```"))
+                    trimmed = trimmed[..^3].TrimEnd();
+            }
+
+            using var doc = System.Text.Json.JsonDocument.Parse(trimmed);
+            var root = doc.RootElement;
+
+            string? message = null;
+            string? notes   = null;
+
+            if (root.TryGetProperty("message", out var msgEl) && msgEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                message = msgEl.GetString();
+            if (root.TryGetProperty("notes", out var notesEl) && notesEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                notes = notesEl.GetString();
+
+            // Two distinct outcomes:
+            // - JSON parsed AND has a .message field present (even if blank):
+            //   trust the structured output; return .message verbatim
+            //   (downstream empty-message check handles blank correctly).
+            // - JSON parsed but no .message field at all: model used the
+            //   wrong shape; fall back to raw so downstream cleaner runs.
+            var hasMessageField = root.TryGetProperty("message", out _);
+            return (hasMessageField ? message : raw, notes);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Model returned non-JSON — fall back to the raw text. The
+            // downstream MessageCleaner + post-stage gates still run.
+            return (raw, null);
+        }
+    }
 
     /// <summary>
     /// Check if the composed outreach message is too similar to recent outreach.

@@ -42,6 +42,12 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
     private const string DecisionShouldReachJson =
         "{\"shouldReach\": true, \"confidence\": 0.9, \"reasoning\": \"high desire to connect\"}";
 
+    // 2026-05-15: outreach composition migrated to JSON output. Tests that
+    // want the composition step to short-circuit downstream by returning
+    // empty use this; tests that want a real message use the full JSON.
+    private const string CompositionEmptyJson =
+        "{\"message\": \"\", \"notes\": null}";
+
     private OutreachPhase BuildPhase(IOptions<AniOptions>? options = null)
     {
         // Empty dispatcher — if dispatch were ever reached on a suppression
@@ -96,11 +102,16 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
     /// </summary>
     private void SetupOllamaForShouldReach()
     {
+        // 2026-05-15: outreach composition now uses ChatJsonAsync too (was
+        // ChatAsync). First call = decision (ShouldReach), second call =
+        // composition (empty message → pipeline short-circuits at the
+        // empty-message check, which is what the selector-boundary tests want).
         MockOllama
-            .Setup(o => o.ChatJsonAsync(
+            .SetupSequence(o => o.ChatJsonAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DecisionShouldReachJson);
+            .ReturnsAsync(DecisionShouldReachJson)
+            .ReturnsAsync(CompositionEmptyJson);
     }
 
     /// <summary>
@@ -247,14 +258,10 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
                 "Mark said: I had a long day at work",
                 0.8f));
 
-        // After the selector returns a real frame, composition runs. We
-        // make ChatAsync return an empty string so the pipeline exits at
-        // the empty-message guard (line 298) without us needing to mock
-        // the rest of the outbound tail.
-        MockOllama.Setup(o => o.ChatAsync(
-                It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
-                It.IsAny<CancellationToken>(), It.IsAny<float?>()))
-            .ReturnsAsync(string.Empty);
+        // 2026-05-15: composition migrated from ChatAsync to ChatJsonAsync.
+        // SetupOllamaForShouldReach already sequences decision + empty
+        // composition JSON, so the pipeline exits at the empty-message
+        // guard. No additional ChatAsync setup needed.
 
         var phase = BuildPhase(options);
 
@@ -269,12 +276,13 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
             "the selector must receive the same ContextSnapshot the cycle is operating on");
 
         // Composition WAS reached (selector returned a real frame, so
-        // suppression branch was skipped). The empty-message guard then
-        // exits the cycle.
-        MockOllama.Verify(o => o.ChatAsync(
+        // suppression branch was skipped). ChatJsonAsync must have been
+        // called twice — once for the outreach decision, once for the
+        // structured composition.
+        MockOllama.Verify(o => o.ChatJsonAsync(
             It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
-            It.IsAny<CancellationToken>(), It.IsAny<float?>()),
-            Times.Once,
-            "composition must run on the real-frame path (suppression branch skipped)");
+            It.IsAny<CancellationToken>()),
+            Times.Exactly(2),
+            "ChatJsonAsync runs twice — decision + composition — on the real-frame path");
     }
 }
