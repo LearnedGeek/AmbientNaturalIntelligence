@@ -4,6 +4,11 @@ using AniRuntime.LLM;
 using FluentAssertions;
 using Xunit;
 
+// Theme M slice migration (2026-05-14): FC-004 SPEC now verifies the
+// with-renderer path. The active-thread slice from IEpistemicSubstrateRenderer
+// supplies the epistemic-asymmetry framing when the runtime flag is on; the
+// harness verifies the architectural surface directly.
+
 namespace AniRuntime.Tests.Regression;
 
 /// <summary>
@@ -63,29 +68,41 @@ public class FC004_ConfabSubstrateFeedback_Tests
     /// prompt; phrasing is the implementer's choice.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
     public void FC004_OutreachDecisionPrompt_DistinguishesAniPriorClaims_FromEstablishedFacts_Spec()
     {
         var snapshot = SnapshotWithAniPriorClaimInActiveThread();
 
+        // Theme M slice migration (2026-05-14): the active-thread slice
+        // supplies epistemic-asymmetry framing for the structured
+        // conversation summary. When EpistemicFramingEnabled is on,
+        // OutreachPhase passes the renderer to BuildOutreachPrompt; the
+        // harness mirrors that here.
+        var renderer = new EpistemicSubstrateRenderer();
         var (system, user) = PromptBuilder.BuildOutreachPrompt(
             snapshot,
             recentThought: "FC004-FIXTURE: synthetic recent inner thought",
-            isNightTime: false);
+            isNightTime: false,
+            epistemicRenderer: renderer);
 
         var combined = (system + "\n" + user).ToLowerInvariant();
 
         // SPEC: the prompt must include framing that distinguishes Ani-prior-claims
         // from established facts. Various acceptable phrasings allowed. We probe
-        // via keywords that any reasonable framing would use.
+        // via keywords that any reasonable framing would use. The slice's
+        // actual wording ("not yet established as fact", "do not reason from
+        // them") is included alongside the original illustrative list.
         var distinguishesEpistemicAsymmetry =
                combined.Contains("unverified")
             || combined.Contains("not established")
+            || combined.Contains("not yet established")
             || combined.Contains("not a fact")
             || combined.Contains("her prior claim")
             || combined.Contains("ani's prior claim")
+            || combined.Contains("your own prior")
+            || combined.Contains("your earlier turns")
             || combined.Contains("do not treat")
             || combined.Contains("don't treat")
+            || combined.Contains("do not reason")
             || combined.Contains("may include")
             || combined.Contains("epistemic")
             || combined.Contains("attribution");

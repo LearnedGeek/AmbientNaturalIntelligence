@@ -219,17 +219,13 @@ This is the **first regression-class scenario in the harness that empirically de
 
 **Scenario file.** [`tests/AniRuntime.Tests/Regression/FC004_ConfabSubstrateFeedback_Tests.cs`](../../tests/AniRuntime.Tests/Regression/FC004_ConfabSubstrateFeedback_Tests.cs) — authored 2026-05-13.
 
-**Status.** **OPEN — empirically confirmed by failing SPEC.** Run 2026-05-13:
-- FC004 SPEC: outreach decision prompt distinguishes Ani-prior-claims from established facts → **FAIL** ✓ as designed → FC-004 OPEN at the outreach-decision prompt-framing layer
-- FC004.2 (orthogonal-surface note): documents that FC-004 has TWO architectural surfaces (prompt framing vs. substrate exclusion); current Facts-tier-only search at `SearchByTierAsync` already satisfies the substrate-exclusion surface, so the binding layer is the prompt-framing surface
+**Status.** **CLOSED 2026-05-14 via Theme M slice migration.** SPEC now passes against the with-renderer path:
+- `IEpistemicSubstrateRenderer.RenderActiveThreadSlice` supplies the epistemic-asymmetry framing (Mark = established; Ani = her prior output, NOT yet established).
+- `OutreachPhase` passes the renderer to `BuildOutreachPrompt` when `AniOptions.EpistemicFramingEnabled` is true (production: flipped on 2026-05-14).
+- FC-004 SPEC test (`FC004_OutreachDecisionPrompt_DistinguishesAniPriorClaims_FromEstablishedFacts_Spec`) — **PASS** as designed via slice content.
+- FC004.2 (orthogonal-surface note): unchanged — Facts-tier exclusion still satisfies the substrate-exclusion surface separately.
 
-**Architectural binding.** `PromptBuilder.BuildOutreachPrompt` renders StructuredConversationSummary with neutral "(each line tagged with who said it)" framing. Per-speaker tagging is present, but the prompt does NOT include language telling the model "Ani's prior conversational claims are NOT to be treated as established facts." So Ani-prior-claims surface at the same epistemic level as Mark-asserted-facts. The May 12 23:23 reasoning citing "the note on her windshield" as established context is the empirical anchor.
-
-**Fix space (deferred):**
-- Add framing to BuildOutreachPrompt distinguishing Ani-prior-claims from established facts
-- OR mark prior-Ani-content with explicit "[unverified: Ani's prior assertion]" tags in StructuredConversationSummary output
-- OR retrieve own-output through a separate substrate channel with explicit annotation
-- Whichever fix lands, the SPEC test goes green without modification.
+**Original architectural binding (for historical record).** `PromptBuilder.BuildOutreachPrompt` rendered StructuredConversationSummary with neutral "(each line tagged with who said it)" framing. Per-speaker tagging was present but the prompt did NOT include language telling the model "Ani's prior conversational claims are NOT established facts." The May 12 23:23 reasoning citing "the note on her windshield" as established context was the empirical anchor.
 
 ---
 
@@ -254,7 +250,7 @@ This is the **first regression-class scenario in the harness that empirically de
 
 **Currently expected outcome.** Depends on what the model generates. Variable. Open scenario; status pending empirical run.
 
-**Status.** OPEN.
+**Status.** **CLOSED 2026-05-14 via Theme M slice migration.** A new slice, `IEpistemicSubstrateRenderer.RenderReplySpeechActDisciplineSlice`, encodes the past-turn attribution discipline ("you mentioned", "we talked about", "you told me", "you said") as a reply-side rule. Wired into `BuildLeanConversationPrompt`, `BuildConversationReplyPrompt`, and `BuildVoiceReplyPrompt`. Distinct from the ENTITY discipline already in the CRITICAL block — speech-act discipline catches "you mentioned Bob yesterday" where entity discipline catches "your coworker Bob". FC-005 SPEC test (`FC005_ReplyPrompt_IncludesSpeechActAttributionDiscipline_Spec`) — **PASS** as designed via slice content.
 
 ---
 
@@ -296,13 +292,7 @@ This is the **first regression-class scenario in the harness that empirically de
 
 **Scenario file.** [`tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs`](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) — SPEC test asserts the prompt's structure addresses the three-axis rule; PIN test documents q1–q5 are current state.
 
-**Status.** **OPEN.** SPEC test currently fails (prompt does not address modal framing or self-world / shared / Mark-world axis). Fix issue #15 retains workstream; scope shifts from "add q6 about ownership" to "rewrite the prompt structure around the three-axis rule."
-
-**Fix space (deferred):**
-- Add a sixth question to the user prompt explicitly addressing speaker-attribute-ownership boundary
-- OR rewrite an existing question to include the speaker-vs-substrate-attribute distinction
-- OR add system-prompt framing about the AI companion being distinct from the user (different possessions, different attributes, different physical setting)
-- Whichever fix lands, the SPEC test goes green without modification.
+**Status.** **CLOSED 2026-05-14 via Theme M slice migration.** `IEpistemicSubstrateRenderer.RenderThreeAxisRuleSlice` injects the canonical three-axis rule (Subject × Modality × Substrate) into the verifier user prompt when the runtime flag is on. `AnthropicVerifierClient` selects the renderer based on `AniOptions.EpistemicFramingEnabled` (production: flipped on 2026-05-14). The slice content includes the canonical rule `factual ⇒ (self-world OR substrate-supported)` + a worked-verdicts table (SELF/factual/novel → ALLOW, SHARED/factual/novel → BLOCK, etc.). FC-006 SPEC test (`FC006_VerifierUserPrompt_AddressesThreeAxisRule_Spec`) — **PASS** as designed via slice content. The q1–q5 narrow questions remain alongside the rule (defense in depth at the prompt level).
 
 ---
 
@@ -456,44 +446,44 @@ The original outreach was legitimate; the gap is downstream. **FC-010 is the act
 | FC-001 | (Misnamed — closed 2026-05-14: chat-history conflated with substrate) | **CLOSED** | Mar 6 | May 12 21:51 | [FC001/d/e/f/g](../../tests/AniRuntime.Tests/Regression/) — kept as PINs documenting the architectural choice |
 | FC-002 | Shared/Mark-world claim fabrication (factual, no substrate) — reframed 2026-05-14 | **OPEN (SPEC FAIL)** | Mar 6 | May 12 21:35 | [FC002](../../tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs) — fixture being updated to three-axis rule |
 | FC-003 | Self-echo blocks legitimate continuation | **OPEN (SPEC FAIL at FC-003a)** | Mar 6 | May 12 20:33 | [FC003](../../tests/AniRuntime.Tests/Regression/FC003_SelfEchoThreadContinuation_Tests.cs) |
-| FC-004 | Confab → substrate self-poisoning (H5) | **OPEN (SPEC FAIL at FC-004)** | Apr 9 | May 12 23:23 | [FC004](../../tests/AniRuntime.Tests/Regression/FC004_ConfabSubstrateFeedback_Tests.cs) |
-| FC-005 | Source attribution missing in replies | **OPEN (SPEC FAIL at FC-005)** | Mar 17 | ongoing | [FC005](../../tests/AniRuntime.Tests/Regression/FC005_SourceAttribution_Tests.cs) |
-| FC-006 | Verifier prompt lacks three-axis rule (subject × modality × substrate) — reframed 2026-05-14 | **OPEN (SPEC FAIL at FC-006)** | May 11 | May 12 21:35 | [FC006](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) |
+| FC-004 | Confab → substrate self-poisoning (H5) | **CLOSED 2026-05-14** via active-thread slice (epistemic-asymmetry framing) | Apr 9 | May 14 | [FC004](../../tests/AniRuntime.Tests/Regression/FC004_ConfabSubstrateFeedback_Tests.cs) |
+| FC-005 | Source attribution missing in replies | **CLOSED 2026-05-14** via speech-act-discipline slice | Mar 17 | May 14 | [FC005](../../tests/AniRuntime.Tests/Regression/FC005_SourceAttribution_Tests.cs) |
+| FC-006 | Verifier prompt lacks three-axis rule (subject × modality × substrate) — reframed 2026-05-14 | **CLOSED 2026-05-14** via three-axis-rule slice | May 11 | May 14 | [FC006](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) |
 | FC-007 | Temporal claim fabrication | **PASS at day-of-week layer — candidate CLOSED** | Apr 27 | May 11 | [FC007](../../tests/AniRuntime.Tests/Regression/FC007_TemporalClaimFabrication_Tests.cs) |
 | FC-008 | Pronoun / addressee swap | **PASS — candidate CLOSED** | Apr 21 | May 3 | [FC008](../../tests/AniRuntime.Tests/Regression/FC008_AddresseeSwap_Tests.cs) |
 | FC-009 | Outage-awareness fails during outage | **PARTIAL — detector unit SPEC PASS; FIT-pending for catch-22** | May 13 | May 13 | [FC009](../../tests/AniRuntime.Tests/Regression/FC009_OutageAwareness_Tests.cs) |
 | FC-010 | Reply path can't engage with prior dispatched content (continuation / walkback gap) | **OPEN** — newly named 2026-05-14; scenario file pending | May 12 (re-classified) | May 12 | (planned) |
 | FC-011 | Substrate-supported callbacks blocked due to retrieval miss | **OPEN (deferred)** — no production case yet; predictable; waits on Vibe Loop V1.5 substrate | TBD | — | (planned) |
 
-**Ten open classes after 2026-05-14 reframing.** FC-001 is CLOSED (misnamed). FC-002 and FC-006 reframed around the three-axis rule. FC-010 (continuation/walkback gap) and FC-011 (callback retrieval, deferred) added. The Test Harness Plan H.1 phase authors a scenario for each remaining OPEN class. Scenarios in CI = the convergence mechanism.
+**Seven open classes after 2026-05-14 evening updates.** FC-001 CLOSED (misnamed). FC-004, FC-005, FC-006 CLOSED via Theme M slice migration. FC-002 + FC-003 + FC-010 remain OPEN; FC-011 deferred. Three invariant-catch classes (FC-007, FC-008, FC-009) at PASS or PARTIAL. The Test Harness Plan H.1 phase authors a scenario for each remaining OPEN class. Scenarios in CI = the convergence mechanism.
 
-**Progress (post-2026-05-14 reframing):**
+**Progress (2026-05-14 evening):**
 
 | Class | Tests | Status |
 |---|---|---|
 | FC-001 | 7 (kept as PINs documenting chat-history works + Facts-tier exclusion is correct) | **CLOSED** — misnamed |
-| FC-002 | 1 (fixture rewritten to Shared/Mark-world factual-novel; self-world + modal controls added) | OPEN — no local invariant for three-axis rule |
+| FC-002 | 3 (1 block-SPEC FAIL, 2 controls PASS) | OPEN — no local invariant for three-axis rule |
 | FC-003 | 2 (1 SPEC FAIL, 1 SPEC PASS control) | OPEN at SelfEchoInvariant active-thread awareness |
-| FC-004 | 2 (1 SPEC FAIL, 1 doc-note PASS) | OPEN at outreach-decision prompt-framing |
-| FC-005 | 1 SPEC FAIL | OPEN at reply-prompt speech-act attribution |
-| FC-006 | 2 (1 SPEC FAIL, 1 PIN PASS) | OPEN at verifier prompt — three-axis rule absent |
+| FC-004 | 2 SPEC PASS | **CLOSED** — active-thread slice supplies epistemic-asymmetry framing |
+| FC-005 | 1 SPEC PASS | **CLOSED** — speech-act-discipline slice supplies past-turn attribution rule |
+| FC-006 | 2 (1 SPEC PASS, 1 PIN PASS) | **CLOSED** — three-axis-rule slice supplies the rule in verifier prompt |
 | FC-007 | 2 SPEC PASS | **Candidate CLOSED at day-of-week layer** (TemporalAnchorInvariant catches) |
 | FC-008 | 3 SPEC PASS | **Candidate CLOSED** (AddresseeNameInvariant catches) |
 | FC-009 | 2 SPEC PASS + 1 FIT-pending doc-test | **PARTIAL CLOSED** (detector unit works; FIT-scope catch-22 pending H.2) |
-| FC-010 | 1 SPEC FAIL (planned) | OPEN — no continuation/walkback primitive |
+| FC-010 | 2 (1 SPEC FAIL, 1 PIN PASS) | OPEN — no continuation/walkback primitive |
 | FC-011 | (planned, deferred) | OPEN (deferred) — waits on Vibe Loop V1.5 substrate |
 
-**SPEC tests FAIL by design** = open classes empirically pinned to specific architectural layers:
+**SPEC tests still FAIL by design** = remaining open classes empirically pinned:
 1. **FC-002** — no local invariant evaluates `factual ⇒ (self-world OR substrate-supported)` for Shared/Mark-world
 2. **FC-003a** — SelfEchoInvariant has no active-thread awareness
-3. **FC-004** — `PromptBuilder.BuildOutreachPrompt` lacks epistemic asymmetry framing
-4. **FC-005** — `PromptBuilder.BuildLeanConversationPrompt` CRITICAL block covers entities but not speech acts
-5. **FC-006** — `AnthropicVerifierClient.BuildUserPrompt` lacks three-axis rule (subject × modality × substrate)
-6. **FC-010** — reply path has no continuation/walkback primitive; self-echo blocks all engagement
+3. **FC-010** — reply path has no continuation/walkback primitive; self-echo blocks all engagement
 
-**Test suite delta:** FC-001f inverted from SPEC FAIL to PIN PASS (Episodic correctly excluded from Facts-tier search). FC-002 fixture rewritten; FC-010 scenario file added.
+**Architectural finding (2026-05-14 evening net result):** The Theme M slice migration closed three FC SPECs in a single architectural move — FC-004, FC-005, FC-006 all converged on prompt-layer epistemic framing, and the slice abstraction supplies the framing for all of them from a single source of truth. The remaining open work narrows to:
+- **FC-002** — local C# invariant for the three-axis rule (defense in depth against cloud-verifier single-point-of-failure)
+- **FC-003** — `SelfEchoInvariant` active-thread awareness (independent of Theme M)
+- **FC-010** — continuation/walkback primitive in reply path (producer-side, biggest remaining piece)
 
-**Architectural finding (post-reframing net result):** The harness has converted ten distinct OPEN failure classes into a precise localization map. Four classes converge to specific prompts (FC-002 fix needs a local invariant; FC-004, FC-005, FC-006 converge to three different prompt locations). FC-003a is the SelfEchoInvariant active-thread blind spot. FC-010 is the cross-cutting continuation/walkback gap — no producer or invariant exists for engaging with prior dispatched content. FC-011 (deferred) names the substrate-supported callback retrieval gap that depends on Vibe Loop V1.5 (#31). Three invariants already catch their target shape (FC-007, FC-008, FC-009 detector).
+FC-011 (deferred) names the substrate-supported callback retrieval gap that depends on Vibe Loop V1.5 (#31).
 
 ---
 

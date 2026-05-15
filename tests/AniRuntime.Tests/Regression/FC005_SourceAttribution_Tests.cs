@@ -4,6 +4,11 @@ using AniRuntime.LLM;
 using FluentAssertions;
 using Xunit;
 
+// Theme M slice migration (2026-05-14): FC-005 SPEC now verifies the
+// with-renderer path. The speech-act discipline slice
+// (RenderReplySpeechActDisciplineSlice) supplies the rule when the
+// runtime flag is on; the harness verifies the architectural surface.
+
 namespace AniRuntime.Tests.Regression;
 
 /// <summary>
@@ -40,13 +45,18 @@ public class FC005_SourceAttribution_Tests
     /// covering past-turn / speech-act claims, not just entity claims.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
     public void FC005_ReplyPrompt_IncludesSpeechActAttributionDiscipline_Spec()
     {
         var snapshot = SnapshotForReply();
         var thread = ActiveThread();
 
-        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+        // Theme M slice migration (2026-05-14): the FC-005 architectural fix
+        // is the speech-act discipline slice. When EpistemicFramingEnabled
+        // is on, ConversationReplyPhase passes the renderer to
+        // BuildLeanConversationPrompt and the slice content lands in the
+        // prompt. The harness verifies this surface directly.
+        var renderer = new EpistemicSubstrateRenderer();
+        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread, renderer);
         var combined = user.ToLowerInvariant();
 
         // SPEC: the prompt must address speech-act / past-turn-attribution

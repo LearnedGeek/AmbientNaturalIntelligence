@@ -616,6 +616,16 @@ public static class PromptBuilder
         user.AppendLine($"  3. Your own interior — your bookstore day, your mood, your imagined scenes — has full latitude.");
         user.AppendLine($"     The constraint only applies to specific claims about {contact}'s external world.");
         user.AppendLine();
+
+        // Theme M slice migration (FC-005): speech-act attribution
+        // discipline. Distinct from entity discipline above — covers
+        // past-turn attribution ("you mentioned", "we talked about").
+        if (epistemicRenderer is not null)
+        {
+            user.AppendLine(epistemicRenderer.RenderReplySpeechActDisciplineSlice(contact));
+            user.AppendLine();
+        }
+
         user.Append($"Reply to {contact}'s message.");
 
         return (system, user.ToString());
@@ -759,6 +769,12 @@ public static class PromptBuilder
             sections.Add("(Something stung a little. You're still here but quieter than usual.)");
         }
 
+        // Theme M slice migration (FC-005): speech-act attribution discipline.
+        if (epistemicRenderer is not null)
+        {
+            sections.Add(epistemicRenderer.RenderReplySpeechActDisciplineSlice(contact));
+        }
+
         sections.Add($"Reply to {contact}'s message.");
 
         var user = string.Join("\n", sections);
@@ -848,6 +864,12 @@ public static class PromptBuilder
 
         if (snapshot.IsWithdrawn)
             sections.Add("(Something stung a little. You're still here but quieter than usual.)");
+
+        // Theme M slice migration (FC-005): speech-act attribution discipline.
+        if (epistemicRenderer is not null)
+        {
+            sections.Add(epistemicRenderer.RenderReplySpeechActDisciplineSlice(contact));
+        }
 
         sections.Add($"Respond to what {contact} just said.");
 

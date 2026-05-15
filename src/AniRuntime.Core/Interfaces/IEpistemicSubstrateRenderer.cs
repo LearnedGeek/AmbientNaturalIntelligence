@@ -166,4 +166,28 @@ public interface IEpistemicSubstrateRenderer
     /// claims reference his life).</param>
     /// <returns>The rendered rule text. Never empty.</returns>
     string RenderThreeAxisRuleSlice(string contactName);
+
+    /// <summary>
+    /// Render the FC-005 speech-act attribution discipline as a standalone
+    /// reply-side rule block. Tells the model: if your reply attributes a
+    /// past statement to the contact ("you mentioned X", "we talked about
+    /// Y", "you told me Z"), that statement must trace to actual
+    /// conversation history or to a record in the FACTS substrate. Don't
+    /// invent past speech acts.
+    ///
+    /// Distinct from the ENTITY discipline already in the CRITICAL block
+    /// ("if your reply names a coworker, that coworker must appear in
+    /// [FACTS]"). Entity discipline catches "your coworker Bob"; speech-act
+    /// discipline catches "you mentioned Bob yesterday" — orthogonal
+    /// failure shapes. Both must be present for FC-005 to close.
+    ///
+    /// Like <see cref="RenderThreeAxisRuleSlice(string)"/>, this method
+    /// takes no substrate input — it produces a static rule-encoding
+    /// string. Centralising avoids the N-places-drift anti-pattern
+    /// (~/.claude/ARCHITECTURE_PATTERNS.md line 478) that would arise from
+    /// inline-editing the CRITICAL block in each of the 3 reply prompts.
+    /// </summary>
+    /// <param name="contactName">The contact's display name.</param>
+    /// <returns>The rendered rule text. Never empty.</returns>
+    string RenderReplySpeechActDisciplineSlice(string contactName);
 }

@@ -197,6 +197,25 @@ public sealed class EpistemicSubstrateRenderer : IEpistemicSubstrateRenderer
             $"    • SHARED / factual / supported → ALLOW (callback case)]";
     }
 
+    /// <inheritdoc />
+    public string RenderReplySpeechActDisciplineSlice(string contactName)
+    {
+        var safeContact = SafeContact(contactName);
+
+        // FC-005 reply-side speech-act discipline. Distinct from entity
+        // discipline (covered in the CRITICAL block / Mark-asserted facts
+        // slice): this is about past-turn attribution. The model must not
+        // invent past statements attributed to {contact}.
+        return
+            $"[SPEECH-ACT ATTRIBUTION — discipline for your reply:\n" +
+            $" • if your reply uses past-turn attribution language — \"you mentioned\",\n" +
+            $"   \"we talked about\", \"you told me\", \"you said\", \"remember when you said\" —\n" +
+            $"   that statement MUST trace to actual conversation history or a [FACTS] record.\n" +
+            $" • do NOT invent past speech acts. If {safeContact} hasn't said it (in conversation\n" +
+            $"   history or [FACTS]), do not attribute it to him.\n" +
+            $" • this is source attribution: the reference must have a verifiable source.]";
+    }
+
     private static string SafeContact(string? name) =>
         string.IsNullOrWhiteSpace(name) ? "the contact" : name;
 }

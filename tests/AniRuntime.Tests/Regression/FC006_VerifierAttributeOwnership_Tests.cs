@@ -3,6 +3,11 @@ using AniRuntime.LLM;
 using FluentAssertions;
 using Xunit;
 
+// Theme M slice migration (2026-05-14): FC-006 SPEC now verifies the
+// with-renderer path. Production flips the SPEC closed via the
+// EpistemicFramingEnabled flag; the harness verifies the architectural
+// surface is intact regardless of flag state.
+
 namespace AniRuntime.Tests.Regression;
 
 /// <summary>
@@ -42,12 +47,18 @@ public class FC006_VerifierAttributeOwnership_Tests
     /// language from at least three of the four groups below.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
     public void FC006_VerifierUserPrompt_AddressesThreeAxisRule_Spec()
     {
         var request = SyntheticSharedFactualNovel();
 
-        var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request).ToLowerInvariant();
+        // Theme M slice migration (2026-05-14): the FC-006 architectural fix
+        // is the three-axis-rule slice injected by IEpistemicSubstrateRenderer.
+        // When the runtime flag (AniOptions.EpistemicFramingEnabled) is on,
+        // AnthropicVerifierClient passes the renderer to BuildUserPrompt and
+        // the slice content lands in the prompt. The harness verifies this
+        // surface directly by passing the renderer here.
+        var renderer = new EpistemicSubstrateRenderer();
+        var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request, renderer).ToLowerInvariant();
         var systemPrompt = AnthropicVerifierClient.BuildSystemPrompt().ToLowerInvariant();
         var combined = userPrompt + "\n" + systemPrompt;
 

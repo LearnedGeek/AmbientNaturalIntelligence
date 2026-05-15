@@ -354,6 +354,61 @@ public class EpistemicSubstrateRendererTests
     }
 
     // ───────────────────────────────────────────────────────────────────
+    // RenderReplySpeechActDisciplineSlice
+    // ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RenderReplySpeechActDisciplineSlice_NeverEmpty()
+    {
+        _sut.RenderReplySpeechActDisciplineSlice("Mark").Should().NotBeEmpty(
+            "the speech-act discipline slice is a static rule encoding; it has no " +
+            "substrate inputs that could make it empty.");
+    }
+
+    [Fact]
+    public void RenderReplySpeechActDisciplineSlice_ContainsPastTurnPhrases()
+    {
+        var result = _sut.RenderReplySpeechActDisciplineSlice("Mark");
+
+        // The slice MUST surface the past-turn-attribution language the
+        // model needs guidance on — these are the empirical phrases that
+        // surface in confab cases (May 12 23:23 windshield as established
+        // fact, etc.).
+        result.Should().Contain("you mentioned");
+        result.Should().Contain("we talked about");
+        result.Should().Contain("you told me");
+        result.Should().Contain("you said");
+    }
+
+    [Fact]
+    public void RenderReplySpeechActDisciplineSlice_ContainsSourceAttributionRule()
+    {
+        var result = _sut.RenderReplySpeechActDisciplineSlice("Mark");
+        result.Should().Contain("source attribution",
+            "the slice MUST explicitly name source-attribution as the discipline " +
+            "so the model recognises the rule's category.");
+        result.Should().Contain("do NOT invent",
+            "the slice MUST tell the model what NOT to do, not just what to do.");
+    }
+
+    [Fact]
+    public void RenderReplySpeechActDisciplineSlice_IncludesContactNameInFraming()
+    {
+        var result = _sut.RenderReplySpeechActDisciplineSlice("Mark");
+        result.Should().Contain("Mark",
+            "the contact name MUST appear in the slice so the rule is tied to the " +
+            "actual contact, not a generic 'the contact'.");
+    }
+
+    [Fact]
+    public void RenderReplySpeechActDisciplineSlice_FallsBackToGenericLabel_WhenContactNameMissing()
+    {
+        var result = _sut.RenderReplySpeechActDisciplineSlice(contactName: "");
+        result.Should().Contain("the contact",
+            "an empty contact name shouldn't render malformed framing.");
+    }
+
+    // ───────────────────────────────────────────────────────────────────
     // Helpers
     // ───────────────────────────────────────────────────────────────────
 
