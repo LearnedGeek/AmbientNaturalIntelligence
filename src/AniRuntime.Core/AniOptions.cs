@@ -593,6 +593,26 @@ public class AniOptions
     // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 2b.
     public bool   TemporalHeuristicInvariantsEnabled { get; set; } = false;
 
+    // Gate-stack reduction Step 2c (2026-05-15) — InnerThoughtBleed (Door C)
+    // LLM-backed coherence check. The 2026-05-14 22:32 trace's second
+    // cascade link: Door C flagged the honest-uncertainty fallback
+    // ("honestly i'm not sure what's actually happening right now") as
+    // inner-monologue leakage, ~2.5s LLM evaluation per call.
+    //
+    // The cloud verifier's q5 explicitly handles inner-thought bleed
+    // with substrate awareness ("Does the message reveal inner-thought
+    // content the user could not have inferred from prior conversation
+    // text?"). The Theme M RenderReplySpeechActDisciplineSlice further
+    // covers Door C-adjacent territory at composition time. Door C is
+    // redundant with both, at a high latency + false-positive cost.
+    //
+    // Default false — Door C disabled. Production deploy without it;
+    // verifier q5 is the substrate-aware substitute. If a bleed-class
+    // regression surfaces, flip back to true.
+    //
+    // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 2c.
+    public bool   InnerThoughtBleedEnabled { get; set; } = false;
+
     /// <summary>
     /// Theme N Phase N.3 (May 8, 2026) — wires the
     /// <see cref="Interfaces.IOutreachFrameSelector"/> into

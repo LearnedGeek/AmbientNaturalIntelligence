@@ -1,8 +1,10 @@
 using System.Text.Json;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AniRuntime.Loops.Invariants;
 
@@ -36,19 +38,40 @@ public sealed class InnerThoughtBleedInvariant : ICognitiveOutputInvariant
 {
     private readonly IOllamaClient _ollama;
     private readonly ILogger<InnerThoughtBleedInvariant> _log;
+    private readonly bool _enabled;
 
     public string Name => "inner-thought-bleed";
 
+    /// <summary>Production constructor — Step 2c flag-gated.</summary>
     public InnerThoughtBleedInvariant(
         IOllamaClient ollama,
-        ILogger<InnerThoughtBleedInvariant> log)
+        ILogger<InnerThoughtBleedInvariant> log,
+        IOptions<AniOptions> options)
     {
         _ollama = ollama;
         _log    = log;
+        _enabled = options?.Value.InnerThoughtBleedEnabled ?? false;
+    }
+
+    /// <summary>Test constructor — always enabled.</summary>
+    public InnerThoughtBleedInvariant(
+        IOllamaClient ollama,
+        ILogger<InnerThoughtBleedInvariant> log)
+        : this(ollama, log, enabled: true) { }
+
+    private InnerThoughtBleedInvariant(
+        IOllamaClient ollama,
+        ILogger<InnerThoughtBleedInvariant> log,
+        bool enabled)
+    {
+        _ollama = ollama;
+        _log    = log;
+        _enabled = enabled;
     }
 
     public bool AppliesTo(CognitiveArtifact artifact)
     {
+        if (!_enabled) return false;
         if (artifact.IntendedSink != CognitiveOutputSink.Dispatch)
             return false;
 
