@@ -554,6 +554,23 @@ public class AniOptions
     // EpistemicFramingEnabled production behavior).
     public bool   LocalThreeAxisInvariantEnabled { get; set; } = false;
 
+    // Gate-stack reduction Step 1 (2026-05-15) — R1 ClaimVerificationPhase
+    // suppression gate. The 2026-05-14 22:32 good-night SafeAck trace
+    // proved R1 was misclassifying self-world expansion as
+    // [shared-event-with-attribution] and demanding Mark-substrate that
+    // doesn't apply — killing legitimate on-canonical replies. R1 is
+    // conceptually superseded by the cloud verifier (FrontierVerifier,
+    // now three-axis-rule-aware via the Theme M slice migration).
+    //
+    // Default false — R1 is disabled. The plan is to observe production
+    // without it; if no regression surfaces, R1 stays off and may later
+    // be deleted (with the FrontierVerifier remaining the substrate-aware
+    // catch). Flip back to true if production shows R1 was earning its
+    // keep on shapes the verifier misses.
+    //
+    // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 1.
+    public bool   ClaimVerificationR1Enabled { get; set; } = false;
+
     /// <summary>
     /// Theme N Phase N.3 (May 8, 2026) — wires the
     /// <see cref="Interfaces.IOutreachFrameSelector"/> into

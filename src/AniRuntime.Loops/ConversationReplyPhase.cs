@@ -332,7 +332,14 @@ public class ConversationReplyPhase
         // Conversation-reply failure mode differs from outreach: outreach can stay
         // silent (no dispatch), but reply silence breaks the conversation flow, so a
         // bland honest fallback is dispatched in place of the fabricated reply.
-        if (!isReconsideration)
+        // Gate-stack reduction Step 1 (2026-05-15) — R1 ClaimVerificationPhase
+        // is now flag-gated (AniOptions.ClaimVerificationR1Enabled, default
+        // false). Disabled by default because R1 misclassifies self-world
+        // expansion as shared-event-with-attribution and SUPPRESSes legitimate
+        // on-canonical replies (May 14 22:32 good-night trace). The
+        // FrontierVerifier (cloud) is the three-axis-aware substrate check;
+        // R1 is the older redundant version of the same idea.
+        if (!isReconsideration && _aniOptions.ClaimVerificationR1Enabled)
         {
             var claimResult = await _claimVerifier.VerifyAsync(reply, contactName, ct).ConfigureAwait(false);
             if (!claimResult.Passed)

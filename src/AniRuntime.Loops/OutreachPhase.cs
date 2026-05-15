@@ -394,19 +394,27 @@ public class OutreachPhase
         // each against Facts tier + anchored + inbound Mark messages. On failure the
         // dispatch is suppressed; the model is never told it was wrong. See
         // ClaimVerificationPhase.cs for the full discipline.
+        //
+        // Gate-stack reduction Step 1 (2026-05-15) — R1 is now flag-gated
+        // (AniOptions.ClaimVerificationR1Enabled, default false). See the
+        // ConversationReplyPhase site for the rationale and the plan doc
+        // at docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 1.
         var cs = snapshot.CharacterState;
         var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
-        var claimResult = await _claimVerifier.VerifyAsync(rewritten, contact, ct).ConfigureAwait(false);
-        if (!claimResult.Passed)
+        if (_aniOptions.ClaimVerificationR1Enabled)
         {
-            _log.LogWarning(
-                "Claim verification: SUPPRESS outreach — {Reason}. Flagged: {Claims}",
-                claimResult.Reason,
-                string.Join(", ", claimResult.Unverified.Select(c => $"\"{c.Text}\"")));
-            await _desire.DecayDesireAsync(0.30f, "claim verification suppression", ct)
-                .ConfigureAwait(false);
-            await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-            return;
+            var claimResult = await _claimVerifier.VerifyAsync(rewritten, contact, ct).ConfigureAwait(false);
+            if (!claimResult.Passed)
+            {
+                _log.LogWarning(
+                    "Claim verification: SUPPRESS outreach — {Reason}. Flagged: {Claims}",
+                    claimResult.Reason,
+                    string.Join(", ", claimResult.Unverified.Select(c => $"\"{c.Text}\"")));
+                await _desire.DecayDesireAsync(0.30f, "claim verification suppression", ct)
+                    .ConfigureAwait(false);
+                await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+                return;
+            }
         }
 
         // Step 4: Universal output gate (J.5b/c/g — May 2, 2026).
