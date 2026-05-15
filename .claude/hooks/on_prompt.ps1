@@ -25,8 +25,25 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 
+# Force UTF-8 on stdout (Windows PowerShell defaults to UTF-16LE which
+# Claude Code's JSON parser would silently reject).
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Diagnostic logging (2026-05-15): writes a one-line timestamped entry to
+# ./hook-trace.log on every invocation. Lets us confirm from the filesystem
+# whether Claude Code is actually invoking the hook on UserPromptSubmit
+# events, what stdin shape it sends, and what stdout we emit. Remove this
+# block once we've confirmed the hook is wired correctly.
+$logPath = Join-Path $PSScriptRoot 'hook-trace.log'
+function Trace-Hook($msg) {
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'
+    Add-Content -Path $logPath -Value "[$ts] $msg" -ErrorAction SilentlyContinue
+}
+Trace-Hook "=== invoked PID=$PID ==="
+
 try {
     $raw = [Console]::In.ReadToEnd()
+    Trace-Hook "stdin bytes=$($raw.Length): $($raw.Substring(0, [Math]::Min(200, $raw.Length)))"
     if (-not $raw) { Write-Output '{}'; exit 0 }
 
     $parsed = $raw | ConvertFrom-Json
@@ -60,6 +77,7 @@ try {
     if ($recallContext)  { $parts += $recallContext }
 
     if ($parts.Count -eq 0) {
+        Trace-Hook "emit: {} (no parts)"
         Write-Output '{}'
     } else {
         $combined = $parts -join "`n`n---`n`n"
@@ -67,14 +85,17 @@ try {
         # hookSpecificOutput shape (see LearnedGeek/claude-recall#21 — flat
         # {additionalContext: ...} is silently dropped). Emit the wrapped
         # form so the injection actually lands in the agent's context.
-        @{
+        $payload = @{
             hookSpecificOutput = @{
                 hookEventName     = 'UserPromptSubmit'
                 additionalContext = $combined
             }
         } | ConvertTo-Json -Compress -Depth 4
+        Trace-Hook "emit: wrapped JSON, additionalContext_bytes=$($combined.Length)"
+        Write-Output $payload
     }
 } catch {
+    Trace-Hook "EXCEPTION: $($_.Exception.Message)"
     Write-Output '{}'
 }
 

@@ -2,13 +2,25 @@
   "hooks": {
     "SessionStart": [
       {
-        "command": "E:\\Documents\\Work\\dev\\repos\\AmbientNaturalIntelligence\\.claude\\hooks\\session_start.ps1",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "E:\\Documents\\Work\\dev\\repos\\AmbientNaturalIntelligence\\.claude\\hooks\\session_start.ps1",
+            "shell": "powershell"
+          }
+        ],
         "matcher": "startup|resume"
       }
     ],
     "UserPromptSubmit": [
       {
-        "command": "E:\\Documents\\Work\\dev\\repos\\AmbientNaturalIntelligence\\.claude\\hooks\\on_prompt.ps1"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "E:\\Documents\\Work\\dev\\repos\\AmbientNaturalIntelligence\\.claude\\hooks\\on_prompt.ps1",
+            "shell": "powershell"
+          }
+        ]
       }
     ]
   }
