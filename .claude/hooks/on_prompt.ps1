@@ -19,7 +19,9 @@
 #
 # Feature proposal upstream: claude-recall could ship native intervention
 # support so this layering pattern doesn't need to live in each project's
-# hook. See https://github.com/<TBD>/claude-recall/issues — added 2026-05-15.
+# hook. See https://github.com/LearnedGeek/claude-recall/issues/29
+# (filed 2026-05-15). When that ships, this hook's intervention-merge
+# logic can be deleted and the config flag flipped instead.
 
 $ErrorActionPreference = 'SilentlyContinue'
 
