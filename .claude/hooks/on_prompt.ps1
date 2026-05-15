@@ -1,9 +1,25 @@
 # claude-recall UserPromptSubmit hook (Windows PowerShell)
 #
-# Runs on every user prompt. Auto-queries the index and injects relevant prior-session
-# context as additionalContext when matches cross the configured threshold.
+# Two injections per turn:
+# 1. STATIC interventions from ./interventions.md (user-editable, load-bearing
+#    behavioral cues — load every turn so the agent sees them BEFORE
+#    drafting a response, not after).
+# 2. DYNAMIC prior-session recall via `claude-recall search` (semantic
+#    surface of relevant past sessions).
 #
-# Failure policy: on ANY error, emit empty JSON and exit 0. Never block user prompts.
+# Both get merged into a single `additionalContext` block and emitted as
+# JSON for Claude Code to consume.
+#
+# Failure policy: on ANY error, emit empty JSON and exit 0. Never block
+# user prompts.
+#
+# To edit interventions: change ./interventions.md — no hook restart needed.
+# To disable interventions: blank the file or delete it.
+# To disable recall:        remove the claude-recall call below.
+#
+# Feature proposal upstream: claude-recall could ship native intervention
+# support so this layering pattern doesn't need to live in each project's
+# hook. See https://github.com/<TBD>/claude-recall/issues — added 2026-05-15.
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -15,12 +31,34 @@ try {
     $prompt = $parsed.prompt
     if (-not $prompt) { Write-Output '{}'; exit 0 }
 
-    $result = & claude-recall search $prompt --days 30 --limit 3 --threshold 0.3 --agent-context 2>$null
+    # --- 1. Static interventions (always injected when file is present) ---
+    $interventionsPath = Join-Path $PSScriptRoot 'interventions.md'
+    $interventions    = $null
+    if (Test-Path $interventionsPath) {
+        $content = (Get-Content $interventionsPath -Raw)
+        if ($content) { $interventions = $content.Trim() }
+    }
 
-    if (-not $result -or $result -eq '{}') {
+    # --- 2. Dynamic prior-session recall via claude-recall ---
+    $recallJson    = & claude-recall search $prompt --days 30 --limit 3 --threshold 0.3 --agent-context 2>$null
+    $recallContext = $null
+    if ($recallJson -and $recallJson -ne '{}') {
+        try {
+            $recallParsed  = $recallJson | ConvertFrom-Json
+            $recallContext = $recallParsed.additionalContext
+        } catch { }
+    }
+
+    # --- Merge: interventions first (load-bearing), then recall (informational) ---
+    $parts = @()
+    if ($interventions)  { $parts += $interventions }
+    if ($recallContext)  { $parts += $recallContext }
+
+    if ($parts.Count -eq 0) {
         Write-Output '{}'
     } else {
-        Write-Output $result
+        $combined = $parts -join "`n`n---`n`n"
+        @{ additionalContext = $combined } | ConvertTo-Json -Compress
     }
 } catch {
     Write-Output '{}'
