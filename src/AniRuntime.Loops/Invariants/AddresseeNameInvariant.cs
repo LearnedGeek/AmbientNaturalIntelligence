@@ -76,6 +76,14 @@ public sealed class AddresseeNameInvariant : ICognitiveOutputInvariant
         "handsome", "beautiful", "gorgeous", "sweetie", "lover",
         // First-message fillers
         "stranger", "friend",
+        // Greeting-time adjuncts (Gate-stack reduction Step 2a, 2026-05-15)
+        // — the 2026-05-14 22:32 trace false-positived on "hey good night
+        // mark" by matching "hey" + "good" and treating "good" as a
+        // non-canonical addressee. These tokens are compound-greeting
+        // adjuncts, not names. "Good"/"morning"/"evening"/"night" stay
+        // off the canonical-check path so producers don't have to
+        // surface them via CanonicalAddresseeNames.
+        "good", "morning", "evening", "afternoon", "night",
     };
 
     /// <summary>

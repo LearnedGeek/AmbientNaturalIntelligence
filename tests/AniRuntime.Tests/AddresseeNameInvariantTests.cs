@@ -111,6 +111,30 @@ public class AddresseeNameInvariantTests
         result.Passed.Should().BeTrue($"\"{content}\" uses a pet-name stopword and must be skipped");
     }
 
+    // ── Greeting-time-adjunct stopwords (Step 2a, 2026-05-15) ───────────
+    // The 2026-05-14 22:32 good-night SafeAck trace false-positived on
+    // "hey good night mark" / "hey good morning mark" by matching "hey"
+    // + "good" and treating "good" as a non-canonical addressee. The
+    // stopwords list was extended to cover greeting-time adjuncts
+    // (good/morning/evening/afternoon/night) so these compound greetings
+    // pass without producers having to surface them via CanonicalAddresseeNames.
+
+    [Theory]
+    [InlineData("hey good night mark")]
+    [InlineData("hey good morning")]
+    [InlineData("hi good evening")]
+    [InlineData("hello good afternoon")]
+    [InlineData("hey night, sleep well")]
+    [InlineData("hi morning")]
+    public async Task Evaluate_GreetingTimeAdjuncts_Pass(string content)
+    {
+        var artifact = Artifact(content);
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+        result.Passed.Should().BeTrue(
+            $"\"{content}\" — greeting-time adjuncts (good/morning/evening/night) are compound " +
+            $"greetings, not addressee names. Step 2a stopwords expansion must skip these.");
+    }
+
     // ── No greeting pattern ─────────────────────────────────────────────
 
     [Theory]
