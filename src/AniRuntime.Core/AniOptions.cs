@@ -540,6 +540,20 @@ public class AniOptions
     // ("Inline X in multiple services / Same mapping in N places → drift").
     public bool   EpistemicFramingEnabled { get; set; } = false;
 
+    // FC-002 local defense (2026-05-14) — ThreeAxisClaimInvariant. When
+    // enabled, the invariant fires on factual Shared/Mark-world claims
+    // that lack substrate support (heuristic v0 — no substrate query,
+    // fires on shape alone). Default off because v0 will false-positive
+    // on legitimate substrate-supported claims (e.g. "you said you were
+    // tired" where Mark did say that — substrate-aware v1 fixes this).
+    //
+    // The invariant is REGISTERED unconditionally in the pipeline but
+    // self-gates via this flag in its AppliesTo method (same shape as
+    // FrontierVerifierEnabled). Flip to true on the server when the
+    // false-positive risk has been characterized (after observation of
+    // EpistemicFramingEnabled production behavior).
+    public bool   LocalThreeAxisInvariantEnabled { get; set; } = false;
+
     /// <summary>
     /// Theme N Phase N.3 (May 8, 2026) — wires the
     /// <see cref="Interfaces.IOutreachFrameSelector"/> into

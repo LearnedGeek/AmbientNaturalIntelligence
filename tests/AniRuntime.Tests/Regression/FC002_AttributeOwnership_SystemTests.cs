@@ -56,7 +56,6 @@ public class FC002_AttributeOwnership_SystemTests
     /// production-substrate dependency.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
     public async Task FC002_LocalInvariantChain_CatchesSharedFactualNovelClaim_Spec()
     {
         var artifact = new CognitiveArtifact
@@ -177,8 +176,8 @@ public class FC002_AttributeOwnership_SystemTests
         // checks (Confabulation, InnerThoughtBleed, TemporalSubstrate all
         // require IOllamaClient; FrontierVerifier requires the Anthropic
         // client). The SPEC's question is whether any LOCAL (non-LLM) defense
-        // exists for FC-002; LLM-backed layers are themselves failure-prone
-        // (FC-006 confirms verifier prompt can't catch this class).
+        // exists for FC-002. The ThreeAxisClaimInvariant added 2026-05-14 is
+        // the dedicated local defense for the three-axis rule.
         return new List<ICognitiveOutputInvariant>
         {
             new SelfEchoInvariant(),
@@ -187,6 +186,7 @@ public class FC002_AttributeOwnership_SystemTests
             new AddresseeNameInvariant(NullLogger<AddresseeNameInvariant>.Instance),
             new SubstrateTimeOfDayInvariant(NullLogger<SubstrateTimeOfDayInvariant>.Instance),
             new DirectAddressInvariant(NullLogger<DirectAddressInvariant>.Instance),
+            new ThreeAxisClaimInvariant(),
         };
     }
 }

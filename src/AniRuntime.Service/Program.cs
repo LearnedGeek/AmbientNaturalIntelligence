@@ -183,6 +183,14 @@ try
         // Theme M / coreference (May 6, 2026) — direct-address invariant.
         // Replaces the prior LLM-based pronoun-fix in OutreachPhase.
         .UsePostInvariant<DirectAddressInvariant>()
+        // FC-002 local defense (2026-05-14) — ThreeAxisClaimInvariant.
+        // Defense-in-depth against Shared/Mark-world factual-novel claims
+        // (windshield / kitchen-lights / hoodie class) that escape the
+        // composition framing slices. Self-gates via
+        // AniOptions.LocalThreeAxisInvariantEnabled (default off) — flip
+        // after substrate-aware v1 lands to avoid false-positives on
+        // legitimate substrate-supported claims.
+        .UsePostInvariant<ThreeAxisClaimInvariant>()
         // Theme P Phase P.1 (May 11, 2026) — cross-class cloud verifier as
         // ADDITIONAL post-stage handler (plan-doc §9.1 additive framing).
         // All local invariants above continue to fire unchanged; the cloud

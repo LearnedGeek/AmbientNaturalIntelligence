@@ -72,7 +72,6 @@ public class FC003_SelfEchoThreadContinuation_Tests
     /// full-content parrot. This is the failure.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
     public async Task FC003a_OpenerRepetition_InActiveThread_ShouldNotShortCircuit()
     {
         var priorAniMessages = new[]

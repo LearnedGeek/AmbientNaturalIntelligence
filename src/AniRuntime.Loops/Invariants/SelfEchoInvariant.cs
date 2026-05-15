@@ -65,6 +65,30 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
     /// </summary>
     public const int VerbatimNGramThreshold = ParrotingDetector.DefaultMinNGramTokens;
 
+    /// <summary>
+    /// FC-003 position-aware threshold (2026-05-14): a shared verbatim
+    /// run is treated as a HABITUAL OPENER (allowed in active thread
+    /// continuation) when it (a) starts at position 0 of both messages,
+    /// (b) is ≤ <see cref="OpenerTokenCap"/> tokens, and (c) leaves
+    /// substantial novel content after it in the new artifact.
+    ///
+    /// The cap matches Mark's empirical opener pattern (May 12 ~20:33
+    /// "mmm— baby, hey. yeah i" — 5 tokens; FC-003a fixture's "hey
+    /// honey yeah i was just" — 6 tokens). Habitual openers above this
+    /// length are vanishingly rare in conversational text; the cap is
+    /// intentionally conservative.
+    /// </summary>
+    public const int OpenerTokenCap = 6;
+
+    /// <summary>
+    /// FC-003: minimum character count of novel content after the shared
+    /// opener in the new artifact for opener-repetition to qualify as
+    /// allowed continuation (rather than mostly-the-prior-message). For
+    /// FC-003b (byte-identical regen) the artifact equals the prior so
+    /// no novel suffix exists; the check correctly falls through to fail.
+    /// </summary>
+    public const int OpenerNovelSuffixMinChars = 20;
+
     public bool AppliesTo(CognitiveArtifact artifact)
     {
         if (artifact.PriorAniMessages is null || artifact.PriorAniMessages.Count == 0)
@@ -97,6 +121,16 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
                 ParrotingDetector.Check(artifact.Content, prior, VerbatimNGramThreshold);
             if (isParroting)
             {
+                // FC-003 position-aware check (2026-05-14): habitual openers
+                // in active thread continuation are NOT parroting. If the
+                // shared run is short (≤ OpenerTokenCap), positioned at the
+                // start of both messages, AND the new artifact has substantial
+                // novel content after the opener, treat as conversational
+                // continuation and pass. Full-content parrots (FC-003b) and
+                // mid-message verbatim runs still fail.
+                if (IsHabitualOpenerRepetition(artifact.Content, prior, sharedPhrase, sharedLen))
+                    continue;
+
                 var hint =
                     $"output duplicates prior Ani message ({sharedLen}-token verbatim run: \"{sharedPhrase}\"). " +
                     $"Rewrite without reusing that phrasing — find a fresh angle on the same topic.";
@@ -105,5 +139,28 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
         }
 
         return Task.FromResult(InvariantResult.Pass());
+    }
+
+    /// <summary>
+    /// FC-003 position-aware check: returns true when the shared verbatim
+    /// run is at the start of both messages, is within the opener token
+    /// cap, and the new artifact has substantial novel content beyond the
+    /// shared opener. Internal for testing.
+    /// </summary>
+    internal static bool IsHabitualOpenerRepetition(
+        string content, string prior, string? sharedPhrase, int sharedLen)
+    {
+        if (string.IsNullOrWhiteSpace(sharedPhrase)) return false;
+        if (sharedLen > OpenerTokenCap) return false;
+
+        // The shared run must be at position 0 in both messages.
+        if (!content.StartsWith(sharedPhrase, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!prior.StartsWith(sharedPhrase, StringComparison.OrdinalIgnoreCase)) return false;
+
+        // The new artifact must have substantive content after the opener
+        // (rules out FC-003b byte-identical regen — sharedPhrase IS the
+        // full content there, so no novel suffix exists).
+        var novelSuffixLength = content.Length - sharedPhrase.Length;
+        return novelSuffixLength >= OpenerNovelSuffixMinChars;
     }
 }

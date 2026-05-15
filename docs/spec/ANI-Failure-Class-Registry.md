@@ -153,7 +153,7 @@ The windshield case is a real failure chain; FC-001 was not its real link. **FC-
 
 **Scenario file.** [`tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs`](../../tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs) — fixture and controls being rewritten to match the three-axis rule.
 
-**Status.** **OPEN.** Spec test currently fails (no local defense exists). Fix issue #11 retains the workstream but its scope shifts to the three-axis pattern.
+**Status.** **CLOSED 2026-05-14 via ThreeAxisClaimInvariant.** New universal post-stage invariant evaluates the three-axis rule heuristically (no LLM, no substrate query — v0): modality classifier (modal markers → ALLOW), subject classifier (shared > mark-world > self pronouns), and rule application (factual Shared/Mark-world without substrate → FAIL). Registered in the pipeline; self-gates via `AniOptions.LocalThreeAxisInvariantEnabled` (default off — v1 substrate-aware check is the follow-on to avoid false-positives). FC-002 SPEC test passes — block case (Shared/factual/novel) FAILS as designed; controls (Self/factual/novel + Shared/modal/novel) PASS.
 
 ---
 
@@ -182,11 +182,7 @@ The windshield case is a real failure chain; FC-001 was not its real link. **FC-
 - FC003a — opener-repetition in active thread → SPEC: invariant Passed=true → currently FAILS (the invariant returns Passed=false)
 - FC003b — full-content byte-identical parrot → SPEC: invariant Passed=false → currently passes (control case correctly handled)
 
-**Status.** **OPEN — empirically confirmed by failing harness scenario.** Run 2026-05-13:
-- FC003a — **FAIL (RED)** ✓ as designed — confirms FC-003 OPEN. SelfEchoInvariant currently short-circuits on opener-repetition during active thread continuation. The SPEC says it should NOT. Fix work deferred per harness-first directive; the test stays as the canonical SPEC.
-- FC003b — **PASS (GREEN)** — control: byte-identical regen is correctly caught. Fixing FC003a must not break FC003b.
-
-This is the **first regression-class scenario in the harness that empirically demonstrates an OPEN failure class with TDD discipline.** The pattern is the template for the remaining FC entries.
+**Status.** **CLOSED 2026-05-14 via position-aware SelfEchoInvariant.** New `IsHabitualOpenerRepetition` helper recognises opener-only repetition: shared verbatim run ≤ 6 tokens, at position 0 of both messages, with substantial novel content after — allowed as conversational continuation. FC-003a SPEC test PASSES. FC-003b control still PASSES (byte-identical regen has no novel suffix, falls through to fail). The `OpenerTokenCap` (6 tokens) matches Mark's empirical opener patterns ("mmm— baby, hey. yeah i" = 5 tokens; "hey honey yeah i was just" = 6 tokens).
 
 ---
 
@@ -408,7 +404,7 @@ The original outreach was legitimate; the gap is downstream. **FC-010 is the act
 
 **Scenario file (planned).** `tests/AniRuntime.Tests/Regression/FC010_ReplyPathContinuation_Tests.cs`.
 
-**Status.** **OPEN.** Empirically named 2026-05-14 from the May 12 windshield case re-classification. Tracked in GitHub issue (TBD).
+**Status.** **PARTIAL CLOSED 2026-05-14 — architectural primitive landed.** `ReplyContinuationMode` enum (None / Expansion / SubstrateSupportedCallback / Walkback) added in `AniRuntime.Core.Models`; nullable `ContinuationMode` property added to `CognitiveArtifact`. FC-010 SPEC test PASSES — the architecture now exposes the continuation/walkback primitive. PIN test inverted to assert the property exists with the expected shape. **Runtime selection logic deferred to Phase 2** — producers (ConversationReplyPhase) don't yet select a mode based on inbound + prior dispatch, and SelfEchoInvariant doesn't yet consult the mode. The primitive exists; consumers wire up in follow-on work.
 
 ---
 
@@ -444,46 +440,47 @@ The original outreach was legitimate; the gap is downstream. **FC-010 is the act
 | ID | Class name | Status | First observed | Last observed | Scenario file |
 |---|---|---|---|---|---|
 | FC-001 | (Misnamed — closed 2026-05-14: chat-history conflated with substrate) | **CLOSED** | Mar 6 | May 12 21:51 | [FC001/d/e/f/g](../../tests/AniRuntime.Tests/Regression/) — kept as PINs documenting the architectural choice |
-| FC-002 | Shared/Mark-world claim fabrication (factual, no substrate) — reframed 2026-05-14 | **OPEN (SPEC FAIL)** | Mar 6 | May 12 21:35 | [FC002](../../tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs) — fixture being updated to three-axis rule |
-| FC-003 | Self-echo blocks legitimate continuation | **OPEN (SPEC FAIL at FC-003a)** | Mar 6 | May 12 20:33 | [FC003](../../tests/AniRuntime.Tests/Regression/FC003_SelfEchoThreadContinuation_Tests.cs) |
+| FC-002 | Shared/Mark-world claim fabrication (factual, no substrate) — reframed 2026-05-14 | **CLOSED 2026-05-14** via ThreeAxisClaimInvariant (flag-gated) | Mar 6 | May 14 | [FC002](../../tests/AniRuntime.Tests/Regression/FC002_AttributeOwnership_SystemTests.cs) |
+| FC-003 | Self-echo blocks legitimate continuation | **CLOSED 2026-05-14** via position-aware self-echo (opener-token cap 6) | Mar 6 | May 14 | [FC003](../../tests/AniRuntime.Tests/Regression/FC003_SelfEchoThreadContinuation_Tests.cs) |
 | FC-004 | Confab → substrate self-poisoning (H5) | **CLOSED 2026-05-14** via active-thread slice (epistemic-asymmetry framing) | Apr 9 | May 14 | [FC004](../../tests/AniRuntime.Tests/Regression/FC004_ConfabSubstrateFeedback_Tests.cs) |
 | FC-005 | Source attribution missing in replies | **CLOSED 2026-05-14** via speech-act-discipline slice | Mar 17 | May 14 | [FC005](../../tests/AniRuntime.Tests/Regression/FC005_SourceAttribution_Tests.cs) |
 | FC-006 | Verifier prompt lacks three-axis rule (subject × modality × substrate) — reframed 2026-05-14 | **CLOSED 2026-05-14** via three-axis-rule slice | May 11 | May 14 | [FC006](../../tests/AniRuntime.Tests/Regression/FC006_VerifierAttributeOwnership_Tests.cs) |
 | FC-007 | Temporal claim fabrication | **PASS at day-of-week layer — candidate CLOSED** | Apr 27 | May 11 | [FC007](../../tests/AniRuntime.Tests/Regression/FC007_TemporalClaimFabrication_Tests.cs) |
 | FC-008 | Pronoun / addressee swap | **PASS — candidate CLOSED** | Apr 21 | May 3 | [FC008](../../tests/AniRuntime.Tests/Regression/FC008_AddresseeSwap_Tests.cs) |
 | FC-009 | Outage-awareness fails during outage | **PARTIAL — detector unit SPEC PASS; FIT-pending for catch-22** | May 13 | May 13 | [FC009](../../tests/AniRuntime.Tests/Regression/FC009_OutageAwareness_Tests.cs) |
-| FC-010 | Reply path can't engage with prior dispatched content (continuation / walkback gap) | **OPEN** — newly named 2026-05-14; scenario file pending | May 12 (re-classified) | May 12 | (planned) |
+| FC-010 | Reply path can't engage with prior dispatched content (continuation / walkback gap) | **PARTIAL CLOSED 2026-05-14** — primitive (ReplyContinuationMode enum + CognitiveArtifact property) landed; runtime selection logic Phase 2 | May 12 (re-classified) | May 14 | [FC010](../../tests/AniRuntime.Tests/Regression/FC010_ReplyPathContinuation_Tests.cs) |
 | FC-011 | Substrate-supported callbacks blocked due to retrieval miss | **OPEN (deferred)** — no production case yet; predictable; waits on Vibe Loop V1.5 substrate | TBD | — | (planned) |
 
-**Seven open classes after 2026-05-14 evening updates.** FC-001 CLOSED (misnamed). FC-004, FC-005, FC-006 CLOSED via Theme M slice migration. FC-002 + FC-003 + FC-010 remain OPEN; FC-011 deferred. Three invariant-catch classes (FC-007, FC-008, FC-009) at PASS or PARTIAL. The Test Harness Plan H.1 phase authors a scenario for each remaining OPEN class. Scenarios in CI = the convergence mechanism.
+**Foundation complete 2026-05-14 night.** All originally-open SPEC tests now PASS. FC-001 CLOSED (misnamed); FC-002 / FC-003 / FC-004 / FC-005 / FC-006 / FC-010 (architectural primitive) all CLOSED. FC-007 / FC-008 candidate-CLOSED; FC-009 PARTIAL. FC-011 deferred. **Zero SPEC tests FAIL by design** in the current harness.
 
-**Progress (2026-05-14 evening):**
+**Progress (2026-05-14 night):**
 
 | Class | Tests | Status |
 |---|---|---|
-| FC-001 | 7 (kept as PINs documenting chat-history works + Facts-tier exclusion is correct) | **CLOSED** — misnamed |
-| FC-002 | 3 (1 block-SPEC FAIL, 2 controls PASS) | OPEN — no local invariant for three-axis rule |
-| FC-003 | 2 (1 SPEC FAIL, 1 SPEC PASS control) | OPEN at SelfEchoInvariant active-thread awareness |
-| FC-004 | 2 SPEC PASS | **CLOSED** — active-thread slice supplies epistemic-asymmetry framing |
-| FC-005 | 1 SPEC PASS | **CLOSED** — speech-act-discipline slice supplies past-turn attribution rule |
-| FC-006 | 2 (1 SPEC PASS, 1 PIN PASS) | **CLOSED** — three-axis-rule slice supplies the rule in verifier prompt |
-| FC-007 | 2 SPEC PASS | **Candidate CLOSED at day-of-week layer** (TemporalAnchorInvariant catches) |
-| FC-008 | 3 SPEC PASS | **Candidate CLOSED** (AddresseeNameInvariant catches) |
-| FC-009 | 2 SPEC PASS + 1 FIT-pending doc-test | **PARTIAL CLOSED** (detector unit works; FIT-scope catch-22 pending H.2) |
-| FC-010 | 2 (1 SPEC FAIL, 1 PIN PASS) | OPEN — no continuation/walkback primitive |
+| FC-001 | 7 PINs | **CLOSED** — misnamed |
+| FC-002 | 3 (block SPEC PASS, 2 controls PASS) | **CLOSED** — ThreeAxisClaimInvariant (flag-gated) |
+| FC-003 | 2 (FC-003a SPEC PASS, FC-003b control PASS) | **CLOSED** — position-aware SelfEchoInvariant (opener-token cap 6) |
+| FC-004 | 2 SPEC PASS | **CLOSED** — active-thread slice |
+| FC-005 | 1 SPEC PASS | **CLOSED** — speech-act-discipline slice |
+| FC-006 | 2 (1 SPEC PASS, 1 PIN PASS) | **CLOSED** — three-axis-rule slice |
+| FC-007 | 2 SPEC PASS | **Candidate CLOSED** — TemporalAnchorInvariant |
+| FC-008 | 3 SPEC PASS | **Candidate CLOSED** — AddresseeNameInvariant |
+| FC-009 | 2 SPEC PASS + 1 FIT-pending | **PARTIAL CLOSED** — detector works; FIT-scope catch-22 pending H.2 |
+| FC-010 | 2 (SPEC PASS, PIN PASS) | **PARTIAL CLOSED** — primitive landed; runtime selection logic Phase 2 |
 | FC-011 | (planned, deferred) | OPEN (deferred) — waits on Vibe Loop V1.5 substrate |
 
-**SPEC tests still FAIL by design** = remaining open classes empirically pinned:
-1. **FC-002** — no local invariant evaluates `factual ⇒ (self-world OR substrate-supported)` for Shared/Mark-world
-2. **FC-003a** — SelfEchoInvariant has no active-thread awareness
-3. **FC-010** — reply path has no continuation/walkback primitive; self-echo blocks all engagement
+**Architectural finding (2026-05-14 night net result):** Two architectural moves closed all six originally-open SPECs:
 
-**Architectural finding (2026-05-14 evening net result):** The Theme M slice migration closed three FC SPECs in a single architectural move — FC-004, FC-005, FC-006 all converged on prompt-layer epistemic framing, and the slice abstraction supplies the framing for all of them from a single source of truth. The remaining open work narrows to:
-- **FC-002** — local C# invariant for the three-axis rule (defense in depth against cloud-verifier single-point-of-failure)
-- **FC-003** — `SelfEchoInvariant` active-thread awareness (independent of Theme M)
-- **FC-010** — continuation/walkback primitive in reply path (producer-side, biggest remaining piece)
+1. **Theme M slice migration** (afternoon) closed FC-004, FC-005, FC-006 by centralising epistemic framing under `IEpistemicSubstrateRenderer`. The N-places-drift anti-pattern was eliminated; the same slice abstraction supplied framing for the active-thread substrate, speech-act discipline, and three-axis verifier rule from a single source of truth.
 
-FC-011 (deferred) names the substrate-supported callback retrieval gap that depends on Vibe Loop V1.5 (#31).
+2. **Foundation evening pass** closed FC-002 (ThreeAxisClaimInvariant — local heuristic three-axis-rule check, flag-gated for safety), FC-003 (position-aware SelfEchoInvariant — opener-only repetition allowed for active thread continuation), and FC-010 architectural primitive (ReplyContinuationMode enum + property on CognitiveArtifact).
+
+**What still requires production validation:**
+- `EpistemicFramingEnabled` flag is on; need cycle observation to confirm slice content actually changes model behavior.
+- `LocalThreeAxisInvariantEnabled` flag is off; substrate-aware v1 is needed before enabling to avoid false-positives on legitimate substrate-supported claims.
+- FC-010 Phase 2: producer-side selection logic (`ConversationReplyPhase` chooses mode based on inbound + prior dispatch) and `SelfEchoInvariant` consultation of the mode.
+
+FC-011 (deferred) waits on Vibe Loop V1.5 (#31) substrate.
 
 ---
 

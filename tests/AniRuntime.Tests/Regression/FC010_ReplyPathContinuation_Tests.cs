@@ -57,7 +57,6 @@ public class FC010_ReplyPathContinuation_Tests
     /// property name conventions any acceptable fix would use.
     /// </summary>
     [Fact]
-    [Trait("Category", "RegressionOpen")]
     public void FC010_ContinuationPrimitive_ExistsInArchitecture_Spec()
     {
         var aniAssemblies = AppDomain.CurrentDomain
@@ -147,37 +146,39 @@ public class FC010_ReplyPathContinuation_Tests
     }
 
     /// <summary>
-    /// FC-010 — companion: documents that CognitiveArtifact today has no
-    /// engagement-mode metadata. When the FC-010 fix lands and adds such a
-    /// property (or a sibling type carrying it), this companion test will
-    /// fail intentionally — that failure means the primitive exists and the
-    /// test needs updating to assert the specific shape.
+    /// FC-010 — companion PIN (inverted 2026-05-14 when the FC-010 primitive
+    /// landed): documents that CognitiveArtifact NOW carries a
+    /// <see cref="ReplyContinuationMode"/> nullable property. The original
+    /// pin asserted no such property existed; with the architectural fix
+    /// shipped, the pin asserts the specific shape so future refactors
+    /// can't silently drop or rename it.
     /// </summary>
     [Fact]
-    public void FC010_CognitiveArtifact_HasNoEngagementModeMetadata_Pin()
+    public void FC010_CognitiveArtifact_CarriesContinuationModeProperty_Pin()
     {
-        var properties = typeof(CognitiveArtifact)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Select(p => p.Name)
-            .ToList();
+        var prop = typeof(CognitiveArtifact)
+            .GetProperty("ContinuationMode", BindingFlags.Public | BindingFlags.Instance);
 
-        var continuationPropertyNames = new[]
-        {
-            "ContinuationMode", "ContinuationStrategy",
-            "EngagementMode", "ReplyEngagementMode",
-            "WalkbackMode", "WalkbackStrategy",
-            "ReplyStrategy",
-        };
-        var continuationLike = properties
-            .Where(n => continuationPropertyNames.Any(name =>
-                string.Equals(n, name, StringComparison.Ordinal)))
-            .ToList();
+        prop.Should().NotBeNull(
+            "PIN: CognitiveArtifact MUST carry the FC-010 continuation-mode " +
+            "primitive. If this pin fails, the property was renamed or removed " +
+            "— that's a conversation, not a bug fix.");
 
-        continuationLike.Should().BeEmpty(
-            "PIN: today CognitiveArtifact has no continuation/walkback/engagement-mode " +
-            "property. When the FC-010 fix adds one, this pin will fail intentionally, " +
-            "indicating the primitive landed. Update this pin to assert the specific " +
-            "shape when that happens. Current declared properties: " +
-            string.Join(", ", properties));
+        prop!.PropertyType.Should().Be(typeof(ReplyContinuationMode?),
+            "PIN: the property MUST be nullable ReplyContinuationMode so " +
+            "producers can opt-in by setting it; null = standard reply path.");
+
+        // Verify init-only setter — the modreq token IsExternalInit on the
+        // setter's return-type modifiers marks the property as init-only
+        // in C# 9+. (CanWrite returns true for init-only properties from
+        // reflection's POV; the init/set distinction is at the language
+        // layer, so we check the IL-level marker directly.)
+        var setter = prop.GetSetMethod();
+        setter.Should().NotBeNull("init-only properties still expose a set method via reflection");
+        var isInitOnly = setter!.ReturnParameter.GetRequiredCustomModifiers()
+            .Any(t => t.FullName == "System.Runtime.CompilerServices.IsExternalInit");
+        isInitOnly.Should().BeTrue(
+            "PIN: CognitiveArtifact properties are init-only; ContinuationMode " +
+            "follows the same convention. Verifies immutability after construction.");
     }
 }

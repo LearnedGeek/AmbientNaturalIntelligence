@@ -100,6 +100,23 @@ public sealed class CognitiveArtifact
     /// selector does not apply to).
     /// </summary>
     public OutreachFrame? Frame { get; init; }
+
+    /// <summary>
+    /// FC-010 architectural primitive (2026-05-14) — the engagement mode
+    /// the reply path is using when responding to a follow-up about prior
+    /// dispatched content. See <see cref="ReplyContinuationMode"/> for the
+    /// engagement paths.
+    ///
+    /// Null (default) = not a continuation reply; standard invariant
+    /// strictness applies. Non-null = the producer selected an engagement
+    /// mode; invariants that respect the mode (notably
+    /// <c>SelfEchoInvariant</c>) may relax their checks.
+    ///
+    /// **Status.** The property exists; producer-side selection logic is
+    /// the next FC-010 phase. Until producers set the property, it stays
+    /// null and runtime behavior is identical to pre-FC-010.
+    /// </summary>
+    public ReplyContinuationMode? ContinuationMode { get; init; }
 }
 
 /// <summary>
