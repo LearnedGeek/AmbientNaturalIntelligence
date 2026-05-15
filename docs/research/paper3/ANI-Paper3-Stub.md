@@ -213,6 +213,27 @@ The diagnostic is a *frame*, not just a list. Each factor is necessary but not s
 
 ---
 
+### Methodology Meta-Note: Structural Channel Injection as Scale-Invariant Fix (May 15, 2026)
+
+*Captured at Mark's request because the recursion was "slightly humorous" — and on the merits because it ties the empirical contributions together with a single architectural moral.*
+
+**The observation.** On 2026-05-15, the same architectural fix was applied to two different agents at two different scales of design within the same working session:
+
+- **Scale 1 (the deployed companion).** ANI's outreach composition was emitting v7 training artifacts — message PLUS meta-commentary PLUS alternative versions PLUS self-justification — all dispatched to Mark's phone via SMS. The free-text composition channel offered no structural way to separate "the message" from "the model's thinking about the message." Fix: migrate `BuildOutreachMessagePrompt` to JSON output (`message` field dispatched, `notes` field logged but not dispatched). Channel separation at the source. Commit [`3f25d66`](https://github.com/LearnedGeek/AmbientNaturalIntelligence/commit/3f25d66).
+- **Scale 2 (the agent building ANI).** The Claude Code instance pairing with Mark on the architectural reduction kept defaulting to gate-shaped fixes despite passive memory files explicitly naming "trust the model, don't add gates" as the recurring trap. Pattern recognition was happening BEFORE memory recall; the wrong-shape response was drafted before the corrective memory was consulted. Fix: extend the project's UserPromptSubmit hook to inject a small `interventions.md` sheet into the agent's `additionalContext` on every turn — structurally present BEFORE drafting, not after. Commit [`5f16457`](https://github.com/LearnedGeek/AmbientNaturalIntelligence/commit/5f16457). Filed upstream as [`LearnedGeek/claude-recall#29`](https://github.com/LearnedGeek/claude-recall/issues/29) for native support.
+
+**The unifying claim.** Both fixes implement the same architectural pattern: **structural channel separation at the source eliminates an entire class of downstream filtering.** At Scale 1, channel separation = JSON-with-named-fields output; pattern detection and LLM-based output gates become unnecessary because the model's commentary already has a dedicated non-dispatched channel. At Scale 2, channel separation = hook-injected intervention block; memory-based behavioral recall becomes unnecessary because the corrective questions are already in context.
+
+**Why this is non-trivial.** The same architectural insight surfaced four times across the project at single-system scope (Mar 22 prompt simplification, Apr 28 obsolete-gate removal, May 3–4 substrate purge / Theme L "Trust-the-Model Reckoning," May 14 gate-stack reduction). Each time the lesson held within ANI. May 15 is the first instance of the pattern applied to both the agent's runtime AND the agent's tooling within the same session, with empirical confirmation at both scales. The architectural moral generalizes within the project's design space — at least at these two levels of recursion.
+
+**Connection to the unifying principle (April 13).** The April 13 "Architecture Over Training for Epistemic Humility" entry stated the principle for ANI: epistemic humility is an architectural property, not a training outcome. May 15 surfaces the structural analogue for the agent building ANI: behavioral discipline against recurring traps is a structural property of the agent's prompt-injection surface, not a property of the agent's stored memory. Both claims share the form: *path of least resistance is determined by the channel structure, not by the content stored elsewhere.* The April principle says: close the path by which confident falsity can be asserted; the May 15 note extends it: close the path by which gate-shaped fixes can be drafted before the corrective memory is consulted.
+
+**Where this lives in the paper.** Possibly a closing-section unifier rather than a discrete numbered contribution. The discrete contributions (#1–#7) each name a specific architectural axis; the structural-channel-injection observation is the architectural moral that runs through all of them. It is also a *methodology* claim — the same fix-shape worked at two scales of agent design, suggesting that compositional-AI design problems may share a small set of cross-scale architectural patterns that the paper could name explicitly. A short Section 6 or 7 essay titled something like *"Channel Structure as a Cross-Scale Architectural Pattern"* is the natural home.
+
+**Mark's framing of why this is in the log.** *"add this as a 'meta' note to the research log/paper as I find it slightly humorous (sorry for the chuckles)."* The humor is real; so is the architectural finding underneath it. Both belong in the record.
+
+---
+
 ## Unifying Principle: Architecture Over Training for Epistemic Humility (April 13, 2026)
 
 *Captured from a 3 a.m. kitchen-table reflection that crystallized the principle underlying all three contributions above.*
