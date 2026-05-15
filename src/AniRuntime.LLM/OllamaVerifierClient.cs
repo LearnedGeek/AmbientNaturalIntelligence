@@ -85,8 +85,31 @@ public sealed class OllamaVerifierClient : IFrontierVerifierClient
             : _aniOptions.LocalVerifierModelTag;
 
         _log.LogDebug(
-            "OllamaVerifierClient: dispatching verification (model={Model}, composed_chars={Chars})",
-            model, request.ComposedMessage?.Length ?? 0);
+            "OllamaVerifierClient: dispatching verification (model={Model}, composed_chars={Chars}, " +
+            "mark_substrate_chars={MarkChars}, canonical_substrate_chars={CanonicalChars})",
+            model,
+            request.ComposedMessage?.Length ?? 0,
+            request.MarkAssertedSubstrate?.Length ?? 0,
+            request.CanonicalSubstrate?.Length ?? 0);
+
+        // Data-provision audit (2026-05-15): the 14:47 SafeAck remediated on
+        // q5 with "user-asserted substrate is empty" reasoning. The retrieval
+        // log at the same timestamp showed 11 caregiver records + 211 anchored
+        // in the composition pool, but the verifier does its OWN post-hoc
+        // retrieval at cosine ≥ MinCosineThresholdVerifier (default 0.75)
+        // against the composed reply text, which for self-world content
+        // ("shelving romance novels, brain needed the fluff") finds nothing
+        // semantically similar in Mark-asserted substrate. Logging both
+        // substrate previews so the next trace shows the empirical content
+        // of each field — confirms whether CanonicalSubstrate carries the
+        // bookstore-world anchored seeds (which it should, after P.3.1) or
+        // is also empty.
+        _log.LogDebug(
+            "OllamaVerifierClient: mark_substrate_preview={MarkPreview}",
+            Truncate(request.MarkAssertedSubstrate ?? "(null)", 300));
+        _log.LogDebug(
+            "OllamaVerifierClient: canonical_substrate_preview={CanonicalPreview}",
+            Truncate(request.CanonicalSubstrate ?? "(null)", 300));
 
         var system = AnthropicVerifierClient.BuildSystemPrompt();
         var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
