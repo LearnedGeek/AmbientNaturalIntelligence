@@ -571,6 +571,28 @@ public class AniOptions
     // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 1.
     public bool   ClaimVerificationR1Enabled { get; set; } = false;
 
+    // Gate-stack reduction Step 2b (2026-05-15) — three regex+clock-based
+    // temporal invariants (TemporalAnchor, StateNow, SubstrateTimeOfDay)
+    // are redundant with the cloud verifier's q4 temporal-contradiction
+    // check. All three are pure heuristic (no LLM, no substrate); they
+    // catch shapes the verifier now also catches with substrate
+    // awareness and the three-axis rule context.
+    //
+    // The substrate-aware TemporalSubstrateInvariant (sub-claim 1) is
+    // kept as the single remaining temporal local gate — different
+    // shape, queries closed-conversation gists with semantic search,
+    // not redundant with the verifier.
+    //
+    // Default false — three heuristic temporal invariants disabled.
+    // Production deploy without them; if a temporal-class regression
+    // surfaces that the verifier misses, flip back to true.
+    //
+    // Per AddresseeName precedent (Step 2a), the relevant invariants
+    // self-gate via AppliesTo() rather than skipping at registration.
+    //
+    // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 2b.
+    public bool   TemporalHeuristicInvariantsEnabled { get; set; } = false;
+
     /// <summary>
     /// Theme N Phase N.3 (May 8, 2026) — wires the
     /// <see cref="Interfaces.IOutreachFrameSelector"/> into

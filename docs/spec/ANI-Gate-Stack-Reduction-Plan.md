@@ -132,7 +132,7 @@ Each time the principle was: trust the model when substrate is correct. This pla
 |---|---|---|---|
 | 2026-05-15 | Plan drafted | DONE | Triggered by 22:32 SafeAck trace |
 | 2026-05-15 | Step 1 — R1 disable | DONE (ccede4b) | flag-gated, default off |
-| 2026-05-15 | Step 2a — Greeting relaxation | IN PROGRESS | "good/morning/evening/night" added to stopwords |
-| TBD | Step 2b — Temporal consolidation | PENDING | |
+| 2026-05-15 | Step 2a — Greeting relaxation | DONE (6f9f1ab) | "good/morning/evening/night" added to stopwords |
+| 2026-05-15 | Step 2b — Temporal consolidation | IN PROGRESS | 3 clock-based gates flag-off (TemporalHeuristicInvariantsEnabled); TemporalSubstrate stays |
 | TBD | Step 2c — Door C re-evaluation | PENDING | Conditional on prior steps |
 | TBD | Step 3 — Verifier swap to Qwen 14B | PENDING | |

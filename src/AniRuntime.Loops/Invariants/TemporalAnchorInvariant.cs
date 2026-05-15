@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AniRuntime.Loops.Invariants;
 
@@ -40,16 +42,38 @@ namespace AniRuntime.Loops.Invariants;
 public sealed class TemporalAnchorInvariant : ICognitiveOutputInvariant
 {
     private readonly ILogger<TemporalAnchorInvariant> _log;
+    private readonly bool _enabled;
 
     public string Name => "temporal-anchor";
 
-    public TemporalAnchorInvariant(ILogger<TemporalAnchorInvariant> log)
+    /// <summary>
+    /// Production constructor — reads <see cref="AniOptions.TemporalHeuristicInvariantsEnabled"/>
+    /// via DI. When the flag is off (default per Step 2b), this invariant
+    /// is no-op in the pipeline; the cloud verifier's q4 check handles
+    /// temporal contradictions with substrate awareness.
+    /// </summary>
+    public TemporalAnchorInvariant(ILogger<TemporalAnchorInvariant> log, IOptions<AniOptions> options)
     {
         _log = log;
+        _enabled = options?.Value.TemporalHeuristicInvariantsEnabled ?? false;
+    }
+
+    /// <summary>
+    /// Test constructor — invariant is always enabled. Used by existing
+    /// SPEC + unit tests that exercise the invariant directly.
+    /// </summary>
+    public TemporalAnchorInvariant(ILogger<TemporalAnchorInvariant> log) : this(log, enabled: true) { }
+
+    private TemporalAnchorInvariant(ILogger<TemporalAnchorInvariant> log, bool enabled)
+    {
+        _log = log;
+        _enabled = enabled;
     }
 
     public bool AppliesTo(CognitiveArtifact artifact)
     {
+        // Step 2b flag-gating — no-op when disabled (default).
+        if (!_enabled) return false;
         if (artifact.IntendedSink != CognitiveOutputSink.Dispatch)
             return false;
 

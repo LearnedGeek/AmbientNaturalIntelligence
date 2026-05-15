@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AniRuntime.Loops.Invariants;
 
@@ -60,16 +62,29 @@ namespace AniRuntime.Loops.Invariants;
 public sealed class SubstrateTimeOfDayInvariant : ICognitiveOutputInvariant
 {
     private readonly ILogger<SubstrateTimeOfDayInvariant> _log;
+    private readonly bool _enabled;
 
     public string Name => "substrate-time-of-day";
 
-    public SubstrateTimeOfDayInvariant(ILogger<SubstrateTimeOfDayInvariant> log)
+    /// <summary>Production constructor — Step 2b flag-gated.</summary>
+    public SubstrateTimeOfDayInvariant(ILogger<SubstrateTimeOfDayInvariant> log, IOptions<AniOptions> options)
     {
         _log = log;
+        _enabled = options?.Value.TemporalHeuristicInvariantsEnabled ?? false;
+    }
+
+    /// <summary>Test constructor — always enabled.</summary>
+    public SubstrateTimeOfDayInvariant(ILogger<SubstrateTimeOfDayInvariant> log) : this(log, enabled: true) { }
+
+    private SubstrateTimeOfDayInvariant(ILogger<SubstrateTimeOfDayInvariant> log, bool enabled)
+    {
+        _log = log;
+        _enabled = enabled;
     }
 
     public bool AppliesTo(CognitiveArtifact artifact)
     {
+        if (!_enabled) return false;
         if (artifact.IntendedSink != CognitiveOutputSink.Dispatch)
             return false;
 

@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AniRuntime.Loops.Invariants;
 
@@ -51,6 +53,7 @@ namespace AniRuntime.Loops.Invariants;
 public sealed class StateNowInvariant : ICognitiveOutputInvariant
 {
     private readonly ILogger<StateNowInvariant> _log;
+    private readonly bool _enabled;
 
     public string Name => "state-now";
 
@@ -68,13 +71,25 @@ public sealed class StateNowInvariant : ICognitiveOutputInvariant
     /// </summary>
     public const int WorkdayStartHour = 6;
 
-    public StateNowInvariant(ILogger<StateNowInvariant> log)
+    /// <summary>Production constructor — Step 2b flag-gated.</summary>
+    public StateNowInvariant(ILogger<StateNowInvariant> log, IOptions<AniOptions> options)
     {
         _log = log;
+        _enabled = options?.Value.TemporalHeuristicInvariantsEnabled ?? false;
+    }
+
+    /// <summary>Test constructor — always enabled.</summary>
+    public StateNowInvariant(ILogger<StateNowInvariant> log) : this(log, enabled: true) { }
+
+    private StateNowInvariant(ILogger<StateNowInvariant> log, bool enabled)
+    {
+        _log = log;
+        _enabled = enabled;
     }
 
     public bool AppliesTo(CognitiveArtifact artifact)
     {
+        if (!_enabled) return false;
         if (artifact.IntendedSink != CognitiveOutputSink.Dispatch)
             return false;
 
