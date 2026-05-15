@@ -134,5 +134,5 @@ Each time the principle was: trust the model when substrate is correct. This pla
 | 2026-05-15 | Step 1 — R1 disable | DONE (ccede4b) | flag-gated, default off |
 | 2026-05-15 | Step 2a — Greeting relaxation | DONE (6f9f1ab) | "good/morning/evening/night" added to stopwords |
 | 2026-05-15 | Step 2b — Temporal consolidation | DONE (f4bc4a4) | 3 clock-based gates flag-off (TemporalHeuristicInvariantsEnabled); TemporalSubstrate stays |
-| 2026-05-15 | Step 2c — Door C re-evaluation | IN PROGRESS | InnerThoughtBleedEnabled flag, default false; verifier q5 + speech-act slice are the substrate-aware substitutes |
-| TBD | Step 3 — Verifier swap to Qwen 14B | PENDING | |
+| 2026-05-15 | Step 2c — Door C re-evaluation | DONE (abb6600) | InnerThoughtBleedEnabled flag, default false; verifier q5 + speech-act slice are the substrate-aware substitutes |
+| 2026-05-15 | Step 3 — Verifier swap to Qwen 14B | IN PROGRESS | OllamaVerifierClient added; FrontierVerifierProvider=Local default; Mark needs to `ollama pull qwen3:14b` on ani-server |

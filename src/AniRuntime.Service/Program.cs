@@ -203,11 +203,22 @@ try
     );
     builder.Services.AddSingleton<ICognitiveOutputGate, CognitiveOutputGate>();
 
-    // Theme P Phase P.1 (May 11, 2026) — Anthropic Sonnet verifier client.
-    // Typed HttpClient so the AnthropicVerifierClient receives a properly-
-    // disposed client with retry/timeout policies (Anthropic's API expects
-    // x-api-key + anthropic-version headers, configured in the client's ctor).
-    builder.Services.AddHttpClient<IFrontierVerifierClient, AnthropicVerifierClient>();
+    // Frontier verifier — Theme P P.1 introduced AnthropicVerifierClient
+    // (cloud Sonnet). Gate-stack reduction Step 3 (2026-05-15) adds
+    // OllamaVerifierClient (local Qwen 14B). AniOptions.FrontierVerifierProvider
+    // selects which gets registered against IFrontierVerifierClient. Both
+    // use typed HttpClient for properly-disposed clients.
+    var verifierProvider = builder.Configuration
+        .GetSection("Ani").Get<AniRuntime.Core.AniOptions>()?.FrontierVerifierProvider
+        ?? FrontierVerifierProviderKind.Local;
+    if (verifierProvider == FrontierVerifierProviderKind.Anthropic)
+    {
+        builder.Services.AddHttpClient<IFrontierVerifierClient, AnthropicVerifierClient>();
+    }
+    else
+    {
+        builder.Services.AddHttpClient<IFrontierVerifierClient, OllamaVerifierClient>();
+    }
 
     // Theme N Phase N.3 (May 8, 2026) — outreach source-frame selector.
     // Wired into OutreachPhase via constructor injection; gated at runtime

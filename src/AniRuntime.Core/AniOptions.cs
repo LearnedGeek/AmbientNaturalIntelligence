@@ -613,6 +613,30 @@ public class AniOptions
     // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 2c.
     public bool   InnerThoughtBleedEnabled { get; set; } = false;
 
+    // Gate-stack reduction Step 3 (2026-05-15) — frontier verifier
+    // provider selection. The Theme P P.1 verifier was implemented as
+    // an Anthropic Sonnet cloud call; Step 3 adds a local Ollama-backed
+    // implementation (Qwen 14B by default) so the verifier task can run
+    // locally with zero per-call cost, low latency, no cloud dependency,
+    // and no Ani-content leaving the box.
+    //
+    // Provider: Anthropic = cloud Sonnet (legacy default).
+    // Provider: Local    = local Ollama call to LocalVerifierModelTag.
+    //
+    // Default: Local. The plan-doc Step 3 explicitly authorizes Qwen
+    // 14B; flip to Anthropic if a quality-regression surfaces.
+    public FrontierVerifierProviderKind FrontierVerifierProvider { get; set; } = FrontierVerifierProviderKind.Local;
+
+    // Local verifier model tag (Ollama model name). Default qwen3:14b
+    // per the 16GB-VRAM article Mark surfaced; must be pulled on the
+    // host (`ollama pull qwen3:14b`).
+    public string LocalVerifierModelTag { get; set; } = "qwen3:14b";
+
+    // Local verifier call timeout (ms). Local 14B inference is faster
+    // than cloud round-trip but still measurable; default generous
+    // enough for first-token cold start.
+    public int    LocalVerifierTimeoutMs { get; set; } = 30000;
+
     /// <summary>
     /// Theme N Phase N.3 (May 8, 2026) — wires the
     /// <see cref="Interfaces.IOutreachFrameSelector"/> into
@@ -657,6 +681,17 @@ public class AniOptions
     /// concern. Restart-required.
     /// </summary>
     public bool FrontierVerifierEnabled { get; set; } = true;
+}
+
+/// <summary>
+/// Frontier verifier implementation selection. Anthropic = legacy cloud
+/// Sonnet call; Local = Ollama-backed local LLM (default Qwen 14B).
+/// See <see cref="AniOptions.FrontierVerifierProvider"/>.
+/// </summary>
+public enum FrontierVerifierProviderKind
+{
+    Anthropic = 0,
+    Local     = 1,
 }
 
 public class OllamaOptions
