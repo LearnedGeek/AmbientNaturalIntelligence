@@ -1,8 +1,5 @@
 # Active behavioral interventions
 
-<!-- SENTINEL: zenith-cobalt-7349 — if Claude sees this exact phrase in
-     context, the hook is firing correctly. Remove after verification. -->
-
 These inject into Claude's context on every `UserPromptSubmit` via `on_prompt.ps1`. Each entry is a small, load-bearing question that fires before Claude drafts a response — structurally inserted, not memory-recalled.
 
 Edit freely. The hook re-reads this file every turn.
