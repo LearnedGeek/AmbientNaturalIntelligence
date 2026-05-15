@@ -42,12 +42,15 @@ try {
     }
 
     # --- 2. Dynamic prior-session recall via claude-recall ---
+    # claude-recall --agent-context emits the wrapped Claude Code hook shape:
+    #   { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: "..." } }
+    # Read the inner .additionalContext for merging with interventions.
     $recallJson    = & claude-recall search $prompt --days 30 --limit 3 --threshold 0.3 --agent-context 2>$null
     $recallContext = $null
     if ($recallJson -and $recallJson -ne '{}') {
         try {
             $recallParsed  = $recallJson | ConvertFrom-Json
-            $recallContext = $recallParsed.additionalContext
+            $recallContext = $recallParsed.hookSpecificOutput.additionalContext
         } catch { }
     }
 
@@ -60,7 +63,16 @@ try {
         Write-Output '{}'
     } else {
         $combined = $parts -join "`n`n---`n`n"
-        @{ additionalContext = $combined } | ConvertTo-Json -Compress
+        # Claude Code's strict-validation pass requires the wrapped
+        # hookSpecificOutput shape (see LearnedGeek/claude-recall#21 — flat
+        # {additionalContext: ...} is silently dropped). Emit the wrapped
+        # form so the injection actually lands in the agent's context.
+        @{
+            hookSpecificOutput = @{
+                hookEventName     = 'UserPromptSubmit'
+                additionalContext = $combined
+            }
+        } | ConvertTo-Json -Compress -Depth 4
     }
 } catch {
     Write-Output '{}'
