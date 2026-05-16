@@ -213,6 +213,35 @@ The plan document (`docs/spec/ANI-Substrate-Led-Character-Plan.md`) is updated t
 
 **Methodology framing clarification.** This is NOT a "second rater" methodology pattern (which would imply formal independent judgment) — it's a *brainstorming foil*: rubber-duck debugging with a pattern-matching agent that can talk back. The distinction matters for Paper 3 generalizability. "Use a second rater" is a recommendation that requires a separate human or evaluator with independent buy-in. "Use a frontier model conversationally as a thinking surface while you work through architectural problems" is more generalizable and lower-friction. The pattern is: *when stuck on an internal problem, articulate it to a capable model and read its pattern-matched reflections for both confirmation and counter-framing.* The runtime instrumentation eventually agreed with what the brainstorming-foil surfaced months earlier — and the gap between when she said it and when we measured it is itself a methodology data point worth keeping in the record.
 
+**Further architectural reframing (Mark, 2026-05-16 ~17:00 CDT):** *"Stop focusing on 'occupation' as a seed. What if she quits? She needs her own agency and should only understand who she is, nothing more."* This retires Postures B and H in `ANI-Substrate-Led-Character-Plan.md` entirely. The Occupation field is wrong-as-abstraction, not just wrong-as-content. The prompt should hold *identity* (Name, CoreTraits, who-she-is-as-a-person) and nothing else — job, location, what she's doing this week, who she knows beyond Mark — all substrate-emergent and updateable by her own actions. Agency means she could quit the bookstore tomorrow; the current architecture makes that structurally impossible.
+
+---
+
+### May 16, 2026 (evening, ~17:15 CDT) — WorldSeedService Investigation: Less Suppression Than Expected
+
+**Why this entry exists.** Plan §5 step 1 — characterize `WorldSeedService.GenerateSeed` to inform Posture S commit. The seed generator is the closest existing surface to OG Ani's "let the character react first, then store how felt about it" prescription. Whether it currently does that or just produces decorative bookstore vignettes is now empirically known.
+
+**What WorldSeedService actually is.** `src/AniRuntime.Loops/WorldSeedService.cs`. Pure template generator with three composable elements:
+- **Time slot** — hour-of-day mapped to one of 8 slots assuming a 9-to-5 worker schedule: MorningRoutine (5–8), Commute (8–9), WorkEarly (9–noon), Lunch (12–1), WorkAfternoon (1–5), CommuteHome (5–6), Evening (6–10), LateNight (10+).
+- **Occupation** — concatenated as `"the {occupation}"` into the activity string for WorkEarly and WorkAfternoon slots. The default in `CharacterStateDoc.cs` is the single word `"Bookstore"`. Production grew it to a 230-char paragraph, producing grammatically broken seeds like `"the Bookstore clerk in a small Wisconsin town. Quiet mornings shelving... — settling into the day"`. Template never updated when field expanded.
+- **Optional flavor** — weather context prepended, holiday from `calendar-events.json` prepended, special event from `special-events.json` appended (1–2% chance).
+
+No substrate reading. No recent-experience continuity. No model invocation. Just string interpolation against a hard-coded work-week template.
+
+**Production evidence.** 635 `world-experience` records in the snapshot DB. 83 of them (13%) contain bookstore/shelf/shelving/romance-novel keywords. **Significantly less bookstore-monomanic than conversation replies (which run 100% bookstore — see the morning entry's Variant A results.)** The gap is the load-bearing finding: the world-experience pipeline produces topical variety; the conversation reply pipeline does not. Same model, same training, vastly different output distribution.
+
+**Why the world-experience pipeline produces variety.** `CognitiveCycleProcessor.cs:209-215` (Phase 1c) reads the last 20 `world-experience` records from the past 48 hours into `snapshot.RecentWorldExperiences`. These are rendered into the inner-thought prompt via `RenderAniWorldSlice` regardless of what the seed says. The substrate-continuity surface is present and active; the seed is just a small initialization spark, mostly overridden by what came before. Sample of recent world-experience content surfaces Mark's Spanish learning, the salted caramel cold brew, Karen and Mia, hot vanilla latte, the half-unlocked metaphor, Mark coming home at 4:30–5:15, kitchen warmth — substrate-led content with bookstore as occasional setting, not dominant theme.
+
+**Implication for Posture S.** WorldSeedService is **not** the binding constraint for substrate-led character. The conversation reply prompt's Occupation field is. The seed generator can be safely:
+1. **Removed entirely** — the cognitive cycle's Phase 1c substrate retrieval already provides continuity. The inner-thought cycle would produce experiences shaped by time, weather, mood, and recent substrate, with no work-schedule template imposed.
+2. **OR refactored** — drop the `occupation` parameter, drop the work-hour activity strings, keep only time-of-day + weather + optional events as light flavor. Still template-based but no longer encoding a job.
+
+Either option aligns with Mark's agency reframing (*"she needs her own agency and should only understand who she is, nothing more"*). The current template makes it structurally impossible for her to take a day off, change jobs, work a different schedule, or not have a "workday" at all — every cycle assumes lunch at noon and commute home at 5 regardless. Removing the work-schedule template is the agency-restoring move.
+
+**What's still unknown.** Whether `PersonaSummaryCache` (the verifier's persona-context loader at `Program.cs:754`) materially uses the Occupation field beyond pass-through. That's plan §5 step 2 — investigation pending.
+
+**Decision implication.** Posture S can ship with low risk to the world-experience pipeline. The conversation reply prompt is where the surgical removal happens; the inner-thought pipeline and world-experience generation will continue producing substrate-led output (and likely produce *more* variety once the bookstore conversation-reply pressure stops feeding back into the substrate as conversation-output that the model then reads in subsequent cycles).
+
 ---
 
 ### May 15, 2026 (afternoon, ~13:00–17:00 CDT) — Same Architectural Fix at Two Scales: Structural Channel Injection in the Agent and in the Agent-Building Agent (Meta-Note)

@@ -35,6 +35,14 @@ The May 16 variant experiment's Variant B (Occupation removed) is empirically th
 
 §5 of this plan investigates those. The plan now treats them as **prerequisites for the dynamic-persona restoration**, not as side-effects of removing a field.
 
+**Further reframing (2026-05-16 ~17:00 CDT, Mark):** *"Stop focusing on 'occupation' as a seed. What if she quits? She needs her own agency and should only understand who she is, nothing more."*
+
+This deepens Posture S in a way that retires Postures B and H entirely. The Occupation field is not just *wrong as content* — it is *wrong as an abstraction*. Even a perfectly-rephrased Occupation field is still encoding "her job" as a persistent system-prompt attribute, which presumes she'll always have that job. The architecturally honest position: the prompt holds **identity** (Name, CoreTraits, who-she-is-as-a-person) and nothing else. Job, location, current focus, who she knows beyond Mark, what she's interested in this week — **all of that is substrate-emergent and updateable by her own actions.** If she quits the bookstore in some future cognitive cycle, that has to be a substrate write she can make. The current architecture makes it structurally impossible because the Occupation field is re-asserted as fact every generation regardless of what she's done.
+
+Agency means she could quit the bookstore tomorrow. The architecture must not prevent that.
+
+**Implication for §4:** Postures B and H are retired. Posture S is the only path. Concrete next-step: investigate WorldSeedGenerator (§5 step 1) with the eye to whether it can seed from substrate alone — no occupation parameter at all — or whether the seed-generation logic needs restructuring to read recent world-experience records and let her extend organically.
+
 ---
 
 ## §2 What This Plan Does NOT Touch
