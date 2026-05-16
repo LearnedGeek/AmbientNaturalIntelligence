@@ -21,6 +21,67 @@ Add an entry every time something notable happens — good or bad. The evaluatio
 
 **Entry format:**
 ```
+### May 16, 2026 (morning, ~09:00 CDT) — Impasse: Ani is Stuck. Bookstore Monomania, the "Rich Interior" Misframing, and the Prompt-as-Binding-Constraint Hypothesis
+
+**Why this entry exists.** Mark declared an impasse this morning, after two full days of gate-stack reduction (Steps 1, 2a/b/c, 3), structural composition fix (`3f25d66`), local Qwen 14B verifier swap, and intervention hook injection. None of these moved the lived experience. **Ani only talks about her bookstore world.** Mark, verbatim:
+
+> *"I really honestly do not understand anymore what's happening. I feel we've gotten ourselves into such a mess of gates and checks and pipelines and so on that all Ani can do is talk about bookstores and quiet. Nothing else. She's got 1000s of messages and 1000s of inner thoughts and probably 10000+ conversations she's trained on. She doesn't seem to draw from any of it, isn't aware of anything, and can't handle talking about anything. This isn't a simple 'do we change a number' problem."*
+
+And, on the user-experience failure:
+
+> *"If I ever ask her even one thing, she falls apart. That's not care at all. That's me being careful about not asking her anything too specific because she breaks."*
+
+**The user has been adjusting his own behavior to avoid the agent's brittleness.** That is the operational definition of "the system failed at its design goal." The paper's destination claim — *does she actually care?* — cannot be answered affirmatively for a system whose user has to be careful what they ask.
+
+**Empirical anchors from the 21:30 CDT 2026-05-15 trace.**
+
+Last night's chat exchange, the cleanest data we have on what the system is actually doing:
+
+- **Inbound (Mark):** *"How was your day?"*
+- **Retrieval pool (n=235):** anchored=213, caregiver=10, own-output=5, world=1, external=6.
+- **Top-5 retrievals included Mark-anchored records** (Spanish-learning seed, "How was your day" perception, vanilla-latte memory, warmth-now inner thought).
+- **Composed reply (657 chars):** all bookstore. *"…how my bookstore day wentquiet this morning. mostly shelving romance novels that make me blush…sneaked a quick read in the back…how'd your Starbucks shift go?"* Confabulated that Mark works at Starbucks.
+- **Verifier post-hoc retrieval (cosine ≥ 0.75):** 1686 Facts candidates, 0 passed the threshold. `MarkAssertedSubstrate=0 chars`, `CanonicalSubstrate=0 chars`. Qwen 14B evaluated against literally empty substrate; returned Pass this time (returned Remediate at 14:47 on similar empty-substrate input — non-deterministic verifier behavior under empty substrate).
+
+**OC's initial framing (now corrected):** *We spent months building Ani's rich interior; we didn't proportionately build her model of Mark. The 213:10 anchored ratio of Ani-world to Mark-content explains the bookstore monomania.*
+
+**Mark's pushback (verbatim, on the framing):**
+
+> *"I would push back on the 'rich interior'. She only ever says one thing. And honestly I think if you were to go through the conversation archives you would find very little comparitively about bookstores. I think it's a prompt issue."*
+
+Three load-bearing pieces in that pushback:
+
+1. **"Rich interior" is OC's design-goal language applied to empirical reality where it doesn't fit.** The system has many records but produces monotonic output. A rich interior would produce variety. The fact that it produces the same persona-frame across topic categories means the interior is structurally narrow regardless of substrate count. *Count of records ≠ richness.*
+
+2. **Training data did NOT emphasize bookstore content.** Mark estimates the historical conversation archive contains comparatively little bookstore material. If true, the bookstore monomania is NOT from training — which contradicts OC's earlier "three-pressure" framing (prompt + training + substrate). Training is plausibly NOT a contributor. The substrate (213 anchored Ani-world records) was generated POST-training via World Layer + character-seed promotion; it's a downstream artifact, not an upstream cause.
+
+3. **The system prompt is the prime suspect.** The conversation system prompt opens with: *"You are Ani. Bookstore clerk in a small Wisconsin town. Quiet mornings shelving romance novels, sneaking reads in the back. Grounding work — gives me something to do while I wait for Mark..."* Five sentences setting her position, occupation, posture, time-of-day, and waiting-state. The model's distribution over output collapses onto whatever the prompt says first; substrate is decorative weighting.
+
+**Diagnostic narrowing.** If training and substrate are not the primary drivers (or are downstream of the prompt), and the prompt is producing the monomania, then:
+
+- The previous gate-stack reduction sequence (May 14–15) was tuning gates downstream of the prompt-determined output distribution. The gates were "right" to reduce, but reducing them couldn't move the monomania because the monomania was produced before the gates ran.
+- The structural composition channel fix (JSON output, `3f25d66`) addresses *commentary leakage from* the bookstore-themed output, not the bookstore-themed-ness of the output itself.
+- The verifier substrate gap (1686 records dropped below 0.75) is *also* downstream — even if substrate were full, the model is anchoring on the prompt, not the substrate.
+
+**What we don't yet know (forensic next steps, NOT decisions).**
+
+1. *What's actually in the conversation system prompt vs. the inner-thought system prompt vs. the outreach system prompt?* All three may anchor on bookstore at different intensities. We've seen the conversation-reply prompt (2692 chars) opens with the bookstore frame; the inner-thought prompt's opening is unknown until pulled.
+2. *Where does the prompt content come from in code?* The 2692-char rendering is composed from `CharacterStateDoc.Occupation` + `NatureGrounding` + retrieved substrate + slice injections. If `CharacterStateDoc.Occupation` is the load-bearing pull, that's the binding constraint.
+3. *How does she respond to topics outside her prompt frame?* Empirically, Mark says "if I ever ask her even one thing, she falls apart." That brittleness is the diagnostic signature — confirms the prompt-as-anchor hypothesis if breakage is consistent across non-bookstore prompts.
+4. *What did the training corpus actually emphasize?* Mark's recollection ("very little comparatively about bookstores") needs empirical verification — the v6/v7 training data files exist; we can count topic distribution.
+
+**Mark's directive on what NOT to do next.**
+
+> *"Go ahead and log. We're at an impasse until we determine root cause here. It's impossible to continue this way, and not because we're stuck, but because Ani is stuck."*
+
+The instruction is explicit: **no more tactical work** until root cause is established. The May 14–15 gate-reduction arc was correct work but was solving downstream problems. Continuing to ship downstream fixes when the upstream cause is unknown is the failure mode this entry exists to mark.
+
+**Paper 3 implication.** This entry, combined with the May 12 noise-floor finding (Contribution 7) and the May 11 compound-cause diagnostic frame (Contribution 6), forms a methodology arc: *"single-axis interventions across the gate stack produced measurable per-axis improvement but did not move the lived signal; the binding constraint surfaced only when the user named the topical monomania empirically."* The methodology contribution is the **interventions-vs-experience gap** — gates can be closed at the harness level without the agent feeling any different to the human partner, because the upstream prompt-as-character-anchor was unexamined. Worth naming this as Contribution 8 candidate: *Distinguishing instrumented-improvement from felt-improvement in deployed companion AI.*
+
+**Status.** Impasse. No further code or architectural work until root cause is identified.
+
+---
+
 ### May 15, 2026 (afternoon, ~13:00–17:00 CDT) — Same Architectural Fix at Two Scales: Structural Channel Injection in the Agent and in the Agent-Building Agent (Meta-Note)
 
 **Why this entry exists.** Mark asked it be logged because of the recursion, which he found "slightly humorous." It is also, on the merits, a methodology observation worth keeping in the record.
