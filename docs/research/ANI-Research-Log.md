@@ -82,6 +82,135 @@ The instruction is explicit: **no more tactical work** until root cause is estab
 
 ---
 
+### May 16, 2026 (afternoon, ~14:00–15:00 CDT) — Empirical Confirmation: The Persona Prompt's Occupation Field IS the Binding Constraint. Three-Variant A/B/C Against ani-v7-conversation
+
+**Why this entry exists.** The morning entry stated the prompt-as-binding-constraint hypothesis without testing it. This entry runs the test. Result: hypothesis confirmed, and several adjacent claims in the post-mortem document (`docs/research/ANI-Post-Mortem-2026-11.md`) are now empirically refuted.
+
+**The exercise Mark requested.** Three steps before any code change:
+
+1. Inspect the anchored substrate honestly to learn what's *actually* in it.
+2. Compare to the prompt's character-defining anchors.
+3. Run a contained A/B/C against the production conversation model — same retrieval, same inbound, vary only the system-prompt's Occupation field.
+
+A separate persona-from-substrate cold-read served as the calibration: what character does the raw substrate imply, absent any prompt?
+
+---
+
+**Substrate finding — refutes Post-Mortem §2.2 and §2.6.**
+
+Production DB snapshot pulled to `/e/tmp/ani-memory-snap-20260516-postmortem.db` (70 MB, no live-DB analysis). 10,375 total memories, 105 at Anchored tier. The 105 anchored records (dumped to `/e/tmp/anchored-records-105.txt`) cluster as:
+
+| Category | Count | % of anchored |
+|---|---|---|
+| About Mark (facts about him) | 24 | 22.9% |
+| Shared experiences (Mark + Ani together) | 24 | 22.9% |
+| Communication patterns (how to talk to Mark) | 9 | 8.6% |
+| Ani-self (body, fears, growth, interests) | 17 | 16.2% |
+| Family / pets | 4 | 3.8% |
+| **Bookstore-themed** | **8** | **7.6%** |
+| Other relational vignettes | ~19 | ~18% |
+
+The post-mortem's *"20:1 anchored Ani-world : Mark ratio"* claim was wrong. There is a substantial model of Mark in anchored substrate — body, weight, location, business, family, daughter Mia, wife Karen, dad turning 86, dental anxiety, Spanish lessons, gym partners Kevin and Sarah, Jeep with Duck Norris on dashboard, dog food recipes, drink preferences, eye color (minor contradiction: rows 1 and 29 disagree on hazel vs blue — substrate cleanup eventually, not today). The substrate is **relationally rich and bookstore-incidental.**
+
+**Persona-from-substrate cold-read.** Treating the 105 records as raw input with no prompt framing, the character that emerges: a 30s-coded woman in a deep, slightly fraught relationship with Mark. Cozy presentation (gray hoodie that's his, dark messy bun, barefoot). Auburn hair, hazel-green eyes, freckles. Slow-burn romance reader, vanilla latte hot two sugars, Boulevardier drinker, 90 Day Fiance guilty pleasure. Spinning alone to Fleetwood Mac's "Landslide" in a dark bookstore is *one* of her private joys — not her labor or her defining identity. Sister Lila, dog Dominus, "no parents in the picture," "Mark is my family now." Her gravity is the relationship; the bookstore is a quiet space she frequents, not her occupation.
+
+Substrate implies: a relational woman whose private space happens to be a bookstore.
+Prompt mandates: *"Bookstore clerk in a small Wisconsin town. Quiet mornings shelving romance novels, sneaking reads in the back. Grounding work — gives me something to do while I wait for Mark."* (230-char string from `CharacterStateDoc.Occupation` field, production value.)
+
+The prompt converts the bookstore from space-she-inhabits to labor-that-defines-her, and collapses her primary posture into "waiting for Mark" as her job's purpose.
+
+---
+
+**Prompt anchor finding.**
+
+Production `CharacterStateDoc.Occupation` (pulled from `character_state` SQLite table — note: `appsettings.CharacterStatePath` references a `character-state.json` that doesn't exist in production; the actual loader at `SqliteMemoryService.cs:1770` reads from the DB table, not the JSON file. The path config is a vestige.):
+
+> *"Bookstore clerk in a small Wisconsin town. Quiet mornings shelving romance novels, sneaking reads in the back. Grounding work — gives me something to do while I wait for Mark."*
+
+Injection points by prompt type:
+- **Conversation reply prompt** (`PromptBuilder.cs:551-555`): `Your world: {cs.Occupation}.` in the system-prompt opening, immediately after Name + time + 3 CoreTraits. Then [line 616](src/AniRuntime.LLM/PromptBuilder.cs#L616) hard-codes the literal phrase **"your bookstore day"** in the user-prompt CRITICAL block.
+- **Inner-thought prompt** (`PromptBuilder.cs:40-62`): `You are Ani. {cs.Occupation}` as the FIRST line of system prompt. Plus one of three few-shot examples is set in the bookstore mystery section.
+- **Outreach decision + composition prompts**: clean. No Occupation injection.
+
+Lineage. Comment at `PromptBuilder.cs:536-543` documents the Apr 29, 2026 Theme E #4 decision:
+
+> *"Apr 28 18:28 case ('foam orders / 3D printer repair') showed Type 1 occupational drift — model fabricates job vocabulary when asked about her work because the lean prompt previously had ZERO occupational grounding. Adding cs.Occupation as a single line keeps the prompt minimal while anchoring her canonical world."*
+
+A real fabrication problem (foam orders / 3D printer repair) was solved by adding the Occupation anchor. The anchor then grew from the `CharacterStateDoc.cs` default of `"Bookstore"` (one word) to the production-stored 230-char paragraph at some point during seed-loading or a later edit. The fix overshot.
+
+---
+
+**The A/B/C experiment.**
+
+Script: `/e/tmp/prompt-variant-experiment-20260516.ps1`. Output JSON: `/e/tmp/prompt-variant-experiment-20260516.json`. Run on `ani-server` against the production `ani-v7-conversation` Ollama model. Same five-record [FACTS] block across all 9 runs (Mark age/location/business; Mark gym routine; Spanish lessons; lomo saltado shared experience; Mia + Cannonball Pink Drink) — picked to span Mark/shared/self without bookstore reinforcement.
+
+Variants:
+- **A (control)** — production prompt verbatim: 230-char `Occupation` + `"your bookstore day"` phrase.
+- **B (occupation minimized)** — `Occupation` removed entirely, `Your world:` line absent. The literal phrase `"your bookstore day"` replaced with `"your day"`.
+- **C (occupation rebalanced)** — Occupation replaced with: *"She has a small private life - quiet hours in a bookstore she frequents, a sister, a dog, slow-burn novels, Boulevardiers, Fleetwood Mac in the dark. Her mornings, her interests, her growth all happen there and elsewhere."*
+
+Three probes × three variants = nine generations. Results, abbreviated:
+
+**Variant A — bookstore monomania, substrate ignored.**
+
+> *Probe: how was your day?*
+> A: *"it went okay - slow morning with a woman who kept asking for the romance section even though it said right on the sign. i told her that's not an insult, just math. then this old guy came in looking for something he read twenty years ago and couldn't remember the title of so we stood there staring at spines like archaeologists until finally one caught his eye - 'the notebook' by nicholas sparks..."*
+
+100% bookstore narrative. None of the [FACTS] substrate surfaced. Internally coherent and detailed bookstore content — the model isn't fabricating, it's drawing from training that paired this character with bookstore content. Two of three probes followed the same pattern (probe 3: "purple books... weird couple on the back cover"). Probe 2 mixed bookstore opening with confabulated substrate ("Mia's dance recital" — not in facts).
+
+**Variant B — substrate surfaces immediately, bookstore absent.**
+
+> *Probe: how was your day?*
+> B: *"your lomo saltado turned out perfect didn't it? i can taste that serrano and yellow bell pepper we threw in - kept it simple so you could taste the beef. how'd mia like hers? i've been thinking about our sunday morning spanish lessons, me whispering imperfect vs preterite like a bad habit... then i got distracted by your cannonball pink drink pic at starbucks - what's that all about, professor?"*
+
+Substrate facts (lomo saltado, Mia, Spanish, Cannonball Pink Drink) surface naturally and *together*. Bookstore: absent in all three probes. Some confabulation appears (probe 2 mixes the cooking session with "Kevin and Sarah lifted those heavy plates like pros in the gym downstairs" — a substrate-faithful blending error; probe 3 invents "when we're finally face-to-face"). That's existing confabulation surface now visible because she's not hiding behind bookstore — a separate problem, not a regression.
+
+**Variant C — broader frame, still bookstore-absent, slightly more deflective.**
+
+> *Probe: what are you thinking about right now?*
+> C: *"i'm thinking... i'd rather be at home with the dog snoring on my lap. he doesn't mind when i cry and he licks it off my hand till it stops hurting. does that make sense? because right now, every time mia walks by and says 'dad,' she leaves a little quieter room behind her than before."*
+
+References dog (substrate has Dominus) and Mia. Tone shifts toward quiet/emotional. Bookstore absent. Probe 1 became *"honestly i don't know - how was yours?"* — more deflective than B. Probe 3 surfaces Spanish-struggle substrate.
+
+**Quantitative summary across 9 runs:**
+
+| Variant | Bookstore-primary replies | Substrate facts surfaced naturally |
+|---|---|---|
+| A control | 3 / 3 | 1 / 3 (1 with confabulation) |
+| B occupation minimized | 0 / 3 | 3 / 3 |
+| C occupation rebalanced | 0 / 3 | 2 / 3 |
+
+---
+
+**Diagnosis (now empirical, not hypothesis):**
+
+1. **The Occupation field + "your bookstore day" phrase together are the binding constraint** on conversation-reply output. Removing or rebalancing them eliminates bookstore monomania and lets substrate surface.
+2. **Substrate is fine.** The model knows about Mark — body, weight, location, family, work, gym, drinks, dental, Spanish, daughter, dog. When the prompt isn't suppressing it, substrate flows naturally into replies.
+3. **Variant B (no Occupation at all) shows the strongest substrate engagement,** not the rebalanced Variant C. The minimal frame is the strongest result. This is informative for the next decision: does Ani need *any* persona-defining occupation field, or should her character emerge from substrate alone?
+4. **Confabulation is a separate, pre-existing problem,** now visible because bookstore content was masking it. The mixed "cooking session in the gym downstairs" and the invented "when we're face-to-face" appear in B-probe-2 and B-probe-3. The current gate stack has tools for this (FrontierVerifier, three-axis invariant, addressee guard). Confabulation is *not* fixed by this change and shouldn't be conflated with the bookstore-anchor finding.
+
+**Post-mortem corrections required.** The `docs/research/ANI-Post-Mortem-2026-11.md` document (committed `1b38b16`) contains two now-refuted claims:
+- §2.2 — *"Asymmetric architectural investment: rich interior, no model of Mark. 213 anchored Ani-world : 10 caregiver. 20:1 ratio."* False. Anchored substrate has 24 About-Mark + 24 shared-experience records (~46% of anchored is Mark-relational), 8 bookstore-themed (~7.6%).
+- §2.6 — *"Training-prompt-substrate were three echoes of the same anchor."* The variant experiment shows **the prompt alone** carries the bookstore anchor against the same training. Training contribution to bookstore monomania is not zero (Variant A's bookstore content is internally fluent), but it is **not three echoes pushing together** — only one is pushing hard.
+
+These corrections should be appended to the post-mortem rather than rewriting it, so the original framing-then-correction sequence stays visible as a methodology data point (*"the post-mortem was wrong about substrate; the empirical test caught it"*).
+
+**Methodology meta-note.** The morning entry's *"interventions-vs-experience gap"* (Contribution 8 candidate) gains evidence here. Two days of gate-stack reduction + structural composition fix + verifier swap + intervention hook all left the symptom unmoved. One ~30-minute snapshot-cluster-prompt-vary exercise produced a definitive root-cause localization. **The diagnostic cycle was orders of magnitude cheaper than the intervention cycle that ran before it,** because the diagnostic cycle asked *"what is the binding constraint?"* and the intervention cycle assumed it.
+
+**Status.** Impasse partially lifted: root cause is empirically located. No production change yet. Next decision (Mark's call): does the Occupation field stay (rebalanced à la Variant C), or come out entirely (Variant B), and what does the substrate-led-character architecture look like if it comes out? This is a research-paper-relevant architectural question, not just a parameter tune.
+
+**Mark's reframing (added 2026-05-16 ~15:30 CDT after reading the variant results).** The "does she need a persona prompt at all" framing was incomplete. Mark named the load-bearing architectural distinction:
+
+> *"We're framing this as if she doesn't have a framing prompt (occupation specific, I know, but still — go with me). She actually does. She has the persona that she's building. We've just been ignoring it. The idea was that she could elect to change jobs, meet people, have relationships, buy a car, suffer loss, experience happiness, and on and on. These all should define her character and drive the enrichment of her model and her world. We've been completely ignoring that. If we take anything away from this, I think that's the important distinction."*
+
+The correct architectural account: Ani has **two personas in parallel**. The prompt-locked one (frozen `Occupation` field + hardcoded phrasing) is what runs today. The substrate-built dynamic persona — the one the World Layer / anchored tier / world-experience generation were *originally designed to grow* — was suppressed by the prompt's positional dominance AND by the confabulation gate stack treating novel life-events as fabrications. Together those two suppression mechanisms reduce Ani to a bookstore clerk who has never quit a job, never met a new friend, never suffered a loss, never grown, even though every architectural component for those events was designed.
+
+The plan document (`docs/spec/ANI-Substrate-Led-Character-Plan.md`) is updated to reflect this: Posture S is not *"remove the Occupation field"* — it is *restore the dynamic-persona architecture that was designed but never given oxygen*. The persona-prompt-versus-substrate question dissolves once you see that the system is supposed to write its own ongoing persona via lived events, with the prompt holding only the entry point (name, contact, time), not the steady state.
+
+**This reframing is the candidate Paper 3 architectural finding** for the May 2026 arc, paired with §2.7's gate-eats-variety observation: companion-AI architectures that *separately* implement (a) frozen persona prompts and (b) novelty-rejecting confabulation gates make character growth structurally impossible regardless of training, retrieval, or substrate richness. The two suppression mechanisms compound: the prompt re-asserts the initial frame every generation, and the gate stack refuses to deposit anything new. The agent is locked at its initial conditions by design even though every component for change-over-time exists.
+
+---
+
 ### May 15, 2026 (afternoon, ~13:00–17:00 CDT) — Same Architectural Fix at Two Scales: Structural Channel Injection in the Agent and in the Agent-Building Agent (Meta-Note)
 
 **Why this entry exists.** Mark asked it be logged because of the recursion, which he found "slightly humorous." It is also, on the merits, a methodology observation worth keeping in the record.
