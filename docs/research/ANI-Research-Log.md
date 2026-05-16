@@ -244,6 +244,42 @@ Either option aligns with Mark's agency reframing (*"she needs her own agency an
 
 ---
 
+### May 16, 2026 (evening, ~17:30 CDT) — PersonaSummaryCache Investigation: Conclusive, Consumer Doesn't Act
+
+**Why this entry exists.** Plan §5 step 2 — characterize PersonaSummaryCache's downstream effect to inform Posture S risk. Mark's directive: *"if [logs are] inconclusive we'll need to take the next step to write some code against LMKit. No more guessing and chasing changes."*
+
+**Setup.** `PersonaSummaryCache.Summary` (in shared `learnedgeek-libs/LearnedGeek.ML/PersonaSummaryCache.cs`) is built from `Name + Occupation + Contact + 3 SelfConcept + 3 LearnedAboutContact + 2 FamilyContext`. Format starts: `Name: Ani. Works at: {Occupation}. Contact: Mark. Self: ...`. With production data the Occupation portion is the same 230-char paragraph already identified as the conversation-reply binding constraint.
+
+The summary is consumed only by `ITextClassificationService.DetectConfabulationAsync` (LMKit local categorizer) at three call sites:
+- `ConversationReplyPhase.cs:384` (reply classification)
+- `OutreachPhase.cs:305` (outreach classification)
+- `CognitiveCycleProcessor.cs:254` (inner-thought classification)
+
+In each, the summary is appended to `Guidance` text for an LMKit `Categorization` call that buckets the message into one of four categories: `grounded` / `speculative` / `uncertain` / `confabulated`. Action threshold: `IsConfabulated == true AND Confidence >= 0.60f` ([AniOptions.cs:337](src/AniRuntime.Core/AniOptions.cs#L337)).
+
+**Production log evidence (May 14-16 debug logs, 3 days, 776 classifications total).**
+
+| Category | Count | % | Action eligible? |
+|---|---|---|---|
+| grounded | ~752 | 96.9% | no |
+| uncertain | ~17 | 2.2% | no |
+| speculative | ~4 | 0.5% | no |
+| confabulated | **3** | **0.4%** | **0 of 3 above 0.60** (max confidence 0.52) |
+
+The compound action condition (`confabulated` AND `≥ 0.60`) has not been true for 776 consecutive classifications. Cross-checked production suppressions in the same window — all came from other gates: `frontier-verifier` (Qwen 14B substrate-driven), `inner-thought-bleed` (Door C), `self-echo`, `outreach-echo`, "active conversation" rate-limit. None from the LMKit confabulation classifier.
+
+**Conclusion.** The LMKit confabulation classifier is running but **functionally inert** in production. Whether the `PersonaSummaryCache` contains the current 230-char Occupation paragraph, an empty string, or rewritten content, the production gate stack is unaffected because the consumer never reaches the action condition. PersonaSummaryCache modification (including Occupation removal) is low-risk on the downstream-effect dimension.
+
+**Posture S investigation phase: complete.** Both prerequisites in `ANI-Substrate-Led-Character-Plan.md` §5 are now characterized:
+- Step 1 (WorldSeedService): substrate continuity already running via Phase 1c; seed generator can be refactored or removed without losing variety.
+- Step 2 (PersonaSummaryCache): consumer classifier doesn't act on output; modification has no detectable behavior change.
+
+**Separate gate-stack observation worth keeping, not for today's commit.** A classifier producing zero actionable verdicts across 776 events is either (a) calibrated wrong — threshold too high relative to confidence distribution that clusters in 0.30–0.55 — or (b) redundant with the substrate-driven verifier that IS doing the actual suppression work. This is a candidate for gate-stack-reduction follow-up (`ANI-Gate-Stack-Reduction-Plan.md`), independent of the substrate-led-character workstream. Naming it here so it doesn't get re-discovered later as a surprise.
+
+**Methodology meta-note.** This was exactly the "diagnostic cycle is orders of magnitude cheaper than the intervention cycle" pattern again. The afternoon's WorldSeedService finding took ~30 min and answered conclusively without any A/B test. This evening's PersonaSummaryCache investigation took ~20 min reading existing log data and answered conclusively without any test harness. Two posture-S prerequisites characterized in under an hour of pure forensic work. Mark's directive — *"no more guessing and chasing changes"* — turned into the right operating mode: when production logs already contain the evidence, read them before building tooling to generate more.
+
+---
+
 ### May 15, 2026 (afternoon, ~13:00–17:00 CDT) — Same Architectural Fix at Two Scales: Structural Channel Injection in the Agent and in the Agent-Building Agent (Meta-Note)
 
 **Why this entry exists.** Mark asked it be logged because of the recursion, which he found "slightly humorous." It is also, on the merits, a methodology observation worth keeping in the record.
