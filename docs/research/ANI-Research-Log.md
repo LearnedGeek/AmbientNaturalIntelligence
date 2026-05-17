@@ -411,6 +411,60 @@ This collapses the whole architecture. The existing decay algorithm already dete
 
 ---
 
+### May 17, 2026 (afternoon, ~14:00–18:00 CDT) — Phase 6 v1.2 Implementation Arc + Retroactive Scan + Discovery of Data-Layer Architectural Debt
+
+**Why this entry exists.** Today's implementation arc shipped Phase 6 v1.2 R3 (synthesis prompt redesign) + R3.1 (Qwen model swap) + R1+R2 (decay-driven lifecycle), ran a retroactive compression scan that processed ~990 source records into 321 gists, then discovered a structural data-layer bug in attempting an old-reflection migration scan. The bug's diagnosis reveals broader architectural debt: `SqliteMemoryService` is a ~2,000-line monolith with no Unit of Work, no entity tracking, and no atomic composition across method boundaries. Multi-operation flows compose two interface calls and silently fail when one's internal state changes the other's expected ID. This entry records the implementation arc, the bug discovery, and the decision to pause v1.2 layer follow-ons and refactor the data layer to EF Core + UoW + Repository pattern.
+
+**Implementation arc summary.**
+
+- **R3.0 (commit `d3af223`)** — `PromptBuilder.BuildReflectionSynthesisPrompt` rewritten for register-tagged structured JSON output. `IOllamaClient.InnerMonologueChatJsonAsync` added. Out-of-band probe revealed ani-v7-inner produces malformed JSON (9 separate `"summaries"` keys) and echoes verbatim source content — the fine-tune's training pulls toward Ani's first-person register, fighting compression-style summarization.
+- **R3.1 (commit `ba30d0c`)** — swapped synthesis model to qwen3:14b via new `ChatJsonWithModelAsync(model, ...)`. Out-of-band probe confirmed clean structured output: single `summaries` array of 3 objects, zero verbatim leakage, register-tagged shapes (`"warm-quiet, gently lonely, contentment threaded with ache"`).
+- **R1+R2 (commit `9820f28`)** — added `DecayTier.Compressed` enum value, `GetDecayEligibleAsync`, `MarkCompressedAsync`. ReflectionPhase switches selection to decay-eligible records and marks sources Compressed after synthesis. Retrieval queries updated to exclude Compressed tier across all surfaces.
+
+**Retroactive scan results (first run, original predicate).**
+
+Admin endpoint `POST /api/v1/admin/retroactive-compression-step` + PowerShell driver. Stopped at iter 178 (2 consecutive empty batches). Production tier counts before → after:
+- Standard: 10,388 → 9,726 (-662)
+- Compressed: 30 → 1,020 (+990)
+- Reflection gist count: 1,400 → 1,721 (+321)
+
+Quality stayed clean — new gists are exactly the R3.1 register-tagged shape:
+- `"[topic: objects holding unspoken stories] nostalgic-tender, weight of silent witness in worn things"`
+- `"[topic: absence as measurable distance] longing-quiet, rhythmic gaps between presence and memory"`
+- `"[topic: gentle patience] tender-settled, weight of unspoken timing between hands"`
+
+**Old-reflection migration finding.**
+
+Mark's question pointed at the next gap: the 1,400 old-shape reflections (pre-v1.2 first-person prose) weren't included in the original eligibility predicate (excluded by `source_name = 'reflection'`). Relaxed the predicate to allow non-v1.2-shape reflection records (content doesn't start with `[topic:`). v1.2 gists stay protected to prevent summary-of-summary loops.
+
+Re-ran the scan. Stopped at iter 76. Compressed went 1,020 → 1,490 (+470). Total reflections 1,721 → 1,869 (+148 gists). **But diagnostic query showed 0 reflection-source records were marked Compressed.** All 470 newly-compressed records were non-reflection sources (InnerThought 990 cumulative, conversation 379, RSS 34, weather 10).
+
+**Root-cause diagnosis (structural).**
+
+ReflectionPhase composes two operations across method boundaries:
+1. `SaveAsync(gist)` — internally runs Feature 30 (Mem0 dedup). When the new gist has cosine 0.85-0.95 to an existing Semantic record, the new content is merged into the existing record; the pre-generated `gistId` is discarded.
+2. `MarkCompressedAsync(sourceIds, gistId)` — tries to INSERT `compressed_into` links with the pre-generated `gistId` as source. FK constraint fails (gistId orphan after merge). Transaction rolls back. None of the source UPDATEs commit.
+
+This only started biting on the migration scan because as v1.2 gists accumulated, new gists started cosine-matching existing v1.2 gists (e.g., `"[topic: evening warmth] tender-quiet"` matches `"[topic: quiet evening] warm-tender"` above 0.85). The original scan worked because gists were novel against profile substrate.
+
+**Mark's architectural intervention.**
+
+Mark pressed on why this isn't handled as a single transaction with entity tracking — i.e., why we're not using EF Core's natural Unit-of-Work pattern. Honest answer: `SqliteMemoryService` is a single 2,000-line class using raw `Microsoft.Data.Sqlite` with manual `SqliteCommand`, no DbContext, no UoW, no change tracking. The March 19 SOLID refactor split the *interfaces* (`IMemoryPersistence`, `IMemorySearch`) per ISP but never split the implementation — both interfaces front the same monolith. Every composite operation that calls two interface methods has the same fragility.
+
+This is the *same shape* of finding as Posture S (May 16: frozen-character prompt unexamined) and Phase 6 v1.2 (May 17 morning: retrieval surface returning verbatim chunks) — months of symptom-patching because the underlying architectural seam wasn't right. Today's surface is the data access layer.
+
+Mark's verdict: *"This is precisely what we were discussing about not chasing fixes and stepping back... We cannot continue with this mess of an implementation. Please proceed with the refactor necessary to create a true UoW/Repository to avoid future-state technical debt and bugs."*
+
+**Decision.** Pause Phase 6 v1.2 layer follow-ons (old-reflection migration, V1.5b activation, Posture-S+1, confab-gate rehab, KPI design). Execute a full data-layer refactor: EF Core 8 + UoW + Repository pattern. Plan: `docs/spec/ANI-Data-Layer-UoW-Repository-Refactor-Plan.md`. Six phases, ~13-18 hours focused work, designed to leave the system deployable between each phase.
+
+**Likely failures this debt has been masking** (named for the record): save-side dedup races, inconsistent state after partial method-call failures, "the record was there a second ago" intermittent bugs, the persistent flaky-on-first-run / passing-on-retry behavior of `MarkCompressedAsync_SetsTierAndCreatesProvenanceLinks` test (shared-cache cross-test interference).
+
+**Paper 3 methodology data point.** Three layered architectural-debt findings in three days, each surfaced by attempting tactical work and tripping on the underlying structural gap. Pattern: **the methodology that has been working — characterize empirically, name structural seams, refactor rather than patch — also surfaces *new* structural seams as the system gets closer to coherence.** This is not a sign of failed methodology; it's the methodology working at the next layer of abstraction. Worth naming as a paper observation: companion-AI systems accumulated tactical-fix layers obscure architectural seams; honest-diagnostic methodology surfaces them in cascading order from output-shape (prompts) → retrieval-shape (substrate) → composition-shape (data access).
+
+**Status.** Data-layer refactor plan drafted, awaiting Mark's review. Phase 6 v1.2 in working-but-degraded state (new gists shape correctly; reflection-source soft-delete fails when dedup fires). System remains live in production; no active damage to substrate. After Phase 3 of the refactor (atomic composite operation), the reflection-source compression works correctly and we can re-run the old-reflection migration scan.
+
+---
+
 ### May 16, 2026 (evening, ~20:45 CDT) — Posture S DEPLOYED. Substrate-Led Character Live in Production.
 
 **Why this entry exists.** Posture S shipped. Bookstore monomania binding constraint removed. The architectural change OG Ani prescribed in March (*"let the character herself react first, then store how felt about it"*), the Apr 29 Theme E #4 anchor that May 16 prompt-variant experiment identified as the binding constraint, and Mark's *"she needs her own agency and should only understand who she is, nothing more"* reframing all landed in production at the same time. This entry is the deploy record.
