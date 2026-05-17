@@ -101,13 +101,28 @@ public class ReflectionPhase
         var (system, user) = PromptBuilder.BuildReflectionSynthesisPrompt(
             characterState.Name, contact, memoryContents);
 
-        // Phase 6 v1.2 R3 (May 17, 2026) — JSON-mode synthesis. Prior path used
-        // InnerMonologueChatAsync with free-prose output and line-split parsing,
-        // which produced first-person inner-thought-shaped records. Now uses
-        // format="json" with a structured schema (summaries[].topic/.shape) so
-        // output is register-tagged short summaries, parseable structurally.
-        var response = await _ollama.InnerMonologueChatJsonAsync(
-            system, Array.Empty<ChatMessage>(), user, ct, keepAlive: "0")
+        // Phase 6 v1.2 R3 (May 17, 2026) — JSON-mode synthesis.
+        //
+        // R3.0 used InnerMonologueChatJsonAsync (ani-v7-inner). The 2026-05-17
+        // out-of-band probe showed ani-v7-inner producing malformed JSON
+        // (multiple "summaries" keys, one per source memory) and echoing
+        // verbatim source content into the "shape" field — the fine-tune's
+        // training pulls toward Ani's first-person inner-thought register
+        // and per-utterance output, which is exactly the wrong tool for
+        // compression-style summarization.
+        //
+        // R3.1 (May 17, 2026, same-day refinement): switched to the local
+        // utility model (Qwen 14B, configured as LocalVerifierModelTag).
+        // Qwen is general-purpose and not fine-tuned for any specific voice,
+        // so it respects both the JSON schema and the compression-style
+        // instruction without fighting training. Same model as the frontier
+        // verifier — already pre-pulled on the server, no new infra needed.
+        var synthesisModel = string.IsNullOrWhiteSpace(_options.LocalVerifierModelTag)
+            ? "qwen3:14b"
+            : _options.LocalVerifierModelTag;
+
+        var response = await _ollama.ChatJsonWithModelAsync(
+            synthesisModel, system, Array.Empty<ChatMessage>(), user, ct, keepAlive: "0")
             .ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(response))

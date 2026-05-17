@@ -17,6 +17,22 @@ public interface IOllamaClient
     /// docs/spec/design/ANI-MemoryReform-Design.md v1.2 Refinement 3.
     /// </summary>
     Task<string>  InnerMonologueChatJsonAsync(string systemPrompt, IEnumerable<ChatMessage> history, string userMessage, CancellationToken ct = default, string? keepAlive = null);
+
+    /// <summary>
+    /// Phase 6 v1.2 R3.1 (May 17, 2026) — general-purpose JSON-mode chat
+    /// against an explicitly-named model. Used by <c>ReflectionPhase</c> to
+    /// call the local utility/verifier model (e.g. qwen3:14b) for synthesis
+    /// tasks that need structured output without the fine-tuned-character
+    /// register bias of <c>ani-v7-inner</c>.
+    ///
+    /// Empirical motivation: the 2026-05-17 out-of-band R3 probe showed
+    /// <c>ani-v7-inner</c> producing malformed JSON (multiple <c>"summaries"</c>
+    /// keys, one per source memory) and echoing verbatim source content into
+    /// the summary "shape" field — fighting the training. Switching the
+    /// synthesis call to the non-fine-tuned local model (Qwen 14B) is the
+    /// structural fix: the right tool for compression-style summarization.
+    /// </summary>
+    Task<string>  ChatJsonWithModelAsync(string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage, CancellationToken ct = default, string? keepAlive = null);
     Task<float[]> EmbedAsync(string text, CancellationToken ct = default);
 
     /// <summary>
