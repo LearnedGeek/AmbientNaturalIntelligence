@@ -47,4 +47,38 @@ public interface IMemoryPersistence
     /// Excludes reflection-sourced memories to prevent synthesis loops.
     /// </summary>
     Task<IEnumerable<MemoryRecord>> GetRecentAsync(int limit = 10, CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase 6 v1.2 (May 17, 2026) — returns records that have decayed past
+    /// the recency threshold and are eligible for compression into a
+    /// reflection gist. Used by <see cref="ReflectionPhase"/>'s decay-driven
+    /// summarization path. See <c>docs/spec/design/ANI-MemoryReform-Design.md</c>
+    /// v1.2 Refinement 1 (decay-threshold trigger) + Refinement 2 (lifecycle).
+    ///
+    /// Eligibility criteria (applied in implementation):
+    ///   - tier != 'Anchored' (anchored records are decay-exempt)
+    ///   - tier != 'Compressed' (already compressed; idempotent)
+    ///   - source_name NOT IN ('reflection', 'character-seed') — don't
+    ///     compress reflections (avoid summary-of-summary loops) or
+    ///     character seeds (canonical Mark-supplied identity)
+    ///   - importance &lt; <see cref="AniOptions.DecayEligibilityImportanceThreshold"/>
+    ///     (high-importance moments survive verbatim as "significant
+    ///     moments" per v1.2 design)
+    ///   - recency score has decayed past
+    ///     <see cref="AniOptions.DecayEligibilityRecencyThreshold"/>
+    ///     (typically 0.30 — about 1.7 type-aware half-lives past creation)
+    ///
+    /// Returns oldest-first, capped at <paramref name="limit"/>.
+    /// </summary>
+    Task<IEnumerable<MemoryRecord>> GetDecayEligibleAsync(int limit = 10, CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase 6 v1.2 (May 17, 2026) — marks records as compressed into a
+    /// reflection gist. Sets <c>tier='Compressed'</c> for each source ID and
+    /// creates <c>compressed_into</c> memory-links from the gist to the
+    /// sources for provenance. Compressed records are excluded from
+    /// retrieval (see <c>SqliteMemoryService.ComputeRetrievalScore</c> +
+    /// search query filters) but preserved in the table for audit/rollback.
+    /// </summary>
+    Task MarkCompressedAsync(IEnumerable<Guid> sourceIds, Guid gistId, CancellationToken ct = default);
 }

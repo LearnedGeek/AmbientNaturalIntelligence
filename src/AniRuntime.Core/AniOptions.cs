@@ -376,6 +376,16 @@ public class AniOptions
     public bool ReflectionEnabled       { get; set; } = true;
     public int  ReflectionCycleInterval { get; set; } = 12;  // every ~6 hours at 30-min cycles
 
+    // Phase 6 v1.2 (May 17, 2026): decay-driven compression on reflection.
+    // When CompressionEnabled, ReflectionPhase selects decay-eligible records
+    // (via IMemoryPersistence.GetDecayEligibleAsync) instead of the v1
+    // "most recent 10" criterion, and marks the sources as Compressed after
+    // synthesis (via IMemoryPersistence.MarkCompressedAsync). See
+    // docs/spec/design/ANI-MemoryReform-Design.md v1.2 Refinements 1+2.
+    public bool  CompressionEnabled                     { get; set; } = true;
+    public float DecayEligibilityRecencyThreshold       { get; set; } = 0.30f;
+    public float DecayEligibilityImportanceThreshold    { get; set; } = 0.85f;
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

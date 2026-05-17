@@ -75,11 +75,23 @@ public class ReflectionPhase
     private async Task RunReflectionAsync(
         CharacterStateDoc characterState, CancellationToken ct)
     {
-        // Retrieve recent non-reflection memories
-        var recentMemories = (await _persist.GetRecentAsync(10, ct).ConfigureAwait(false)).ToList();
+        // Phase 6 v1.2 R1 (May 17, 2026): when CompressionEnabled, select
+        // decay-eligible records for compression. Falls back to GetRecentAsync
+        // when the flag is off (legacy/rollback path). The decay-driven
+        // selection criterion + post-synthesis soft-delete (R2 below) close
+        // the May 17 substrate-feedback-loop finding: routine background
+        // records get compressed instead of accumulating as new substrate.
+        // See docs/spec/design/ANI-MemoryReform-Design.md v1.2.
+        var recentMemories = _options.CompressionEnabled
+            ? (await _persist.GetDecayEligibleAsync(10, ct).ConfigureAwait(false)).ToList()
+            : (await _persist.GetRecentAsync(10, ct).ConfigureAwait(false)).ToList();
+
         if (recentMemories.Count < 3)
         {
-            _log.LogDebug("Reflection skipped — only {Count} recent memories (need at least 3)", recentMemories.Count);
+            _log.LogDebug(
+                "Reflection skipped — only {Count} {Source} memories (need at least 3)",
+                recentMemories.Count,
+                _options.CompressionEnabled ? "decay-eligible" : "recent");
             return;
         }
 
@@ -143,6 +155,7 @@ public class ReflectionPhase
 
         var saved = 0;
         var gateDropped = 0;
+        var savedGistIds = new List<Guid>(); // Phase 6 v1.2 R2: tracked for soft-delete post-loop
         foreach (var observation in observations)
         {
             // Skip if we already have a reflection memory with this prefix
@@ -191,8 +204,17 @@ public class ReflectionPhase
                 }
             }
 
+            // Phase 6 v1.2 R2 (May 17, 2026): assign an Id up-front so we can
+            // pass it to MarkCompressedAsync after save. SaveAsync may merge
+            // this record into an existing one (Feature 30), in which case
+            // the merge target's Id supersedes — but for new synthesis
+            // records (the common case for reflection gists, which are
+            // novel content not duplicating prior facts), the assigned Id
+            // is what persists.
+            var gistId = Guid.NewGuid();
             var record = new MemoryRecord
             {
+                Id = gistId,
                 Type = MemoryType.Semantic,
                 Content = observation,
                 Importance = 0.8f,
@@ -207,11 +229,44 @@ public class ReflectionPhase
             await _persist.SaveAsync(record, ct).ConfigureAwait(false);
             existingProfiles.Add(prefix); // Prevent saving duplicates within same batch
             saved++;
+            savedGistIds.Add(gistId);
+        }
+
+        // Phase 6 v1.2 R2 (May 17, 2026): soft-delete source records into the
+        // gists we just saved. If at least one gist saved, mark all source
+        // records as Compressed and create compressed_into links for
+        // provenance. The compression is keyed on the first saved gist for
+        // the link target — multiple gists in one cycle share the same
+        // sources because they came from the same synthesis input. Future
+        // refinement could split sources by gist if topic-clustering is
+        // explicit; current v1.2 keeps it batch-shared because the LLM does
+        // implicit clustering across the 10-record input.
+        if (_options.CompressionEnabled && savedGistIds.Count > 0)
+        {
+            try
+            {
+                var sourceGuids = recentMemories.Select(m => m.Id).ToList();
+                await _persist.MarkCompressedAsync(sourceGuids, savedGistIds[0], ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "Phase 6 v1.2 MarkCompressedAsync failed — gist(s) saved but sources NOT marked Compressed. " +
+                    "Sources will continue to appear in retrieval until next compression cycle. " +
+                    "Soft-delete is not blocking; the gist is the durable artifact.");
+            }
         }
 
         _log.LogInformation(
-            "Reflection synthesis: generated {Count} observations from {SourceCount} recent memories ({Saved} new, {Skipped} duplicates skipped, {GateDropped} gate-dropped)",
-            observations.Count, recentMemories.Count, saved, observations.Count - saved - gateDropped, gateDropped);
+            "Reflection synthesis: generated {Count} observations from {SourceCount} {SelectionMode} memories ({Saved} new, {Skipped} duplicates skipped, {GateDropped} gate-dropped, compression={Compression})",
+            observations.Count,
+            recentMemories.Count,
+            _options.CompressionEnabled ? "decay-eligible" : "recent",
+            saved,
+            observations.Count - saved - gateDropped,
+            gateDropped,
+            _options.CompressionEnabled ? "on" : "off");
     }
 
     /// <summary>

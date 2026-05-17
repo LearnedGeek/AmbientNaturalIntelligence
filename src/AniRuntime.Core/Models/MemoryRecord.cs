@@ -76,8 +76,16 @@ public enum MemoryType
 /// </summary>
 public enum DecayTier
 {
-    Standard,   // Normal memories — importance scoring + decay apply normally
-    Anchored    // Foundation memories — decay disabled, always included in context
+    Standard,    // Normal memories — importance scoring + decay apply normally
+    Anchored,    // Foundation memories — decay disabled, always included in context
+    Compressed,  // Phase 6 v1.2 (May 17, 2026) — record was folded into a
+                 // reflection gist and is excluded from retrieval. The
+                 // record itself is preserved for audit/rollback but no
+                 // longer surfaces in conversation context. Provenance from
+                 // the gist back to compressed sources is maintained via the
+                 // memory_links table with relationship type
+                 // 'compressed_into'. See docs/spec/design/ANI-MemoryReform-Design.md
+                 // v1.2 Refinement 2 (lifecycle: gist replaces sources).
 }
 
 /// <summary>

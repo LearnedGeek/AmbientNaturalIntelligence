@@ -350,9 +350,13 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
+        // Phase 6 v1.2: exclude Compressed-tier records. Sources folded into
+        // a reflection gist should not surface in retrieval — the gist is
+        // the retrieval target now.
         cmd.CommandText = """
             SELECT * FROM memories
             WHERE type = $type
+              AND tier != 'Compressed'
             ORDER BY occurred_at DESC
             LIMIT $limit
             """;
@@ -394,7 +398,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
-        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL";
+        // Phase 6 v1.2: exclude Compressed-tier records from retrieval.
+        // Compressed records have been folded into reflection gists; the gist
+        // is the retrieval target now. Provenance preserved via memory_links.
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND tier != 'Compressed'";
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
 
@@ -501,7 +508,10 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
-        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL";
+        // Phase 6 v1.2: exclude Compressed-tier records from retrieval.
+        // Compressed records have been folded into reflection gists; the gist
+        // is the retrieval target now. Provenance preserved via memory_links.
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND tier != 'Compressed'";
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
 
@@ -634,7 +644,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
-        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND type = $type";
+        // Phase 6 v1.2: also exclude Compressed records.
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND type = $type AND tier != 'Compressed'";
         cmd.Parameters.AddWithValue("$type", (int)type);
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
@@ -1413,15 +1424,136 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
+        // Phase 6 v1.2 (May 17, 2026): also exclude Compressed tier — compressed
+        // records are folded into gists and should not be re-surfaced as if
+        // they were independent recent memories.
         cmd.CommandText = """
             SELECT * FROM memories
-            WHERE source_name IS NULL OR source_name != 'reflection'
+            WHERE (source_name IS NULL OR source_name != 'reflection')
+              AND tier != 'Compressed'
             ORDER BY occurred_at DESC
             LIMIT $limit
             """;
         cmd.Parameters.AddWithValue("$limit", limit);
 
         return await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Phase 6 v1.2 (May 17, 2026) — returns records eligible for compression
+    /// into a reflection gist. See <see cref="IMemoryPersistence.GetDecayEligibleAsync"/>
+    /// for eligibility criteria. Returns oldest-first so the synthesis batch
+    /// covers a coherent older slice of substrate rather than a random
+    /// sample.
+    /// </summary>
+    public async Task<IEnumerable<MemoryRecord>> GetDecayEligibleAsync(
+        int limit = 10, CancellationToken ct = default)
+    {
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd  = conn.CreateCommand();
+
+        // Filter at SQL level on the attribute-based predicates (tier, source,
+        // importance). The recency predicate is type-aware via decay-multiplier,
+        // so apply it post-load. Over-fetch by 4x to give the recency filter
+        // enough headroom — records that pass attribute filters but not recency
+        // shouldn't starve the result set.
+        var overFetch = Math.Max(50, limit * 4);
+
+        cmd.CommandText = """
+            SELECT * FROM memories
+            WHERE tier NOT IN ('Anchored', 'Compressed')
+              AND (source_name IS NULL OR source_name NOT IN ('reflection', 'character-seed'))
+              AND importance < $importanceCeiling
+              AND embedding IS NOT NULL
+            ORDER BY occurred_at ASC
+            LIMIT $overFetch
+            """;
+        cmd.Parameters.AddWithValue("$importanceCeiling", _options.DecayEligibilityImportanceThreshold);
+        cmd.Parameters.AddWithValue("$overFetch",         overFetch);
+
+        var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
+
+        // Apply type-aware recency threshold: recency = exp(-hoursSinceCreation / lambda)
+        // where lambda = RetrievalRecencyDecayHours * GetDecayMultiplier(record).
+        // Eligible if recency <= DecayEligibilityRecencyThreshold.
+        var now = DateTimeOffset.UtcNow;
+        var recencyCeiling = _options.DecayEligibilityRecencyThreshold;
+        var eligible = new List<MemoryRecord>();
+        foreach (var r in candidates)
+        {
+            var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(r);
+            var hours  = (now - r.OccurredAt).TotalHours;
+            var recency = (float)Math.Exp(-hours / lambda);
+            if (recency <= recencyCeiling)
+            {
+                eligible.Add(r);
+                if (eligible.Count >= limit) break;
+            }
+        }
+
+        return eligible;
+    }
+
+    /// <summary>
+    /// Phase 6 v1.2 (May 17, 2026) — marks records as compressed into a
+    /// reflection gist. Updates <c>tier='Compressed'</c> on each source record
+    /// and creates <c>compressed_into</c> memory-links from gist → sources for
+    /// provenance. Atomic per record; if a single update fails, the others
+    /// still apply (log + continue).
+    /// </summary>
+    public async Task MarkCompressedAsync(
+        IEnumerable<Guid> sourceIds, Guid gistId, CancellationToken ct = default)
+    {
+        var idList = sourceIds.ToList();
+        if (idList.Count == 0) return;
+
+        await using var conn = await OpenAsync(ct).ConfigureAwait(false);
+        await using var tx   = (Microsoft.Data.Sqlite.SqliteTransaction)await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+        var marked = 0;
+        try
+        {
+            foreach (var sourceId in idList)
+            {
+                await using var updateCmd = conn.CreateCommand();
+                updateCmd.Transaction = tx;
+                updateCmd.CommandText = """
+                    UPDATE memories
+                    SET tier = 'Compressed'
+                    WHERE id = $id AND tier NOT IN ('Anchored', 'Compressed')
+                    """;
+                updateCmd.Parameters.AddWithValue("$id", sourceId.ToString());
+                var rows = await updateCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                if (rows > 0) marked++;
+
+                // Provenance: gist --compressed_into--> source
+                await using var linkCmd = conn.CreateCommand();
+                linkCmd.Transaction = tx;
+                linkCmd.CommandText = """
+                    INSERT OR IGNORE INTO memory_links
+                        (source_id, target_id, relationship, created_at)
+                    VALUES ($src, $tgt, 'compressed_into', $now)
+                    """;
+                linkCmd.Parameters.AddWithValue("$src", gistId.ToString());
+                linkCmd.Parameters.AddWithValue("$tgt", sourceId.ToString());
+                linkCmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                await linkCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            await tx.CommitAsync(ct).ConfigureAwait(false);
+
+            _log.LogInformation(
+                "Phase 6 v1.2 compression: marked {Count}/{Total} records as Compressed under gist {GistId}",
+                marked, idList.Count, gistId);
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync(ct).ConfigureAwait(false);
+            _log.LogError(ex,
+                "MarkCompressedAsync transaction rolled back — no source records marked under gist {GistId}",
+                gistId);
+            throw;
+        }
     }
 
     /// <summary>
@@ -1594,7 +1726,8 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         // Filter at the SQL level — only load candidate rows matching the requested tier.
         // This is more efficient than loading everything and filtering in memory.
-        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND provenance = $tier";
+        // Phase 6 v1.2: also exclude Compressed records from tier-scoped retrieval.
+        cmd.CommandText = "SELECT * FROM memories WHERE embedding IS NOT NULL AND provenance = $tier AND tier != 'Compressed'";
         cmd.Parameters.AddWithValue("$tier", tier.ToString());
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);

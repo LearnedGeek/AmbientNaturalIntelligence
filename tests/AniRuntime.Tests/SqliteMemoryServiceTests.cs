@@ -1127,4 +1127,217 @@ public class SqliteMemoryServiceTests : AniTestBase
         ranked[0].Record.Id.Should().Be(newEpisodic.Id,
             "Episodic tier keeps recency — recent record wins on tied cosine + importance");
     }
+
+    // ── Phase 6 v1.2 (May 17, 2026): decay-driven compression ────────────────
+
+    private static MemoryRecord BuildRecord(
+        MemoryType type,
+        string content,
+        DateTimeOffset occurredAt,
+        float importance = 0.5f,
+        string? sourceName = null,
+        DecayTier tier = DecayTier.Standard)
+    {
+        // Use a content-derived embedding so distinct records get distinct
+        // embeddings (otherwise Feature 30 dedup merges them via cosine=1.0).
+        // The test doesn't need real embeddings — just distinguishable ones.
+        var hash = (uint)content.GetHashCode();
+        var emb = new float[]
+        {
+            ((hash & 0xFF) / 255f),
+            (((hash >> 8) & 0xFF) / 255f),
+            (((hash >> 16) & 0xFF) / 255f),
+        };
+        return new MemoryRecord
+        {
+            Type = type,
+            Content = content,
+            Importance = importance,
+            OccurredAt = occurredAt,
+            SourceName = sourceName,
+            DecayTier = tier,
+            Embedding = emb,
+        };
+    }
+
+    [Fact]
+    public async Task GetDecayEligibleAsync_ReturnsRecordsPastRecencyThreshold()
+    {
+        // With default RetrievalRecencyDecayHours (168) and InnerThought
+        // multiplier (1.0), lambda = 168. recency=0.30 → age ≈ 1.2 × 168 = 202h.
+        // Use an old record (300h back) and a recent one (12h back).
+        var old = BuildRecord(MemoryType.InnerThought,
+            "old thought that has aged out",
+            DateTimeOffset.UtcNow.AddHours(-300));
+        var recent = BuildRecord(MemoryType.InnerThought,
+            "recent thought still relevant",
+            DateTimeOffset.UtcNow.AddHours(-12));
+
+        await _svc.SaveAsync(old);
+        await _svc.SaveAsync(recent);
+
+        var eligible = (await _svc.GetDecayEligibleAsync(limit: 10)).ToList();
+
+        eligible.Should().HaveCount(1);
+        eligible[0].Content.Should().Contain("old thought");
+    }
+
+    [Fact]
+    public async Task GetDecayEligibleAsync_ExcludesAnchoredTier()
+    {
+        var anchoredOld = BuildRecord(MemoryType.InnerThought,
+            "anchored foundation record",
+            DateTimeOffset.UtcNow.AddHours(-500),
+            tier: DecayTier.Anchored);
+        var standardOld = BuildRecord(MemoryType.InnerThought,
+            "standard old record",
+            DateTimeOffset.UtcNow.AddHours(-500));
+
+        await _svc.SaveAsync(anchoredOld);
+        await _svc.SaveAsync(standardOld);
+
+        var eligible = (await _svc.GetDecayEligibleAsync(limit: 10)).ToList();
+
+        eligible.Should().HaveCount(1);
+        eligible.Should().NotContain(r => r.DecayTier == DecayTier.Anchored);
+    }
+
+    [Fact]
+    public async Task GetDecayEligibleAsync_ExcludesReflectionAndCharacterSeedSources()
+    {
+        var reflection = BuildRecord(MemoryType.Semantic,
+            "old reflection",
+            DateTimeOffset.UtcNow.AddHours(-1000),
+            sourceName: "reflection");
+        var characterSeed = BuildRecord(MemoryType.Semantic,
+            "old character seed",
+            DateTimeOffset.UtcNow.AddHours(-1000),
+            sourceName: "character-seed");
+        var conversation = BuildRecord(MemoryType.Episodic,
+            "old conversation",
+            DateTimeOffset.UtcNow.AddHours(-1000),
+            sourceName: "conversation");
+
+        await _svc.SaveAsync(reflection);
+        await _svc.SaveAsync(characterSeed);
+        await _svc.SaveAsync(conversation);
+
+        var eligible = (await _svc.GetDecayEligibleAsync(limit: 10)).ToList();
+
+        eligible.Should().HaveCount(1);
+        eligible[0].SourceName.Should().Be("conversation");
+    }
+
+    [Fact]
+    public async Task GetDecayEligibleAsync_ExcludesHighImportanceRecords()
+    {
+        var highImportance = BuildRecord(MemoryType.InnerThought,
+            "significant moment",
+            DateTimeOffset.UtcNow.AddHours(-500),
+            importance: 0.9f);  // above default 0.85 ceiling
+        var routineImportance = BuildRecord(MemoryType.InnerThought,
+            "routine background",
+            DateTimeOffset.UtcNow.AddHours(-500),
+            importance: 0.5f);
+
+        await _svc.SaveAsync(highImportance);
+        await _svc.SaveAsync(routineImportance);
+
+        var eligible = (await _svc.GetDecayEligibleAsync(limit: 10)).ToList();
+
+        eligible.Should().HaveCount(1);
+        eligible[0].Content.Should().Contain("routine background");
+    }
+
+    [Fact]
+    public async Task MarkCompressedAsync_SetsTierAndCreatesProvenanceLinks()
+    {
+        var source1 = BuildRecord(MemoryType.InnerThought,
+            "source one", DateTimeOffset.UtcNow.AddHours(-500));
+        var source2 = BuildRecord(MemoryType.InnerThought,
+            "source two", DateTimeOffset.UtcNow.AddHours(-500));
+        var gist = BuildRecord(MemoryType.Semantic,
+            "[topic: X] gist summary",
+            DateTimeOffset.UtcNow,
+            importance: 0.8f,
+            sourceName: "reflection");
+
+        await _svc.SaveAsync(source1);
+        await _svc.SaveAsync(source2);
+        await _svc.SaveAsync(gist);
+
+        await _svc.MarkCompressedAsync(
+            new[] { source1.Id, source2.Id },
+            gist.Id);
+
+        // Sources should be tier=Compressed
+        var allRecords = (await _svc.GetByTypeAsync(MemoryType.InnerThought, limit: 50)).ToList();
+        allRecords.Should().NotContain(r => r.Id == source1.Id || r.Id == source2.Id,
+            "Compressed records excluded from GetByTypeAsync retrieval");
+
+        // Provenance links exist
+        var linkedFromGist = (await _svc.GetLinkedMemoriesAsync(gist.Id, "compressed_into")).ToList();
+        linkedFromGist.Should().HaveCount(2);
+        linkedFromGist.Select(r => r.Id).Should().BeEquivalentTo(new[] { source1.Id, source2.Id });
+    }
+
+    [Fact]
+    public async Task MarkCompressedAsync_DoesNotMarkAnchoredRecords()
+    {
+        // Phase 6 v1.2 safety: even if called with anchored IDs, the UPDATE
+        // statement's WHERE clause excludes Anchored records. Anchored is the
+        // permanent foundation tier and should never be compressed.
+        var anchored = BuildRecord(MemoryType.InnerThought,
+            "anchored — must not compress",
+            DateTimeOffset.UtcNow.AddHours(-500),
+            tier: DecayTier.Anchored);
+        var gist = BuildRecord(MemoryType.Semantic,
+            "[topic: X] gist", DateTimeOffset.UtcNow, sourceName: "reflection");
+
+        await _svc.SaveAsync(anchored);
+        await _svc.SaveAsync(gist);
+
+        await _svc.MarkCompressedAsync(new[] { anchored.Id }, gist.Id);
+
+        // GetByTypeAsync excludes Compressed but not Anchored — anchored should still appear
+        var results = (await _svc.GetByTypeAsync(MemoryType.InnerThought, limit: 10)).ToList();
+        results.Should().Contain(r => r.Id == anchored.Id);
+    }
+
+    [Fact]
+    public async Task GetByTypeAsync_ExcludesCompressedTier()
+    {
+        // GetByTypeAsync is one of three retrieval surfaces updated for
+        // Phase 6 v1.2 (alongside SearchAsync, SearchWithScoresAsync, and
+        // tier-scoped retrieval). All four share the same `tier !=
+        // 'Compressed'` SQL filter; this test pins the contract at the
+        // GetByTypeAsync layer because it does not require an embedded
+        // query string.
+        var visible = new MemoryRecord
+        {
+            Type = MemoryType.InnerThought,
+            Content = "visible record",
+            Embedding = new float[] { 0.1f, 0.2f },
+            OccurredAt = DateTimeOffset.UtcNow.AddHours(-50),
+            Importance = 0.6f,
+        };
+        var compressed = new MemoryRecord
+        {
+            Type = MemoryType.InnerThought,
+            Content = "compressed record",
+            Embedding = new float[] { 0.1f, 0.2f },
+            OccurredAt = DateTimeOffset.UtcNow.AddHours(-50),
+            Importance = 0.6f,
+            DecayTier = DecayTier.Compressed,
+        };
+
+        await _svc.SaveAsync(visible);
+        await _svc.SaveAsync(compressed);
+
+        var results = (await _svc.GetByTypeAsync(MemoryType.InnerThought, limit: 50)).ToList();
+
+        results.Should().Contain(r => r.Id == visible.Id);
+        results.Should().NotContain(r => r.Id == compressed.Id,
+            "GetByTypeAsync filters out Compressed tier per Phase 6 v1.2");
+    }
 }
