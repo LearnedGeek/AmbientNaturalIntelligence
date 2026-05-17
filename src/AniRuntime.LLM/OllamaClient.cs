@@ -41,6 +41,11 @@ public class OllamaClient : IOllamaClient
         CancellationToken ct = default, string? keepAlive = null)
         => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: null, ct, temperature: null, keepAlive: keepAlive);
 
+    public Task<string> InnerMonologueChatJsonAsync(
+        string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
+        CancellationToken ct = default, string? keepAlive = null)
+        => SendChatAsync(_options.ResolvedInnerMonologueModel, systemPrompt, history, userMessage, format: "json", ct, temperature: null, keepAlive: keepAlive);
+
     private async Task<string> SendChatAsync(
         string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage,
         string? format, CancellationToken ct, float? temperature = null, string? keepAlive = null)

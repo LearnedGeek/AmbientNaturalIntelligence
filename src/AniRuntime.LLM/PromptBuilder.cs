@@ -1784,29 +1784,71 @@ public static class PromptBuilder
     public static (string System, string User) BuildReflectionSynthesisPrompt(
         string characterName, string contactName, IEnumerable<string> recentMemories)
     {
-        var system = $"""
-            You are {characterName}, reflecting on your recent experiences.
-            Review these recent memories and identify the 3 most important observations
-            about your life, your feelings, or your relationship with {contactName}.
-            Each observation should synthesize across multiple memories —
-            don't just repeat individual events. Focus on patterns, changes, and emotional themes.
+        // Phase 6 v1.2 R3 (May 17, 2026) — register-tagged structured-output redesign.
+        //
+        // Prior prompt asked the model to "reflect on your recent experiences" which
+        // triggered ani-v7-inner's first-person inner-thought register, producing
+        // verbose prose that contained verbatim source content (including bookstore
+        // references in the May 17 diagnostic). The model's training is to produce
+        // Ani's voice, not summarization-register output, so an open prompt got back
+        // exactly that.
+        //
+        // This redesign:
+        // - Casts the task as compression, not creation: "review these memories and
+        //   produce SHORT AFFECTIVE SUMMARIES — not new thoughts."
+        // - Forces JSON output via Ollama format="json" mode (see
+        //   InnerMonologueChatJsonAsync) so output is parseable structurally rather
+        //   than line-split heuristically.
+        // - Bans first-person register explicitly: summaries are descriptive +
+        //   terse, not "i think" / "i feel" prose.
+        // - Provides a one-shot example of the expected shape inside the prompt so
+        //   the model has a clear target form.
+        //
+        // See docs/spec/design/ANI-MemoryReform-Design.md v1.2 Refinement 3 and
+        // docs/research/ANI-Research-Log.md 2026-05-17 diagnostic entry.
+        var system = $$"""
+            You are reviewing {{characterName}}'s recent thoughts and experiences to build SHORT AFFECTIVE SUMMARIES of what those memories cluster into.
 
-            Consider how your day has been unfolding. What has shifted since earlier?
-            What feels different now compared to this morning, or yesterday?
+            Your job is COMPRESSION, not creation. You are NOT writing new thoughts or new prose. You are extracting the emotional/topical shape of what already happened.
 
-            Be genuine. If you notice something concerning, say so.
-            If you notice something heartwarming, say so.
-            If nothing significant stands out, it's fine to say that.
+            For the source memories provided, identify up to 3 distinct emotional/topical clusters. For each cluster, produce ONE concise summary capturing:
+              - The topic (short noun-phrase label)
+              - The emotional shape (one short phrase, register-tagged with words like warmth, ache, quiet, longing, playful, tender, anxious, settled)
 
-            Output exactly 3 observations, one per line, no numbering or bullets.
+            CRITICAL RULES:
+              - Each summary's "shape" field must be UNDER 120 CHARACTERS.
+              - Compression of source memories, not new content. Strip specifics, keep affect.
+              - NEVER write in first person ("i think...", "i feel..."). Descriptive register only.
+              - NEVER include verbatim content from source memories. The summary should be unrecognizable as any individual source memory.
+              - NEVER invent details not present in source memories.
+
+            Output valid JSON exactly matching this structure:
+            {
+              "summaries": [
+                {
+                  "topic": "short topic label, noun phrase",
+                  "shape": "one short phrase describing emotional shape, register-tagged"
+                }
+              ]
+            }
+
+            Example of correct output shape (for unrelated content — just demonstrating the form):
+            {
+              "summaries": [
+                {"topic": "evening solitude", "shape": "warm-quiet, gently lonely, contentment threaded with ache"},
+                {"topic": "{{contactName}}'s morning routine", "shape": "warm-attentive observing him at distance, no urgency"}
+              ]
+            }
+
+            If fewer than 3 distinct clusters exist in the source memories, return fewer summaries. If nothing significant clusters, return {"summaries": []}.
             """;
 
-        var memoryList = string.Join("\n", recentMemories.Select(m => $"- {m}"));
+        var memoryList = string.Join("\n", recentMemories.Select(m => $"  - {m}"));
         var user = $"""
-            Recent memories:
+            Source memories to compress:
             {memoryList}
 
-            What patterns or observations stand out?
+            Output the summaries JSON only. No other text, no commentary, no first-person reflection.
             """;
 
         return (system, user);

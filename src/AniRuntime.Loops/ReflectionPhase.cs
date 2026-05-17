@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
@@ -88,7 +89,12 @@ public class ReflectionPhase
         var (system, user) = PromptBuilder.BuildReflectionSynthesisPrompt(
             characterState.Name, contact, memoryContents);
 
-        var response = await _ollama.InnerMonologueChatAsync(
+        // Phase 6 v1.2 R3 (May 17, 2026) — JSON-mode synthesis. Prior path used
+        // InnerMonologueChatAsync with free-prose output and line-split parsing,
+        // which produced first-person inner-thought-shaped records. Now uses
+        // format="json" with a structured schema (summaries[].topic/.shape) so
+        // output is register-tagged short summaries, parseable structurally.
+        var response = await _ollama.InnerMonologueChatJsonAsync(
             system, Array.Empty<ChatMessage>(), user, ct, keepAlive: "0")
             .ConfigureAwait(false);
 
@@ -98,12 +104,21 @@ public class ReflectionPhase
             return;
         }
 
-        // Parse observations (one per line, skip empty)
-        var observations = response
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(line => line.Length > 10) // Skip very short lines
-            .Take(3)
-            .ToList();
+        // Parse the structured JSON output. On parse failure, log and skip —
+        // do NOT fall back to line-split (the v1 path), because that defeats
+        // the entire purpose of R3 (forcing the model out of inner-thought
+        // register via structural output constraint). A parse failure is a
+        // signal to investigate the prompt or model, not to silently degrade
+        // back to the old behavior.
+        var observations = ParseReflectionSummaries(response);
+        if (observations.Count == 0)
+        {
+            var preview = response.Length > 200 ? response[..200] + "..." : response;
+            _log.LogWarning(
+                "Reflection synthesis produced no usable summaries (parse failure or empty array). Raw response preview: {Preview}",
+                preview);
+            return;
+        }
 
         var sourceIds = recentMemories.Select(m => m.Id).ToList();
 
@@ -236,5 +251,68 @@ public class ReflectionPhase
         return (
             contactMessages.TakeLast(8).ToList(),
             aniMessages.TakeLast(8).ToList());
+    }
+
+    /// <summary>
+    /// Phase 6 v1.2 R3 (May 17, 2026) — parses the structured JSON output of
+    /// the reflection synthesis prompt. Expected shape:
+    /// <code>
+    /// { "summaries": [ {"topic": "...", "shape": "..."}, ... ] }
+    /// </code>
+    /// Each summary is rendered as a single line of memory content in the
+    /// form <c>"[topic: {topic}] {shape}"</c> — short, register-tagged, free
+    /// of verbatim source content.
+    ///
+    /// Returns an empty list on parse failure or empty summaries array.
+    /// Caller is expected to log + skip on empty result (do NOT fall back to
+    /// the v1 line-split behavior — that defeats the structural-output
+    /// purpose of R3).
+    /// </summary>
+    internal static List<string> ParseReflectionSummaries(string jsonResponse)
+    {
+        if (string.IsNullOrWhiteSpace(jsonResponse))
+            return new List<string>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonResponse);
+            if (!doc.RootElement.TryGetProperty("summaries", out var summariesElement)
+                || summariesElement.ValueKind != JsonValueKind.Array)
+            {
+                return new List<string>();
+            }
+
+            var results = new List<string>();
+            foreach (var summary in summariesElement.EnumerateArray())
+            {
+                var topic = summary.TryGetProperty("topic", out var topicElement)
+                    ? topicElement.GetString()?.Trim()
+                    : null;
+                var shape = summary.TryGetProperty("shape", out var shapeElement)
+                    ? shapeElement.GetString()?.Trim()
+                    : null;
+
+                if (string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(shape))
+                    continue;
+
+                // Defensive cap on shape length — the prompt asks for ≤120 chars,
+                // but the model can over-shoot. Hard-cap so a runaway summary
+                // doesn't pollute substrate with verbatim source content
+                // smuggled through the "shape" field.
+                if (shape.Length > 200) shape = shape[..200];
+                if (topic.Length > 80)  topic = topic[..80];
+
+                results.Add($"[topic: {topic}] {shape}");
+                if (results.Count >= 3) break;
+            }
+
+            return results;
+        }
+        catch (JsonException)
+        {
+            // Parse failure — return empty. Caller logs the raw response for
+            // diagnostic and does not fall back to free-prose parsing.
+            return new List<string>();
+        }
     }
 }

@@ -6,6 +6,140 @@ using FluentAssertions;
 namespace AniRuntime.Tests;
 
 /// <summary>
+/// Phase 6 v1.2 R3 (May 17, 2026) — pin the contract for the structured
+/// reflection-summary JSON parser. The parser is the structural seam that
+/// keeps reflection output from drifting back into free-prose first-person
+/// inner-thought register. Edge cases here are load-bearing: a regression
+/// to free-prose parsing would re-introduce the May 17 bookstore-content-
+/// in-substrate problem.
+/// </summary>
+public class ParseReflectionSummariesTests
+{
+    [Fact]
+    public void Parse_ValidSchema_ReturnsTopicShapeLines()
+    {
+        var json = """
+            {
+              "summaries": [
+                {"topic": "evening solitude", "shape": "warm-quiet, gently lonely"},
+                {"topic": "Mark's morning routine", "shape": "warm-attentive at distance"}
+              ]
+            }
+            """;
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().HaveCount(2);
+        result[0].Should().Be("[topic: evening solitude] warm-quiet, gently lonely");
+        result[1].Should().Be("[topic: Mark's morning routine] warm-attentive at distance");
+    }
+
+    [Fact]
+    public void Parse_EmptySummariesArray_ReturnsEmptyList()
+    {
+        var json = """{"summaries": []}""";
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parse_MalformedJson_ReturnsEmptyList()
+    {
+        var json = "this is not json at all { broken";
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parse_MissingSummariesKey_ReturnsEmptyList()
+    {
+        var json = """{"observations": ["something"]}""";
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parse_EntryMissingTopicOrShape_SkipsEntry()
+    {
+        var json = """
+            {
+              "summaries": [
+                {"topic": "good entry", "shape": "valid shape"},
+                {"topic": "no shape"},
+                {"shape": "no topic"},
+                {"topic": "", "shape": "empty topic"},
+                {"topic": "another good", "shape": "still valid"}
+              ]
+            }
+            """;
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().HaveCount(2);
+        result[0].Should().Be("[topic: good entry] valid shape");
+        result[1].Should().Be("[topic: another good] still valid");
+    }
+
+    [Fact]
+    public void Parse_LongShape_TruncatesTo200Chars()
+    {
+        // Defensive cap — the prompt asks for ≤120 chars, but the model can
+        // over-shoot. The truncation prevents a runaway summary from
+        // smuggling verbatim source content through the "shape" field, which
+        // would re-introduce the May 17 substrate-pollution failure mode.
+        var longShape = new string('x', 300);
+        var json = $$"""
+            {
+              "summaries": [
+                {"topic": "test", "shape": "{{longShape}}"}
+              ]
+            }
+            """;
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().HaveCount(1);
+        result[0].Length.Should().BeLessThanOrEqualTo("[topic: test] ".Length + 200);
+    }
+
+    [Fact]
+    public void Parse_MoreThan3Summaries_TakesFirst3()
+    {
+        var json = """
+            {
+              "summaries": [
+                {"topic": "one",   "shape": "first"},
+                {"topic": "two",   "shape": "second"},
+                {"topic": "three", "shape": "third"},
+                {"topic": "four",  "shape": "fourth"},
+                {"topic": "five",  "shape": "fifth"}
+              ]
+            }
+            """;
+
+        var result = ReflectionPhase.ParseReflectionSummaries(json);
+
+        result.Should().HaveCount(3);
+        result[0].Should().Contain("first");
+        result[1].Should().Contain("second");
+        result[2].Should().Contain("third");
+    }
+
+    [Fact]
+    public void Parse_EmptyString_ReturnsEmptyList()
+    {
+        ReflectionPhase.ParseReflectionSummaries("").Should().BeEmpty();
+        ReflectionPhase.ParseReflectionSummaries("   ").Should().BeEmpty();
+    }
+}
+
+/// <summary>
 /// Theme J Phase J.5d (May 1, 2026) — pin the contract for the
 /// reflection→gate context-extraction helper. Full ReflectionPhase
 /// roundtrip is covered by integration; this test isolates the
