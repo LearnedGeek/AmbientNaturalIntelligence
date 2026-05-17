@@ -28,7 +28,7 @@ public class CharacterStateDoc
     public List<string> CoreTraits    { get; set; } = new();
     public List<string> Interests     { get; set; } = new();
     public List<string> FamilyContext { get; set; } = new();
-    public string Occupation          { get; set; } = "Bookstore";
+    public string Occupation          { get; set; } = string.Empty;
 
     // Primary connection — the person this character reaches out to
     public string PrimaryContactName { get; set; } = string.Empty;

@@ -94,19 +94,26 @@ public sealed class EpistemicSubstrateRenderer : IEpistemicSubstrateRenderer
         // FC-002 three-axis rule's "self-world ALLOW" surface expressed
         // positively. Tells the model the substrate-support requirement
         // does NOT apply to her own interior — she can imagine, dream,
-        // expand details about her bookstore world even when novel.
+        // expand details about her own life even when novel.
         // Mark's framing principle: "if she makes up something about
         // her own world that is fine."
+        //
+        // 2026-05-16 Posture S: "bookstore-world life" → "own life" and
+        // "canonical occupation" → "current focus". The slice no longer
+        // reasserts a frozen occupation frame; substrate is the source of
+        // who-she-is, and any non-empty occupation flowing through is
+        // treated as a contemporaneous focus rather than a permanent label.
+        // See docs/spec/ANI-Substrate-Led-Character-Plan.md §3.2 H2.
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("[ANI-WORLD — your own bookstore-world life — epistemic framing:");
+        sb.AppendLine("[ANI-WORLD — your own life — epistemic framing:");
         sb.AppendLine(" • you have latitude here. Your routines, surroundings, imagined scenes,");
         sb.AppendLine("   sensory details about your own world are yours to express.");
         sb.AppendLine(" • the substrate-support requirement that applies to the contact's external");
         sb.AppendLine("   world does NOT apply to your own interior. Stay consistent with what you've");
-        sb.AppendLine("   established (canonical occupation + recent world entries below) but novelty");
+        sb.AppendLine("   established (recent world entries below) but novelty");
         sb.AppendLine("   within your own world is allowed.]");
         if (hasOccupation)
-            sb.AppendLine($"  - canonical occupation: {occupation}");
+            sb.AppendLine($"  - current focus: {occupation}");
         foreach (var n in natureRows)
             sb.AppendLine($"  - nature grounding: {n}");
         foreach (var m in worldRows)

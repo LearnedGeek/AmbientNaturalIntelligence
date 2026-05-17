@@ -203,7 +203,7 @@ public class CognitiveCycleProcessor
             var weatherContext = perceptions
                 .FirstOrDefault(p => p.SourceName == "weather")?.Summary;
             var seed = _worldSeed.GenerateSeed(
-                DateTimeOffset.Now, weatherContext, charState.Occupation);
+                DateTimeOffset.Now, weatherContext);
             snapshot.WorldSeed = seed;
 
             // Phase 1c: retrieve recent world experiences for consistency.

@@ -47,12 +47,20 @@ public class WorldSeedService
         return cycleCount % opts.WorldSeedFrequency == 0;
     }
 
-    public string GenerateSeed(DateTimeOffset now, string? weatherContext, string occupation)
+    // 2026-05-16 Posture S: removed the `occupation` parameter. Seed is now
+    // pure time-of-day + weather + optional event flavor. The work-schedule
+    // assumption (9-to-5 worker activities) is also dropped — slots remain
+    // for circadian flavor but the activity strings no longer presume a job
+    // or workday. Substrate continuity via CognitiveCycleProcessor Phase 1c
+    // (RecentWorldExperiences) provides the actual "what is she doing"
+    // signal; the seed is just a light spark. See
+    // docs/spec/ANI-Substrate-Led-Character-Plan.md §3.1 #4.
+    public string GenerateSeed(DateTimeOffset now, string? weatherContext)
     {
         // Use the offset-aware hour (not LocalDateTime which converts to machine timezone)
         // so behavior is consistent regardless of server timezone (CI = UTC, prod = Central).
         var timeSlot = GetTimeSlot(now.Hour);
-        var activity = GetActivityForSlot(timeSlot, occupation);
+        var activity = GetActivityForSlot(timeSlot);
 
         // Build the base seed
         var timePart = FormatTimePart(timeSlot);
@@ -82,40 +90,43 @@ public class WorldSeedService
 
     internal TimeSlot GetTimeSlot(int hour) => hour switch
     {
-        >= 5 and < 8   => TimeSlot.MorningRoutine,
-        >= 8 and < 9   => TimeSlot.Commute,
-        >= 9 and < 12  => TimeSlot.WorkEarly,
-        >= 12 and < 13 => TimeSlot.Lunch,
-        >= 13 and < 17 => TimeSlot.WorkAfternoon,
-        >= 17 and < 18 => TimeSlot.CommuteHome,
+        >= 5 and < 8   => TimeSlot.EarlyMorning,
+        >= 8 and < 9   => TimeSlot.MorningTransition,
+        >= 9 and < 12  => TimeSlot.MidMorning,
+        >= 12 and < 13 => TimeSlot.Midday,
+        >= 13 and < 17 => TimeSlot.Afternoon,
+        >= 17 and < 18 => TimeSlot.LateAfternoon,
         >= 18 and < 22 => TimeSlot.Evening,
         _              => TimeSlot.LateNight,
     };
 
     private static string FormatTimePart(TimeSlot slot) => slot switch
     {
-        TimeSlot.MorningRoutine => "early morning —",
-        TimeSlot.Commute        => "morning commute —",
-        TimeSlot.WorkEarly      => "mid-morning at",
-        TimeSlot.Lunch          => "lunchtime —",
-        TimeSlot.WorkAfternoon  => "mid-afternoon at",
-        TimeSlot.CommuteHome    => "heading home —",
-        TimeSlot.Evening        => "evening at home —",
-        TimeSlot.LateNight      => "late night —",
-        _                       => "sometime during the day —",
+        TimeSlot.EarlyMorning      => "early morning —",
+        TimeSlot.MorningTransition => "morning —",
+        TimeSlot.MidMorning        => "mid-morning —",
+        TimeSlot.Midday            => "midday —",
+        TimeSlot.Afternoon         => "mid-afternoon —",
+        TimeSlot.LateAfternoon     => "late afternoon —",
+        TimeSlot.Evening           => "evening —",
+        TimeSlot.LateNight         => "late night —",
+        _                          => "sometime during the day —",
     };
 
-    private static string GetActivityForSlot(TimeSlot slot, string occupation) => slot switch
+    // Activity strings no longer reference occupation or presume a workday.
+    // Light circadian flavor only; the substrate (RecentWorldExperiences)
+    // carries the actual content of what's happening.
+    private static string GetActivityForSlot(TimeSlot slot) => slot switch
     {
-        TimeSlot.MorningRoutine => "getting ready for the day",
-        TimeSlot.Commute        => "on the way to work",
-        TimeSlot.WorkEarly      => $"the {occupation} — settling into the day",
-        TimeSlot.Lunch          => "taking a break, maybe grabbing something to eat",
-        TimeSlot.WorkAfternoon  => $"the {occupation} — what's happening around you?",
-        TimeSlot.CommuteHome    => "wrapping up the workday",
-        TimeSlot.Evening        => "winding down",
-        TimeSlot.LateNight      => "the world is quiet, most people are asleep",
-        _                       => "just going about the day",
+        TimeSlot.EarlyMorning      => "the day starting to take shape",
+        TimeSlot.MorningTransition => "the world picking up",
+        TimeSlot.MidMorning        => "quiet hours, things settling",
+        TimeSlot.Midday            => "a pause in the middle of the day",
+        TimeSlot.Afternoon         => "what's happening around you?",
+        TimeSlot.LateAfternoon     => "the day shifting toward evening",
+        TimeSlot.Evening           => "winding down",
+        TimeSlot.LateNight         => "the world is quiet, most people are asleep",
+        _                          => "just going about the day",
     };
 
     internal string? GetHoliday(int month, int day)
@@ -158,12 +169,12 @@ public class WorldSeedService
 
 internal enum TimeSlot
 {
-    MorningRoutine,
-    Commute,
-    WorkEarly,
-    Lunch,
-    WorkAfternoon,
-    CommuteHome,
+    EarlyMorning,
+    MorningTransition,
+    MidMorning,
+    Midday,
+    Afternoon,
+    LateAfternoon,
     Evening,
     LateNight,
 }

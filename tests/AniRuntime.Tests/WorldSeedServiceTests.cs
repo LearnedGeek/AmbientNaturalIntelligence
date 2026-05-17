@@ -60,16 +60,22 @@ public class WorldSeedServiceTests
 
     // ── GetTimeSlot ──────────────────────────────────────────────────────────
 
+    // 2026-05-16 Posture S: TimeSlot enum renamed to drop work-schedule
+    // assumptions (MorningRoutine → EarlyMorning, Commute → MorningTransition,
+    // WorkEarly → MidMorning, Lunch → Midday, WorkAfternoon → Afternoon,
+    // CommuteHome → LateAfternoon, Evening/LateNight unchanged). Integer
+    // ordinals are unchanged. GenerateSeed signature dropped the occupation
+    // parameter. See docs/spec/ANI-Substrate-Led-Character-Plan.md §3.1 #4.
     [Theory]
-    [InlineData(5, 0)]  // MorningRoutine
-    [InlineData(7, 0)]  // MorningRoutine
-    [InlineData(8, 1)]  // Commute
-    [InlineData(9, 2)]  // WorkEarly
-    [InlineData(11, 2)] // WorkEarly
-    [InlineData(12, 3)] // Lunch
-    [InlineData(13, 4)] // WorkAfternoon
-    [InlineData(16, 4)] // WorkAfternoon
-    [InlineData(17, 5)] // CommuteHome
+    [InlineData(5, 0)]  // EarlyMorning
+    [InlineData(7, 0)]  // EarlyMorning
+    [InlineData(8, 1)]  // MorningTransition
+    [InlineData(9, 2)]  // MidMorning
+    [InlineData(11, 2)] // MidMorning
+    [InlineData(12, 3)] // Midday
+    [InlineData(13, 4)] // Afternoon
+    [InlineData(16, 4)] // Afternoon
+    [InlineData(17, 5)] // LateAfternoon
     [InlineData(18, 6)] // Evening
     [InlineData(21, 6)] // Evening
     [InlineData(22, 7)] // LateNight
@@ -84,14 +90,13 @@ public class WorldSeedServiceTests
     // ── GenerateSeed — basic structure ───────────────────────────────────────
 
     [Fact]
-    public void GenerateSeed_MorningAtBookstore_ContainsExpectedParts()
+    public void GenerateSeed_MidMorning_ContainsTimeOfDayMarker()
     {
         var service = CreateService();
         var now = new DateTimeOffset(2026, 3, 31, 10, 30, 0, TimeSpan.FromHours(-5));
 
-        var seed = service.GenerateSeed(now, null, "bookstore");
+        var seed = service.GenerateSeed(now, null);
 
-        seed.Should().Contain("bookstore");
         seed.Should().ContainEquivalentOf("mid-morning");
     }
 
@@ -101,10 +106,9 @@ public class WorldSeedServiceTests
         var service = CreateService();
         var now = new DateTimeOffset(2026, 3, 31, 14, 0, 0, TimeSpan.FromHours(-5));
 
-        var seed = service.GenerateSeed(now, null, "bookstore");
+        var seed = service.GenerateSeed(now, null);
 
         seed.Should().ContainEquivalentOf("mid-afternoon");
-        seed.Should().Contain("bookstore");
     }
 
     [Fact]
@@ -113,7 +117,7 @@ public class WorldSeedServiceTests
         var service = CreateService();
         var now = new DateTimeOffset(2026, 3, 31, 20, 0, 0, TimeSpan.FromHours(-5));
 
-        var seed = service.GenerateSeed(now, null, "bookstore");
+        var seed = service.GenerateSeed(now, null);
 
         seed.Should().ContainEquivalentOf("evening");
         seed.Should().Contain("winding down");
@@ -125,10 +129,9 @@ public class WorldSeedServiceTests
         var service = CreateService();
         var now = new DateTimeOffset(2026, 3, 31, 14, 0, 0, TimeSpan.FromHours(-5));
 
-        var seed = service.GenerateSeed(now, "rainy", "bookstore");
+        var seed = service.GenerateSeed(now, "rainy");
 
         seed.Should().ContainEquivalentOf("rainy");
-        seed.Should().Contain("bookstore");
     }
 
     [Fact]
@@ -137,9 +140,29 @@ public class WorldSeedServiceTests
         var service = CreateService();
         var now = new DateTimeOffset(2026, 3, 31, 14, 0, 0, TimeSpan.FromHours(-5));
 
-        var seed = service.GenerateSeed(now, null, "bookstore");
+        var seed = service.GenerateSeed(now, null);
 
         seed[0].Should().Be(char.ToUpper(seed[0]));
+    }
+
+    [Fact]
+    public void GenerateSeed_HasNoOccupationOrWorkScheduleReferences()
+    {
+        // Posture S contract: the seed must not assert occupation or
+        // workday-schedule terminology. Substrate carries the actual
+        // "what's happening" content.
+        var service = CreateService();
+        var hours = new[] { 6, 8, 10, 12, 14, 17, 19, 23 };
+        foreach (var hour in hours)
+        {
+            var now = new DateTimeOffset(2026, 3, 31, hour, 0, 0, TimeSpan.FromHours(-5));
+            var seed = service.GenerateSeed(now, null).ToLowerInvariant();
+
+            seed.Should().NotContain("bookstore");
+            seed.Should().NotContain("workday");
+            seed.Should().NotContain("on the way to work");
+            seed.Should().NotContain("wrapping up the workday");
+        }
     }
 
     // ── Calendar awareness ───────────────────────────────────────────────────
@@ -165,7 +188,7 @@ public class WorldSeedServiceTests
         // July 4th at 2 PM
         var now = new DateTimeOffset(2026, 7, 4, 14, 0, 0, TimeSpan.FromHours(-5));
 
-        var seed = service.GenerateSeed(now, null, "bookstore");
+        var seed = service.GenerateSeed(now, null);
 
         seed.Should().Contain("Independence Day");
     }

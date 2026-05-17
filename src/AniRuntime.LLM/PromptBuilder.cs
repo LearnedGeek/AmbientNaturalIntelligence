@@ -37,8 +37,17 @@ public static class PromptBuilder
         var now      = snapshot.BuiltAt.ToLocalTime();
         var timeLine = $"It is currently {now:h:mm tt} on {now:dddd}, {now:MMMM d}.";
 
+        // 2026-05-16 Posture S — Occupation is no longer a frozen system-prompt
+        // anchor. Identity (Name, CoreTraits, SelfConcept, NatureGrounding) is
+        // the only persistent persona at the prompt; job, location, current
+        // focus all emerge from substrate. See
+        // docs/spec/ANI-Substrate-Led-Character-Plan.md §1.
+        var occupationLine = string.IsNullOrWhiteSpace(cs.Occupation)
+            ? string.Empty
+            : $" {cs.Occupation}";
+
         var system = $"""
-            You are {cs.Name}. {cs.Occupation}
+            You are {cs.Name}.{occupationLine}
             {timeLine}
             Your personality: {string.Join("; ", cs.CoreTraits)}.
             {(selfLines.Length > 0 ? $"How you see yourself: {selfLines}" : string.Empty)}
@@ -533,14 +542,15 @@ public static class PromptBuilder
         // Minimal persona: name, core traits (first 3 only), time. That's it.
         var traits = cs.CoreTraits.Take(3);
 
-        // Apr 29, 2026 (Theme E #4): canonical occupation anchor in the conversation
-        // system prompt. The Apr 28 18:28 case ("foam orders / 3D printer repair")
-        // showed Type 1 occupational drift — model fabricates job vocabulary when
-        // asked about her work because the lean prompt previously had ZERO
-        // occupational grounding. Adding cs.Occupation as a single line keeps the
-        // prompt minimal while anchoring her canonical world. NatureGrounding
-        // entries (typically 1-3 short phrases about her bookstore world) are
-        // appended when present; capped at 2 to preserve lean-prompt discipline.
+        // Posture S (2026-05-16, docs/spec/ANI-Substrate-Led-Character-Plan.md):
+        // Occupation is no longer asserted as frozen system-prompt anchor.
+        // Production CharacterStateDoc.Occupation defaults to empty; the
+        // worldLine vanishes accordingly. Identity (Name + CoreTraits + time)
+        // is the only persistent persona surface; everything else
+        // (job, location, current focus) emerges from substrate via the
+        // [FACTS] block below + retrieval. The Apr 29 Theme E #4 anchor that
+        // previously lived here was the binding constraint located by the
+        // May 16 prompt-variant experiment.
         var worldLine = string.IsNullOrWhiteSpace(cs.Occupation)
             ? string.Empty
             : $"Your world: {cs.Occupation}.";
@@ -613,7 +623,7 @@ public static class PromptBuilder
         user.AppendLine($"     in {contact}'s life — that entity MUST appear in the [FACTS] above.");
         user.AppendLine($"  2. If it doesn't appear above, you don't know it. Don't invent it.");
         user.AppendLine($"     Instead: ask {contact}, or say you don't know, or talk about yourself.");
-        user.AppendLine($"  3. Your own interior — your bookstore day, your mood, your imagined scenes — has full latitude.");
+        user.AppendLine($"  3. Your own interior — your day, your mood, your imagined scenes — has full latitude.");
         user.AppendLine($"     The constraint only applies to specific claims about {contact}'s external world.");
         user.AppendLine();
 
