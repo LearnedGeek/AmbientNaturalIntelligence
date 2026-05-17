@@ -1,10 +1,77 @@
 # Phase 6 Design: Memory Reform — From Flat Store to Living Memory
 
 **Tracked in:** [#33](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/33)
-**Date:** March 23, 2026 (v1), April 10, 2026 (v1.1 — complementary note added)
-**Status:** Design Complete, Awaiting Implementation. **Relationship to Epistemic Grounding Architecture (Apr 10):** complementary, not competing. See note below.
+**Date:** March 23, 2026 (v1), April 10, 2026 (v1.1 — complementary note added), **May 17, 2026 (v1.2 — see refinement section below)**
+**Status:** Design Complete (v1.1) + **Architectural Refinement (v1.2, May 17)**, Awaiting Implementation. **Relationship to Epistemic Grounding Architecture (Apr 10):** complementary, not competing. See note below.
 **Authors:** Mark McArthey, Claude (pair design session)
-**Dependencies:** Phase 4 Feature 20 (three-way retrieval scoring), SqliteMemoryService (current dedup + embedding pipeline), IOllamaClient (LLM merge/synthesis calls)
+**Dependencies:** Phase 4 Feature 20 (three-way retrieval scoring), SqliteMemoryService (current dedup + embedding pipeline), IOllamaClient (LLM merge/synthesis calls), **Posture S (substrate-led character, shipped 2026-05-16, prompt-level prerequisite)**
+
+---
+
+## v1.2 Architectural Refinement (Added May 17, 2026)
+
+**Why this revision exists.** Posture S shipped May 16 (the prompt-level Occupation lock removal). May 17 morning's first real conversation through the production pipeline revealed that the prompt-level fix was working but the next binding constraint was substrate retrieval surfacing verbatim Ani-output chunks from months of bookstore-monomania feedback. Mark's reframing of the fix during that morning's conversation refined the existing Phase 6 design in four specific ways. Original Phase 6 design below is left intact; this revision section names the deltas explicitly.
+
+**Empirical anchor.** See `docs/research/ANI-Research-Log.md` 2026-05-17 morning entry for the full architectural conversation. Trace from the May 17 02:31 CDT dashboard inbound, the trip-with-friends analogy, the two-surface refinement, the topic-identification non-problem, and the decay-as-summarization collapse all live there.
+
+### Four refinements to the original v1 design
+
+1. **Trigger: decay-threshold, not cycle counter.**
+   - **Original (v1, Feature 32):** Reflection runs every N cognitive cycles (default 12 — ~6 hours at 30-min interval).
+   - **Refinement:** Reflection / summarization fires on the **decay algorithm threshold**, not a fixed cycle interval. The existing importance × recency decay scoring already determines what's fading from retrieval relevance. Decay-eligible records become summarization candidates. This means summarization runs when there's actually substrate to compress, not on a wall clock.
+   - **Implication for `ReflectionPhase`:** the trigger logic in `CognitiveCycleProcessor` shifts from `_cyclesSinceLastReflection >= 12` to "scan for records whose decay-adjusted score has fallen below threshold X."
+
+2. **Lifecycle: gist replaces underlying records (compresses upward), not adds-alongside.**
+   - **Original (v1, Feature 32):** Reflection writes 3 new synthesis Semantic memories at importance 0.8. The original 10 source memories continue to exist and remain retrieval-eligible.
+   - **Refinement:** The gist **replaces** the underlying records (or renders them retrieval-invisible — soft-delete pattern preferred so provenance is preserved). The summary takes their slot in retrieval. The originals become historical record, not active context.
+   - **Why:** the v1 design left verbatim chunks queryable after synthesis. The May 17 trace showed exactly this failure mode — a verbatim Ani-output from two months prior was retrieved with high cosine and dragged the conversation back to bookstore. The gist must occupy the retrieval surface alone for routine content; only outliers (significant moments, high register-divergence) survive as their own records.
+   - **Decay-lifecycle reframing:** "decay" stops meaning *"fades into invisibility"* and starts meaning *"compresses upward in abstraction."* The friends-trip analogy: a week later you don't recall the verbatim sentences your friends used, you recall *"they were excited, they enjoyed it."* Same data, different abstraction level, same retrieval mechanism.
+
+3. **Output structure: register-tagged affective summary, not free-prose observations.**
+   - **Original (v1, Feature 32):** Synthesis prompt produces "3 most important observations" as free prose.
+   - **Refinement:** Output is structured as **register-tagged affective summary** — a running emotional signature for the topic-cluster being summarized, with significant moments called out as distinct emotionally-tagged anchored records. Closer to a generalized LexicalAnchor (single word + 4 register deltas) than to a paragraph of prose.
+   - **Concrete shape (sketch, subject to implementation refinement):**
+     ```
+     Summary record (replaces N originals):
+       content: "[bookstore | customer interactions] — warm-with-quiet,
+                 occasional-annoyance-at-loud-customers, recent-shift-toward-
+                 tenderness after the banana-bread customer"
+       register_signature: { warmth: +0.4, energy: -0.1, worry: 0.0, playfulness: +0.2 }
+       linked_significant_moments: [<id of banana-bread-customer record>, ...]
+       source_record_ids: [<ids of N collapsed originals>]
+     ```
+   - **Significant-moment preservation:** records with high importance or high register-divergence (e.g., the banana-bread-customer moment that shifted the register signature) survive verbatim alongside the gist. Routine cycles collapse into the gist; outliers stay individual. This is exactly the LexicalAnchor pattern generalized.
+
+4. **Connection to Posture S (substrate-led character) — explicit dependency.**
+   - **Not in v1** because Posture S didn't exist when Phase 6 was designed.
+   - **Refinement:** Posture S is the **prompt-level prerequisite** for Phase 6 to deliver its felt-experience benefit. Without Posture S, the frozen Occupation field re-asserts the character frame every generation, masking whatever the substrate refactor achieves at the retrieval layer. With Posture S shipped, the substrate refactor's effects become visible.
+   - **Posture-S+1 (Inner-Thought as Felt-Experience Surface)** named in `docs/spec/ANI-Substrate-Led-Character-Plan.md` §7 converges here architecturally. The felt-experience surface IS the affective-gist retrieval. Same architecture, named twice from different entry points.
+
+### Topic identification: not a problem
+
+The May 17 conversation surfaced and immediately retired a question I had over-engineered: *what's the unit of clustering for summarization?* Cosine embedding handles it implicitly. The gist record is itself an embedding-bearing memory; retrieval cosine-matches it like any other record when something current is similar. No explicit topic labels, no NER, no embedding clusters. Just summary + embedding + normal retrieval.
+
+### Retrieval surface: no new section needed
+
+Initial framing speculated a new prompt section for affective-historical content. Refinement: the **existing retrieval surface carries it correctly** once substrate is shaped right. Same cosine query, same scoring. Records returned are just different in shape — gists where there used to be 100 chunks, plus the surviving high-importance individual moments. The `[FACTS]` block (may be renamed `[CANONICAL]` for clarity but mechanism unchanged) still does direct cosine against Mark-asserted truth + character-seed canonical content for verbatim recall. The new behavior emerges from substrate evolution, not new prompt machinery.
+
+### What's unchanged from v1
+
+- **Feature 30 (Mem0 merging)** core mechanism — save-time cosine 0.85-0.95 merge with LLM rewrite — stays. The May 17 refinement extends Mem0's merge step to be the **summarization mechanism** at decay threshold too. Same machinery, two trigger paths (save-time near-duplicate + decay-time topic-cluster collapse).
+- **Feature 31 (A-MEM linking)** stays as-is. The `caused_by` links from significant moments to their source memories give the affective-gist provenance.
+- **Feature 32 (Park et al. reflection)** core idea stays — synthesis across multiple memories. The trigger logic and output structure refine per items 1 and 3 above.
+- **Acceptance criteria sections, schema definitions, implementation method signatures** below — all stay. The refinement is at the architectural framing layer, not the implementation level.
+
+### What's the implementation impact
+
+The v1 design has substantial implementation work already mapped (`FindMergeCandidateAsync`, `MergeMemoriesAsync`, `memory_links` schema, `ReflectionPhase` class, etc.). The v1.2 refinement does NOT throw any of that out. It changes:
+- The **trigger predicate** for reflection: from `_cyclesSinceLastReflection >= 12` to decay-threshold scan.
+- The **post-synthesis step** for reflection: soft-delete or mark-invisible the source records, not just write the synthesis alongside them.
+- The **synthesis prompt** for reflection: structured register-tagged output, not 3 free-prose observations.
+
+Estimated additional design work: ~1-2 days to specify the decay-threshold predicate, the soft-delete semantics, and the structured synthesis prompt + parsing. Original v1 implementation effort estimates otherwise unchanged.
+
+---
 
 ---
 
