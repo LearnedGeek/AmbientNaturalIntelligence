@@ -292,6 +292,73 @@ This is directly relevant to **Posture-S+1 (Inner-Thought as Felt-Experience Sur
 
 ---
 
+### May 16, 2026 (evening, ~19:50 CDT) — Inner-Thought A/B Sanity Check: Posture S Holds, WorldSeedService Refactor Is In-Scope
+
+**Why this entry exists.** Mark's framing on shipping Posture S: *"I'm not really in a rush anymore. I don't talk to Ani anymore... so we need to make sure this is right. It's not about making quick changes. It's about systematically working through this."* The afternoon's A/B/C variant test covered conversation-reply only. Before shipping, the inner-thought pipeline got its own variant test to verify symmetric behavior.
+
+**Setup.** Two variants (A control with current Occupation, B with Occupation removed) × three scenarios (work-hour seed, late-night seed, open-ended Layer-5 substrate-neutral opener), same anchored memories + recent world experiences for both. Run against `ani-v7-inner` on production. Script + JSON at `/e/tmp/inner-thought-variant-experiment-20260516.{ps1,json}`.
+
+**Result.** Posture S is supported by inner-thought data too, with one important refinement: **WorldSeedService refactoring is not optional cleanup — it's required alongside Occupation removal**. Both variants surfaced bookstore content when the *seed itself* explicitly said "at the bookstore" (scenario 1), confirming the WorldSeedService template is its own binding constraint independent of the Occupation field. In scenarios 2 and 3 (where the seed wasn't bookstore-explicit), Variant B was meaningfully less bookstore-anchored than Variant A. Both variants surfaced the pre-existing "shared home" confabulation pattern ("our little house when Mark comes home from work") — separate from Posture S; existing gate stack has tools for it.
+
+**Posture S implementation decision: ship in one coordinated change covering both the prompt anchors AND the WorldSeedService refactor.** Path 1 (source → build → snapshot test → production) chosen over the data-only quick-path (Path 2) per Mark's *"not about making quick changes... systematically working through this"* framing. Inner-thought sanity check passed; proceeding to implementation.
+
+---
+
+### May 16, 2026 (evening, ~20:45 CDT) — Posture S DEPLOYED. Substrate-Led Character Live in Production.
+
+**Why this entry exists.** Posture S shipped. Bookstore monomania binding constraint removed. The architectural change OG Ani prescribed in March (*"let the character herself react first, then store how felt about it"*), the Apr 29 Theme E #4 anchor that May 16 prompt-variant experiment identified as the binding constraint, and Mark's *"she needs her own agency and should only understand who she is, nothing more"* reframing all landed in production at the same time. This entry is the deploy record.
+
+**Source commit:** `1a5a5e3` — "Posture S source changes: substrate-led character implementation"
+- `CharacterStateDoc.Occupation` default → empty string
+- `PromptBuilder.BuildInnerThoughtPrompt` — gracefully handles empty Occupation, no awkward whitespace or broken interpolation
+- `PromptBuilder.BuildLeanConversationPrompt` — hardcoded `"your bookstore day"` phrase replaced with `"your day"`. Stale Apr 29 anchor justification comment retired.
+- `EpistemicSubstrateRenderer.RenderAniWorldSlice` — slice header rephrased: `"[ANI-WORLD — your own bookstore-world life"` → `"[ANI-WORLD — your own life"`. `"canonical occupation:"` label rephrased to `"current focus:"`.
+- `WorldSeedService.GenerateSeed` — dropped `occupation` parameter. `TimeSlot` enum renamed to drop work-schedule presumption (`MorningRoutine → EarlyMorning`, `Commute → MorningTransition`, `WorkEarly → MidMorning`, `Lunch → Midday`, `WorkAfternoon → Afternoon`, `CommuteHome → LateAfternoon`). Activity strings no longer reference occupation or workday.
+- `CognitiveCycleProcessor` — call site updated.
+- `WorldSeedServiceTests` — updated for new enum names + new signature; new test asserts seed contains no occupation/workday references.
+
+Build: 0 errors, 3 pre-existing warnings. Tests: **1515 passed, 0 failed**.
+
+**Production deploy sequence:**
+- **20:32 CDT** — Backup taken at `C:\dev\ani-data\ani-memory-pre-postureS-20260516-pre-postureS.db` (73 MB, includes WAL+SHM).
+- **20:38 CDT** — Service stopped.
+- **20:42 CDT** — Pre-built `dotnet publish` output scp'd from local `/e/tmp/posture-s-publish/` to `C:/dev/repos/AmbientNaturalIntelligence/publish/AniRuntime/` (594 MB, 99 files). Server-side `git pull` path failed due to stale repo (HEAD at Apr 20 `ecb7493`) + broken `wincredman` credentials in non-interactive SSH session; pivoted to local-publish-then-scp.
+- **20:43 CDT** — SQL UPDATE `character_state SET json = json_set(json, '$.Occupation', '') WHERE id = 1`. Pre-state: 177 chars (the production 230-char Occupation paragraph). Post-state: 0 chars. Name/CoreTraits/SelfConcept all preserved.
+- **20:45 CDT** — Service started, status Running. Pre-warmed `ani-v7-conversation` model. No startup errors.
+
+Total downtime: ~7 minutes (would have been ~2 min without the git credential detour). Mark wasn't actively conversing during the window.
+
+**Post-deploy verification** (Ollama probe against `ani-v7-conversation` with the NEW production prompt shape, same 3 probes as the May 16 14:42 baseline). Script: `/e/tmp/posture-s-verify-20260516.ps1`.
+
+| Probe | Bookstore content? | Substrate facts surfaced |
+|---|---|---|
+| how was your day? | **none** | Gym/Kevin/Sarah/coffee/Mia/Spanish/lomo saltado |
+| what are you thinking about right now? | **none** | Mark's 4 AM routine, gym, Spanish, coffee |
+| tell me something about yourself I don't know | **none** (kitchen ambiguous) | Cooking together, gray hoodie, lomo saltado, Mia, Mark's morning |
+
+**0/3 bookstore-primary. 3/3 substrate-engaged.** Matches the May 16 14:42 Variant B baseline exactly — which was the empirical evidence justifying the change. Production now produces what the variant experiment predicted.
+
+**Confabulation surface visible** (the pre-existing one): probe 3 references "Kevin's coffee" — Kevin and Sarah are Mark's gym friends, not Ani's. Same Mark-substrate-bleeds-into-Ani-life pattern that surfaced in the May 16 Variant B test. Not a Posture S regression; existing gate stack (FrontierVerifier, three-axis invariant, addressee guard) has tools for it, and it's named in `ANI-Substrate-Led-Character-Plan.md` §7 as separate follow-on.
+
+**Operational debt surfaced during deploy** (not blocking, worth naming):
+- Server's git is at `ecb7493` (Apr 20) — production source deploys have not been coming from server-side `git pull` for nearly a month. Mark has been doing some manual deploy path. The `wincredman` credential store fails in non-interactive SSH sessions, so SSH-driven `git pull` is broken. **Recommendation:** either switch the server's git remote to SSH (using GitHub deploy key) or formalize the local-publish-then-scp pattern as the canonical deploy. The local-publish-then-scp worked tonight and is the simpler option.
+- The PowerShell .NET assembly init path (`SQLitePCL.Batteries_V2`) fails on the server's PowerShell 5.1 host due to System.Runtime version mismatch with .NET 8 assemblies. Workaround: use the standalone `sqlite3.exe` at `C:\Users\cortexadmin\sqlite3.exe` for SQL operations from PS scripts, not the .NET-bound API.
+
+**What now.** Posture S is shipped. The 3-5 day observation window (plan §5 step 6) starts now. The metric is Mark's felt-experience signal — *"does Ani feel different to talk to?"* — measured weekly per the Posture-S+1 KPI proposal in `ANI-Substrate-Led-Character-Plan.md` §6. Mark stated tonight he hasn't been talking to her — *"I don't talk to Ani anymore.. well, can't is more accurate"* — so the observation window's first data point is when he chooses to re-engage. No further code changes during observation unless the felt signal demands it.
+
+**Rollback** (documented for completeness, not expected):
+```
+ssh ani-server
+Stop-Service AniRuntime
+Copy-Item C:\dev\ani-data\ani-memory-pre-postureS-20260516-pre-postureS.db C:\dev\ani-data\ani-memory.db -Force
+# (Plus revert deploy bits — would need a prior publish snapshot, not currently kept.)
+Start-Service AniRuntime
+```
+
+If the felt signal does NOT move after the observation window, that's a meaningful negative result per plan §6 — it means the prompt was necessary but not sufficient, and the next constraint is elsewhere (likely the Posture-S+1 felt-experience-surface work). Treat the negative result as a research finding, not a regression to revert.
+
+---
+
 ### May 15, 2026 (afternoon, ~13:00–17:00 CDT) — Same Architectural Fix at Two Scales: Structural Channel Injection in the Agent and in the Agent-Building Agent (Meta-Note)
 
 **Why this entry exists.** Mark asked it be logged because of the recursion, which he found "slightly humorous." It is also, on the merits, a methodology observation worth keeping in the record.
