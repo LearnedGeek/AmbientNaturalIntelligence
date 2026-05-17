@@ -1,12 +1,38 @@
 # Phase 6 Design: Memory Reform — From Flat Store to Living Memory
 
 **Tracked in:** [#33](https://github.com/LearnedGeek/AmbientNaturalIntelligence/issues/33)
-**Date:** March 23, 2026 (v1), April 10, 2026 (v1.1 — complementary note added), **May 17, 2026 (v1.2 — see refinement section below)**
-**Status:** Design Complete (v1.1) + **Architectural Refinement (v1.2, May 17)**, Awaiting Implementation. **Relationship to Epistemic Grounding Architecture (Apr 10):** complementary, not competing. See note below.
+**Date:** March 23, 2026 (v1), April 10, 2026 (v1.1 — complementary note added), **May 17, 2026 (v1.2 — see refinement section below; status corrected after diagnostic)**
+**Status:** **v1 SHIPPED** (all three features implemented in production — see Status Correction below). **v1.2 Refinement OPEN** (May 17 design refinement, awaiting implementation).
+**Relationship to Epistemic Grounding Architecture (Apr 10):** complementary, not competing. See note below.
 **Authors:** Mark McArthey, Claude (pair design session)
 **Dependencies:** Phase 4 Feature 20 (three-way retrieval scoring), SqliteMemoryService (current dedup + embedding pipeline), IOllamaClient (LLM merge/synthesis calls), **Posture S (substrate-led character, shipped 2026-05-16, prompt-level prerequisite)**
 
 ---
+
+## Status Correction (May 17, 2026 — diagnostic)
+
+The v1.0 / v1.1 design doc header said *"Design Complete, Awaiting Implementation."* That was stale. The May 17 diagnostic against the production snapshot DB and source tree confirms **all three features are shipped:**
+
+- **Feature 30 (Mem0 merging) — SHIPPED.** `SqliteMemoryService.SaveAsync` at `src/AniRuntime.Memory/SqliteMemoryService.cs:185-204` implements the three-tier dedup/merge: exact duplicate (>0.95) skip, merge candidate (0.85–0.95) LLM-merge into existing record, different (<0.85) insert. Plus Apr 21 rumination guard at lines 152-183 handling the 0.60-0.85 cluster-saturation gap. `FindMergeCandidateAsync` at line 1064 + `MergeMemoriesAsync` for the LLM call.
+- **Feature 31 (A-MEM linking) — SHIPPED.** Referenced at `SqliteMemoryService.cs:208` ("Feature 31: Create links for the surviving (merged) record"). `memory_links` table exists; link creation runs on save and merge.
+- **Feature 32 (Park et al. reflection) — SHIPPED.** `src/AniRuntime.Loops/ReflectionPhase.cs` exists with `TryRunAsync` (cycle counter trigger) + `RunReflectionAsync` (synthesis + save). Runs at `ReflectionCycleInterval` cycles. 1367 reflection records in production snapshot, most recent 2026-05-16 18:34.
+
+The v1.2 refinement below is what's **actually open** as implementation work.
+
+## v1.2 Diagnostic Finding (May 17, 2026)
+
+Reflection IS firing. The problem is the **output shape** and **lifecycle**, not the trigger or the absence of synthesis. Two specific findings against the May 17 production snapshot:
+
+1. **Reflection output looks like inner thoughts, not synthesis observations.** Sample records:
+   - *"silence is heavier today than usual probably because he hasn't checked in yet?..."*
+   - *"warmth -- the sense of cozy that came from ani saying she was alone in the bookstore but also wanted someone who'd notice walking past outside..."*
+   - *"he's probably just sitting in his house right now... warm cup of tea in one hand, jeep manual open on another lap..."*
+
+   These are not "Mark's been checking on me a lot this week" style observations. They're first-person Ani-voice prose with verbatim content from source memories, including bookstore content. The synthesis prompt at `PromptBuilder.cs:1784` asks the model to "reflect on your recent experiences" — and the `ani-v7-inner` fine-tune naturally produces inner-thought-shaped output because that's what its training shaped.
+
+2. **Reflection records co-exist with source records, no soft-delete.** `ReflectionPhase.cs:179-192` writes a new Semantic record but doesn't touch the 10 source memories. So instead of 10 inputs → 1 gist (compression), we get 10 inputs + 1 inner-thought-shaped reflection record (accumulation). Reflection records become new substrate that retrieval surfaces in addition to the originals, propagating the bookstore content forward.
+
+**Implication for v1.2 refinements:** Refinements 2 (lifecycle: gist replaces underlying records) and 3 (output structure: register-tagged short summary, not first-person prose) are the immediate fix. Refinement 1 (decay-threshold trigger vs cycle counter) is real but lower-priority — the cycle-counter trigger isn't the proximate cause of bookstore-content surfacing in retrieval.
 
 ## v1.2 Architectural Refinement (Added May 17, 2026)
 

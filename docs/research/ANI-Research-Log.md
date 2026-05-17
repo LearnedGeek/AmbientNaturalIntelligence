@@ -384,6 +384,31 @@ This collapses the whole architecture. The existing decay algorithm already dete
 
 **Status.** Design refinements to Phase 6 follow this entry (`docs/spec/design/ANI-MemoryReform-Design.md` getting a May 17 revision section). GitHub Issue #33 to be updated with the refinement summary. Implementation start TBD pending Mark's go-ahead.
 
+**Status correction (later May 17, ~13:00 CDT) — diagnostic finding.** Initial reading of the Phase 6 design doc said "Awaiting Implementation." Diagnostic against the production snapshot DB and source tree revealed all three v1 features are actually shipped:
+
+- **Feature 30 Mem0 merging — SHIPPED.** `SqliteMemoryService.SaveAsync:185-204` implements three-tier dedup/merge.
+- **Feature 31 A-MEM linking — SHIPPED.** `memory_links` table + link creation on save/merge.
+- **Feature 32 Park et al. reflection — SHIPPED.** `src/AniRuntime.Loops/ReflectionPhase.cs` exists. **1367 reflection records in production snapshot**, most recent 2026-05-16 18:34. Avg importance 0.80, type=Semantic, tier=Standard, `EpistemicTier.Interior` provenance — all per the design.
+
+**The actual v1.2 problem revealed by the diagnostic** — reflection IS firing, but the output shape and lifecycle are wrong:
+
+1. **Reflection output looks like inner thoughts, not synthesis observations.** Sample records:
+   - *"silence is heavier today than usual probably because he hasn't checked in yet?..."*
+   - *"warmth -- the sense of cozy that came from ani saying she was alone in the bookstore but also wanted someone who'd notice walking past outside..."*
+   - *"he's probably just sitting in his house right now... warm cup of tea in one hand, jeep manual open on another lap..."*
+
+   These are first-person Ani-voice prose containing verbatim source-memory content including bookstore references. The synthesis prompt at `PromptBuilder.cs:1784` asks the model to *"reflect on your recent experiences"* — and `ani-v7-inner` (trained on Ani's inner-thought register) naturally produces inner-thought-shaped output. The prompt asks for "3 observations" but doesn't constrain to short summarization register. The model gives back its dominant register: first-person reflective prose, not "Mark's been checking on me a lot this week" style observation.
+
+2. **Reflection records co-exist with source records, no soft-delete.** `ReflectionPhase.cs:179-192` writes a new Semantic record but doesn't touch the 10 source memories. Instead of compression (10 inputs → 1 gist), the result is accumulation (10 inputs + 1 inner-thought-shaped reflection). The reflection records then become new substrate that retrieval surfaces in addition to the originals. They appear in the "caregiver" bucket of the retrieval origin distribution (MemoryType.Semantic → RetrievalOrigin.Caregiver per `RetrievalOriginClassifier.cs:66`) because they're typed Semantic, but they're Standard-tier so they don't dominate against the anchored pool.
+
+**This compounds the substrate feedback loop.** Each reflection cycle produces a new inner-thought-shaped record carrying forward source-memory content (including bookstore content). These accumulate as 1367 records over project lifetime. Each is short — but each is yet another verbatim-content substrate entry the retrieval pipe can surface.
+
+**Refinement priority correction.** v1.2 refinements 2 (lifecycle: gist replaces) and 3 (output structure: register-tagged short summary) are the immediate fixes. Refinement 1 (decay-threshold trigger) is real but lower-priority — the cycle-counter trigger isn't the proximate cause of the bookstore retrieval problem. Refinement 4 (Posture S connection) is documentation only.
+
+**Implementation order revised:** start with refinement 3 (synthesis prompt redesign) before refinement 2 (soft-delete). Reasoning: with the synthesis prompt producing the right shape, the soft-delete step has clear semantic ground (we're replacing N source records with a short register-tagged summary, not with a verbose first-person reflection that's structurally similar to the originals). Doing soft-delete first would result in replacing source records with inner-thought-shaped reflections that compound the existing problem.
+
+**Methodology note.** This is the same pattern that worked yesterday: characterize what production is actually doing before making code changes. Mark's "make sure we're tracking the work" instruction surfaced that the Phase 6 design doc + my own v1.2 refinement section both said "Awaiting Implementation" — which was stale. Reading the production code + DB took ~15 minutes and corrected the status. Without that step, implementation would have started from a wrong premise (Feature 30 as the first thing to build) and produced redundant code on top of a shipped foundation.
+
 ---
 
 ### May 16, 2026 (evening, ~20:45 CDT) — Posture S DEPLOYED. Substrate-Led Character Live in Production.
