@@ -11,6 +11,13 @@
 **/ani-memory.db
 **/ani-emergence.db
 
+# Docs split (2026-05-17) — all docs/ content lives in the paired private
+# repo LearnedGeek/ani-docs (research log, papers, training corpora, spec
+# docs, conversation transcripts, internal planning). The local working
+# tree may have a docs/ folder from a sibling checkout of ani-docs; don't
+# track it here.
+docs/
+
 # Ollama model data — large binaries, not tracked
 ollama-data/
 
