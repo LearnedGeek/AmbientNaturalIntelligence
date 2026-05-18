@@ -90,15 +90,34 @@ try
     builder.Services.Configure<AnthropicOptions>(config.GetSection("Anthropic"));
 
     // ── Core services ─────────────────────────────────────────────────────────
-    // ISP: Single SqliteMemoryService instance registered against all interfaces.
-    // Consumers should depend on the narrowest interface they need.
+    // ISP: SqliteMemoryService is always instantiated (EfMemoryService delegates
+    // not-yet-migrated complex operations to it during the strangler-fig
+    // transition). When UseEfDataLayer=true, the IMemoryService + four
+    // ISP-split interfaces resolve to EfMemoryService; otherwise the legacy
+    // implementation is used directly. Both services share the same SQLite
+    // file via AniOptions.MemoryDbPath, so the delegation path is correct.
     builder.Services.AddSingleton<SqliteMemoryService>();
-    builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<SqliteMemoryService>());
-    builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<SqliteMemoryService>());
-    builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<SqliteMemoryService>());
-    builder.Services.AddSingleton<IStateStore>(sp => sp.GetRequiredService<SqliteMemoryService>());
-    builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<SqliteMemoryService>());
-    builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    builder.Services.AddSingleton<EfMemoryService>();
+
+    var aniOptions = config.GetSection("Ani").Get<AniOptions>() ?? new AniOptions();
+    if (aniOptions.UseEfDataLayer)
+    {
+        builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<EfMemoryService>());
+        builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<EfMemoryService>());
+        builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<EfMemoryService>());
+        builder.Services.AddSingleton<IStateStore>(sp => sp.GetRequiredService<EfMemoryService>());
+        builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<EfMemoryService>());
+        builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<EfMemoryService>());
+    }
+    else
+    {
+        builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<SqliteMemoryService>());
+        builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<SqliteMemoryService>());
+        builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<SqliteMemoryService>());
+        builder.Services.AddSingleton<IStateStore>(sp => sp.GetRequiredService<SqliteMemoryService>());
+        builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<SqliteMemoryService>());
+        builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<SqliteMemoryService>());
+    }
     builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
 
     // ── Phase 3 data-layer refactor (May 17, 2026): EF Core context factory ──
