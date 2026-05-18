@@ -64,10 +64,16 @@ try
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
             outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}",
             retainedFileCountLimit: 30)
-        // Diagnostic — everything, for debugging
+        // Diagnostic — everything, for debugging.
+        // 2026-05-18: sink minimum lowered from Debug to Verbose so the
+        // OllamaClient full-prompt Trace-level dumps (Verbose in Serilog
+        // terms) reach disk when a per-category Override allows them.
+        // Pipeline-level filtering still happens via Serilog's
+        // MinimumLevel.Override in appsettings.json — Verbose events only
+        // fire when a category is explicitly opted in.
         .WriteTo.File(Path.Combine(logDir, "ani-debug-.log"),
             rollingInterval: RollingInterval.Day,
-            restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug,
+            restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose,
             outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
             retainedFileCountLimit: 7));
 

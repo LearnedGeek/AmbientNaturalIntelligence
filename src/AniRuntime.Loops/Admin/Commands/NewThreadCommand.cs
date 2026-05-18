@@ -21,7 +21,17 @@ public sealed class NewThreadCommand : IAdminCommand
     }
 
     public string Name => "new-thread";
-    public string HelpText => "new-thread — Close current thread, start fresh";
+    public string HelpText => "new-thread (alias: newthread) — Close current thread, start fresh";
+
+    /// <summary>
+    /// Accepts both <c>///new-thread</c> (canonical) and <c>///newthread</c>
+    /// (no-hyphen alias). Mark hit the unknown-command path twice on the
+    /// no-hyphen form, so the alias prevents muscle-memory typos breaking
+    /// the diagnostic loop.
+    /// </summary>
+    public bool Matches(string trimmedInput) =>
+        string.Equals(trimmedInput, "new-thread", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(trimmedInput, "newthread", StringComparison.OrdinalIgnoreCase);
 
     public Task<string> ExecuteAsync(string trimmedInput, CancellationToken ct)
     {
