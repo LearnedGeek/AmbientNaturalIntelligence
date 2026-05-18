@@ -90,27 +90,36 @@ try
     builder.Services.Configure<AnthropicOptions>(config.GetSection("Anthropic"));
 
     // ── Core services ─────────────────────────────────────────────────────────
-    // ISP: SqliteMemoryService is always instantiated (EfMemoryService delegates
-    // not-yet-migrated complex operations to it during the strangler-fig
-    // transition). When UseEfDataLayer=true, the IMemoryService + four
-    // ISP-split interfaces resolve to EfMemoryService; otherwise the legacy
-    // implementation is used directly. Both services share the same SQLite
-    // file via AniOptions.MemoryDbPath, so the delegation path is correct.
+    // Phase 5 SOLID refactor (2026-05-18): the previous monolithic EfMemoryService
+    // class has been split into five focused services, one per ISP interface,
+    // plus a composite EfMemoryServiceFacade for the 10 legacy consumers that
+    // still inject IMemoryService. Each focused service holds only the methods
+    // for its one interface; the still-delegated operations (Feature 30
+    // dedup-merge in persistence, semantic search composition in search,
+    // RebuildMemoryLinks in maintenance, audit-restore in maintenance) route
+    // through the SqliteMemoryService legacy until those domain services are
+    // extracted in follow-up commits.
+    //
+    // SqliteMemoryService is always instantiated as the strangler-fig fallback
+    // for the not-yet-ported operations. Both code paths share the same SQLite
+    // file via AniOptions.MemoryDbPath.
     builder.Services.AddSingleton<SqliteMemoryService>();
-    builder.Services.AddSingleton<EfMemoryService>();
 
     var aniOptions = config.GetSection("Ani").Get<AniOptions>() ?? new AniOptions();
     if (aniOptions.UseEfDataLayer)
     {
-        builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<EfMemoryService>());
-        builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<EfMemoryService>());
-        builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<EfMemoryService>());
-        builder.Services.AddSingleton<IStateStore>(sp => sp.GetRequiredService<EfMemoryService>());
-        builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<EfMemoryService>());
-        builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<EfMemoryService>());
+        // Register each focused service as the resolution for its ISP interface.
+        // The composite IMemoryService resolves to a façade that injects all five.
+        builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();
+        builder.Services.AddSingleton<IMemorySearch, EfMemorySearchService>();
+        builder.Services.AddSingleton<IStateStore, EfStateStore>();
+        builder.Services.AddSingleton<IMemoryAnalytics, EfMemoryAnalyticsService>();
+        builder.Services.AddSingleton<IMemoryMaintenance, EfMemoryMaintenanceService>();
+        builder.Services.AddSingleton<IMemoryService, EfMemoryServiceFacade>();
     }
     else
     {
+        // Legacy path: one class implements all six interfaces.
         builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<SqliteMemoryService>());
         builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<SqliteMemoryService>());
         builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<SqliteMemoryService>());
