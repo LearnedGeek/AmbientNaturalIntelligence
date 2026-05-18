@@ -49,19 +49,37 @@ public class ReflectionPhase
     }
 
     /// <summary>
-    /// Increments the cycle counter and runs reflection if the interval is reached.
-    /// Returns true if reflection was performed this cycle.
+    /// Phase 6 v1.2 R1 (2026-05-18): decay-driven trigger.
+    ///
+    /// When <see cref="AniOptions.CompressionEnabled"/> is on, reflection
+    /// fires every cognitive cycle. <see cref="RunReflectionAsync"/>
+    /// pulls decay-eligible records via
+    /// <c>IMemoryPersistence.GetDecayEligibleAsync</c> and early-returns
+    /// when fewer than 3 are available, so the per-cycle cost when there
+    /// is nothing to compress is one cheap SQL query. This decouples
+    /// reflection from the wall-clock cycle interval and ties it to the
+    /// existing decay scoring — reflection happens when substrate has
+    /// actually aged past the importance × recency threshold, not on a
+    /// 6-hour schedule. See
+    /// <c>docs/spec/design/ANI-MemoryReform-Design.md</c> v1.2 R1.
+    ///
+    /// When <see cref="AniOptions.CompressionEnabled"/> is off, the legacy
+    /// cycle-counter path runs (rollback shape for the v1 behaviour:
+    /// recent-N selection, no soft-delete, fixed ReflectionCycleInterval).
     /// </summary>
     public async Task<bool> TryRunAsync(
         CharacterStateDoc characterState, CancellationToken ct)
     {
         if (!_options.ReflectionEnabled) return false;
 
-        _cyclesSinceLastReflection++;
-        if (_cyclesSinceLastReflection < _options.ReflectionCycleInterval)
-            return false;
-
-        _cyclesSinceLastReflection = 0;
+        if (!_options.CompressionEnabled)
+        {
+            // Legacy v1 cycle-counter trigger — preserved as flag-off rollback.
+            _cyclesSinceLastReflection++;
+            if (_cyclesSinceLastReflection < _options.ReflectionCycleInterval)
+                return false;
+            _cyclesSinceLastReflection = 0;
+        }
 
         try
         {
