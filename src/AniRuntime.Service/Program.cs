@@ -433,7 +433,11 @@ try
     // because the withdrawal window is process-wide and consumed by both
     // the reply phase and the cognitive cycle's outreach gate.
     builder.Services.AddSingleton<IWithdrawalStateTracker, WithdrawalStateTracker>();
-    builder.Services.AddSingleton<ConversationReplyPhase>();
+    // §5.4b — reply body lives in the pipeline; phase is a thin facade.
+    // Pipeline is stateless (Transient); phase is Transient too (so it
+    // can consume Transient pipeline without a captive-dependency trap).
+    builder.Services.AddTransient<IConversationReplyPipeline, ConversationReplyPipeline>();
+    builder.Services.AddTransient<ConversationReplyPhase>();
     // Outreach decomposition (SOLID §5.3) — phase is a thin router.
     // ReactiveShareService + SilenceChoiceRecorder hold per-day / cooldown
     // state, so they are Singleton. The OutboundThreadRecorder is stateless

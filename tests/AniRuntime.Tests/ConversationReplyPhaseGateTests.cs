@@ -38,7 +38,7 @@ public class ConversationReplyPhaseGateTests : AniTestBase
     private const string OriginalReply = "okay baby — i'll let you sit with that for a minute. tell me when you're ready.";
     private const string Regenerated   = "got it. i'm here when you want to talk it through.";
 
-    private ConversationReplyPhase BuildPhase(
+    private ConversationReplyPipeline BuildPhase(
         IOptions<AniOptions>? options = null,
         ICognitiveOutputGate? gate = null)
     {
@@ -68,12 +68,11 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             MockMemory.Object, MockOllama.Object, options,
             NullLogger<ClaimVerificationPhase>.Instance);
 
-        return new ConversationReplyPhase(
+        return ConversationReplyPhaseTestBuilder.BuildPipeline(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
             _mockChannels.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
             _mockIntent.Object, gateState, compressor, claimVerifier, new WithdrawalStateTracker(), options, DefaultOllamaOptions,
-            NullLogger<ConversationReplyPhase>.Instance,
             outputGate: gate);
     }
 
@@ -241,7 +240,7 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
             Prompt(), 0.7f, CancellationToken.None);
 
-        result.Should().Be(ConversationReplyPhase.SafeAcknowledgement,
+        result.Should().Be(ConversationReplyPipeline.SafeAcknowledgement,
             "regen that ALSO fails the gate must NOT dispatch — fall back to safe acknowledgement");
         result.Should().NotBe(Regenerated,
             "May 3 Failure C contract: a known-bad regen must never reach the wire");
@@ -273,7 +272,7 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
             Prompt(), 0.7f, CancellationToken.None);
 
-        result.Should().Be(ConversationReplyPhase.SafeAcknowledgement);
+        result.Should().Be(ConversationReplyPipeline.SafeAcknowledgement);
     }
 
     [Fact]

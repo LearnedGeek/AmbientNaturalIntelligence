@@ -110,12 +110,11 @@ public class CognitiveCycleProcessorTests : AniTestBase
         var claimVerifier = new ClaimVerificationPhase(
             MockMemory.Object, MockOllama.Object, DefaultOptions,
             NullLogger<ClaimVerificationPhase>.Instance);
-        var conversationReply = new ConversationReplyPhase(
+        var conversationReply = ConversationReplyPhaseTestBuilder.Build(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
             _mockChannelResolver.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            _mockIntent.Object, gateState, compressor, claimVerifier, new WithdrawalStateTracker(), DefaultOptions, DefaultOllamaOptions,
-            NullLogger<ConversationReplyPhase>.Instance);
+            _mockIntent.Object, gateState, compressor, claimVerifier, new WithdrawalStateTracker(), DefaultOptions, DefaultOllamaOptions);
         var outreach = OutreachPhaseTestBuilder.Build(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockOllama.Object,
             dispatcher, desire, claimVerifier, _mockConversations.Object, DefaultOptions);
