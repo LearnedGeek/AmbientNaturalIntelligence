@@ -5,10 +5,17 @@ using AniRuntime.Core.Models;
 namespace AniRuntime.LLM.Prompts;
 
 /// <summary>Typed input for <see cref="LeanConversationPromptCommand"/>.</summary>
+/// <param name="DirectiveInSystem">
+/// 2026-05-18 — when true, the directive block (slice + [FACTS] + CRITICAL +
+/// imperative) merges into the system prompt and the returned <c>User</c>
+/// is empty. The structural fix for the slice-leak / pipeline-parrot
+/// cascade (see <c>AniOptions.LeanConversationPromptDirectiveInSystem</c>).
+/// </param>
 public sealed record LeanConversationPromptInput(
     ContextSnapshot Snapshot,
     ConversationThread Thread,
-    IEpistemicSubstrateRenderer? EpistemicRenderer = null);
+    IEpistemicSubstrateRenderer? EpistemicRenderer = null,
+    bool DirectiveInSystem = false);
 
 /// <summary>
 /// Conversation Mode (Phase 1) — lean reply prompt. Minimal persona +
@@ -105,6 +112,19 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
         }
 
         user.Append($"Reply to {contact}'s message.");
+
+        // 2026-05-18 — role-flip structural fix. When DirectiveInSystem is
+        // true, fold the directive block into the system message and return
+        // an empty user. Mark's actual text remains in RecentHistory as the
+        // only user-role content, eliminating the two-adjacent-user-messages
+        // shape that caused the model to decode the slice prose as
+        // conversational content (parrot + slice-leak on 5/5 vs 0/5 in the
+        // May 18 A/B probe).
+        if (input.DirectiveInSystem)
+        {
+            var mergedSystem = system + "\n\n" + user.ToString();
+            return new PromptPair(mergedSystem, string.Empty);
+        }
 
         return new PromptPair(system, user.ToString());
     }

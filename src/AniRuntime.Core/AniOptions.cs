@@ -421,6 +421,49 @@ public class AniOptions
     public bool UseHybridInnerThoughtCycle { get; set; } = false;
 
     /// <summary>
+    /// 2026-05-18 — structural role-assignment fix for the conversation reply
+    /// prompt. When true, <c>LeanConversationPromptCommand</c> concatenates the
+    /// directive block (mood/tension slice + [FACTS] + CRITICAL constraint +
+    /// imperative) into the SYSTEM message instead of returning it as a
+    /// trailing user-role message. The user-role final message becomes empty
+    /// so the model sees Mark's actual text (from <c>RecentHistory</c>) as
+    /// the only user content.
+    ///
+    /// <para>
+    /// <b>Empirical anchor (5/5 vs 1/5 PARROT + 1/5 SLICE-LEAK):</b> see the
+    /// May 18 role-flip A/B probe. The pre-fix shape (directive as second
+    /// user-role message) caused the model to decode slice prose as
+    /// conversational content — both verbatim parrots and explicit
+    /// "your tension-state update" leaks. System-role placement eliminated
+    /// both in 5/5 probe runs.
+    /// </para>
+    ///
+    /// <para>Default false for additive deploy. Flip in
+    /// <c>appsettings.Development.json</c> to A/B against current production
+    /// shape before flipping in <c>appsettings.json</c>.</para>
+    /// </summary>
+    public bool LeanConversationPromptDirectiveInSystem { get; set; } = false;
+
+    /// <summary>
+    /// 2026-05-18 — band-aid retirement candidate. The
+    /// <c>ConversationReplyPipeline</c> confab-detection + regrouping-regen
+    /// branch (rule-based heuristic including the "number not in conversation"
+    /// check, ML classifier path, and the regroup-regen with the heavier
+    /// <c>BuildConversationReplyPrompt</c>) exists primarily because the
+    /// user-role directive block was leaking slice numerics into the reply —
+    /// the heuristic then flagged the leaked value, triggered the regroup,
+    /// and the regroup-regen made the reply worse (today's 16:05 SafeAck
+    /// cascade is the canonical trace).
+    ///
+    /// <para>When <see cref="LeanConversationPromptDirectiveInSystem"/> is
+    /// true and stable in production, this branch's primary failure mode
+    /// goes away. Set to false to observe what real confab classes emerge
+    /// once the band-aid is retired. Default true until the role-flip soaks
+    /// for 24-48h on production traffic.</para>
+    /// </summary>
+    public bool ConversationConfabRegroupingEnabled { get; set; } = true;
+
+    /// <summary>
     /// Posture-S+1 — the local model used as the metadata-recognizer in the
     /// hybrid cycle. <c>qwen3:14b</c> was selected for clean structured
     /// output discipline (single-Qwen probe round was the empirical

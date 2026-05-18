@@ -70,7 +70,12 @@ public class OllamaClient : IOllamaClient
         foreach (var m in historyList)
             messages.Add(new { role = m.Role, content = m.Content });
 
-        messages.Add(new { role = "user", content = userMessage });
+        // 2026-05-18 — role-flip support. Callers that fold the directive
+        // into the system message pass an empty/whitespace userMessage to
+        // avoid producing a trailing empty user-role turn. The model sees
+        // Mark's actual text via the history list instead.
+        if (!string.IsNullOrWhiteSpace(userMessage))
+            messages.Add(new { role = "user", content = userMessage });
 
         // Parrot-bug investigation (Apr 23, 2026): log the full payload being
         // sent to the model. The Apr 23 raw-Ollama diagnostic showed that
@@ -206,7 +211,8 @@ public class OllamaClient : IOllamaClient
         var messages = new List<object> { new { role = "system", content = systemPrompt } };
         foreach (var m in history)
             messages.Add(new { role = m.Role, content = m.Content });
-        messages.Add(new { role = "user", content = userMessage });
+        if (!string.IsNullOrWhiteSpace(userMessage))
+            messages.Add(new { role = "user", content = userMessage });
 
         var request = new { model = _options.ChatModel, messages, stream = true, keep_alive = "5m" };
 

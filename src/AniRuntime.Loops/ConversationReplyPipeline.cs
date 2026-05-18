@@ -266,9 +266,15 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         var replyTemperature = _ollamaOptions.CreativeTemperature;
 
         var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
+        // 2026-05-18 — structural role-flip. When LeanConversationPromptDirectiveInSystem
+        // is true, the directive block (slice + [FACTS] + CRITICAL + imperative)
+        // folds into the system message and the returned User is empty.
+        // OllamaClient skips empty user-role messages so the model sees Mark's
+        // actual text from RecentHistory as the only user content.
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
-            : PromptBuilder.BuildLeanConversationPrompt(snapshot, thread, rendererForPrompt);
+            : PromptBuilder.BuildLeanConversationPrompt(snapshot, thread, rendererForPrompt,
+                directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem);
 
         // Epistemic Grounding debug (Apr 10): log the full user prompt so we can
         // verify the WHAT IS TRUE section is populated with useful facts. Remove
@@ -359,7 +365,13 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // If yes, retrieve memories to ground the response and regenerate.
         // The model's own uncertainty is the trigger — not a schedule, not a keyword list.
         // ═══════════════════════════════════════════════════════════════════════
-        if (!isReconsideration)
+        // 2026-05-18 — band-aid retirement flag. The entire confab-detection
+        // + regroup-regen branch is conditional on
+        // ConversationConfabRegroupingEnabled. When false (post role-flip
+        // observation), this cascade is skipped entirely so we can measure
+        // what real failure modes remain once the slice-leak-triggered
+        // false positives are gone. See AniOptions.ConversationConfabRegroupingEnabled.
+        if (!isReconsideration && _aniOptions.ConversationConfabRegroupingEnabled)
         {
             // Run ALL checks (1-4) including proper noun detection. The known-names
             // exclusion list (character name, contact name, endearments) prevents false

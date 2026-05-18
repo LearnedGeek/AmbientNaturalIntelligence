@@ -162,9 +162,10 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildLeanConversationPrompt(
         ContextSnapshot snapshot, ConversationThread thread,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        bool directiveInSystem = false)
         => new Prompts.LeanConversationPromptCommand()
-            .Build(new Prompts.LeanConversationPromptInput(snapshot, thread, epistemicRenderer));
+            .Build(new Prompts.LeanConversationPromptInput(snapshot, thread, epistemicRenderer, directiveInSystem));
 
     /// <summary>
     /// Full conversation prompt — used for outreach reconsideration and as fallback.
