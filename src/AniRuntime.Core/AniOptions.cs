@@ -386,6 +386,18 @@ public class AniOptions
     public float DecayEligibilityRecencyThreshold       { get; set; } = 0.30f;
     public float DecayEligibilityImportanceThreshold    { get; set; } = 0.85f;
 
+    /// <summary>
+    /// Phase 3 (data-layer refactor, 2026-05-17) — when true, ReflectionPhase
+    /// uses the EF Core <c>IReflectionGistService</c> for atomic gist+compress
+    /// operations instead of the broken legacy
+    /// <c>IMemoryPersistence.SaveAsync + MarkCompressedAsync</c> composition.
+    /// Fixes the gist-Compressed bug discovered 2026-05-17 where Feature 30
+    /// dedup-merge orphans the pre-generated gistId, causing FK failure +
+    /// transaction rollback. See
+    /// <c>docs/spec/ANI-Data-Layer-UoW-Repository-Refactor-Plan.md</c>.
+    /// </summary>
+    public bool UseEfReflectionGistService { get; set; } = true;
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

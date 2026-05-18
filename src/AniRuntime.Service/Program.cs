@@ -16,6 +16,7 @@ using AniRuntime.Emergence;
 using AniRuntime.Emergence.Models;
 using AniRuntime.Voice;
 using LearnedGeek.ML;
+using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -99,6 +100,21 @@ try
     builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<SqliteMemoryService>());
     builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<SqliteMemoryService>());
     builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
+
+    // ── Phase 3 data-layer refactor (May 17, 2026): EF Core context factory ──
+    // + atomic reflection-gist service. AddDbContextFactory provides a per-call
+    // DbContext (UoW lifetime = method scope), matching the existing
+    // "open connection per method" pattern in SqliteMemoryService.
+    // EfReflectionGistService uses two repositories (Memory + MemoryLink) in
+    // one DbContext for atomic gist+compress+link-creation, replacing the
+    // broken legacy split path. See
+    // docs/spec/ANI-Data-Layer-UoW-Repository-Refactor-Plan.md Phase 3.
+    builder.Services.AddDbContextFactory<AniDbContext>(opts =>
+    {
+        var dbPath = config["Ani:MemoryDbPath"] ?? "ani-memory.db";
+        opts.UseSqlite($"Data Source={dbPath};Foreign Keys=True");
+    });
+    builder.Services.AddSingleton<IReflectionGistService, EfReflectionGistService>();
 
     // Vibe Loop V1 (Apr 29, 2026) — closed-thread structured-record store.
     // See docs/spec/ANI-VibeLoop-V1-Closed-Thread-Producer-Migration-Plan.md.
@@ -458,6 +474,55 @@ try
                 error = ex.Message,
                 timestamp = DateTimeOffset.UtcNow,
             }, statusCode: 503);
+        }
+    });
+
+    // ── Phase 6 v1.2 retroactive compression admin endpoint (May 17, 2026) ─
+    // Drives the same RunReflectionAsync machinery used by the periodic
+    // reflection cycle, but on-demand. Used to compress accumulated substrate
+    // generated under the pre-v1.2 architecture. Loops are driven externally
+    // (by a PowerShell driver script with throttling), so this endpoint runs
+    // ONE batch per call and returns metrics — that lets the driver decide
+    // pacing and total iterations.
+    //
+    // Returns { savedThisBatch: bool, totalReflections: int } so the driver
+    // can detect "no more eligible records" (savedThisBatch=false) and stop.
+    app.MapPost("/api/v1/admin/retroactive-compression-step", async (
+        ReflectionPhase reflection,
+        IMemoryService memory,
+        ILogger<Program> log,
+        HttpContext ctx) =>
+    {
+        try
+        {
+            var charState = await memory.GetCharacterStateAsync(ctx.RequestAborted)
+                .ConfigureAwait(false);
+            var savedThisBatch = await reflection
+                .ForceRunOnceAsync(charState, ctx.RequestAborted)
+                .ConfigureAwait(false);
+
+            // Total reflection-source record count for progress visibility.
+            var memSearch = (IMemorySearch)memory;
+            var totalReflections = (await memSearch
+                .GetByTypeAsync(MemoryType.Semantic, 5000, ctx.RequestAborted)
+                .ConfigureAwait(false))
+                .Count(m => m.SourceName == "reflection");
+
+            return Results.Ok(new
+            {
+                savedThisBatch,
+                totalReflections,
+                timestamp = DateTimeOffset.UtcNow,
+            });
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Retroactive compression step failed");
+            return Results.Json(new
+            {
+                error = ex.Message,
+                timestamp = DateTimeOffset.UtcNow,
+            }, statusCode: 500);
         }
     });
 

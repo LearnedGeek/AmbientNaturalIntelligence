@@ -26,6 +26,7 @@ public class ReflectionPhase
     private readonly IMemorySearch _search;
     private readonly AniOptions _options;
     private readonly ICognitiveOutputGate? _outputGate;
+    private readonly IReflectionGistService? _gistService;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
 
@@ -35,13 +36,15 @@ public class ReflectionPhase
         IMemorySearch search,
         IOptions<AniOptions> options,
         ILogger<ReflectionPhase> log,
-        ICognitiveOutputGate? outputGate = null)
+        ICognitiveOutputGate? outputGate = null,
+        IReflectionGistService? gistService = null)
     {
         _ollama = ollama;
         _persist = persist;
         _search = search;
         _options = options.Value;
         _outputGate = outputGate;
+        _gistService = gistService;
         _log = log;
     }
 
@@ -68,6 +71,56 @@ public class ReflectionPhase
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Reflection synthesis failed — continuing without reflection");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Phase 6 v1.2 retroactive scan (May 17, 2026) — force-runs ONE
+    /// compression batch immediately, bypassing the cycle-counter rate
+    /// limit. Used by the retroactive-compression admin endpoint to drive
+    /// many batches in sequence and clear accumulated substrate generated
+    /// under the pre-v1.2 architecture (~10K records in the production
+    /// snapshot, of which the oldest meet the decay-eligibility predicate).
+    ///
+    /// Does NOT reset the periodic <c>_cyclesSinceLastReflection</c> counter
+    /// so periodic reflection continues on its own schedule. Returns true
+    /// if at least one summary was saved this batch (caller uses to detect
+    /// "no more eligible records — stop looping").
+    /// </summary>
+    public async Task<bool> ForceRunOnceAsync(
+        CharacterStateDoc characterState, CancellationToken ct)
+    {
+        if (!_options.ReflectionEnabled)
+        {
+            _log.LogInformation("ForceRunOnceAsync: skipped (ReflectionEnabled=false)");
+            return false;
+        }
+
+        // Capture pre-state for "did we save anything?" detection. ReflectionPhase
+        // doesn't expose its save count directly; we proxy via reflection-count
+        // query before/after. Simpler than threading a return value back through
+        // RunReflectionAsync, which exists in three internal call paths.
+        try
+        {
+            // Get baseline count of reflection-source records.
+            var beforeCount = (await _search.GetByTypeAsync(MemoryType.Semantic, 5000, ct)
+                .ConfigureAwait(false)).Count(m => m.SourceName == "reflection");
+
+            await RunReflectionAsync(characterState, ct).ConfigureAwait(false);
+
+            var afterCount = (await _search.GetByTypeAsync(MemoryType.Semantic, 5000, ct)
+                .ConfigureAwait(false)).Count(m => m.SourceName == "reflection");
+
+            var saved = afterCount - beforeCount;
+            _log.LogInformation(
+                "ForceRunOnceAsync: completed (gists_saved={Saved})", saved);
+            return saved > 0;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "ForceRunOnceAsync: failed — continuing (next batch can retry)");
             return false;
         }
     }
@@ -219,57 +272,48 @@ public class ReflectionPhase
                 }
             }
 
-            // Phase 6 v1.2 R2 (May 17, 2026): assign an Id up-front so we can
-            // pass it to MarkCompressedAsync after save. SaveAsync may merge
-            // this record into an existing one (Feature 30), in which case
-            // the merge target's Id supersedes — but for new synthesis
-            // records (the common case for reflection gists, which are
-            // novel content not duplicating prior facts), the assigned Id
-            // is what persists.
-            var gistId = Guid.NewGuid();
-            var record = new MemoryRecord
-            {
-                Id = gistId,
-                Type = MemoryType.Semantic,
-                Content = observation,
-                Importance = 0.8f,
-                RelationalValence = 0.5f,
-                SourceName = "reflection",
-                // Epistemic Grounding (Apr 10): Reflections are syntheses of prior
-                // memory into higher-level self-observations — Interior tier. These
-                // inform Ani's self-model but are not factual assertions about Mark's world.
-                Provenance = EpistemicTier.Interior,
-            };
+            // Phase 3 atomic save (2026-05-17, data-layer refactor).
+            // EF path: atomic SaveReflectionGistAndCompressAsync — one
+            // SaveChangesAsync transaction covers gist insert + source
+            // tier UPDATEs + compressed_into link inserts. Fixes the v1
+            // composition bug where Feature 30 dedup-merge orphaned the
+            // gistId and caused MarkCompressedAsync's FK insert to roll
+            // back the whole batch's source UPDATEs.
+            //
+            // Legacy path preserved as fallback while the new pattern
+            // proves out in production.
+            var sourceGuidsForBatch = recentMemories.Select(m => m.Id).ToList();
+            Guid? savedGistId = null;
+            var useEfPath = _options.UseEfReflectionGistService
+                            && _gistService is not null
+                            && _options.CompressionEnabled;
 
-            await _persist.SaveAsync(record, ct).ConfigureAwait(false);
-            existingProfiles.Add(prefix); // Prevent saving duplicates within same batch
-            saved++;
-            savedGistIds.Add(gistId);
-        }
-
-        // Phase 6 v1.2 R2 (May 17, 2026): soft-delete source records into the
-        // gists we just saved. If at least one gist saved, mark all source
-        // records as Compressed and create compressed_into links for
-        // provenance. The compression is keyed on the first saved gist for
-        // the link target — multiple gists in one cycle share the same
-        // sources because they came from the same synthesis input. Future
-        // refinement could split sources by gist if topic-clustering is
-        // explicit; current v1.2 keeps it batch-shared because the LLM does
-        // implicit clustering across the 10-record input.
-        if (_options.CompressionEnabled && savedGistIds.Count > 0)
-        {
-            try
+            if (useEfPath)
             {
-                var sourceGuids = recentMemories.Select(m => m.Id).ToList();
-                await _persist.MarkCompressedAsync(sourceGuids, savedGistIds[0], ct)
+                try
+                {
+                    savedGistId = await _gistService!.SaveReflectionGistAndCompressAsync(
+                        observation, sourceGuidsForBatch, EpistemicTier.Interior, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex,
+                        "EfReflectionGistService failed for observation — falling back to legacy split path");
+                }
+            }
+
+            if (savedGistId is null)
+            {
+                savedGistId = await SaveLegacyAsync(observation, sourceGuidsForBatch, ct)
                     .ConfigureAwait(false);
             }
-            catch (Exception ex)
+
+            if (savedGistId is not null)
             {
-                _log.LogWarning(ex,
-                    "Phase 6 v1.2 MarkCompressedAsync failed — gist(s) saved but sources NOT marked Compressed. " +
-                    "Sources will continue to appear in retrieval until next compression cycle. " +
-                    "Soft-delete is not blocking; the gist is the durable artifact.");
+                existingProfiles.Add(prefix);
+                saved++;
+                savedGistIds.Add(savedGistId.Value);
             }
         }
 
@@ -282,6 +326,63 @@ public class ReflectionPhase
             observations.Count - saved - gateDropped,
             gateDropped,
             _options.CompressionEnabled ? "on" : "off");
+    }
+
+    /// <summary>
+    /// Legacy gist-save path — used when the EF reflection-gist service
+    /// is not available (flag off or DI not wired). Composes
+    /// <c>IMemoryPersistence.SaveAsync</c> + <c>MarkCompressedAsync</c>
+    /// across method boundaries with separate transactions. Known to
+    /// silently fail when Feature 30 dedup-merge orphans the gistId
+    /// (see docs/spec/ANI-Data-Layer-UoW-Repository-Refactor-Plan.md).
+    ///
+    /// Returns the saved gistId on success, null on failure. Failure
+    /// here is non-fatal: the caller logs and moves on to the next
+    /// observation in the batch.
+    /// </summary>
+    private async Task<Guid?> SaveLegacyAsync(
+        string observation,
+        IReadOnlyList<Guid> sourceGuids,
+        CancellationToken ct)
+    {
+        var gistId = Guid.NewGuid();
+        var record = new MemoryRecord
+        {
+            Id                = gistId,
+            Type              = MemoryType.Semantic,
+            Content           = observation,
+            Importance        = 0.8f,
+            RelationalValence = 0.5f,
+            SourceName        = "reflection",
+            Provenance        = EpistemicTier.Interior,
+        };
+
+        try
+        {
+            await _persist.SaveAsync(record, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "SaveLegacyAsync: SaveAsync failed for gist {GistId}", gistId);
+            return null;
+        }
+
+        if (_options.CompressionEnabled && sourceGuids.Count > 0)
+        {
+            try
+            {
+                await _persist.MarkCompressedAsync(sourceGuids, gistId, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "SaveLegacyAsync: MarkCompressedAsync failed for gist {GistId} (the legacy bug) — gist saved but sources may not be Compressed",
+                    gistId);
+                // Don't fail the operation — gist is durable.
+            }
+        }
+
+        return gistId;
     }
 
     /// <summary>

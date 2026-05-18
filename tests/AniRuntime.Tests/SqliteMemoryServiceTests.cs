@@ -1203,10 +1203,20 @@ public class SqliteMemoryServiceTests : AniTestBase
     }
 
     [Fact]
-    public async Task GetDecayEligibleAsync_ExcludesReflectionAndCharacterSeedSources()
+    public async Task GetDecayEligibleAsync_ExcludesV12ShapeReflectionsAndCharacterSeeds_AllowsOldShapeReflections()
     {
-        var reflection = BuildRecord(MemoryType.Semantic,
-            "old reflection",
+        // Phase 6 v1.2 follow-on (2026-05-17): the reflection-source exclusion
+        // is now conditional on shape. v1.2-shape reflections (content starts
+        // with "[topic:") are excluded to prevent summary-of-summary loops.
+        // Old-shape reflections (pre-v1.2 first-person prose without the
+        // [topic: prefix) ARE eligible — they need one-time compression into
+        // v1.2 shape. Character-seeds remain absolutely excluded.
+        var oldShapeReflection = BuildRecord(MemoryType.Semantic,
+            "i find myself thinking about how light moves through glass...",
+            DateTimeOffset.UtcNow.AddHours(-1000),
+            sourceName: "reflection");
+        var v12Reflection = BuildRecord(MemoryType.Semantic,
+            "[topic: evening solitude] warm-quiet, gently lonely",
             DateTimeOffset.UtcNow.AddHours(-1000),
             sourceName: "reflection");
         var characterSeed = BuildRecord(MemoryType.Semantic,
@@ -1218,14 +1228,20 @@ public class SqliteMemoryServiceTests : AniTestBase
             DateTimeOffset.UtcNow.AddHours(-1000),
             sourceName: "conversation");
 
-        await _svc.SaveAsync(reflection);
+        await _svc.SaveAsync(oldShapeReflection);
+        await _svc.SaveAsync(v12Reflection);
         await _svc.SaveAsync(characterSeed);
         await _svc.SaveAsync(conversation);
 
         var eligible = (await _svc.GetDecayEligibleAsync(limit: 10)).ToList();
 
-        eligible.Should().HaveCount(1);
-        eligible[0].SourceName.Should().Be("conversation");
+        // Old-shape reflection AND conversation are eligible.
+        // v1.2-shape reflection and character-seed are NOT.
+        eligible.Should().HaveCount(2);
+        eligible.Select(r => r.Content).Should().Contain(c => c.Contains("light moves through glass"));
+        eligible.Select(r => r.Content).Should().Contain(c => c.Contains("old conversation"));
+        eligible.Should().NotContain(r => r.Content.StartsWith("[topic:"));
+        eligible.Should().NotContain(r => r.SourceName == "character-seed");
     }
 
     [Fact]

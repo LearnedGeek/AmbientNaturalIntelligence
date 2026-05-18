@@ -90,12 +90,44 @@ Initial framing speculated a new prompt section for affective-historical content
 
 ### What's the implementation impact
 
-The v1 design has substantial implementation work already mapped (`FindMergeCandidateAsync`, `MergeMemoriesAsync`, `memory_links` schema, `ReflectionPhase` class, etc.). The v1.2 refinement does NOT throw any of that out. It changes:
+The v1 design's implementation **shipped already** (status correction at top of doc). The v1.2 refinement modifies the shipped infrastructure rather than building from scratch:
 - The **trigger predicate** for reflection: from `_cyclesSinceLastReflection >= 12` to decay-threshold scan.
 - The **post-synthesis step** for reflection: soft-delete or mark-invisible the source records, not just write the synthesis alongside them.
 - The **synthesis prompt** for reflection: structured register-tagged output, not 3 free-prose observations.
 
-Estimated additional design work: ~1-2 days to specify the decay-threshold predicate, the soft-delete semantics, and the structured synthesis prompt + parsing. Original v1 implementation effort estimates otherwise unchanged.
+### Refinement coupling (May 17 clarification)
+
+R1 (decay-threshold trigger) and R2 (soft-delete after synthesis) are **coupled, not independent**. Soft-delete without the decay-threshold trigger would delete recent records that are still load-bearing for ongoing conversation. The decay threshold IS what guarantees records are past peak relevance before compression. They ship as one change to the decay path:
+
+- Before: decay means *"fade from retrieval"* — record stops surfacing but stays in DB.
+- After: decay means *"summarize into gist + remove sources"* — same threshold event, but the summarization machinery (from R3) runs and the source records are soft-deleted as the natural completion of the decay act.
+
+### Revised implementation order
+
+1. **R3 (output structure)** — independent, ship first. Edit synthesis prompt at `PromptBuilder.cs:1784` + parsing in `ReflectionPhase.cs:101-106` for register-tagged structured output. Smallest delta, easiest to verify on next reflection cycle.
+2. **R1 + R2 coupled (decay-driven lifecycle)** — second. Change `ReflectionPhase.TryRunAsync` trigger from cycle counter to decay-threshold scan; change `RunReflectionAsync` post-synthesis to soft-delete source records. Uses R3's summarization output as the gist content.
+3. **Retroactive scan** — third, after R1+R2 verified on new records. Run the same v1.2 summarization machinery against decay-eligible existing records to compress the ~10K accumulated substrate generated under the old architecture (1367 reflections + 1902 conversations + 635 world-experiences + others). Not a new scanner — same pipeline applied to old data.
+
+### Retroactive Scan (v1.2 follow-on, May 17 design note)
+
+**Why needed.** Without retroactive cleanup, after R3+R1+R2 ship, the ~10K accumulated substrate records remain in the DB. They were generated under the old architecture (cycle-counter reflection writing inner-thought-shaped output that co-exists with sources). They continue to be retrieved against new conversations until they decay naturally — which on the current decay curves takes months. The felt-experience signal from the v1.2 refactor would be muted until natural decay catches up.
+
+**When to run.** After R1+R2 is validated on at least 7 days of new records in production. By then we know what the gist quality looks like at scale, the decay-threshold predicate has empirical tuning data, and the criteria for "decay-eligible" are crystallized rather than guessed.
+
+**What it does.**
+- Snapshot the DB (always).
+- Scan for records meeting the same decay-eligibility predicate the live R1+R2 uses.
+- Cluster by cosine similarity (the existing summarization machinery handles this implicitly — clusters emerge from cosine-similar source records being passed together to the synthesis prompt).
+- Run summarization on each cluster.
+- Replace with gist + soft-delete sources.
+
+**Implementation notes.**
+- Performance: ~10K records × LLM-call-per-cluster makes this hours of compute. Run as batch operation, not in a cognitive cycle. Throttled to avoid VRAM pressure on the live conversation model.
+- Safety: full DB backup + dry-run mode (logs what *would* be summarized without writing) before any destructive write.
+- Validation: hold-out sample — pick 20 clusters, run summarization, manually inspect gist quality before unleashing on the full corpus.
+- Idempotency: each retroactive pass should be safe to re-run. Tag retroactive-summarized gists with a marker so subsequent passes don't re-summarize them.
+
+**Tracking.** Add to GitHub Issue #33 as a v1.2 follow-on subtask when R1+R2 ships and the design crystallizes.
 
 ---
 

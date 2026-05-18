@@ -1445,6 +1445,14 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     /// for eligibility criteria. Returns oldest-first so the synthesis batch
     /// covers a coherent older slice of substrate rather than a random
     /// sample.
+    ///
+    /// 2026-05-17 v1.2 follow-on: reflection-source records are conditionally
+    /// allowed — old-shape (pre-v1.2 first-person prose) reflections need
+    /// one-time compression to v1.2 register-tagged shape. v1.2-shape
+    /// reflections (content starts with "[topic:") remain excluded to prevent
+    /// summary-of-summary loops. The distinction is structural: any record
+    /// whose content lacks the "[topic:" prefix is treated as a candidate
+    /// for compression, regardless of whether the source_name is 'reflection'.
     /// </summary>
     public async Task<IEnumerable<MemoryRecord>> GetDecayEligibleAsync(
         int limit = 10, CancellationToken ct = default)
@@ -1452,17 +1460,18 @@ public class SqliteMemoryService : IMemoryService, IDisposable
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd  = conn.CreateCommand();
 
-        // Filter at SQL level on the attribute-based predicates (tier, source,
-        // importance). The recency predicate is type-aware via decay-multiplier,
-        // so apply it post-load. Over-fetch by 4x to give the recency filter
-        // enough headroom — records that pass attribute filters but not recency
-        // shouldn't starve the result set.
+        // Filter at SQL level on the attribute-based predicates (tier,
+        // importance, character-seed source). The recency predicate +
+        // reflection-shape predicate are applied post-load.
+        // Over-fetch by 4x to give the recency filter enough headroom —
+        // records that pass attribute filters but not recency shouldn't
+        // starve the result set.
         var overFetch = Math.Max(50, limit * 4);
 
         cmd.CommandText = """
             SELECT * FROM memories
             WHERE tier NOT IN ('Anchored', 'Compressed')
-              AND (source_name IS NULL OR source_name NOT IN ('reflection', 'character-seed'))
+              AND (source_name IS NULL OR source_name != 'character-seed')
               AND importance < $importanceCeiling
               AND embedding IS NOT NULL
             ORDER BY occurred_at ASC
@@ -1473,14 +1482,25 @@ public class SqliteMemoryService : IMemoryService, IDisposable
 
         var candidates = await ReadRecordsAsync(cmd, ct).ConfigureAwait(false);
 
-        // Apply type-aware recency threshold: recency = exp(-hoursSinceCreation / lambda)
-        // where lambda = RetrievalRecencyDecayHours * GetDecayMultiplier(record).
-        // Eligible if recency <= DecayEligibilityRecencyThreshold.
+        // Apply type-aware recency threshold + reflection-shape exclusion.
+        // - recency = exp(-hoursSinceCreation / lambda), lambda type-aware
+        // - reflection-source records ARE eligible UNLESS already v1.2-shape
+        //   (content starts with "[topic:"). The 2026-05-17 v1.2 design
+        //   protects v1.2 gists from re-compression but allows old-shape
+        //   reflections to be folded into v1.2-shape gists one time.
         var now = DateTimeOffset.UtcNow;
         var recencyCeiling = _options.DecayEligibilityRecencyThreshold;
         var eligible = new List<MemoryRecord>();
         foreach (var r in candidates)
         {
+            // Skip v1.2-shape reflections (prevent summary-of-summary loops)
+            if (r.SourceName == "reflection"
+                && r.Content is { Length: > 0 }
+                && r.Content.StartsWith("[topic:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(r);
             var hours  = (now - r.OccurredAt).TotalHours;
             var recency = (float)Math.Exp(-hours / lambda);
