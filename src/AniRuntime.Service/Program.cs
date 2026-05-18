@@ -940,19 +940,30 @@ try
     }
 
     // ── Pre-warm LLM models — avoids cold-start latency on first request ──
+    //
+    // Backgrounded (May 18 2026): awaiting WarmModelAsync inline could push
+    // startup past Windows SCM's ~30s "service did not respond" deadline
+    // (error 1053) when Ollama itself is cold — observed on ani-server
+    // deploys where the cold Ollama + ~10GB model load reliably exceeded
+    // 30s. The warm is best-effort anyway; the first voice request will
+    // wait if the warm isn't done yet.
     if (voiceEnabled)
     {
         var ollama = app.Services.GetRequiredService<IOllamaClient>();
         var ollamaOpts = app.Services.GetRequiredService<IOptions<OllamaOptions>>().Value;
-        Log.Information("Pre-warming voice model: {Model}", ollamaOpts.ChatModel);
-        try
+        Log.Information("Pre-warming voice model in background: {Model}", ollamaOpts.ChatModel);
+        _ = Task.Run(async () =>
         {
-            await ollama.WarmModelAsync(ollamaOpts.ChatModel);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "Failed to pre-warm voice model — first voice turn may be slow");
-        }
+            try
+            {
+                await ollama.WarmModelAsync(ollamaOpts.ChatModel);
+                Log.Information("Voice model pre-warm complete: {Model}", ollamaOpts.ChatModel);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to pre-warm voice model — first voice turn may be slow");
+            }
+        });
     }
 
     // Easter egg: Ani gets the last word on shutdown.
