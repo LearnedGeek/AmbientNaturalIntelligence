@@ -384,11 +384,28 @@ try
     builder.Services.AddSingleton<WorldSeedService>();
 
     // ── Cognitive cycle ───────────────────────────────────────────────────────
-    // Apr 28, 2026 architectural fix: AdminCommandHandler now also exposed as
-    // IAdminCommandHandler (Core interface) so the perception layer can route
-    // admin commands directly without depending on Loops.
-    builder.Services.AddSingleton<AdminCommandHandler>();
-    builder.Services.AddSingleton<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
+    // AdminCommandHandler refactor (§5.1, 2026-05-18): the previous god-object
+    // is now a thin dispatcher over IAdminCommand-implementing classes. Each
+    // command is its own type, registered Transient. The dispatcher itself
+    // and the test-mode tracker are also Transient/Singleton per the lifetime
+    // discipline noted in ANI-Orchestrator-SOLID-Refactor-Plan.md §7.
+    builder.Services.AddSingleton<ITestModeTracker, AniRuntime.Loops.Admin.TestModeTracker>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.HelpCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.TestModeOnCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.TestModeOffCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.StatusCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.ResetMoodCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.NewThreadCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.RebuildLinksCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.RebuildEmergenceCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.DiagnoseCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.TagCommand>();
+    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.AuditCommand>();
+    // The dispatcher itself is stateless; Transient is appropriate. It is also
+    // exposed via IAdminCommandHandler so the Perception layer can route
+    // inbound admin commands without depending on Loops (Apr 28, 2026 fix).
+    builder.Services.AddTransient<AdminCommandHandler>();
+    builder.Services.AddTransient<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
     builder.Services.AddSingleton<EmotionalProcessor>();
     builder.Services.AddSingleton<ContextBuilder>();
     builder.Services.AddSingleton<AniRuntime.LLM.ContextCompressor>();

@@ -1,6 +1,7 @@
 using AniRuntime.Core;
 using AniRuntime.Core.Models;
 using AniRuntime.Loops;
+using AniRuntime.Loops.Admin.Commands;
 using FluentAssertions;
 
 namespace AniRuntime.Tests;
@@ -11,7 +12,7 @@ namespace AniRuntime.Tests;
 /// error when the inbound `///tag` itself triggers auto-close-on-stale-thread
 /// and opens a new tag-only thread.
 ///
-/// The predicate <see cref="AdminCommandHandler.IsValidTagAnchor"/> determines
+/// The predicate <see cref="TagCommand.IsValidTagAnchor"/> determines
 /// whether a thread is suitable as the anchor for a `///tag` admin command.
 /// A thread is valid if and only if it contains at least one Ani message
 /// (the tag is attached to the most recent Ani reply; a thread with only Mark
@@ -23,14 +24,14 @@ namespace AniRuntime.Tests;
 /// which failed the count check, while the just-closed thread with content
 /// (count≥2) sat at index 2, never consulted. New code searches a wider
 /// net (5 threads) and selects the first that satisfies
-/// <see cref="AdminCommandHandler.IsValidTagAnchor"/>.
+/// <see cref="TagCommand.IsValidTagAnchor"/>.
 /// </summary>
 public class AdminCommandHandlerTagAnchorTests
 {
     [Fact]
     public void IsValidTagAnchor_NullThread_ReturnsFalse()
     {
-        AdminCommandHandler.IsValidTagAnchor(null).Should().BeFalse();
+        TagCommand.IsValidTagAnchor(null).Should().BeFalse();
     }
 
     [Fact]
@@ -38,7 +39,7 @@ public class AdminCommandHandlerTagAnchorTests
     {
         var thread = new ConversationThread { Id = Guid.NewGuid() };
 
-        AdminCommandHandler.IsValidTagAnchor(thread).Should().BeFalse();
+        TagCommand.IsValidTagAnchor(thread).Should().BeFalse();
     }
 
     [Fact]
@@ -57,7 +58,7 @@ public class AdminCommandHandlerTagAnchorTests
             },
         };
 
-        AdminCommandHandler.IsValidTagAnchor(thread).Should().BeFalse(
+        TagCommand.IsValidTagAnchor(thread).Should().BeFalse(
             "a tag-only thread (one Mark message, no Ani reply) cannot anchor a ///tag");
     }
 
@@ -78,7 +79,7 @@ public class AdminCommandHandlerTagAnchorTests
             },
         };
 
-        AdminCommandHandler.IsValidTagAnchor(thread).Should().BeTrue();
+        TagCommand.IsValidTagAnchor(thread).Should().BeTrue();
     }
 
     [Fact]
@@ -96,7 +97,7 @@ public class AdminCommandHandlerTagAnchorTests
             },
         };
 
-        AdminCommandHandler.IsValidTagAnchor(thread).Should().BeTrue();
+        TagCommand.IsValidTagAnchor(thread).Should().BeTrue();
     }
 
     [Fact]
@@ -116,7 +117,7 @@ public class AdminCommandHandlerTagAnchorTests
             },
         };
 
-        AdminCommandHandler.IsValidTagAnchor(thread).Should().BeFalse(
+        TagCommand.IsValidTagAnchor(thread).Should().BeFalse(
             "a thread with no Ani messages — even if multi-message — cannot anchor a tag");
     }
 }
