@@ -4,6 +4,7 @@ using AniRuntime.Core.Models;
 using AniRuntime.Memory;
 using AniRuntime.Tests.Infrastructure;
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -38,6 +39,15 @@ public class SqliteMemoryServiceTests : AniTestBase, IDisposable
     public void Dispose()
     {
         _svc.Dispose();
+        // 2026-05-18 — flushing the process-wide connection pool catches the
+        // residual flake on the self-hosted runner. Disposing _svc releases the
+        // keep-alive, but Microsoft.Data.Sqlite's pool may still hold a
+        // connection to the same in-memory-named DB. When a SUBSEQUENT test
+        // creates a new SqliteMemoryService with a DIFFERENT GUID-named DB,
+        // the pool can route a query against that NEW connection string to a
+        // pooled connection whose backing in-memory DB has been GC'd, producing
+        // FK / "no such table" errors. ClearAllPools forces a clean slate.
+        SqliteConnection.ClearAllPools();
         GC.SuppressFinalize(this);
     }
 
@@ -1154,16 +1164,24 @@ public class SqliteMemoryServiceTests : AniTestBase, IDisposable
         string? sourceName = null,
         DecayTier tier = DecayTier.Standard)
     {
-        // Use a content-derived embedding so distinct records get distinct
-        // embeddings (otherwise Feature 30 dedup merges them via cosine=1.0).
-        // The test doesn't need real embeddings — just distinguishable ones.
+        // 2026-05-18 — embeddings are now orthogonal-by-construction to keep
+        // Feature 30 dedup-merge quiet. Earlier the embedding was a 3-element
+        // vector derived from content.GetHashCode(); for some content pairs the
+        // resulting 3-D vectors landed at cosine 0.85-0.95 and dedup-merged
+        // them, breaking tests intermittently (e.g.
+        // GetDecayEligibleAsync_ExcludesHighImportanceRecords). The fix: build
+        // a wider embedding where each test record's hash drives a single
+        // dimension's value to 1.0, with all others at 0.0. Two records with
+        // different content hashes activate different dimensions → cosine = 0
+        // (perfectly orthogonal). Dedup-merge can't fire.
+        //
+        // Width 128 is generous: hash mod 128 gives plenty of cells, collisions
+        // are rare across test fixture content, and production retrieval is
+        // unchanged because tests never compare these embeddings to live
+        // 768-dim production vectors.
         var hash = (uint)content.GetHashCode();
-        var emb = new float[]
-        {
-            ((hash & 0xFF) / 255f),
-            (((hash >> 8) & 0xFF) / 255f),
-            (((hash >> 16) & 0xFF) / 255f),
-        };
+        var emb = new float[128];
+        emb[hash % 128] = 1.0f;
         return new MemoryRecord
         {
             Type = type,

@@ -956,11 +956,16 @@ public class PromptBuilderTests
         var (_, user) = PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread);
 
         user.Should().Contain("wondering about the bookstore corner");
-        // 3h ago on the same day → "earlier this {timeOfDay}" or "this {timeOfDay}"
-        // — either way the temporal prefix appears.
+        // 3h ago: any "this {timeOfDay}" phrase if same calendar day, OR
+        // "yesterday {timeOfDay}" if the test runs in the first 3 hours after
+        // midnight. The intent is that SOME temporal phrase appears — the
+        // exact phrase varies with current local hour. Without the yesterday
+        // clause this test was midnight-flaky (2026-05-18 ~00:00 runner
+        // failures).
         var hasTemporalPrefix = user.Contains("earlier this") || user.Contains("this morning") ||
                                 user.Contains("this afternoon") || user.Contains("this evening") ||
-                                user.Contains("this late") || user.Contains("a little while ago");
+                                user.Contains("this late") || user.Contains("a little while ago") ||
+                                user.Contains("yesterday");
         hasTemporalPrefix.Should().BeTrue(
             "Recent thoughts in the reconsideration prompt should carry time so the 'one more thing' framing is anchored.");
     }
