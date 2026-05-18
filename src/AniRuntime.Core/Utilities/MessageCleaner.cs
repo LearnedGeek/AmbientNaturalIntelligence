@@ -297,8 +297,7 @@ public static class MessageCleaner
     {
         // Remove all bracketed stage directions: [teasing-laugh], [soft smile], etc.
         // These are always training artifacts, never intended for the contact.
-        var cleaned = System.Text.RegularExpressions.Regex.Replace(
-            text, @"\[[\w\s-]+\]\s*", "");
+        var cleaned = SafeRegex.Replace(text, @"\[[\w\s-]+\]\s*", "");
 
         return cleaned.Trim();
     }

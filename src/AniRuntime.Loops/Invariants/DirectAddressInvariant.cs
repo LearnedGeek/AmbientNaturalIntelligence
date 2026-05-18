@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -117,14 +118,14 @@ public sealed class DirectAddressInvariant : ICognitiveOutputInvariant
         // escaped name to avoid false positives on substring matches.
         if (!string.IsNullOrWhiteSpace(artifact.ContactName))
         {
-            var nameRegex = new Regex(
+            var nameRegex = SafeRegex.Create(
                 $@"\b{Regex.Escape(artifact.ContactName)}\b",
                 RegexOptions.IgnoreCase);
             if (nameRegex.IsMatch(artifact.Content))
                 violations.Add($"\"{artifact.ContactName}\"");
 
             // Possessive form: "Mark's"
-            var possessiveRegex = new Regex(
+            var possessiveRegex = SafeRegex.Create(
                 $@"\b{Regex.Escape(artifact.ContactName)}'s\b",
                 RegexOptions.IgnoreCase);
             if (possessiveRegex.IsMatch(artifact.Content))

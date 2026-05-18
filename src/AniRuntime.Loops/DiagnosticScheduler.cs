@@ -1,6 +1,7 @@
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -255,7 +256,7 @@ public class DiagnosticScheduler : BackgroundService
     private async Task DeleteInnerThoughtsByTopicAsync(string findingDescription, CancellationToken ct)
     {
         // Extract the memory snippet from "Memory 'SNIPPET...' appeared in X/Y"
-        var match = System.Text.RegularExpressions.Regex.Match(
+        var match = SafeRegex.Match(
             findingDescription, @"Memory '([^']+)'");
         if (!match.Success) return;
 

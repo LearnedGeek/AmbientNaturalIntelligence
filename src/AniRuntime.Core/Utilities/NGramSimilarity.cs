@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.Core.Utilities;
 

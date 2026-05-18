@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.Loops.Coreference;
 
@@ -93,7 +94,7 @@ public static class DirectAddressRewriter
 
         if (!string.IsNullOrWhiteSpace(contactName))
         {
-            result = Regex.Replace(
+            result = SafeRegex.Replace(
                 result,
                 $@"\b{Regex.Escape(contactName)}'s\b",
                 "your",
@@ -106,7 +107,7 @@ public static class DirectAddressRewriter
 
         if (!string.IsNullOrWhiteSpace(contactName))
         {
-            result = Regex.Replace(
+            result = SafeRegex.Replace(
                 result,
                 $@"\b{Regex.Escape(contactName)}\b",
                 "you",

@@ -4,6 +4,7 @@ using Mosaik.Core;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 using AniRuntime.LLM;
 using AniRuntime.Loops.Coreference;
 using LearnedGeek.ML;
@@ -899,7 +900,7 @@ public class ConversationReplyPhase
         }
 
         // Check 3: Does the reply assert specific facts (dates, times, numbers) not in the conversation?
-        var replyNumbers = System.Text.RegularExpressions.Regex.Matches(replyLower, @"\b\d{2,}\b");
+        var replyNumbers = SafeRegex.Matches(replyLower, @"\b\d{2,}\b");
         foreach (System.Text.RegularExpressions.Match num in replyNumbers)
         {
             if (!conversationText.Contains(num.Value))

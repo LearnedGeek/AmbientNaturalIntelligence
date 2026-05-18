@@ -1,6 +1,7 @@
 @page "/"
 @using AniRuntime.Core.Interfaces
 @using AniRuntime.Core.Models
+@using AniRuntime.Core.Utilities
 @inject IStateStore StateStore
 @inject IMemorySearch MemorySearch
 @inject IMemoryAnalytics MemoryAnalytics
@@ -509,7 +510,7 @@
                 try
                 {
                     var content = File.ReadAllText(file);
-                    var pairCount = System.Text.RegularExpressions.Regex.Matches(content, "\"from\":\\s*\"human\"").Count;
+                    var pairCount = SafeRegex.Matches(content, "\"from\":\\s*\"human\"").Count;
                     counts[register] = counts.GetValueOrDefault(register) + pairCount;
                 }
                 catch { }
