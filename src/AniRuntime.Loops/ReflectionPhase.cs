@@ -97,22 +97,14 @@ public class ReflectionPhase
             return false;
         }
 
-        // Capture pre-state for "did we save anything?" detection. ReflectionPhase
-        // doesn't expose its save count directly; we proxy via reflection-count
-        // query before/after. Simpler than threading a return value back through
-        // RunReflectionAsync, which exists in three internal call paths.
         try
         {
-            // Get baseline count of reflection-source records.
-            var beforeCount = (await _search.GetByTypeAsync(MemoryType.Semantic, 5000, ct)
-                .ConfigureAwait(false)).Count(m => m.SourceName == "reflection");
-
-            await RunReflectionAsync(characterState, ct).ConfigureAwait(false);
-
-            var afterCount = (await _search.GetByTypeAsync(MemoryType.Semantic, 5000, ct)
-                .ConfigureAwait(false)).Count(m => m.SourceName == "reflection");
-
-            var saved = afterCount - beforeCount;
+            // 2026-05-17 evening fix: ask RunReflectionAsync directly for
+            // the saved count. The prior before/after-count heuristic was
+            // unreliable once reflection records could be Compressed —
+            // source flips out of the visible count masked new gists being
+            // added. Direct signal is correct: "did synthesis save gists."
+            var saved = await RunReflectionAsync(characterState, ct).ConfigureAwait(false);
             _log.LogInformation(
                 "ForceRunOnceAsync: completed (gists_saved={Saved})", saved);
             return saved > 0;
@@ -125,7 +117,22 @@ public class ReflectionPhase
         }
     }
 
-    private async Task RunReflectionAsync(
+    /// <summary>
+    /// Runs one reflection synthesis cycle. Returns the count of gists
+    /// actually saved this cycle (0 if no eligible records, no parseable
+    /// synthesis, or all observations skipped). The caller uses this to
+    /// determine "did this cycle produce work." Driver scripts terminate
+    /// after N consecutive zero-gist returns.
+    ///
+    /// 2026-05-17 evening fix: the prior signal (count delta of
+    /// reflection-source records before/after via GetByTypeAsync, which
+    /// excludes Compressed tier) was unreliable once the relaxed predicate
+    /// allowed reflection records to be Compressed — sources flipping out
+    /// of the visible count masked new gists being added. Returning the
+    /// actual saved count direct from the synthesis loop is the correct
+    /// signal: "did this cycle do productive work."
+    /// </summary>
+    private async Task<int> RunReflectionAsync(
         CharacterStateDoc characterState, CancellationToken ct)
     {
         // Phase 6 v1.2 R1 (May 17, 2026): when CompressionEnabled, select
@@ -145,7 +152,7 @@ public class ReflectionPhase
                 "Reflection skipped — only {Count} {Source} memories (need at least 3)",
                 recentMemories.Count,
                 _options.CompressionEnabled ? "decay-eligible" : "recent");
-            return;
+            return 0;
         }
 
         var contact = characterState.PrimaryContactName ?? "Mark";
@@ -181,7 +188,7 @@ public class ReflectionPhase
         if (string.IsNullOrWhiteSpace(response))
         {
             _log.LogDebug("Reflection synthesis returned empty response");
-            return;
+            return 0;
         }
 
         // Parse the structured JSON output. On parse failure, log and skip —
@@ -197,7 +204,7 @@ public class ReflectionPhase
             _log.LogWarning(
                 "Reflection synthesis produced no usable summaries (parse failure or empty array). Raw response preview: {Preview}",
                 preview);
-            return;
+            return 0;
         }
 
         var sourceIds = recentMemories.Select(m => m.Id).ToList();
@@ -339,6 +346,8 @@ public class ReflectionPhase
             observations.Count - saved - gateDropped,
             gateDropped,
             _options.CompressionEnabled ? "on" : "off");
+
+        return saved;
     }
 
     /// <summary>
