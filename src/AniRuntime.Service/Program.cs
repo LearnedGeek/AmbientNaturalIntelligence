@@ -89,64 +89,27 @@ try
     // for the FrontierVerifierEnabled emergency-kill semantics.
     builder.Services.Configure<AnthropicOptions>(config.GetSection("Anthropic"));
 
-    // ── Core services ─────────────────────────────────────────────────────────
-    // Phase 5 SOLID refactor (2026-05-18 — closeout): the previous monolithic
-    // EfMemoryService class is split into five focused services (one per ISP
-    // interface) plus a composite EfMemoryServiceFacade. Four named domain
-    // services (MemoryAuditWriter, MemoryMergePolicy, MemoryLinkRebuilder,
-    // SemanticSearchComposer) own the cross-cutting behaviours that used to
-    // live as private helpers on the monolith. No EF service routes through
-    // the legacy SqliteMemoryService anymore.
-    //
-    // SqliteMemoryService is still registered for the UseEfDataLayer=false
-    // legacy code path (kept for rollback safety) — when that path is retired
-    // and the legacy is deleted, this registration goes with it.
-    builder.Services.AddSingleton<SqliteMemoryService>();
+    // ── Core memory services (Phase 5 closeout — legacy deleted 2026-05-18) ──
+    // EfMemoryServiceFacade implements the composite IMemoryService by
+    // delegating each method to one of five focused services (one per
+    // ISP-split interface). Four named domain services (MemoryAuditWriter,
+    // MemoryMergePolicy, MemoryLinkRebuilder, SemanticSearchComposer) own
+    // the cross-cutting behaviours that used to be private helpers on the
+    // SqliteMemoryService monolith.
 
-    var aniOptions = config.GetSection("Ani").Get<AniOptions>() ?? new AniOptions();
-    if (aniOptions.UseEfDataLayer)
-    {
-        // Phase 5 extracted domain services. Used by EfMemoryPersistenceService +
-        // EfMemoryMaintenanceService for audit-log writes (replaces the private
-        // SqliteMemoryService.AuditAsync helper that previously kept these two
-        // ports delegated to legacy).
-        builder.Services.AddSingleton<IMemoryAuditWriter, EfMemoryAuditWriter>();
+    // Domain services — referenced by the focused services below.
+    builder.Services.AddSingleton<IMemoryAuditWriter, EfMemoryAuditWriter>();
+    builder.Services.AddSingleton<IMemoryMergePolicy, EfMemoryMergePolicy>();
+    builder.Services.AddSingleton<IMemoryLinkRebuilder, EfMemoryLinkRebuilder>();
+    builder.Services.AddSingleton<ISemanticSearchComposer, EfSemanticSearchComposer>();
 
-        // Feature 30 three-tier dedup-merge + Apr 21 rumination guard +
-        // cross-type profile correction. Used by EfMemoryPersistenceService.SaveAsync.
-        // EfMemoryMergePolicy takes an optional IOllamaClient for the LLM-mediated
-        // merge step; resolved as the same singleton instance used elsewhere.
-        builder.Services.AddSingleton<IMemoryMergePolicy, EfMemoryMergePolicy>();
-
-        // Feature 37 retroactive link-builder. Used by
-        // EfMemoryMaintenanceService.RebuildMemoryLinksAsync.
-        builder.Services.AddSingleton<IMemoryLinkRebuilder, EfMemoryLinkRebuilder>();
-
-        // Composite semantic-search pipeline (Park et al. cosine+importance+recency,
-        // MMR rerank, Layer 1 protected slots, Theme G own-output ceiling, Feature 31
-        // link-enhanced retrieval, tier-aware recency-off for Facts). Used by
-        // EfMemorySearchService for all five composite-scoring search methods.
-        builder.Services.AddSingleton<ISemanticSearchComposer, EfSemanticSearchComposer>();
-
-        // Register each focused service as the resolution for its ISP interface.
-        // The composite IMemoryService resolves to a façade that injects all five.
-        builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();
-        builder.Services.AddSingleton<IMemorySearch, EfMemorySearchService>();
-        builder.Services.AddSingleton<IStateStore, EfStateStore>();
-        builder.Services.AddSingleton<IMemoryAnalytics, EfMemoryAnalyticsService>();
-        builder.Services.AddSingleton<IMemoryMaintenance, EfMemoryMaintenanceService>();
-        builder.Services.AddSingleton<IMemoryService, EfMemoryServiceFacade>();
-    }
-    else
-    {
-        // Legacy path: one class implements all six interfaces.
-        builder.Services.AddSingleton<IMemoryService>(sp => sp.GetRequiredService<SqliteMemoryService>());
-        builder.Services.AddSingleton<IMemoryPersistence>(sp => sp.GetRequiredService<SqliteMemoryService>());
-        builder.Services.AddSingleton<IMemorySearch>(sp => sp.GetRequiredService<SqliteMemoryService>());
-        builder.Services.AddSingleton<IStateStore>(sp => sp.GetRequiredService<SqliteMemoryService>());
-        builder.Services.AddSingleton<IMemoryAnalytics>(sp => sp.GetRequiredService<SqliteMemoryService>());
-        builder.Services.AddSingleton<IMemoryMaintenance>(sp => sp.GetRequiredService<SqliteMemoryService>());
-    }
+    // Five focused services + composite façade.
+    builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();
+    builder.Services.AddSingleton<IMemorySearch, EfMemorySearchService>();
+    builder.Services.AddSingleton<IStateStore, EfStateStore>();
+    builder.Services.AddSingleton<IMemoryAnalytics, EfMemoryAnalyticsService>();
+    builder.Services.AddSingleton<IMemoryMaintenance, EfMemoryMaintenanceService>();
+    builder.Services.AddSingleton<IMemoryService, EfMemoryServiceFacade>();
     builder.Services.AddSingleton<IConversationService, SqliteConversationService>();
 
     // ── Phase 3 data-layer refactor (May 17, 2026): EF Core context factory ──

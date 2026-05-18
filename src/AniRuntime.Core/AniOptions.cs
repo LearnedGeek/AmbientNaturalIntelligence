@@ -398,27 +398,9 @@ public class AniOptions
     /// </summary>
     public bool UseEfReflectionGistService { get; set; } = true;
 
-    /// <summary>
-    /// Phase 4 (data-layer refactor, 2026-05-17) — when true, the runtime resolves
-    /// <c>IMemoryService</c> + the four ISP-split interfaces to
-    /// <c>EfMemoryService</c> (EF Core + Unit of Work + Repository pattern)
-    /// instead of <c>SqliteMemoryService</c>. Default <c>false</c> so the cutover
-    /// is opt-in until parity is validated against production data.
-    ///
-    /// <c>EfMemoryService</c> is strangler-fig — it owns the operations that have
-    /// been migrated to the repository layer (state blobs, simple persistence,
-    /// audit reads, type/tier reads, decay-eligible scans, compression) and
-    /// delegates the still-complex ones (full semantic search composition with
-    /// MMR / origin quotas / link enhancement, Feature 30 dedup-merge,
-    /// RebuildMemoryLinksAsync) back to the legacy <c>SqliteMemoryService</c>
-    /// until they are ported. Both services share the same SQLite file so the
-    /// delegated paths remain correct.
-    ///
-    /// See <c>docs/spec/ANI-Data-Layer-UoW-Repository-Refactor-Plan.md</c>
-    /// Phase 4 (Cutover) for the rollout procedure and Phase 5 for the
-    /// legacy-removal milestone.
-    /// </summary>
-    public bool UseEfDataLayer { get; set; } = false;
+    // UseEfDataLayer flag retired 2026-05-18 with the Phase 5 closeout
+    // (SqliteMemoryService deleted). The five focused EF services + façade
+    // are now the unconditional implementation of the memory contracts.
 
     /// <summary>
     /// Posture-S+1 (Issue #38, 2026-05-17) — when true, <c>InnerThoughtPhase</c>

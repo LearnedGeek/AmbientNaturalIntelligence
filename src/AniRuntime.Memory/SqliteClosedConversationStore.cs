@@ -12,7 +12,7 @@ namespace AniRuntime.Memory;
 /// <summary>
 /// Vibe Loop V1 (Apr 29, 2026) — SQLite-backed
 /// <see cref="IClosedConversationStore"/>. Same database file as
-/// <see cref="SqliteMemoryService"/> and
+/// <c>SqliteMemoryService</c> (deleted 2026-05-18) and
 /// <see cref="SqliteConversationService"/>; new dedicated table
 /// <c>closed_conversation_records</c> per V1.0's locked storage decision.
 ///

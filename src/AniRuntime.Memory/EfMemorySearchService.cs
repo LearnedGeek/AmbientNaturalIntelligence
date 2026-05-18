@@ -10,7 +10,7 @@ namespace AniRuntime.Memory;
 /// <summary>
 /// Phase 5 SOLID refactor (2026-05-18) — focused EF Core implementation
 /// of <see cref="IMemorySearch"/>. Phase 5 closeout (2026-05-18): all
-/// semantic-search delegations to the legacy <see cref="SqliteMemoryService"/>
+/// semantic-search delegations to the legacy <c>SqliteMemoryService</c> (deleted 2026-05-18)
 /// have been replaced by <see cref="ISemanticSearchComposer"/>.
 ///
 /// Eight methods, split by responsibility:
