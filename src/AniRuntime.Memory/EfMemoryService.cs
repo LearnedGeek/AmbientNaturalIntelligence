@@ -40,22 +40,24 @@ public sealed class EfMemoryService : IMemoryService
 {
     private readonly IDbContextFactory<AniDbContext> _dbFactory;
     private readonly SqliteMemoryService             _legacy;   // strangler-fig fallback
-    private readonly IOllamaClient?                  _ollama;
     private readonly AniOptions                      _options;
     private readonly ILogger<EfMemoryService>        _log;
 
+    // SonarCloud S4487 (2026-05-18) — IOllamaClient parameter dropped. The
+    // strangler-fig SaveAsync delegates auto-embedding to SqliteMemoryService
+    // (which retains the IOllamaClient dependency), so EfMemoryService never
+    // needs its own embedding client. When Phase 5 ports SaveAsync into this
+    // service, the parameter can be reintroduced at that point.
     public EfMemoryService(
         IDbContextFactory<AniDbContext> dbFactory,
         SqliteMemoryService             legacy,
         IOptions<AniOptions>            options,
-        ILogger<EfMemoryService>        log,
-        IOllamaClient?                  ollama = null)
+        ILogger<EfMemoryService>        log)
     {
         _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
         _legacy    = legacy    ?? throw new ArgumentNullException(nameof(legacy));
         _options   = options.Value;
         _log       = log;
-        _ollama    = ollama;
     }
 
     // ══════════════════════════════════════════════════════════════════
