@@ -881,19 +881,19 @@ public class PromptBuilderTests
         // Anchored foundation memories are explicitly designed to be
         // always-present. They must NOT receive a temporal prefix — that
         // would erode their foundational quality (e.g., "(2 years ago)
-        // Kathy's middle name was Ann" reads wrong).
+        // Eleanor's middle name was Anne" reads wrong).
         var snapshot = MinimalSnapshot();
         snapshot.AnchoredMemories.Add(new MemoryRecord
         {
-            Content    = "Kathy's middle name was Ann",
+            Content    = "Eleanor's middle name was Anne",
             Type       = MemoryType.Semantic,
             OccurredAt = DateTimeOffset.Now.AddYears(-2),
         });
 
         var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
 
-        user.Should().Contain("Kathy's middle name was Ann");
-        user.Should().NotContain("years ago) Kathy",
+        user.Should().Contain("Eleanor's middle name was Anne");
+        user.Should().NotContain("years ago) Eleanor",
             "Anchored memories are atemporal by design — adding temporal attribution would erode their foundational quality.");
     }
 

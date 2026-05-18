@@ -357,11 +357,11 @@ public class CognitiveCycleProcessorTests : AniTestBase
         {
             LexicalAnchors = new List<LexicalAnchor>
             {
-                new() { Word = "Kathy", WarmthDelta = 0.05f, WorryDelta = 0.15f }
+                new() { Word = "Eleanor", WarmthDelta = 0.05f, WorryDelta = 0.15f }
             }
         };
 
-        var contributions = CognitiveCycleProcessor.BuildLexicalAnchorContributions("i was thinking about kathy today", charState);
+        var contributions = CognitiveCycleProcessor.BuildLexicalAnchorContributions("i was thinking about eleanor today", charState);
 
         contributions.Should().HaveCount(1);
     }
@@ -486,7 +486,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
     public void PronounDetection_SheHerIsValid_NotFlagged(string message)
     {
         // "she"/"her" should NOT trigger the pronoun fix because Ani might be talking
-        // about someone else (Kathy, Mia, etc.). Only "he"/"him"/"his" trigger it
+        // about other named individuals. Only "he"/"him"/"his" trigger it
         // because those would be Ani referring to Mark in third person.
         CognitiveCycleProcessor.ContainsThirdPersonReference(message, "Mark")
             .Should().BeFalse("she/her is valid when talking about others");
