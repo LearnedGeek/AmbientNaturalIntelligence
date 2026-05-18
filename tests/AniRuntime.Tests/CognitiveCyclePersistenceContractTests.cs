@@ -161,7 +161,7 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
             MockOllama.Object, MockMemory.Object, MockMemory.Object, DefaultOptions,
             NullLogger<ReflectionPhase>.Instance);
 
-        return new CognitiveCycleProcessor(
+        var pipeline = new CognitiveCyclePipeline(
             MockMemory.Object,           // state (IStateStore)
             _processorPersist.Object,    // persist — the slot under test
             MockMemory.Object,           // analytics
@@ -179,7 +179,8 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
             gateState,
             new WorldSeedService(new OptionsWrapper<WorldSeedOptions>(new WorldSeedOptions()), NullLogger<WorldSeedService>.Instance),
             DefaultOptions,
-            NullLogger<CognitiveCycleProcessor>.Instance);
+            NullLogger<CognitiveCyclePipeline>.Instance);
+        return new CognitiveCycleProcessor(pipeline);
     }
 
     /// <summary>

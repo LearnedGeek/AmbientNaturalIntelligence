@@ -126,7 +126,7 @@ public class CognitiveCycleProcessorTests : AniTestBase
             MockOllama.Object, MockMemory.Object, MockMemory.Object, DefaultOptions,
             NullLogger<ReflectionPhase>.Instance);
 
-        return new CognitiveCycleProcessor(
+        var pipeline = new CognitiveCyclePipeline(
             MockMemory.Object,
             MockMemory.Object,
             MockMemory.Object,
@@ -144,7 +144,8 @@ public class CognitiveCycleProcessorTests : AniTestBase
             gateState,
             new WorldSeedService(new Microsoft.Extensions.Options.OptionsWrapper<WorldSeedOptions>(new WorldSeedOptions()), NullLogger<WorldSeedService>.Instance),
             DefaultOptions,
-            NullLogger<CognitiveCycleProcessor>.Instance);
+            NullLogger<CognitiveCyclePipeline>.Instance);
+        return new CognitiveCycleProcessor(pipeline);
     }
 
     [Fact]

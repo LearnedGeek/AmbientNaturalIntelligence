@@ -451,6 +451,13 @@ try
     builder.Services.AddSingleton<ISilenceChoiceRecorder, AniRuntime.Loops.Outreach.SilenceChoiceRecorder>();
     builder.Services.AddTransient<OutreachPhase>();
     builder.Services.AddSingleton<ReflectionPhase>();
+    // §5.5 — cycle body lives in CognitiveCyclePipeline. SINGLETON because
+    // it holds the per-process cycle-count + lastAssociativeAnchor state
+    // that connects one cycle to the next (creative drift between cycles).
+    // Processor is the public entry point + static legacy facades —
+    // stateless but Singleton-paired so the consuming AniHeartbeatService
+    // (also Singleton) doesn't create a captive-dependency situation.
+    builder.Services.AddSingleton<ICognitiveCyclePipeline, CognitiveCyclePipeline>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
     // S6: SessionNotifier is a lightweight singleton with no dependencies — breaks the
     // circular DI chain. AniHeartbeatService wires itself as the handler in its constructor.
