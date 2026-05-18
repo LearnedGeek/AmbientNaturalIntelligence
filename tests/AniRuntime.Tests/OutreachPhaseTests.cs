@@ -44,7 +44,7 @@ public class OutreachPhaseTests : AniTestBase
             MockMemory.Object, MockOllama.Object, DefaultOptions,
             NullLogger<ClaimVerificationPhase>.Instance);
 
-        return new OutreachPhase(
+        return OutreachPhaseTestBuilder.Build(
             MockMemory.Object,
             MockMemory.Object,
             MockMemory.Object,
@@ -53,8 +53,7 @@ public class OutreachPhaseTests : AniTestBase
             desire,
             claimVerifier,
             _mockConversations.Object,
-            DefaultOptions,
-            NullLogger<OutreachPhase>.Instance);
+            DefaultOptions);
     }
 
     /// <summary>

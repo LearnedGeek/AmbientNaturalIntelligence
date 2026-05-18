@@ -68,7 +68,7 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
             options ?? DefaultOptions,
             NullLogger<ClaimVerificationPhase>.Instance);
 
-        return new OutreachPhase(
+        return OutreachPhaseTestBuilder.Build(
             MockMemory.Object,
             MockMemory.Object,
             MockMemory.Object,
@@ -78,7 +78,6 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
             claimVerifier,
             _mockConversations.Object,
             options ?? DefaultOptions,
-            NullLogger<OutreachPhase>.Instance,
             mlClassifier: null,
             personaCache: null,
             em9Detector: null,

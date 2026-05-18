@@ -430,7 +430,18 @@ try
     builder.Services.AddSingleton<InnerThoughtPhase>();
     builder.Services.AddSingleton<ClaimVerificationPhase>();
     builder.Services.AddSingleton<ConversationReplyPhase>();
-    builder.Services.AddSingleton<OutreachPhase>();
+    // Outreach decomposition (SOLID §5.3) — phase is a thin router.
+    // ReactiveShareService + SilenceChoiceRecorder hold per-day / cooldown
+    // state, so they are Singleton. The OutboundThreadRecorder is stateless
+    // but consumed by ReactiveShareService — must therefore also be
+    // Singleton (Singleton-consumes-Transient = captive-dependency trap).
+    // OutreachPipeline is stateless; consumed only by the Transient
+    // OutreachPhase, so it stays Transient (matches the DI-discipline note).
+    builder.Services.AddSingleton<IOutboundThreadRecorder, AniRuntime.Loops.Outreach.OutboundThreadRecorder>();
+    builder.Services.AddTransient<IOutreachPipeline, AniRuntime.Loops.Outreach.OutreachPipeline>();
+    builder.Services.AddSingleton<IReactiveShareService, AniRuntime.Loops.Outreach.ReactiveShareService>();
+    builder.Services.AddSingleton<ISilenceChoiceRecorder, AniRuntime.Loops.Outreach.SilenceChoiceRecorder>();
+    builder.Services.AddTransient<OutreachPhase>();
     builder.Services.AddSingleton<ReflectionPhase>();
     builder.Services.AddSingleton<CognitiveCycleProcessor>();
     // S6: SessionNotifier is a lightweight singleton with no dependencies — breaks the

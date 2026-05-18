@@ -76,7 +76,7 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
             MockMemory.Object, MockOllama.Object, options,
             NullLogger<ClaimVerificationPhase>.Instance);
 
-        return new OutreachPhase(
+        return OutreachPhaseTestBuilder.Build(
             MockMemory.Object,
             MockMemory.Object,
             MockMemory.Object,
@@ -86,7 +86,6 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
             claimVerifier,
             _mockConversations.Object,
             options,
-            NullLogger<OutreachPhase>.Instance,
             mlClassifier: null,
             personaCache: null,
             em9Detector: null,
