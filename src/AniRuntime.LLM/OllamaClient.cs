@@ -108,6 +108,27 @@ public class OllamaClient : IOllamaClient
                 model, historyList.Count + 1, userMessage.Length, Truncate(userMessage, 200));
         }
 
+        // 2026-05-18: Full-prompt dump at Trace level for parrot-isolation
+        // diagnostics. Enable by setting `Logging:LogLevel:AniRuntime.LLM.OllamaClient`
+        // to "Trace" in appsettings.Development.json. The 200-char Debug
+        // previews above are insufficient to reproduce the SafeAck-triggering
+        // prompt out-of-band; this surface lets us dump the exact bytes the
+        // model received without modifying the production hot path further.
+        // Disabled in production by default (Trace is opt-in per category).
+        if (_log.IsEnabled(LogLevel.Trace))
+        {
+            _log.LogTrace("Ollama [{Model}] FULL system ({Chars}c):\n{Content}",
+                model, systemPrompt.Length, systemPrompt);
+            for (int i = 0; i < historyList.Count; i++)
+            {
+                var m = historyList[i];
+                _log.LogTrace("Ollama [{Model}] FULL payload[{Idx}] {Role} ({Chars}c):\n{Content}",
+                    model, i + 1, m.Role, m.Content.Length, m.Content);
+            }
+            _log.LogTrace("Ollama [{Model}] FULL user ({Chars}c):\n{Content}",
+                model, userMessage.Length, userMessage);
+        }
+
         // keep_alive controls how long the model stays loaded in VRAM after this request.
         // "0" unloads immediately (used by intent extraction to free VRAM for conversation model).
         // "5m" keeps warm between cognitive cycles without squatting on VRAM forever.
