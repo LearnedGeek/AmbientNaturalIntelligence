@@ -437,6 +437,11 @@ try
     // because the withdrawal window is process-wide and consumed by both
     // the reply phase and the cognitive cycle's outreach gate.
     builder.Services.AddSingleton<IWithdrawalStateTracker, WithdrawalStateTracker>();
+    // §5.4c — post-reply emotional processing (shift + care + anchors +
+    // hurt + withdrawal trigger) extracted so the reply pipeline drops
+    // EmotionalProcessor as a direct dep. Stateless and consumed by the
+    // Singleton ConversationReplyPipeline → Singleton matches.
+    builder.Services.AddSingleton<IPostReplyEmotionalProcessor, PostReplyEmotionalProcessor>();
     // §5.4b — reply body lives in the pipeline; phase is a thin facade.
     // Phase 5 DI audit (May 18 2026): both registrations were initially
     // Transient on the reasoning "consumed only by the Transient phase,

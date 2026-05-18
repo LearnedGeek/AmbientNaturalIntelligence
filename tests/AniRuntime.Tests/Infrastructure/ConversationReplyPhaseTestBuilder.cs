@@ -93,11 +93,17 @@ public static class ConversationReplyPhaseTestBuilder
         IConsciousSubstrateGist? consciousGist = null,
         IRecentGateTripTracker? gateTripTracker = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null)
-        => new ConversationReplyPipeline(
+    {
+        var postReply = new PostReplyEmotionalProcessor(
+            emotional, persist, analytics, withdrawal, aniOptions,
+            NullLogger<PostReplyEmotionalProcessor>.Instance);
+
+        return new ConversationReplyPipeline(
             state, persist, search, analytics, ollama, conversations, channels,
-            dispatcher, desire, emotional, contextBuilder, keywords, intent,
+            dispatcher, desire, postReply, contextBuilder, keywords, intent,
             gateState, compressor, claimVerifier, withdrawal, aniOptions, ollamaOptions,
             NullLogger<ConversationReplyPipeline>.Instance,
             mlClassifier, personaCache, em9Detector, outputGate, vibeBias,
             consciousGist, gateTripTracker, epistemicRenderer);
+    }
 }

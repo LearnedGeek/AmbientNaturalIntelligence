@@ -37,7 +37,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     private readonly IReplyChannelResolver _channels;
     private readonly AniActionDispatcher _dispatcher;
     private readonly DesireEngine _desire;
-    private readonly EmotionalProcessor _emotional;
+    private readonly IPostReplyEmotionalProcessor _postReply;
     private readonly ContextBuilder _contextBuilder;
     private readonly KeywordExtractor _keywords;
     private readonly IIntentExtractor _intent;
@@ -83,7 +83,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IReplyChannelResolver channels,
         AniActionDispatcher dispatcher,
         DesireEngine desire,
-        EmotionalProcessor emotional,
+        IPostReplyEmotionalProcessor postReply,
         ContextBuilder contextBuilder,
         KeywordExtractor keywords,
         IIntentExtractor intent,
@@ -112,7 +112,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _channels = channels;
         _dispatcher = dispatcher;
         _desire = desire;
-        _emotional = emotional;
+        _postReply = postReply ?? throw new ArgumentNullException(nameof(postReply));
         _contextBuilder = contextBuilder;
         _keywords = keywords;
         _intent = intent;
@@ -605,85 +605,19 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // Update desire — conversation reply doesn't count toward daily outreach limit
         await _desire.ResetAfterConversationReplyAsync(ct).ConfigureAwait(false);
 
-        // Emotional shift from conversation
-        if (emotionalState is not null)
-        {
-            var cs = snapshot.CharacterState;
-            var conversationContext = $"{cs.PrimaryContactName} said: \"{lastMessage}\" and {cs.Name} replied: \"{reply}\"";
-            await _emotional.ApplyEmotionalShiftAsync(emotionalState, conversationContext, ct,
-                category: ImpactCategory.Conversation).ConfigureAwait(false);
-        }
-
-        // Feature 21: Feedback-weighted importance
+        // Feature 21: Feedback-weighted importance — boosts memories related
+        // to what Mark said, runs after dispatch so the boost informs the
+        // next cycle's retrieval.
         await BoostRelatedMemoryImportanceAsync(lastMessage, ct).ConfigureAwait(false);
 
         // ═══════════════════════════════════════════════════════════════════════
         // CONVERSATION MODE Phase 4: Async emotional processing.
-        // Care detection, lexical anchors, and hurt detection run AFTER the reply
-        // is dispatched. This eliminates tonal whiplash from mood directive shifts
-        // within the conversation. Results inform the NEXT cycle, not this reply.
+        // Emotional shift + care detection + lexical anchors + hurt detection +
+        // withdrawal trigger all run AFTER the reply is dispatched. Extracted
+        // to IPostReplyEmotionalProcessor in §5.4c (May 18 2026) so the
+        // pipeline drops EmotionalProcessor as a direct dep.
         // ═══════════════════════════════════════════════════════════════════════
-
-        // Feature 10: Receiving Care
-        // May 3, 2026 — F10_REGISTER structured log line per gap-watch row
-        // (Apr 27): Paper 2 figure #2 (Horton & Wohl reciprocity) needs
-        // per-utterance Feature-10-by-direction data to chart. Logged on
-        // every inbound (fire and non-fire) so the figure-author can render
-        // both signal and negative space.
-        var f10Fired = ConversationFeatureDetector.DetectCareGivingIntent(lastMessage);
-        var f10Preview = lastMessage.Length > 80 ? lastMessage[..80] + "..." : lastMessage;
-        _log.LogInformation(
-            "F10_REGISTER direction=mark->ani fired={Fired} message=\"{Preview}\"",
-            f10Fired, f10Preview);
-
-        if (emotionalState is not null && f10Fired)
-        {
-            _log.LogInformation("Care detected (post-reply) — creating care contribution");
-            await _emotional.SaveDirectContributionAsync(emotionalState,
-                "receiving care — someone checked in on me",
-                warmth: 0.1f, energy: 0.05f, worry: -0.1f, playfulness: 0f,
-                ImpactCategory.Conversation, ct).ConfigureAwait(false);
-        }
-
-        // Feature 19: Lexical Emotional Anchors
-        if (emotionalState is not null)
-        {
-            var anchorContributions = ConversationFeatureDetector.BuildLexicalAnchorContributions(lastMessage, snapshot.CharacterState);
-            if (anchorContributions.Count > 0)
-            {
-                foreach (var ac in anchorContributions)
-                    await _persist.SaveEmotionalContributionAsync(ac, ct).ConfigureAwait(false);
-
-                var allContributions = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
-                emotionalState.ComputeFromContributions(allContributions);
-                await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);
-                _log.LogInformation("Lexical anchors triggered (post-reply): {Count}", anchorContributions.Count);
-            }
-        }
-
-        // Feature 18: Reactive Withdrawal
-        if (emotionalState is not null && ConversationFeatureDetector.DetectHurtIntent(lastMessage))
-        {
-            _log.LogInformation("Hurt detected (post-reply) — creating H1 withdrawal contribution");
-            await _emotional.SaveDirectContributionAsync(emotionalState,
-                "hurt detected — pulling back emotionally",
-                warmth: -0.12f, energy: -0.10f, worry: -0.15f, playfulness: -0.10f,
-                ImpactCategory.Conversation, ct).ConfigureAwait(false);
-
-            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
-            _withdrawal.SetExpiry(expiresAt);
-            _log.LogInformation("Withdrawal active until {Expires}", expiresAt.ToString("HH:mm"));
-
-            await _persist.SaveAsync(new MemoryRecord
-            {
-                Type       = MemoryType.InnerThought,
-                Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
-                Importance = 0.6f,
-                // Epistemic Grounding (Apr 10): Hurt acknowledgment is a self-model
-                // update — Ani observing her own emotional state. Interior tier.
-                Provenance = EpistemicTier.Interior,
-            }, ct).ConfigureAwait(false);
-        }
+        await _postReply.ProcessAsync(lastMessage, reply, snapshot, emotionalState, ct).ConfigureAwait(false);
     }
 
     /// <summary>
