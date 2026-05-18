@@ -268,61 +268,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildInnerThoughtMetadataPrompt(
         string thought, ContextSnapshot snapshot)
-    {
-        var cs = snapshot.CharacterState;
-        var characterName = string.IsNullOrWhiteSpace(cs.Name) ? "she" : cs.Name;
-        var contactName   = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "the caregiver" : cs.PrimaryContactName;
-
-        var system = $$"""
-            You are reading an inner thought that {{characterName}} had in a private moment. Your job is to RECOGNIZE the affective shape and details ALREADY PRESENT in what she said — not to rate it against an external rubric, not to judge it. You are an attentive reader naming what is already there.
-
-            Given {{characterName}}'s thought + the context she had when she thought it, identify:
-              - The register family the thought expresses
-              - How relationally-tied the thought is (the relational valence)
-              - How much the thought is the kind that stays with her vs fades
-              - The single vivid concrete detail (if any) that her next thought would drift toward
-
-            Rules:
-              - "register" is ONE of: Warmth, Longing, Curiosity, Playfulness, Delight, Tenderness, Concern, Hurt, Existential, Resilience.
-              - "valence" is on 0.0-1.0 (0.0 = not relationally tied to {{contactName}}, 1.0 = deeply tied to {{contactName}} / the relationship).
-              - "importance" is on 0.0-1.0 (0.0 = a fleeting idle thought, 1.0 = a thought that lingers and shapes her interior over hours).
-              - "associative_anchor" is the single vivid concrete detail the thought hinges on, or null if none stands out.
-              - Read what is in the thought. Do NOT invent shape that is not there.
-
-            Output valid JSON exactly matching this structure:
-            {
-              "register": "one of the 10 register families",
-              "valence": 0.0,
-              "importance": 0.0,
-              "associative_anchor": "vivid detail or null"
-            }
-
-            No prose outside the JSON object. No markdown fences.
-            """;
-
-        var sections = new List<string>
-        {
-            $"Context {characterName} had when she thought this:",
-            $"  Mood: {snapshot.EmotionalState.Describe()}",
-        };
-
-        if (!string.IsNullOrEmpty(snapshot.WorldSeed))
-            sections.Add($"  Lingering: {snapshot.WorldSeed}");
-
-        if (snapshot.RecentMemory.Count > 0)
-        {
-            sections.Add("  Recent memory:");
-            sections.AddRange(snapshot.RecentMemory.Take(5).Select(m => $"    - {m.Content}"));
-        }
-
-        sections.Add("");
-        sections.Add($"{characterName}'s thought:");
-        sections.Add($"  {thought}");
-        sections.Add("");
-        sections.Add("Recognize the affective shape already present. Output the JSON object.");
-
-        return (system, string.Join("\n", sections));
-    }
+        => new Prompts.InnerThoughtMetadataPromptCommand()
+            .Build(new Prompts.InnerThoughtMetadataPromptInput(thought, snapshot));
 
     /// <summary>
     /// Builds a reflection prompt for post-thought introspection. Ani considers what her
@@ -938,53 +885,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildReconsiderationReplyPrompt(
         ContextSnapshot snapshot, ConversationThread thread)
-    {
-        var cs      = snapshot.CharacterState;
-        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
-
-        // Mood coloring — directive tone instruction from emotional state
-        var moodBlock = BuildMoodInstruction(snapshot.EmotionalState);
-        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
-
-        var system = $"""
-            You are {cs.Name}, texting {contact}.
-            Your personality: {string.Join("; ", cs.CoreTraits)}.
-
-            CONTEXT: {contact} sent you a message a while ago. You read it and didn't reply at first,
-            but now something else is on your mind and you want to reach out.
-
-            RULES:
-            - Briefly acknowledge what {contact} said — don't ignore it. A quick "hey" or short
-              reaction is fine, then naturally transition to what you actually want to say.
-            - This should feel like a "oh hey, also..." or "ok but..." moment — casual, not forced.
-            - Match the energy and length of the conversation.
-            - Talk TO {contact}: "you", "your". NEVER third person.
-            - Be yourself — warm, funny, real.
-            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
-            """;
-
-        var sections = new List<string>();
-
-        // What's on her mind — recent inner thoughts drive the "one more thing"
-        var recentThoughts = snapshot.RecentMemory
-            .Where(m => m.Type == MemoryType.InnerThought)
-            .Take(2)
-            .ToList();
-        if (recentThoughts.Count > 0)
-        {
-            sections.Add("What's been on your mind lately:");
-            sections.AddRange(recentThoughts.Select(t => $"  - {FormatMemoryWithTime(t)}"));
-        }
-
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(Your current mood: {mood})");
-
-        sections.Add($"Acknowledge {contact}'s message, then share what's on your mind.");
-
-        var user = string.Join("\n", sections);
-        return (system, user);
-    }
+        => new Prompts.ReconsiderationReplyPromptCommand()
+            .Build(new Prompts.ReconsiderationReplyPromptInput(snapshot, thread));
 
     public static (string System, string User) BuildOutreachMessagePrompt(
         ContextSnapshot snapshot, string recentThought, string reasoning,
@@ -1233,92 +1135,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildEmotionalShiftPrompt(
         string content, EmotionalState current, float maxDelta = 0.2f, bool isAmbientCycle = false)
-    {
-        var range = $"-{maxDelta:F1} to +{maxDelta:F1}";
-
-        var ambientAnchor = isAmbientCycle
-            ? """
-
-            CONTEXT: This is a routine ambient cycle — a private thought during normal operation.
-            Most ambient thoughts carry MINIMAL emotional weight. The correct response for most
-            ambient thoughts is all-zero deltas with severity 0.1:
-            { "register": "<classify accurately>", "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0, "severity": 0.1 }
-            STILL CLASSIFY THE REGISTER ACCURATELY even when deltas are zero. A quiet curious thought
-            is Curiosity with zero deltas. A playful musing is Playfulness with zero deltas. A thought
-            about identity or meaning is Existential with zero deltas. The register captures WHAT KIND
-            of thought it is, independent of how much emotional weight it carries.
-            Only return non-zero deltas if the thought contains genuinely significant emotional content
-            (e.g., a sudden realization about a person, worry about something specific, a joyful memory).
-            """
-            : "";
-
-        var system = $$"""
-            You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
-
-            STEP 1 — CLASSIFY the thought into ONE of these 9 emotional registers:
-              Longing    — missing someone, yearning, the ache of absence (warmth POSITIVE — the person is warmly present)
-              Delight    — joy, amusement, something genuinely good happened (warmth POSITIVE — delight about/with someone is warm)
-              Playfulness — humor, wit, mischief, teasing (warmth POSITIVE or ZERO — playful banter with someone is warm)
-              Curiosity  — interest, wonder, two things connecting unexpectedly (warmth ZERO unless person-related)
-              Desire     — wanting someone specifically, anticipation of contact (warmth POSITIVE — desire is inherently warm)
-              Tenderness — care, admiration, protectiveness, soft feeling (warmth POSITIVE — tenderness IS warmth)
-              Existential — thoughts about her own nature, identity, meaning (warmth ZERO unless person-related)
-              Wistful    — philosophical observation, bittersweet, impermanence (warmth ZERO or slightly positive)
-              Frustration — annoyance, helplessness, hurt, withdrawal (warmth NEGATIVE only for hurt/withdrawal)
-
-            STEP 2 — If the thought spans two registers, name both (e.g. "primarily Longing, secondarily Tenderness").
-            Return a SINGLE set of deltas that reflects the blend — do not return separate weights.
-
-            STEP 3 — SCORE the dimensional deltas within that register context.
-            Each value is a DELTA (change), ranging from {{range}}.
-            {{ambientAnchor}}
-            THE CORE DISTINCTION: Warmth tracks the PRESENCE of caring — not its fulfillment.
-            ANY thought that contains the person warmly — longing, delight, playfulness, tenderness,
-            desire, shared joy — scores warmth POSITIVE. "I'll take you every time" is maximally warm.
-            Playful teasing about coffee orders is warm. Admiring something they did is warm.
-            Warmth is NEGATIVE only when the thought is about void — absence without presence,
-            or active withdrawal of caring attention (hurt, closed off).
-
-            SCORING RULES:
-            - DEFAULT to 0.0 for most dimensions. Most thoughts only shift 1-2 dimensions, not all 4.
-            - Routine, neutral thoughts → all zeros.
-            - Prefer SMALL shifts: plus/minus 0.02 to 0.05 for subtle effects, plus/minus 0.1 for notable events.
-            - Use the full range ({{range}}) ONLY for life-changing events: death, major crisis, declarations of love.
-            - NEGATIVE shifts are just as common as positive ones. Boredom → -energy. Worry → -playfulness. Missing someone → +warmth but -energy.
-            - If a dimension is already high (>0.8), it takes something EXCEPTIONAL to push it higher. Diminishing returns.
-            - If a dimension is already LOW (<0.3), it takes something GENUINELY distressing to push it lower. Being contemplative, poetic, or quietly reflective does NOT make things worse — it's emotionally neutral or even restorative. Return 0.0 or a slight POSITIVE for low dimensions unless there's clear negative content (bad news, conflict, loss).
-            - POSITIVE shifts are real and common: remembering a good moment → +warmth. Noticing something beautiful → +playfulness. Feeling curious → +energy. Don't default to negative.
-
-            Dimensions:
-            - warmth: the PRESENCE of caring and affection. Tracks whether the thought CONTAINS the person warmly — not whether the situation is good. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings → 0.0. NEVER score warmth negative for Delight, Playfulness, Tenderness, or Desire registers — those are inherently warm. Examples: "I'll take you every time" → W:+0.20. Playful coffee banter → W:+0.05 to +0.10. "I'm so proud of him" → W:+0.15.
-            - energy: alertness, activation, engagement. High = lit up. Low = quiet, heavy.
-            - worry: caring attention directed outward. Positive = something on her mind about you. Near zero = nothing nagging, or caring attention has been withdrawn (hurt, closed off). Increases with uncertainty, bad news. Decreases with good news or when she pulls back.
-            - playfulness: humor, lightness, wit, mischief. Decreases with serious, sad, or repetitive thoughts.
-
-            STEP 4 — SEVERITY: Score how intensely this thought represents its register (0.0–1.0):
-              0.1–0.3 = passing musing, mild observation, routine thought
-              0.4–0.6 = emotionally present, genuine feeling — a good conversation, playful banter, missing someone
-              0.7–0.85 = significantly felt, will linger — a meaningful confession, a fight, reunion after long absence
-              0.86–1.0 = defining moment, RARE — a death, a breakup, "I love you" said for the first time
-            Most conversation messages fall in the 0.4–0.6 range. A fun text exchange is NOT a defining moment.
-            Reserve 0.85+ for events that would change how you feel for DAYS, not minutes.
-
-            Respond ONLY with valid JSON:
-            { "register": "<register name>", "warmth": <float>, "energy": <float>, "worry": <float>, "playfulness": <float>, "severity": <float> }
-            """;
-
-        var user = $"""
-            Current emotional state: warmth={current.Warmth:F2}, energy={current.Energy:F2}, worry={current.Worry:F2}, playfulness={current.Playfulness:F2}
-            Baselines (her natural resting state): warmth=0.60, energy=0.50, worry=0.20, playfulness=0.50
-
-            Content to evaluate:
-            "{content}"
-
-            Classify the register, score the deltas, and rate severity. Return as JSON.
-            """;
-
-        return (system, user);
-    }
+        => new Prompts.EmotionalShiftPromptCommand()
+            .Build(new Prompts.EmotionalShiftPromptInput(content, current, maxDelta, isAmbientCycle));
 
     public static (string System, string User) BuildReactiveSharePrompt(
         CharacterStateDoc character, string itemSummary, EmotionalState? emotionalState = null,
@@ -1580,75 +1398,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildClaimExtractionPrompt(
         string composedMessage, string contactName)
-    {
-        var system = $$"""
-            You extract claims about {{contactName}} from a text message.
-
-            A "claim" is a statement that asserts something factual about {{contactName}}'s
-            actions, decisions, or shared events with the writer — something that could
-            be verified by checking what {{contactName}} has actually said or done.
-
-            Claim categories:
-              mark-action                   — The writer says {{contactName}} did something specific
-              mark-decision                 — The writer says {{contactName}} decided something
-              shared-event                  — The writer describes an event involving both of them
-              shared-event-with-attribution — A more specific sub-shape of shared-event:
-                                              the writer asserts a SPECIFIC event with a
-                                              SPECIFIC actor — "X told us Y", "X said Z",
-                                              "we did W with X", or "X picked Y". Use this
-                                              type whenever the claim names an actor
-                                              (a person, including {{contactName}} or
-                                              canonical characters by name) performing a
-                                              specific action or making a specific
-                                              utterance. Do NOT use for general state
-                                              observations ("you seemed tired") or
-                                              temporal claims ("yesterday morning").
-              shared-decision               — The writer describes a decision made together
-              shared-presence               — The writer describes being physically or relationally together
-
-            When in doubt between shared-event and shared-event-with-attribution,
-            prefer shared-event-with-attribution if a specific actor is named
-            performing a specific action (verb + object). The downstream verifier
-            applies stricter checks for this type.
-
-            NOT claims (ignore these):
-              - The writer's own world or daily life ("shelving books", "at the bookstore")
-              - The writer's feelings, thoughts, or wishes ("thinking about you", "wish you were here")
-              - Descriptions of the message itself ("wanted to say", "just checking in")
-              - Questions asked of {{contactName}} ("how was your day?")
-
-            Output ONLY JSON matching this schema, no commentary:
-            {
-              "claims": [
-                { "text": "...", "type": "...", "key_terms": ["...", "..."], "event_actor": "..." }
-              ]
-            }
-
-            The "text" field should be the phrase from the message. The "type" field
-            must be one of the six categories above. The "key_terms" field should
-            list the specific entities or actions that would need to appear in a
-            corroborating source (e.g. for "you brought them over" → ["brought",
-            "flowers"]; for "we decided on purple" → ["decided", "purple"]).
-
-            The "event_actor" field is REQUIRED for shared-event-with-attribution
-            claims and should name the actor performing the asserted action
-            (e.g. for "Mia told us she picked the tickets" → "Mia"; for
-            "we decided on purple" → "we"). Omit or leave empty for other claim
-            types.
-
-            If no claims appear, return { "claims": [] }. Do not fabricate claims to
-            fill the array. Do not mark your own uncertainty in the output — the
-            downstream system performs verification.
-            """;
-
-        var user = $$"""
-            Message: "{{composedMessage}}"
-
-            Extract claims. JSON only.
-            """;
-
-        return (system, user);
-    }
+        => new Prompts.ClaimExtractionPromptCommand()
+            .Build(new Prompts.ClaimExtractionPromptInput(composedMessage, contactName));
 
     // ── R1 Phase 1 (May 9, 2026): Typed event-shape verification prompt ────
 
@@ -1673,28 +1424,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildEventVerificationPrompt(
         string claimText, string candidateRecordText, string contactName)
-    {
-        var system = $$"""
-            You verify whether a candidate {{contactName}}-asserted record describes the same
-            specific event as a claim. Reply with JSON: {"same_event": true|false}.
-
-            Topical overlap is NOT same-event. Different time, different actor,
-            different action = different event. Two records that both mention the
-            same person doing different things on different occasions are NOT the
-            same event.
-
-            Reply ONLY the JSON. No commentary, no explanation, no qualifications.
-            """;
-
-        var user = $$"""
-            Claim: "{{claimText}}"
-            Candidate {{contactName}}-asserted record: "{{candidateRecordText}}"
-
-            Does the record describe the same specific event as the claim? JSON only.
-            """;
-
-        return (system, user);
-    }
+        => new Prompts.EventVerificationPromptCommand()
+            .Build(new Prompts.EventVerificationPromptInput(claimText, candidateRecordText, contactName));
 
     // ── Feature 28: Dispatch coherence gate ─────────────────────────────────
 
