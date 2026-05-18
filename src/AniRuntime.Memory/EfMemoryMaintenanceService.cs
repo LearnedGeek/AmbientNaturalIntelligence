@@ -13,13 +13,11 @@ namespace AniRuntime.Memory;
 /// contradiction resolver, contribution cleanup, link counters, and
 /// audit-log reads.
 ///
-/// Two methods remain delegated to <see cref="SqliteMemoryService"/>
-/// pending Phase 5 risky-port review:
-/// <see cref="RebuildMemoryLinksAsync"/> (Feature 37, O(N²) embedding
-/// scan over the whole substrate — heavy, contains domain logic that
-/// belongs in a separate service when extracted) and
-/// <see cref="RestoreFromAuditAsync"/> (re-INSERT from soft-deleted
-/// audit entry — has side effects on the audit log itself).
+/// Phase 5 closeout (2026-05-18) — no longer delegates to legacy.
+/// <see cref="RebuildMemoryLinksAsync"/> flows through
+/// <see cref="IMemoryLinkRebuilder"/>; <see cref="RestoreFromAuditAsync"/>
+/// runs native EF + <see cref="IMemoryAuditWriter"/>; the rest were
+/// already direct EF queries via repositories.
 /// </summary>
 public sealed class EfMemoryMaintenanceService : IMemoryMaintenance
 {

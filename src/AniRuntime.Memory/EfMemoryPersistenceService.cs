@@ -19,24 +19,16 @@ namespace AniRuntime.Memory;
 /// (via the Phase 1+2 repository + UoW pattern).
 ///
 /// <para>
-/// <see cref="SaveAsync"/> still delegates to <see cref="SqliteMemoryService"/>
-/// because the Feature 30 three-tier dedup-merge (cosine 0.95 skip /
-/// 0.85-0.95 LLM-mediated merge / sub-0.85 insert) is a complex domain
-/// behaviour that belongs in its own service when extracted. Pending
-/// review with Mark before extraction so the merge policy isn't dragged
-/// into the persistence surface monolithically.
-/// </para>
-/// <para>
-/// <see cref="DeleteAsync"/> also delegates because it writes an audit
-/// log entry as a side effect via the legacy <c>AuditAsync</c> helper.
-/// Audit-writing belongs in a dedicated <c>MemoryAuditWriter</c> service
-/// when extracted.
+/// Phase 5 closeout (2026-05-18) — no longer delegates to
+/// <c>SqliteMemoryService</c>. Dedup-merge runs via
+/// <see cref="IMemoryMergePolicy"/>; audit-log writes via
+/// <see cref="IMemoryAuditWriter"/>; the actual persistence runs native
+/// EF Core through the Phase 1+2 repository layer.
 /// </para>
 /// </summary>
 public sealed class EfMemoryPersistenceService : IMemoryPersistence
 {
     private readonly IDbContextFactory<AniDbContext> _dbFactory;
-    private readonly SqliteMemoryService _legacy;
     private readonly IMemoryAuditWriter _audit;
     private readonly IMemoryMergePolicy _mergePolicy;
     private readonly IOllamaClient? _ollama;
@@ -51,7 +43,6 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
 
     public EfMemoryPersistenceService(
         IDbContextFactory<AniDbContext> dbFactory,
-        SqliteMemoryService legacy,
         IMemoryAuditWriter audit,
         IMemoryMergePolicy mergePolicy,
         IOptions<AniOptions> options,
@@ -59,7 +50,6 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
         IOllamaClient? ollama = null)
     {
         _dbFactory   = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
-        _legacy      = legacy    ?? throw new ArgumentNullException(nameof(legacy));
         _audit       = audit     ?? throw new ArgumentNullException(nameof(audit));
         _mergePolicy = mergePolicy ?? throw new ArgumentNullException(nameof(mergePolicy));
         _options     = options.Value;

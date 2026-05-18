@@ -90,19 +90,17 @@ try
     builder.Services.Configure<AnthropicOptions>(config.GetSection("Anthropic"));
 
     // ── Core services ─────────────────────────────────────────────────────────
-    // Phase 5 SOLID refactor (2026-05-18): the previous monolithic EfMemoryService
-    // class has been split into five focused services, one per ISP interface,
-    // plus a composite EfMemoryServiceFacade for the 10 legacy consumers that
-    // still inject IMemoryService. Each focused service holds only the methods
-    // for its one interface; the still-delegated operations (Feature 30
-    // dedup-merge in persistence, semantic search composition in search,
-    // RebuildMemoryLinks in maintenance, audit-restore in maintenance) route
-    // through the SqliteMemoryService legacy until those domain services are
-    // extracted in follow-up commits.
+    // Phase 5 SOLID refactor (2026-05-18 — closeout): the previous monolithic
+    // EfMemoryService class is split into five focused services (one per ISP
+    // interface) plus a composite EfMemoryServiceFacade. Four named domain
+    // services (MemoryAuditWriter, MemoryMergePolicy, MemoryLinkRebuilder,
+    // SemanticSearchComposer) own the cross-cutting behaviours that used to
+    // live as private helpers on the monolith. No EF service routes through
+    // the legacy SqliteMemoryService anymore.
     //
-    // SqliteMemoryService is always instantiated as the strangler-fig fallback
-    // for the not-yet-ported operations. Both code paths share the same SQLite
-    // file via AniOptions.MemoryDbPath.
+    // SqliteMemoryService is still registered for the UseEfDataLayer=false
+    // legacy code path (kept for rollback safety) — when that path is retired
+    // and the legacy is deleted, this registration goes with it.
     builder.Services.AddSingleton<SqliteMemoryService>();
 
     var aniOptions = config.GetSection("Ani").Get<AniOptions>() ?? new AniOptions();
