@@ -144,7 +144,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           Write-Host "Stopping $env:SERVICE_NAME..."
-          sc.exe stop $env:SERVICE_NAME
+          $svc = Get-Service -Name $env:SERVICE_NAME -ErrorAction Stop
+          Write-Host "  initial status: $($svc.Status)"
+          if ($svc.Status -eq 'Stopped') {
+            Write-Host "  service already stopped - proceeding to publish."
+            exit 0
+          }
+          # sc.exe returns 1062 (ERROR_SERVICE_NOT_ACTIVE) when the service
+          # is already stopped, which PowerShell treats as a step failure.
+          # The status check above handles the common case; pipe sc.exe's
+          # output away so a transient race doesn't trip the step.
+          sc.exe stop $env:SERVICE_NAME | Out-Null
           # Wait up to 30s for clean stop; don't proceed if still running
           $deadline = (Get-Date).AddSeconds(30)
           do {
