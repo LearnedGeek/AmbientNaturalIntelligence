@@ -14,7 +14,7 @@ namespace AniRuntime.Tests;
 /// Uses a named in-memory SQLite database — no mocking, no file I/O.
 /// Each test instance gets a unique database name to prevent cross-test interference.
 /// </summary>
-public class SqliteMemoryServiceTests : AniTestBase
+public class SqliteMemoryServiceTests : AniTestBase, IDisposable
 {
     private readonly SqliteMemoryService _svc;
 
@@ -23,6 +23,22 @@ public class SqliteMemoryServiceTests : AniTestBase
         // Named in-memory database — unique per test instance, no file cleanup needed
         var dbName = $"ani-test-{Guid.NewGuid():N}";
         _svc = CreateService(dbName);
+    }
+
+    /// <summary>
+    /// 2026-05-18 flaky-test triage — explicitly dispose the service after each
+    /// test so the keep-alive <see cref="SqliteConnection"/> releases. Without
+    /// this, instances pile up across the test run and Microsoft.Data.Sqlite's
+    /// internal connection pool can route a query to a connection whose
+    /// underlying in-memory database has already been garbage-collected,
+    /// producing intermittent failures (e.g. <c>GetDecayEligibleAsync_ExcludesAnchoredTier</c>
+    /// and <c>MarkCompressedAsync_SetsTierAndCreatesProvenanceLinks</c>
+    /// passed in isolation but failed in-suite before this fix).
+    /// </summary>
+    public void Dispose()
+    {
+        _svc.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     private static SqliteMemoryService CreateService(string dbPath)
