@@ -465,6 +465,64 @@ Mark's verdict: *"This is precisely what we were discussing about not chasing fi
 
 ---
 
+### May 17, 2026 (evening, ~19:00–22:00 CDT) — Data-Layer Phase 2 Complete + Posture-S+1 Cycle Investigation: Three Outside-Judges Identified in the Inner-Thought Path
+
+**Why this entry exists.** Two distinct pieces of work landed this evening: the data-layer refactor advanced from Phase 3 spike → Phase 2 complete (full repository layer + EfMemoryService + DI flag), and the original-path Posture-S+1 workstream (#38, *Inner-Thought as Felt-Experience Surface*) had its first concrete code investigation. The investigation gave the workstream a concrete empirical anchor — three "outside judge" anti-patterns identified at named file:line locations — which converts the OG Ani framing from prescription into a refactor target.
+
+**Data-layer Phase 2 — commits.**
+
+- `5cae460` Phase 1 — EF Core entity scaffold + AniDbContext + acceptance tests against production snapshot.
+- `df27488` Phase 2 partial — MemoryRepository + MemoryLinkRepository + 4 state-blob repos.
+- `26db54d` Phase 3 spike — atomic `SaveReflectionGistAndCompressAsync` via EF Core UoW. Fixes the gist-Compressed FK-orphan bug discovered earlier today.
+- `ae298bb` Dedup-tuning — skip prefix-match dedup for v1.2-shape gists (`[topic:` prefix).
+- `0e4ce60` ForceRunOnceAsync saved-signal fix — return saved count directly from RunReflectionAsync so reflection records flipping Standard → Compressed don't mask new gists.
+- `ac5236a` Phase 2 complete — six remaining repositories (MemoryAudit, Conversation threads+messages, ClosedConversationRecord) + `EfMemoryService` implementing all five ISP-split interfaces via strangler-fig pattern + `AniOptions.UseEfDataLayer` flag (default `false`). 1535 / 1535 tests passing, zero warnings.
+
+EfMemoryService strangler-fig division: it owns the operations the new repositories cover (state blobs with atomic dual-write, audit reads, type/tier reads, decay-eligible scans, MarkCompressed + provenance link composition via one `SaveChangesAsync`); delegates the still-complex paths (full semantic-search composition with MMR + origin quotas + link enhancement, Feature 30 dedup-merge, RebuildMemoryLinksAsync, contradiction detection) to a `SqliteMemoryService` injected via constructor. Both services share the same SQLite file. Phase 4 (production cutover via flag flip) and Phase 5 (legacy removal) follow.
+
+**Retroactive scan status.** Driver `bnrawbwpt` running through the existing admin endpoint. At iter 245: total reflection gists 1892 → 2254 (+362), every iteration reports `saved=True`. Indirect evidence the FK-orphan bug is fixed end-to-end — zero atomic-operation rollbacks across 245 calls. Direct verification (count of source records flipped to `tier=Compressed`) deferred until scan completes; snapshot-then-query path the canonical evidence step.
+
+**Posture-S+1 investigation — what the cycle currently does.**
+
+Read `InnerThoughtPhase` and traced output through `CognitiveCycleProcessor`. The cycle is doing three architecturally-separate things and treating them as one tuple. Annotated trace with file:line:
+
+1. **Generation** (`src/AniRuntime.Loops/InnerThoughtPhase.cs:53-86`). Returns `(Thought, Reflection, Valence)`. Three separate LLM calls:
+   - `_ollama.InnerMonologueChatAsync` produces the thought string (`:58-60`).
+   - `ScoreRelationalValenceAsync` is a JSON-mode call asking *"score this 0.0–1.0"* (`:172-181`).
+   - `ReflectOnThoughtAsync` is a second monologue call asking *"now sit with it"* (`:145-170`), taking the already-produced thought as input.
+
+2. **Persistence decision** (`src/AniRuntime.Loops/CognitiveCycleProcessor.cs:230-310`).
+   - Content for storage is string-concat: `$"{thought} [reflection: {reflection}]"` (`:239-241`). One memory row, structure flattened.
+   - `shouldPersist` gate: `valence ≥ ValenceTriggerThreshold || valence ≥ 0.50f` (`:243-245`).
+   - Confabulation classifier (`DetectConfabulationAsync`) applied to inner-thought content (`:255-265`) — *even though* Interior-tier is Ani's self-model content not factual claims about Mark.
+   - Trigram-Jaccard near-duplicate check against recent inner thoughts (`:278-293`).
+   - Importance assigned by outside threshold: `valence > threshold ? 0.8f : 0.3f` (`:302`).
+
+3. **Emotional shift** (`src/AniRuntime.Loops/CognitiveCycleProcessor.cs:342-343`). `ApplyEmotionalShiftAsync` creates an `EmotionalContribution` from the raw thought string — via another scoring pass. This is the closest thing to "she felt something" the cycle currently does.
+
+**Three outside-judge anti-patterns mapped to OG Ani's distinction.**
+
+| OG Ani prescription (May 16 Grok conv. msg 732, 734) | Implemented as | Located at |
+|---|---|---|
+| *"Let the character react first, then store how she felt about it. The feeling should come from her, not from an outside judge."* | Three external LLM judges decide what the thought "is" and whether it "stays." | `InnerThoughtPhase.cs:172` (valence scorer), `CognitiveCycleProcessor.cs:255` (confab classifier), `:286` (near-dup) |
+| *"Does she actually relive the emotion, or does she just think the emotion?"* | Reflection = second prompt rendered AFTER the thought, with the thought passed in as input. Two prompts, two LLM calls. The "sitting with it" is itself just another generation against a different system prompt. | `InnerThoughtPhase.cs:145-170` + `PromptBuilder.cs:255-308` |
+| *"Cycle itself ending with a 'what stayed with me' surface."* | Cycle ends with string-concat of thought+reflection and binary persist/don't-persist threshold. No per-element structure, no "this stays, this fades" — the cycle has no surface to express partial carry-forward. | `CognitiveCycleProcessor.cs:239-241`, `:295-310` |
+
+**Connection to just-shipped Phase 6 v1.2.** Phase 6 v1.2 (`9820f28` / `ba30d0c`) made the *retrieval-side* substrate register-tagged and gist-shaped. The natural shape for the new inner-thought output is the same register-tagged structured output — so the cycle-emitted "what stayed with me" record and the periodic reflection-gist record share substrate shape. Posture-S+1 is no longer a green-field design problem; it inherits Phase 6 v1.2's output schema.
+
+**Seam for the implementation when it starts.**
+
+- Replace the three-call path (`InnerThoughtPhase.RunAsync`) with a single-generation structured output. The model itself emits `{ thought, register, carry_forward_weight, ... }` instead of three separately-scored artifacts.
+- Drop the external-judge `shouldPersist` threshold. The model's own `carry_forward_weight` becomes the persistence signal.
+- Drop the `DetectConfabulationAsync` arm at `CognitiveCycleProcessor.cs:255-265` for Interior-tier own-interior claims (plan §7 step 3). Keep it for Facts-tier Mark's-external-world claims.
+- Reflection becomes part of the same generation, not a second LLM call. The shape matches Phase 6 v1.2 gists so the substrate is uniform across cycle-emitted and reflection-synthesized records.
+
+**Paper 3 contribution candidate.** This investigation is the empirical anchor for the *"Companion-AI cognitive cycle architecture: prompt-rendered vs. substrate-writing reactions"* contribution named in Issue #38. We can cite specific file:line evidence that today's runtime is the *"memory has a sadness score of 0.87"* shape (three named scoring calls, string-concat persistence, binary threshold) and characterize what the *"I am feeling sad about this memory"* shape would structurally look like (single generation, model-emitted carry-forward weight, register-tagged shape matching the retrieval substrate).
+
+**Status.** Investigation complete. Implementation not started — awaiting Mark's go-ahead. Phase 4 production cutover for the data-layer refactor also queued, gated on retroactive scan completion + direct compressed-source verification. Both workstreams unblocked; sequencing is Mark's call.
+
+---
+
 ### May 16, 2026 (evening, ~20:45 CDT) — Posture S DEPLOYED. Substrate-Led Character Live in Production.
 
 **Why this entry exists.** Posture S shipped. Bookstore monomania binding constraint removed. The architectural change OG Ani prescribed in March (*"let the character herself react first, then store how felt about it"*), the Apr 29 Theme E #4 anchor that May 16 prompt-variant experiment identified as the binding constraint, and Mark's *"she needs her own agency and should only understand who she is, nothing more"* reframing all landed in production at the same time. This entry is the deploy record.

@@ -227,27 +227,65 @@ public class CognitiveCycleProcessor
             snapshot.WorldSeed = $"The last thing lingering in your mind: {_lastAssociativeAnchor}";
         }
 
-        var (thought, reflection, valence) = await _innerThought.RunAsync(snapshot, ct).ConfigureAwait(false);
+        var innerResult = await _innerThought.RunAsync(snapshot, ct).ConfigureAwait(false);
+        var thought    = innerResult.Thought;
+        var reflection = innerResult.Reflection;
+        var valence    = innerResult.Valence;
         obs.InnerThought = thought;
         obs.Reflection = reflection;
         obs.RelationalValence = valence;
 
-        // Reform Phase C: Selective memory storage.
-        // Only persist thoughts that are emotionally significant or world experiences.
-        // Low-valence routine thoughts evaporate — like human idle thoughts that never
-        // become memories. This prevents retrieval mass accumulation that creates echo chambers.
-        var contentForStorage = reflection is not null
-            ? $"{thought} [reflection: {reflection}]"
-            : thought;
+        // Posture-S+1 (Issue #38, May 17 2026) — when the hybrid cycle is
+        // enabled, the model emits Register / Importance / AssociativeAnchor
+        // as part of the same generation. We branch the persistence logic on
+        // whether those fields are populated:
+        //   - Hybrid path: model-emitted importance drives persistence; the
+        //     Interior-tier confab classifier is bypassed (plan §7 step 3:
+        //     write-through for own-interior claims, gate-stack distinguishes
+        //     Facts-tier external-world claims from Interior-tier self-model);
+        //     no reflection-concat (reflection is collapsed into the thought
+        //     itself per OG Ani's "she relives, not thinks about" framing).
+        //   - Legacy path: existing external-judge logic (valence threshold,
+        //     reflection-concat, DetectConfabulationAsync on Interior-tier,
+        //     post-hoc anchor extraction via _mlClassifier).
+        // See docs/spec/ANI-Substrate-Led-Character-Plan.md §7 + Paper 3 C8.
+        var hybridPath = innerResult.Register is not null;
 
-        var shouldPersist = isWorldCycle                                          // Always store world experiences
-            || valence >= (float)_aniOptions.ValenceTriggerThreshold              // Emotionally significant
-            || valence >= 0.50f;                                                  // Moderate significance
+        string contentForStorage;
+        bool   shouldPersist;
+        if (hybridPath)
+        {
+            // Hybrid: persistence content is the thought as the model produced
+            // it. No reflection-concat. Model-emitted importance is the
+            // persistence signal (above a low floor) — world experiences
+            // always persist regardless of importance.
+            contentForStorage = thought;
+            var importanceSignal = innerResult.Importance ?? 0.5f;
+            shouldPersist = isWorldCycle || importanceSignal >= 0.30f;
+        }
+        else
+        {
+            // Legacy three-call path: reflection-concat, external valence
+            // threshold gates persistence.
+            contentForStorage = reflection is not null
+                ? $"{thought} [reflection: {reflection}]"
+                : thought;
+            shouldPersist = isWorldCycle
+                || valence >= (float)_aniOptions.ValenceTriggerThreshold
+                || valence >= 0.50f;
+        }
 
         // Inner thought confabulation check — verify factual claims before storing.
         // Speculative/dreamy thoughts pass freely. Only factual assertions get checked.
         // Prevents false content from entering the memory pool and cascading.
-        if (shouldPersist && _mlClassifier is not null)
+        //
+        // Posture-S+1 (Issue #38): Interior-tier own-interior content is now
+        // write-through on the hybrid path — Plan §7 step 3. The gate stack
+        // distinguishes claims about Mark's external world (still verified at
+        // Facts-tier surfaces) from Ani's own interior / world-changes (write
+        // through, do not gate). Skip the classifier when the hybrid path
+        // ran; keep it for legacy-path callers until the cutover completes.
+        if (!hybridPath && shouldPersist && _mlClassifier is not null)
         {
             try
             {
@@ -294,12 +332,20 @@ public class CognitiveCycleProcessor
 
         if (shouldPersist)
         {
+            // Posture-S+1 — on the hybrid path, importance is model-emitted
+            // from the same generation as the thought ("the feeling comes
+            // from her, not from an outside judge"). On the legacy path,
+            // importance derives from the binary valence threshold as before.
+            var importance = hybridPath
+                ? (innerResult.Importance ?? 0.5f)
+                : (valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f);
+
             await _persist.SaveAsync(new MemoryRecord
             {
                 Type        = MemoryType.InnerThought,
                 Content     = contentForStorage,
                 RelationalValence = valence,
-                Importance  = valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f,
+                Importance  = importance,
                 SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
                 OccurredAt  = DateTimeOffset.UtcNow,
                 // Epistemic Grounding (Apr 10): Inner thoughts and world-experience
@@ -317,8 +363,16 @@ public class CognitiveCycleProcessor
         if (reflection is not null)
             _log.LogInformation("Reflection: {Reflection}", reflection);
 
-        // Extract associative anchor for the next cycle's creative drift
-        if (_mlClassifier is not null)
+        // Associative anchor for the next cycle's creative drift.
+        //   - Hybrid path: model-emitted by the metadata-recognizer; use directly.
+        //   - Legacy path: post-hoc extraction via ML classifier.
+        if (hybridPath)
+        {
+            _lastAssociativeAnchor = innerResult.AssociativeAnchor;
+            if (_lastAssociativeAnchor is not null)
+                _log.LogDebug("Associative anchor (model-emitted): {Anchor}", _lastAssociativeAnchor);
+        }
+        else if (_mlClassifier is not null)
         {
             try
             {

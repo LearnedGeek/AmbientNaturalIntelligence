@@ -420,6 +420,33 @@ public class AniOptions
     /// </summary>
     public bool UseEfDataLayer { get; set; } = false;
 
+    /// <summary>
+    /// Posture-S+1 (Issue #38, 2026-05-17) — when true, <c>InnerThoughtPhase</c>
+    /// runs the hybrid two-call cycle: <c>ani-v7-inner</c> generates the
+    /// thought (preserves voice + caregiver-pivot resistance from training),
+    /// <c>qwen3:14b</c> reads the thought + context and emits structured
+    /// metadata (register, valence, importance, associative-anchor). Replaces
+    /// the legacy three-call path (thought + self-valence-scoring +
+    /// reflection-on-thought).
+    ///
+    /// Default <c>false</c> so the cutover is opt-in until empirical
+    /// confirmation on the same shape the May 17 evening probe validated.
+    /// Empirical anchor + probe results: 2026-05-17 evening research log
+    /// entry. Hybrid acceptance criteria (voice preserved, caregiver-pivot
+    /// resistance preserved, metadata coherent, importance variance restored)
+    /// were all met across 6 probe runs.
+    /// </summary>
+    public bool UseHybridInnerThoughtCycle { get; set; } = false;
+
+    /// <summary>
+    /// Posture-S+1 — the local model used as the metadata-recognizer in the
+    /// hybrid cycle. <c>qwen3:14b</c> was selected for clean structured
+    /// output discipline (single-Qwen probe round was the empirical
+    /// reference). Same model used by <c>ReflectionPhase</c> for v1.2 R3.1
+    /// synthesis — kept aligned so they share the model load.
+    /// </summary>
+    public string HybridInnerThoughtMetadataModel { get; set; } = "qwen3:14b";
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

@@ -84,11 +84,11 @@ public class InnerThoughtPhaseGateTests
         SetupOllama(Thought, Reflection);
         var phase = BuildPhase(gate: null);
 
-        var (t, r, v) = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
+        var result = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
 
-        t.Should().Be(Thought, "no gate → original thought passes through");
-        r.Should().Be(Reflection);
-        v.Should().BeApproximately(0.62f, 0.01f);
+        result.Thought.Should().Be(Thought, "no gate → original thought passes through");
+        result.Reflection.Should().Be(Reflection);
+        result.Valence.Should().BeApproximately(0.62f, 0.01f);
         _mockGate.VerifyNoOtherCalls();
     }
 
@@ -102,11 +102,11 @@ public class InnerThoughtPhaseGateTests
                  .ReturnsAsync(OutputGateResult.Pass());
 
         var phase = BuildPhase(gate: _mockGate.Object);
-        var (t, r, v) = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
+        var result = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
 
-        t.Should().Be(Thought);
-        r.Should().Be(Reflection, "Pass verdict → reflection runs");
-        v.Should().BeApproximately(0.62f, 0.01f, "Pass verdict → valence scoring runs");
+        result.Thought.Should().Be(Thought);
+        result.Reflection.Should().Be(Reflection, "Pass verdict → reflection runs");
+        result.Valence.Should().BeApproximately(0.62f, 0.01f, "Pass verdict → valence scoring runs");
         _mockGate.Verify(
             g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -128,11 +128,11 @@ public class InnerThoughtPhaseGateTests
                  });
 
         var phase = BuildPhase(gate: _mockGate.Object);
-        var (t, r, v) = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
+        var result = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
 
-        t.Should().Be(string.Empty, "Remediate verdict → thought dropped");
-        r.Should().BeNull("dropped thought → no reflection");
-        v.Should().BeApproximately(0.3f, 0.01f, "dropped thought → fallback valence (no Ollama scoring call)");
+        result.Thought.Should().Be(string.Empty, "Remediate verdict → thought dropped");
+        result.Reflection.Should().BeNull("dropped thought → no reflection");
+        result.Valence.Should().BeApproximately(0.3f, 0.01f, "dropped thought → fallback valence (no Ollama scoring call)");
 
         _mockOllama.Verify(o => o.ChatJsonAsync(
             It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
@@ -154,10 +154,10 @@ public class InnerThoughtPhaseGateTests
                  });
 
         var phase = BuildPhase(gate: _mockGate.Object);
-        var (t, r, _) = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
+        var result = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
 
-        t.Should().Be(string.Empty);
-        r.Should().BeNull();
+        result.Thought.Should().Be(string.Empty);
+        result.Reflection.Should().BeNull();
     }
 
     // ── Failure containment ─────────────────────────────────────────────
@@ -170,11 +170,11 @@ public class InnerThoughtPhaseGateTests
                  .ThrowsAsync(new InvalidOperationException("gate bug"));
 
         var phase = BuildPhase(gate: _mockGate.Object);
-        var (t, r, v) = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
+        var result = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
 
-        t.Should().Be(Thought, "gate exception must NOT block the cognitive cycle");
-        r.Should().Be(Reflection);
-        v.Should().BeApproximately(0.62f, 0.01f);
+        result.Thought.Should().Be(Thought, "gate exception must NOT block the cognitive cycle");
+        result.Reflection.Should().Be(Reflection);
+        result.Valence.Should().BeApproximately(0.62f, 0.01f);
     }
 
     // ── Artifact construction ───────────────────────────────────────────

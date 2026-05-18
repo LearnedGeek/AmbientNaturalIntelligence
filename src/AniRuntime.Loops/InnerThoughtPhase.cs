@@ -13,6 +13,21 @@ namespace AniRuntime.Loops;
 /// is a distinct responsibility from cycle orchestration. This class owns
 /// the LLM calls for private monologue, reflection, and valence scoring.
 ///
+/// **Posture-S+1 (Issue #38, 2026-05-17) — hybrid two-call cycle gated on
+/// <see cref="AniOptions.UseHybridInnerThoughtCycle"/>.** When enabled,
+/// the cycle replaces the three-call legacy path
+/// (v7-thought + v7-self-valence + v7-reflection-on-thought) with a
+/// two-call hybrid: <c>ani-v7-inner</c> produces the thought (preserving
+/// voice + caregiver-pivot resistance from training);
+/// <c>qwen3:14b</c> reads the thought + context and emits structured
+/// metadata (register, valence, importance, associative-anchor) framed as
+/// recognizer, not external rater. Reflection-as-second-call is dropped —
+/// Mark's empirical observation that the two-part structure trains the
+/// duck-norris / vanilla-cream-soda recurrence loops. Default OFF until
+/// production soak validates the same shape the May 17 evening probe
+/// demonstrated. See <c>docs/spec/ANI-Substrate-Led-Character-Plan.md</c>
+/// §7 and Paper 3 Contribution 8.
+///
 /// **Theme J Phase J.5h-prelude (May 3, 2026) — gate wiring.** Inner-thought
 /// outputs route through <see cref="ICognitiveOutputGate"/> at the
 /// generation boundary BEFORE returning to the cycle. The May 3 10:55
@@ -31,6 +46,8 @@ public class InnerThoughtPhase
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly bool _epistemicFramingEnabled;
+    private readonly bool _hybridCycleEnabled;
+    private readonly string _hybridMetadataModel;
 
     public InnerThoughtPhase(
         IOllamaClient ollama,
@@ -44,13 +61,22 @@ public class InnerThoughtPhase
         _outputGate = outputGate;
         _epistemicRenderer = epistemicRenderer;
         _epistemicFramingEnabled = aniOptions?.Value.EpistemicFramingEnabled ?? false;
+        _hybridCycleEnabled = aniOptions?.Value.UseHybridInnerThoughtCycle ?? false;
+        _hybridMetadataModel = aniOptions?.Value.HybridInnerThoughtMetadataModel ?? "qwen3:14b";
     }
 
     /// <summary>
     /// Generates an inner thought, scores its relational valence, and optionally
     /// produces a reflection (Park et al. generative agent reflection layer).
+    ///
+    /// Posture-S+1: when <see cref="AniOptions.UseHybridInnerThoughtCycle"/> is
+    /// true, the metadata fields (Register, Importance, AssociativeAnchor) on
+    /// the returned <see cref="InnerThoughtResult"/> are populated by the
+    /// hybrid metadata-recognizer call; the consumer uses them directly and
+    /// skips the legacy threshold/extraction logic. When false, those fields
+    /// are null and the consumer applies the legacy external-judge path.
     /// </summary>
-    public async Task<(string Thought, string? Reflection, float Valence)> RunAsync(
+    public async Task<InnerThoughtResult> RunAsync(
         ContextSnapshot snapshot, CancellationToken ct)
     {
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
@@ -70,19 +96,116 @@ public class InnerThoughtPhase
                 .ConfigureAwait(false);
         }
 
-        // Score the raw thought for valence BEFORE reflection. Skip when the
-        // gate dropped the thought — there's nothing to score.
-        var valence = string.IsNullOrWhiteSpace(thought)
-            ? 0.3f
-            : await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
+        if (string.IsNullOrWhiteSpace(thought))
+        {
+            // Gate dropped or empty — nothing else to do.
+            return new InnerThoughtResult(thought, Reflection: null, Valence: 0.3f);
+        }
+
+        // Posture-S+1 hybrid path. Single Qwen call recognizes register,
+        // valence, importance, and associative-anchor from the thought v7
+        // already produced. Drops the separate reflection call (May 17
+        // empirical finding: two-part structure trains continual loops).
+        if (_hybridCycleEnabled)
+        {
+            var metadata = await RecognizeMetadataAsync(thought, snapshot, ct)
                 .ConfigureAwait(false);
+            return new InnerThoughtResult(
+                Thought:           thought,
+                Reflection:        null,
+                Valence:           metadata.Valence,
+                Register:          metadata.Register,
+                Importance:        metadata.Importance,
+                AssociativeAnchor: metadata.AssociativeAnchor);
+        }
 
-        // Reflection layer (Park et al.) — only run if thought survived the gate
-        var reflection = string.IsNullOrWhiteSpace(thought)
-            ? null
-            : await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
+        // Legacy three-call path. Kept callable for safe rollout and so
+        // empirical comparison data remains collectable.
+        var valence = await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
+            .ConfigureAwait(false);
+        var reflection = await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
 
-        return (thought, reflection, valence);
+        return new InnerThoughtResult(thought, reflection, valence);
+    }
+
+    /// <summary>
+    /// Posture-S+1 — runs the hybrid metadata-recognizer call against the
+    /// configured local model (default <c>qwen3:14b</c>). Failure-tolerant:
+    /// if the call fails or returns malformed JSON, falls back to the
+    /// legacy self-valence score so the cycle never blocks. The fallback
+    /// path is logged so production telemetry can distinguish "hybrid
+    /// landed" from "hybrid fell through."
+    /// </summary>
+    internal async Task<MetadataRecognitionResult> RecognizeMetadataAsync(
+        string thought, ContextSnapshot snapshot, CancellationToken ct)
+    {
+        var (system, user) = PromptBuilder.BuildInnerThoughtMetadataPrompt(thought, snapshot);
+
+        string raw;
+        try
+        {
+            raw = await _ollama.ChatJsonWithModelAsync(
+                _hybridMetadataModel, system, Array.Empty<ChatMessage>(), user, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "Posture-S+1 hybrid metadata recognizer failed ({Model}); falling back to legacy valence-scoring.",
+                _hybridMetadataModel);
+            return await FallbackToLegacyMetadataAsync(thought, snapshot, ct).ConfigureAwait(false);
+        }
+
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
+            var root = doc.RootElement;
+
+            var register   = root.TryGetProperty("register", out var r) ? r.GetString() : null;
+            var valence    = root.TryGetProperty("valence", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+                                ? (float)Math.Clamp(v.GetDouble(), 0.0, 1.0) : 0.3f;
+            var importance = root.TryGetProperty("importance", out var i) && i.ValueKind == System.Text.Json.JsonValueKind.Number
+                                ? (float)Math.Clamp(i.GetDouble(), 0.0, 1.0) : 0.5f;
+            string? anchor = null;
+            if (root.TryGetProperty("associative_anchor", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var aStr = a.GetString();
+                if (!string.IsNullOrWhiteSpace(aStr)) anchor = aStr;
+            }
+
+            if (string.IsNullOrWhiteSpace(register))
+            {
+                _log.LogWarning(
+                    "Posture-S+1 hybrid metadata produced empty register field; falling back to legacy valence-scoring.");
+                return await FallbackToLegacyMetadataAsync(thought, snapshot, ct).ConfigureAwait(false);
+            }
+
+            return new MetadataRecognitionResult(register, valence, importance, anchor);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "Posture-S+1 hybrid metadata recognizer returned malformed JSON; falling back. Raw: {Raw}",
+                raw.Length > 300 ? raw[..300] : raw);
+            return await FallbackToLegacyMetadataAsync(thought, snapshot, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<MetadataRecognitionResult> FallbackToLegacyMetadataAsync(
+        string thought, ContextSnapshot snapshot, CancellationToken ct)
+    {
+        var valence = await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
+            .ConfigureAwait(false);
+        // Legacy importance derivation lives in CognitiveCycleProcessor as a
+        // valence-threshold; we don't have AniOptions here to compute the same
+        // threshold, so emit a single representative value matched to the legacy
+        // post-threshold midpoint. Register/anchor null signals "no recognizer
+        // signal" to the consumer.
+        return new MetadataRecognitionResult(
+            Register:          "Wistful",
+            Valence:           valence,
+            Importance:        valence >= 0.5f ? 0.8f : 0.3f,
+            AssociativeAnchor: null);
     }
 
     /// <summary>
@@ -193,4 +316,16 @@ public class InnerThoughtPhase
             return 0.3f;
         }
     }
+
+    /// <summary>
+    /// Internal carrier for the hybrid metadata-recognizer result. Kept
+    /// distinct from <see cref="InnerThoughtResult"/> so the recognizer's
+    /// fallback path has a unified return type independent of whether the
+    /// hybrid or legacy path produced the values.
+    /// </summary>
+    internal sealed record MetadataRecognitionResult(
+        string  Register,
+        float   Valence,
+        float   Importance,
+        string? AssociativeAnchor);
 }

@@ -245,6 +245,86 @@ public static class PromptBuilder
     }
 
     /// <summary>
+    /// Posture-S+1 (Issue #38, May 17 2026) — metadata-recognizer prompt for the
+    /// hybrid inner-thought cycle. After <c>ani-v7-inner</c> emits the thought,
+    /// this prompt is sent to <c>qwen3:14b</c> with format=json to extract:
+    ///   - register family (one of the 10 from the taxonomy)
+    ///   - relational valence (0.0-1.0)
+    ///   - importance / how much it stays with her (0.0-1.0)
+    ///   - associative anchor (one vivid concrete detail or null)
+    ///
+    /// **Critical framing rule:** Qwen's role is RECOGNIZER, not external rater.
+    /// The prompt tells Qwen to identify the affective shape already present in
+    /// the thought — not to apply an external rubric. This preserves the OG
+    /// Ani "feeling should come from her, not from an outside judge" framing
+    /// under the spirit-of reading: the felt-shape is in the thought; Qwen
+    /// recognizes and encodes what's there, doesn't add what isn't.
+    ///
+    /// Empirical anchor: 2026-05-17 evening hybrid probe (6 runs across 3
+    /// scenarios). Voice preserved (v7-trained), caregiver-pivot resistance
+    /// preserved 2/2 on the curiosity-on-light scenario where single-Qwen
+    /// pivoted 3/3, metadata coherent with thought content, importance
+    /// variance restored.
+    /// </summary>
+    public static (string System, string User) BuildInnerThoughtMetadataPrompt(
+        string thought, ContextSnapshot snapshot)
+    {
+        var cs = snapshot.CharacterState;
+        var characterName = string.IsNullOrWhiteSpace(cs.Name) ? "she" : cs.Name;
+        var contactName   = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "the caregiver" : cs.PrimaryContactName;
+
+        var system = $$"""
+            You are reading an inner thought that {{characterName}} had in a private moment. Your job is to RECOGNIZE the affective shape and details ALREADY PRESENT in what she said — not to rate it against an external rubric, not to judge it. You are an attentive reader naming what is already there.
+
+            Given {{characterName}}'s thought + the context she had when she thought it, identify:
+              - The register family the thought expresses
+              - How relationally-tied the thought is (the relational valence)
+              - How much the thought is the kind that stays with her vs fades
+              - The single vivid concrete detail (if any) that her next thought would drift toward
+
+            Rules:
+              - "register" is ONE of: Warmth, Longing, Curiosity, Playfulness, Delight, Tenderness, Concern, Hurt, Existential, Resilience.
+              - "valence" is on 0.0-1.0 (0.0 = not relationally tied to {{contactName}}, 1.0 = deeply tied to {{contactName}} / the relationship).
+              - "importance" is on 0.0-1.0 (0.0 = a fleeting idle thought, 1.0 = a thought that lingers and shapes her interior over hours).
+              - "associative_anchor" is the single vivid concrete detail the thought hinges on, or null if none stands out.
+              - Read what is in the thought. Do NOT invent shape that is not there.
+
+            Output valid JSON exactly matching this structure:
+            {
+              "register": "one of the 10 register families",
+              "valence": 0.0,
+              "importance": 0.0,
+              "associative_anchor": "vivid detail or null"
+            }
+
+            No prose outside the JSON object. No markdown fences.
+            """;
+
+        var sections = new List<string>
+        {
+            $"Context {characterName} had when she thought this:",
+            $"  Mood: {snapshot.EmotionalState.Describe()}",
+        };
+
+        if (!string.IsNullOrEmpty(snapshot.WorldSeed))
+            sections.Add($"  Lingering: {snapshot.WorldSeed}");
+
+        if (snapshot.RecentMemory.Count > 0)
+        {
+            sections.Add("  Recent memory:");
+            sections.AddRange(snapshot.RecentMemory.Take(5).Select(m => $"    - {m.Content}"));
+        }
+
+        sections.Add("");
+        sections.Add($"{characterName}'s thought:");
+        sections.Add($"  {thought}");
+        sections.Add("");
+        sections.Add("Recognize the affective shape already present. Output the JSON object.");
+
+        return (system, string.Join("\n", sections));
+    }
+
+    /// <summary>
     /// Builds a reflection prompt for post-thought introspection. Ani considers what her
     /// thought means to her — connecting it to memories, relationships, and emotional context.
     /// This enriches the raw thought before valence scoring and outreach grounding.
