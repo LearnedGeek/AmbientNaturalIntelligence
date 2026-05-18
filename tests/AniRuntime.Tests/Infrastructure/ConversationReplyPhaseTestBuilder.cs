@@ -102,6 +102,10 @@ public static class ConversationReplyPhaseTestBuilder
             channels, conversations, desire, aniOptions,
             NullLogger<ReplyDispatcher>.Instance);
 
+        var replyEvaluator = new ReplyEvaluator(
+            ollama, aniOptions, NullLogger<ReplyEvaluator>.Instance,
+            outputGate, gateTripTracker);
+
         // dispatcher (AniActionDispatcher) was injected but unused by the
         // pipeline pre-§5.4d — kept in this builder's positional signature
         // for caller-side parity with the prior shape, then discarded here.
@@ -109,10 +113,10 @@ public static class ConversationReplyPhaseTestBuilder
 
         return new ConversationReplyPipeline(
             state, persist, search, analytics, ollama, conversations,
-            replyDispatcher, postReply, contextBuilder, keywords, intent,
+            replyDispatcher, postReply, replyEvaluator, contextBuilder, keywords, intent,
             gateState, compressor, claimVerifier, withdrawal, aniOptions, ollamaOptions,
             NullLogger<ConversationReplyPipeline>.Instance,
-            mlClassifier, personaCache, em9Detector, outputGate, vibeBias,
-            consciousGist, gateTripTracker, epistemicRenderer);
+            mlClassifier, personaCache, em9Detector, vibeBias,
+            consciousGist, epistemicRenderer);
     }
 }

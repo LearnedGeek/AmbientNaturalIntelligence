@@ -47,16 +47,12 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     private readonly ITextClassificationService? _mlClassifier;
     private readonly PersonaSummaryCache? _personaCache;
     private readonly Em9Detector? _em9;
-    private readonly ICognitiveOutputGate? _outputGate;
+    private readonly IReplyEvaluator _replyEvaluator;
     private readonly IVibeBiasService? _vibeBias;
     // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist composer.
     // Optional dependency; M.0 ships a no-op composer that returns Empty.
     // M.1+ provides a real composer that produces slice content.
     private readonly IConsciousSubstrateGist? _consciousGist;
-    // Theme M Phase M.1 (May 6, 2026) — gate-trip telemetry buffer feeding
-    // the §4.8 tension-state slice. Recorded at the three exit points of
-    // EvaluateAndRemediateReplyAsync (Pass / RemediatedOk / FellThroughToSafeAck).
-    private readonly IRecentGateTripTracker? _gateTripTracker;
     // Theme M follow-on (2026-05-14) — IEpistemicSubstrateRenderer. Sibling
     // to IConsciousSubstrateGist; renders substrate slices with explicit
     // epistemic framing for FC-002 / FC-004 / FC-005 / FC-006. Gated by
@@ -80,6 +76,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IConversationService conversations,
         IReplyDispatcher replyDispatcher,
         IPostReplyEmotionalProcessor postReply,
+        IReplyEvaluator replyEvaluator,
         ContextBuilder contextBuilder,
         KeywordExtractor keywords,
         IIntentExtractor intent,
@@ -93,10 +90,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         ITextClassificationService? mlClassifier = null,
         PersonaSummaryCache? personaCache = null,
         Em9Detector? em9Detector = null,
-        ICognitiveOutputGate? outputGate = null,
         IVibeBiasService? vibeBias = null,
         IConsciousSubstrateGist? consciousGist = null,
-        IRecentGateTripTracker? gateTripTracker = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         _state = state;
@@ -107,6 +102,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _conversations = conversations;
         _replyDispatcher = replyDispatcher ?? throw new ArgumentNullException(nameof(replyDispatcher));
         _postReply = postReply ?? throw new ArgumentNullException(nameof(postReply));
+        _replyEvaluator = replyEvaluator ?? throw new ArgumentNullException(nameof(replyEvaluator));
         _contextBuilder = contextBuilder;
         _keywords = keywords;
         _intent = intent;
@@ -119,10 +115,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _mlClassifier = mlClassifier;
         _personaCache = personaCache;
         _em9 = em9Detector;
-        _outputGate = outputGate;
         _vibeBias = vibeBias;
         _consciousGist = consciousGist;
-        _gateTripTracker = gateTripTracker;
         _epistemicRenderer = epistemicRenderer;
         _log = log;
     }
@@ -560,11 +554,12 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // echo onto the gate closes that class for every producer + every
         // regen path in one place.
 
-        // Theme J Phase J.5a (Apr 30, 2026) — universal output gate.
-        // See EvaluateAndRemediateReplyAsync. No-op when flag is off OR
+        // Theme J Phase J.5a — universal output gate. Extracted to
+        // IReplyEvaluator in §5.4e (May 18 2026). No-op when flag is off OR
         // gate isn't registered.
-        reply = await EvaluateAndRemediateReplyAsync(
-            reply, thread, snapshot, replyMessage, replyPrompt, replyTemperature, ct)
+        reply = await _replyEvaluator.EvaluateAndRemediateAsync(
+            reply, thread, snapshot, replyMessage,
+            new PromptPair(replyPrompt.System, replyPrompt.User), replyTemperature, ct)
             .ConfigureAwait(false);
 
         // Steps 3–5: delay + dispatch + state update + persist + desire reset.
@@ -915,7 +910,10 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     /// </summary>
     internal const string SafeAcknowledgement = GateFallbacks.SafeAcknowledgement;
 
-    internal async Task<string> EvaluateAndRemediateReplyAsync(
+    // Facade preserved for ConversationReplyPhaseGateTests — delegates to
+    // IReplyEvaluator where the body now lives (§5.4e). The tuple ↔
+    // PromptPair conversion keeps the test call sites unchanged.
+    internal Task<string> EvaluateAndRemediateReplyAsync(
         string reply,
         ConversationThread thread,
         ContextSnapshot snapshot,
@@ -923,160 +921,9 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         (string System, string User) replyPrompt,
         float replyTemperature,
         CancellationToken ct)
-    {
-        if (_outputGate is null || !_aniOptions.ConversationReplyOutputGateEnabled)
-            return reply;
-
-        var contactRecent = thread.Messages
-            .Where(m => m.Role == Roles.Mark)
-            .Select(m => m.Content)
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .TakeLast(8)
-            .ToList();
-        var priorAni = thread.Messages
-            .Where(m => m.Role == Roles.Ani && m != replyMessage)
-            .Select(m => m.Content)
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .TakeLast(8)
-            .ToList();
-
-        // Producer-side direct-address rewrite (May 6, 2026 stop-gap until
-        // LM-Kit coref model lands). Substitutes "he"/"him"/"his"/{ContactName}
-        // with second-person forms before the gate sees the artifact. The
-        // gate's DirectAddressInvariant is the safety net.
-        var addresseeName = snapshot.CharacterState.PrimaryContactName ?? Roles.Mark;
-        reply = DirectAddressRewriter.Rewrite(reply, addresseeName);
-
-        var artifact = new CognitiveArtifact
-        {
-            Content                 = reply,
-            ProducerKind            = CognitiveProducerKind.ConversationReply,
-            IntendedSink            = CognitiveOutputSink.Dispatch,
-            ContactName             = addresseeName,
-            GeneratedAt             = DateTimeOffset.Now,
-            ContactRecentMessages   = contactRecent,
-            PriorAniMessages        = priorAni,
-        };
-
-        OutputGateResult gateResult;
-        try
-        {
-            gateResult = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "J.5a gate evaluation threw — dispatching original reply uncovered.");
-            return reply;
-        }
-
-        switch (gateResult.Verdict)
-        {
-            case OutputGateVerdict.Pass:
-                // Pass-path is signal-light; we deliberately do NOT record
-                // every Pass to keep the buffer dense with the events that
-                // actually inform the §4.8 tension-state slice (Remediate
-                // success + fall-through). Most cycles pass cleanly; the
-                // tension-state slice is about gap-sensing moments.
-                return reply;
-
-            case OutputGateVerdict.Remediate:
-                _log.LogWarning(
-                    "J.5a gate Remediate on reply [{Fired}]: {Hint}",
-                    string.Join(",", gateResult.FiredInvariants), gateResult.RemediationHint);
-
-                var remediationUser =
-                    $"Your previous reply tripped a gate check ({string.Join(", ", gateResult.FiredInvariants)}). " +
-                    $"Hint: {gateResult.RemediationHint}\n\n" +
-                    $"Rewrite your reply to fix this. Same tone, same length, just clear of the issue. " +
-                    $"Do NOT acknowledge or reference the gate or hint in the reply itself.\n\n" +
-                    $"Original prompt that produced the bad reply:\n{replyPrompt.User}";
-
-                try
-                {
-                    var regenerated = await _ollama.ChatAsync(
-                        replyPrompt.System, snapshot.RecentHistory, remediationUser, ct, replyTemperature)
-                        .ConfigureAwait(false);
-                    regenerated = CleanOutreachMessage(regenerated);
-                    if (string.IsNullOrWhiteSpace(regenerated))
-                    {
-                        _log.LogWarning("J.5a gate remediation produced empty reply — keeping original.");
-                        return reply;
-                    }
-
-                    // J.5a re-evaluation (May 3, 2026) — regen output MUST pass the same
-                    // gate stack. May 3 10:55 Failure C: J.5a remediation regen returned
-                    // a byte-identical copy of the prior assistant turn from chat history;
-                    // both sends went through Twilio ~57 seconds apart because the regen
-                    // never re-ran the self-echo / coherence checks the original ran.
-                    // SelfEchoInvariant (universal, May 3) plus this re-eval together
-                    // close that class.
-                    var regenArtifact = new CognitiveArtifact
-                    {
-                        Content                 = regenerated,
-                        ProducerKind            = artifact.ProducerKind,
-                        IntendedSink            = artifact.IntendedSink,
-                        ContactName             = artifact.ContactName,
-                        GeneratedAt             = DateTimeOffset.Now,
-                        ContactRecentMessages   = artifact.ContactRecentMessages,
-                        PriorAniMessages        = artifact.PriorAniMessages,
-                        SystemPromptText        = artifact.SystemPromptText,
-                        WriterInnerThought      = artifact.WriterInnerThought,
-                    };
-
-                    OutputGateResult regenResult;
-                    try
-                    {
-                        regenResult = await _outputGate.EvaluateAsync(regenArtifact, ct).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogWarning(ex,
-                            "J.5a gate re-evaluation threw on regen — falling back to safe acknowledgement (regen would have dispatched uncovered).");
-                        return SafeAcknowledgement;
-                    }
-
-                    if (regenResult.Verdict == OutputGateVerdict.Pass)
-                    {
-                        _log.LogInformation("J.5a gate remediation succeeded — regenerated reply passes gate.");
-                        _gateTripTracker?.Record(new GateTripEvent(
-                            Timestamp:        DateTimeOffset.UtcNow,
-                            ProducerKind:     "ConversationReply",
-                            FiredInvariants:  string.Join(",", gateResult.FiredInvariants),
-                            Outcome:          GateTripOutcome.RemediatedOk));
-                        return regenerated;
-                    }
-
-                    _log.LogWarning(
-                        "J.5a gate remediation FAILED re-eval [{Fired}] — verdict={Verdict}, hint={Hint}; falling back to safe acknowledgement.",
-                        string.Join(",", regenResult.FiredInvariants), regenResult.Verdict, regenResult.RemediationHint);
-                    _gateTripTracker?.Record(new GateTripEvent(
-                        Timestamp:        DateTimeOffset.UtcNow,
-                        ProducerKind:     "ConversationReply",
-                        FiredInvariants:  string.Join(",", regenResult.FiredInvariants),
-                        Outcome:          GateTripOutcome.FellThroughToSafeAck));
-                    return SafeAcknowledgement;
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "J.5a gate remediation regeneration failed — keeping original reply.");
-                    return reply;
-                }
-
-            case OutputGateVerdict.Fail:
-                _log.LogWarning(
-                    "J.5a gate Fail on reply [{Fired}]: {Hint} — dropping reply, using safe acknowledgement.",
-                    string.Join(",", gateResult.FiredInvariants), gateResult.RemediationHint);
-                _gateTripTracker?.Record(new GateTripEvent(
-                    Timestamp:        DateTimeOffset.UtcNow,
-                    ProducerKind:     "ConversationReply",
-                    FiredInvariants:  string.Join(",", gateResult.FiredInvariants),
-                    Outcome:          GateTripOutcome.FellThroughToSafeAck));
-                return SafeAcknowledgement;
-
-            default:
-                return reply;
-        }
-    }
+        => _replyEvaluator.EvaluateAndRemediateAsync(
+            reply, thread, snapshot, replyMessage,
+            new PromptPair(replyPrompt.System, replyPrompt.User), replyTemperature, ct);
 
     private static string Truncate(string text, int maxLength)
         => ConversationFeatureDetector.Truncate(text, maxLength);
