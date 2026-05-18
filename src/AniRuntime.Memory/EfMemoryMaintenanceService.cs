@@ -24,20 +24,20 @@ namespace AniRuntime.Memory;
 public sealed class EfMemoryMaintenanceService : IMemoryMaintenance
 {
     private readonly IDbContextFactory<AniDbContext> _dbFactory;
-    private readonly SqliteMemoryService _legacy;
     private readonly IMemoryAuditWriter _audit;
+    private readonly IMemoryLinkRebuilder _linkRebuilder;
     private readonly ILogger<EfMemoryMaintenanceService> _log;
 
     public EfMemoryMaintenanceService(
         IDbContextFactory<AniDbContext> dbFactory,
-        SqliteMemoryService legacy,
         IMemoryAuditWriter audit,
+        IMemoryLinkRebuilder linkRebuilder,
         ILogger<EfMemoryMaintenanceService> log)
     {
-        _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
-        _legacy    = legacy    ?? throw new ArgumentNullException(nameof(legacy));
-        _audit     = audit     ?? throw new ArgumentNullException(nameof(audit));
-        _log       = log       ?? throw new ArgumentNullException(nameof(log));
+        _dbFactory     = dbFactory     ?? throw new ArgumentNullException(nameof(dbFactory));
+        _audit         = audit         ?? throw new ArgumentNullException(nameof(audit));
+        _linkRebuilder = linkRebuilder ?? throw new ArgumentNullException(nameof(linkRebuilder));
+        _log           = log           ?? throw new ArgumentNullException(nameof(log));
     }
 
     public async Task ResolveOpenLoopAsync(Guid id, CancellationToken ct = default)
@@ -88,14 +88,13 @@ public sealed class EfMemoryMaintenanceService : IMemoryMaintenance
     }
 
     /// <summary>
-    /// Feature 37: Retroactive memory link building + duplicate merging.
-    /// O(N²) embedding scan + LLM-mediated merge for high-similarity
-    /// clusters. Pending extraction into a dedicated
-    /// <c>MemoryLinkRebuilder</c> domain service so the port doesn't
-    /// drag the link/dedup logic into the maintenance surface.
+    /// Feature 37: retroactive memory link building + duplicate detection.
+    /// Phase 5 SOLID port (2026-05-18): delegates to the dedicated
+    /// <see cref="IMemoryLinkRebuilder"/> domain service so the heavy
+    /// O(N²) embedding scan doesn't live on the maintenance surface.
     /// </summary>
     public Task<(int MergeCount, int LinkCount)> RebuildMemoryLinksAsync(CancellationToken ct = default)
-        => _legacy.RebuildMemoryLinksAsync(ct);
+        => _linkRebuilder.RebuildAsync(ct);
 
     public async Task<int> GetLinkCountAsync(CancellationToken ct = default)
     {

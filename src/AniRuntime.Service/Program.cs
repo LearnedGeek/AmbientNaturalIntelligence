@@ -120,6 +120,10 @@ try
         // merge step; resolved as the same singleton instance used elsewhere.
         builder.Services.AddSingleton<IMemoryMergePolicy, EfMemoryMergePolicy>();
 
+        // Feature 37 retroactive link-builder. Used by
+        // EfMemoryMaintenanceService.RebuildMemoryLinksAsync.
+        builder.Services.AddSingleton<IMemoryLinkRebuilder, EfMemoryLinkRebuilder>();
+
         // Register each focused service as the resolution for its ISP interface.
         // The composite IMemoryService resolves to a façade that injects all five.
         builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();
