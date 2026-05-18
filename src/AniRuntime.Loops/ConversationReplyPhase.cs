@@ -59,9 +59,12 @@ public class ConversationReplyPhase
     private readonly ILogger<ConversationReplyPhase> _log;
 
     // Feature 18: Reactive withdrawal — transient emotional state after hurt detection.
-    // Suppresses outreach and injects quieter tone during the withdrawal window.
-    private DateTimeOffset? _withdrawalExpiresAt;
-    internal bool IsWithdrawn => _withdrawalExpiresAt.HasValue && DateTimeOffset.UtcNow < _withdrawalExpiresAt.Value;
+    // State extracted to IWithdrawalStateTracker (Singleton) in §5.4 SOLID
+    // refactor so the phase no longer holds instance state. The facade
+    // members below preserve the public surface (CognitiveCycleProcessor
+    // reads IsWithdrawn at outreach time).
+    private readonly IWithdrawalStateTracker _withdrawal;
+    internal bool IsWithdrawn => _withdrawal.IsWithdrawn;
 
     public ConversationReplyPhase(
         IStateStore state,
@@ -80,6 +83,7 @@ public class ConversationReplyPhase
         IConversationGateState gateState,
         ContextCompressor compressor,
         ClaimVerificationPhase claimVerifier,
+        IWithdrawalStateTracker withdrawal,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPhase> log,
@@ -108,6 +112,7 @@ public class ConversationReplyPhase
         _gateState = gateState;
         _compressor = compressor;
         _claimVerifier = claimVerifier;
+        _withdrawal = withdrawal ?? throw new ArgumentNullException(nameof(withdrawal));
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
         _mlClassifier = mlClassifier;
@@ -123,8 +128,9 @@ public class ConversationReplyPhase
 
     /// <summary>
     /// Sets the withdrawal expiry. Called by the orchestrator or internally.
+    /// Façade over <see cref="IWithdrawalStateTracker"/>.
     /// </summary>
-    internal void SetWithdrawalExpiry(DateTimeOffset? expiresAt) => _withdrawalExpiresAt = expiresAt;
+    internal void SetWithdrawalExpiry(DateTimeOffset? expiresAt) => _withdrawal.SetExpiry(expiresAt);
 
     /// <summary>
     /// Conversation mode: contact texted and their message is the last in the thread.
@@ -663,8 +669,9 @@ public class ConversationReplyPhase
                 warmth: -0.12f, energy: -0.10f, worry: -0.15f, playfulness: -0.10f,
                 ImpactCategory.Conversation, ct).ConfigureAwait(false);
 
-            _withdrawalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
-            _log.LogInformation("Withdrawal active until {Expires}", _withdrawalExpiresAt.Value.ToString("HH:mm"));
+            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(_aniOptions.WithdrawalDurationMinutes);
+            _withdrawal.SetExpiry(expiresAt);
+            _log.LogInformation("Withdrawal active until {Expires}", expiresAt.ToString("HH:mm"));
 
             await _persist.SaveAsync(new MemoryRecord
             {

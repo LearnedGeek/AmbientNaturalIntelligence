@@ -429,6 +429,10 @@ try
     builder.Services.AddSingleton<PerceptionPhase>();
     builder.Services.AddSingleton<InnerThoughtPhase>();
     builder.Services.AddSingleton<ClaimVerificationPhase>();
+    // §5.4 — extracted from ConversationReplyPhase instance state. Singleton
+    // because the withdrawal window is process-wide and consumed by both
+    // the reply phase and the cognitive cycle's outreach gate.
+    builder.Services.AddSingleton<IWithdrawalStateTracker, WithdrawalStateTracker>();
     builder.Services.AddSingleton<ConversationReplyPhase>();
     // Outreach decomposition (SOLID §5.3) — phase is a thin router.
     // ReactiveShareService + SilenceChoiceRecorder hold per-day / cooldown

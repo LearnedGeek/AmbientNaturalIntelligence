@@ -72,7 +72,7 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
             _mockChannels.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            _mockIntent.Object, gateState, compressor, claimVerifier, options, DefaultOllamaOptions,
+            _mockIntent.Object, gateState, compressor, claimVerifier, new WithdrawalStateTracker(), options, DefaultOllamaOptions,
             NullLogger<ConversationReplyPhase>.Instance,
             outputGate: gate);
     }
