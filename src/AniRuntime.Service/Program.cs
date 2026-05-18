@@ -124,6 +124,12 @@ try
         // EfMemoryMaintenanceService.RebuildMemoryLinksAsync.
         builder.Services.AddSingleton<IMemoryLinkRebuilder, EfMemoryLinkRebuilder>();
 
+        // Composite semantic-search pipeline (Park et al. cosine+importance+recency,
+        // MMR rerank, Layer 1 protected slots, Theme G own-output ceiling, Feature 31
+        // link-enhanced retrieval, tier-aware recency-off for Facts). Used by
+        // EfMemorySearchService for all five composite-scoring search methods.
+        builder.Services.AddSingleton<ISemanticSearchComposer, EfSemanticSearchComposer>();
+
         // Register each focused service as the resolution for its ISP interface.
         // The composite IMemoryService resolves to a façade that injects all five.
         builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();
