@@ -1,9 +1,7 @@
-using System.Collections.Concurrent;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
-using AniRuntime.Core.Utilities;
-using AniRuntime.LLM;
+using AniRuntime.Voice.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -11,55 +9,51 @@ namespace AniRuntime.Voice;
 
 /// <summary>
 /// Orchestrates a real-time voice conversation over a Twilio phone call.
-/// Each turn: STT (Whisper) → context build → LLM reply → TTS (ElevenLabs) → TwiML response.
-/// Bypasses the cognitive cycle for speed — uses services directly.
+/// Each turn: STT (Whisper) → context build → LLM reply → TTS (ElevenLabs)
+/// → TwiML response. Bypasses the cognitive cycle for speed.
+///
+/// <para>
+/// Orchestrator SOLID refactor §5.2 (2026-05-18) — previously held 13 ctor
+/// deps and mixed five concerns inline (session map, context build, LLM
+/// chat, TTS+caching, TwiML formatting). The five concerns now live in
+/// <see cref="IVoiceSessionStore"/>, <see cref="IVoiceContextBuilder"/>,
+/// <see cref="IVoiceReplyGenerator"/>, <see cref="IVoiceAudioSynthesizer"/>,
+/// and <see cref="IVoiceTwimlBuilder"/>. This class is now an orchestrator
+/// — it chains them through StartCall / ProcessTurn / EndCall.
+/// </para>
 /// </summary>
 public class VoiceConversationService
 {
-    private readonly TwilioVoiceHandler _voiceHandler;
-    private readonly ITextToSpeechService _tts;
-    private readonly MediaCacheService _cache;
-    private readonly IStateStore _state;
-    private readonly IMemorySearch _search;
+    private readonly IVoiceSessionStore _sessions;
+    private readonly IVoiceContextBuilder _contextBuilder;
+    private readonly IVoiceReplyGenerator _replyGenerator;
+    private readonly IVoiceAudioSynthesizer _audio;
+    private readonly IVoiceTwimlBuilder _twiml;
     private readonly IConversationService _conversations;
-    private readonly IOllamaClient _ollama;
-    private readonly OllamaOptions _ollamaOptions;
+    private readonly TwilioVoiceHandler _voiceHandler;
     private readonly VoiceOptions _voiceOptions;
-    private readonly AniOptions _aniOptions;
-    private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly ILogger<VoiceConversationService> _log;
 
-    private readonly ISessionNotifier _notifier;
-    private readonly ConcurrentDictionary<string, VoiceCallSession> _sessions = new();
-
     public VoiceConversationService(
-        TwilioVoiceHandler voiceHandler,
-        ITextToSpeechService tts,
-        MediaCacheService cache,
-        IStateStore state,
-        IMemorySearch search,
+        IVoiceSessionStore sessions,
+        IVoiceContextBuilder contextBuilder,
+        IVoiceReplyGenerator replyGenerator,
+        IVoiceAudioSynthesizer audio,
+        IVoiceTwimlBuilder twiml,
         IConversationService conversations,
-        IOllamaClient ollama,
-        IOptions<OllamaOptions> ollamaOptions,
+        TwilioVoiceHandler voiceHandler,
         IOptions<VoiceOptions> voiceOptions,
-        ISessionNotifier notifier,
-        ILogger<VoiceConversationService> log,
-        IOptions<AniOptions>? aniOptions        = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        ILogger<VoiceConversationService> log)
     {
-        _voiceHandler      = voiceHandler;
-        _tts               = tts;
-        _cache             = cache;
-        _state             = state;
-        _search            = search;
-        _conversations     = conversations;
-        _ollama            = ollama;
-        _ollamaOptions     = ollamaOptions.Value;
-        _voiceOptions      = voiceOptions.Value;
-        _aniOptions        = aniOptions?.Value ?? new AniOptions();
-        _epistemicRenderer = epistemicRenderer;
-        _notifier          = notifier;
-        _log               = log;
+        _sessions       = sessions       ?? throw new ArgumentNullException(nameof(sessions));
+        _contextBuilder = contextBuilder ?? throw new ArgumentNullException(nameof(contextBuilder));
+        _replyGenerator = replyGenerator ?? throw new ArgumentNullException(nameof(replyGenerator));
+        _audio          = audio          ?? throw new ArgumentNullException(nameof(audio));
+        _twiml          = twiml          ?? throw new ArgumentNullException(nameof(twiml));
+        _conversations  = conversations  ?? throw new ArgumentNullException(nameof(conversations));
+        _voiceHandler   = voiceHandler   ?? throw new ArgumentNullException(nameof(voiceHandler));
+        _voiceOptions   = voiceOptions.Value;
+        _log            = log            ?? throw new ArgumentNullException(nameof(log));
     }
 
     /// <summary>
@@ -68,7 +62,6 @@ public class VoiceConversationService
     /// </summary>
     public async Task<string> StartCallAsync(string callSid, CancellationToken ct = default)
     {
-        // Create or reuse a conversation thread
         var thread = await _conversations.GetActiveThreadAsync(ct).ConfigureAwait(false)
                      ?? new ConversationThread
                      {
@@ -86,50 +79,27 @@ public class VoiceConversationService
             ThreadId  = thread.Id,
             StartedAt = DateTimeOffset.UtcNow,
         };
-        _sessions[callSid] = session;
-        _notifier.OnCallStarted();
+        _sessions.Add(callSid, session);
 
         _log.LogInformation("Voice call started: {CallSid}, thread {ThreadId} — cognitive cycle paused",
             callSid, thread.Id);
 
-        // Warm the 8B conversation model concurrently with greeting TTS —
-        // cognitive cycle may have evicted it from VRAM since startup pre-warm
-        var warmTask = _ollama.WarmModelAsync(_ollamaOptions.ChatModel, ct);
+        // Warm the conversation model concurrently with greeting TTS — the
+        // cognitive cycle may have evicted it since startup pre-warm.
+        var warmTask = _replyGenerator.WarmAsync(ct);
 
-        // Synthesize greeting
-        var greeting = _voiceOptions.VoiceGreeting;
         string greetingTwiml;
-
         try
         {
-            var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-            var audioStream = await _tts.SynthesizeAsync(greeting, emotionalState, ct).ConfigureAwait(false);
-            using var ms = new MemoryStream();
-            await audioStream.CopyToAsync(ms, ct).ConfigureAwait(false);
-            var key = _cache.Store(ms.ToArray(), "audio/mpeg");
-            var audioUrl = $"{_voiceOptions.PublicBaseUrl.TrimEnd('/')}/media/{key}";
-
-            greetingTwiml = $"""
-                <Response>
-                    <Play>{audioUrl}</Play>
-                    <Pause length="1"/>
-                    <Record maxLength="{_voiceOptions.VoiceRecordMaxSeconds}" action="/voice/turn?callSid={callSid}" playBeep="false" timeout="{_voiceOptions.VoiceRecordTimeoutSeconds}" />
-                </Response>
-                """;
+            var audioUrl = await _audio.SynthesizeAsync(_voiceOptions.VoiceGreeting, ct).ConfigureAwait(false);
+            greetingTwiml = _twiml.BuildPlayAndRecord(callSid, audioUrl);
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Voice greeting TTS failed — using Twilio Say");
-            greetingTwiml = $"""
-                <Response>
-                    <Say voice="alice">{greeting}</Say>
-                    <Pause length="1"/>
-                    <Record maxLength="{_voiceOptions.VoiceRecordMaxSeconds}" action="/voice/turn?callSid={callSid}" playBeep="false" timeout="{_voiceOptions.VoiceRecordTimeoutSeconds}" />
-                </Response>
-                """;
+            greetingTwiml = _twiml.BuildSayAndRecord(callSid, _voiceOptions.VoiceGreeting);
         }
 
-        // Ensure model is warm before first turn — don't let warm failure block the call
         try { await warmTask.ConfigureAwait(false); }
         catch (Exception ex) { _log.LogWarning(ex, "Voice: model warm failed — first turn may be slow"); }
 
@@ -143,11 +113,10 @@ public class VoiceConversationService
     public async Task<string> ProcessTurnAsync(
         string callSid, string recordingUrl, CancellationToken ct = default)
     {
-        if (!_sessions.TryGetValue(callSid, out var session))
+        if (!_sessions.TryGet(callSid, out var session) || session is null)
         {
             _log.LogWarning("Voice turn for unknown session {CallSid} — starting fresh", callSid);
-            var twiml = await StartCallAsync(callSid, ct).ConfigureAwait(false);
-            return twiml;
+            return await StartCallAsync(callSid, ct).ConfigureAwait(false);
         }
 
         // Standalone timeout — not linked to the caller's token. Voice turns must
@@ -158,7 +127,6 @@ public class VoiceConversationService
 
         try
         {
-            // Step 1: Transcribe
             var text = await _voiceHandler.TranscribeInboundAsync(recordingUrl, turnCts.Token)
                 .ConfigureAwait(false);
 
@@ -166,69 +134,58 @@ public class VoiceConversationService
             {
                 _log.LogInformation("Voice turn: transcription too short ({Length} chars) — prompting again",
                     text?.Trim().Length ?? 0);
-                return BuildRecordTwiml(callSid, "I didn't catch that, say that again?");
+                return _twiml.BuildSayAndRecord(callSid, "I didn't catch that, say that again?");
             }
 
             _log.LogInformation("Voice turn {Turn}: \"{Text}\"", session.TurnCount + 1, text);
 
-            // Step 2: Buffer Mark's message in-memory (no Ollama calls — saves at call end)
-            var markMsg = new ConversationMessage
+            session.PendingMessages.Enqueue(new ConversationMessage
             {
                 Role = Roles.Mark, Content = text, SentAt = DateTimeOffset.UtcNow,
-            };
-            session.PendingMessages.Enqueue(markMsg);
+            });
 
-            // Step 3: Build context (SQLite only, no Ollama)
-            var snapshot = await BuildVoiceContextAsync(text, session, turnCts.Token)
-                .ConfigureAwait(false);
+            var snapshot = await _contextBuilder.BuildAsync(text, session, turnCts.Token).ConfigureAwait(false);
 
-            // Build a lightweight thread from buffered messages for LLM context
-            var thread = await _conversations.GetThreadAsync(session.ThreadId, turnCts.Token)
-                .ConfigureAwait(false);
-            // Merge persisted messages with buffered messages from this call
-            var allMessages = new List<ConversationMessage>(thread?.Messages ?? new List<ConversationMessage>());
+            var thread = await _conversations.GetThreadAsync(session.ThreadId, turnCts.Token).ConfigureAwait(false)
+                         ?? new ConversationThread();
+            var allMessages = new List<ConversationMessage>(thread.Messages);
             allMessages.AddRange(session.PendingMessages.ToArray());
 
-            // Step 4: Generate reply via LLM (8B conversation model — trained for direct dialogue)
-            var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
-            var prompt = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread ?? new ConversationThread(), rendererForPrompt);
-            var reply = await _ollama.ChatAsync(
-                prompt.System, allMessages.TakeLast(10).Select(m =>
-                    new ChatMessage(m.Role == Roles.Mark ? "user" : "assistant", m.Content)),
-                prompt.User, turnCts.Token).ConfigureAwait(false);
+            var reply = await _replyGenerator.GenerateAsync(snapshot, thread, allMessages, turnCts.Token)
+                .ConfigureAwait(false);
 
-            reply = MessageCleaner.Clean(reply) ?? string.Empty;
-            reply = TruncateForVoice(reply);
-            if (string.IsNullOrWhiteSpace(reply))
-            {
-                _log.LogWarning("Voice: LLM returned empty reply");
-                return BuildRecordTwiml(callSid, "sorry, what was that?");
-            }
+            if (reply is null)
+                return _twiml.BuildSayAndRecord(callSid, "sorry, what was that?");
 
             _log.LogInformation("Voice reply: {Reply}", reply);
 
-            // Step 5: Buffer Ani's reply (saved at call end)
             session.PendingMessages.Enqueue(new ConversationMessage
             {
                 Role = Roles.Ani, Content = reply, SentAt = DateTimeOffset.UtcNow,
             });
-
-            // Step 6: Synthesize and return TwiML
             session.TurnCount++;
             session.LastTurnAt = DateTimeOffset.UtcNow;
 
-            return await BuildPlayAndRecordTwimlAsync(callSid, reply, turnCts.Token)
-                .ConfigureAwait(false);
+            try
+            {
+                var audioUrl = await _audio.SynthesizeAsync(reply, turnCts.Token).ConfigureAwait(false);
+                return _twiml.BuildPlayAndRecord(callSid, audioUrl);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Voice TTS failed — falling back to Twilio Say");
+                return _twiml.BuildSayAndRecord(callSid, reply);
+            }
         }
         catch (OperationCanceledException)
         {
             _log.LogWarning("Voice turn timed out ({Ms}ms) — sending filler", _voiceOptions.VoiceTurnTimeoutMs);
-            return BuildRecordTwiml(callSid, "Sorry, I missed that. Can you say it again?");
+            return _twiml.BuildSayAndRecord(callSid, "Sorry, I missed that. Can you say it again?");
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Voice turn failed");
-            return BuildRecordTwiml(callSid, "Sorry, something got jumbled. Say that again?");
+            return _twiml.BuildSayAndRecord(callSid, "Sorry, something got jumbled. Say that again?");
         }
     }
 
@@ -237,138 +194,33 @@ public class VoiceConversationService
     /// </summary>
     public async Task EndCallAsync(string callSid, CancellationToken ct = default)
     {
-        if (_sessions.TryRemove(callSid, out var session))
+        var session = _sessions.Remove(callSid);
+        if (session is null)
+            return;
+
+        // Drain and batch-save all buffered messages before resuming the cognitive cycle —
+        // saves trigger embedding via Ollama, must complete before cycle competes for it.
+        var pending = session.PendingMessages.ToArray();
+        if (pending.Length > 0)
         {
-            // Drain and batch-save all buffered messages before resuming cognitive cycle —
-            // saves trigger embedding via Ollama, must complete before cycle competes for it
-            var pending = session.PendingMessages.ToArray();
-            if (pending.Length > 0)
+            _log.LogInformation("Voice: saving {Count} buffered messages to thread {ThreadId}",
+                pending.Length, session.ThreadId);
+            foreach (var msg in pending)
             {
-                _log.LogInformation("Voice: saving {Count} buffered messages to thread {ThreadId}",
-                    pending.Length, session.ThreadId);
-                foreach (var msg in pending)
+                try
                 {
-                    try
-                    {
-                        await _conversations.AddMessageAsync(session.ThreadId, msg, ct)
-                            .ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogWarning(ex, "Voice: failed to save buffered message");
-                    }
+                    await _conversations.AddMessageAsync(session.ThreadId, msg, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Voice: failed to save buffered message");
                 }
             }
-
-            // Resume cognitive cycle only after saves are done
-            if (_sessions.IsEmpty)
-                _notifier.OnCallEnded();
-
-            await _conversations.CloseThreadAsync(session.ThreadId, ct).ConfigureAwait(false);
-            _log.LogInformation("Voice call ended: {CallSid}, {Turns} turns, duration {Duration} — cognitive cycle resumed",
-                callSid, session.TurnCount,
-                (DateTimeOffset.UtcNow - session.StartedAt).ToString(@"m\:ss"));
         }
+
+        await _conversations.CloseThreadAsync(session.ThreadId, ct).ConfigureAwait(false);
+        _log.LogInformation("Voice call ended: {CallSid}, {Turns} turns, duration {Duration} — cognitive cycle resumed",
+            callSid, session.TurnCount,
+            (DateTimeOffset.UtcNow - session.StartedAt).ToString(@"m\:ss"));
     }
-
-    /// <summary>
-    /// Build a lightweight ContextSnapshot for voice — character state, emotional state,
-    /// anchored memories only. Skips semantic search (requires Ollama embedding, ~4s)
-    /// and perceptions/desire/open loops. Keeps Ollama free for the reply LLM call.
-    /// </summary>
-    private async Task<ContextSnapshot> BuildVoiceContextAsync(
-        string userMessage, VoiceCallSession session, CancellationToken ct)
-    {
-        // All three are SQLite reads — no Ollama calls, fast
-        var characterTask = _state.GetCharacterStateAsync(ct);
-        var emotionalTask = _state.GetEmotionalStateAsync(ct);
-        var anchoredTask = _search.GetAnchoredMemoriesAsync(ct);
-        await Task.WhenAll(characterTask, emotionalTask, anchoredTask).ConfigureAwait(false);
-
-        return new ContextSnapshot
-        {
-            CharacterState   = characterTask.Result,
-            EmotionalState   = emotionalTask.Result,
-            RelevantMemory   = new List<MemoryRecord>(),
-            AnchoredMemories = anchoredTask.Result.ToList(),
-            RecentMemory     = new List<MemoryRecord>(),
-            Perceptions      = new List<PerceptionEvent>(),
-            OpenLoops        = new List<OpenLoop>(),
-            RecentHistory    = new List<ChatMessage>(),
-            BuiltAt          = DateTimeOffset.UtcNow,
-        };
-    }
-
-    /// <summary>
-    /// Synthesize reply audio and return TwiML with Play + Record for next turn.
-    /// Falls back to Twilio Say if TTS fails.
-    /// </summary>
-    private async Task<string> BuildPlayAndRecordTwimlAsync(
-        string callSid, string reply, CancellationToken ct)
-    {
-        try
-        {
-            var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-            var audioStream = await _tts.SynthesizeAsync(reply, emotionalState, ct)
-                .ConfigureAwait(false);
-            using var ms = new MemoryStream();
-            await audioStream.CopyToAsync(ms, ct).ConfigureAwait(false);
-            var key = _cache.Store(ms.ToArray(), "audio/mpeg");
-            var audioUrl = $"{_voiceOptions.PublicBaseUrl.TrimEnd('/')}/media/{key}";
-
-            return $"""
-                <Response>
-                    <Play>{audioUrl}</Play>
-                    <Pause length="1"/>
-                    <Record maxLength="{_voiceOptions.VoiceRecordMaxSeconds}" action="/voice/turn?callSid={callSid}" playBeep="false" timeout="{_voiceOptions.VoiceRecordTimeoutSeconds}" />
-                </Response>
-                """;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Voice TTS failed — falling back to Twilio Say");
-            return BuildRecordTwiml(callSid, reply);
-        }
-    }
-
-    /// <summary>
-    /// Build TwiML that says something with Twilio's built-in voice and records the next turn.
-    /// Used for fallback when ElevenLabs TTS fails.
-    /// </summary>
-    private string BuildRecordTwiml(string callSid, string sayText) =>
-        $"""
-        <Response>
-            <Say voice="alice">{EscapeXml(sayText)}</Say>
-            <Pause length="1"/>
-            <Record maxLength="{_voiceOptions.VoiceRecordMaxSeconds}" action="/voice/turn?callSid={callSid}" playBeep="false" timeout="{_voiceOptions.VoiceRecordTimeoutSeconds}" />
-        </Response>
-        """;
-
-    /// <summary>
-    /// Truncate LLM reply to ~2 sentences for voice — the model doesn't reliably
-    /// respect word count limits. Keeps the first two sentence-ending punctuation marks.
-    /// Prevents long replies from blowing the TTS synthesis budget.
-    /// </summary>
-    private static string TruncateForVoice(string reply)
-    {
-        const int maxSentences = 2;
-        var count = 0;
-        for (var i = 0; i < reply.Length; i++)
-        {
-            if (reply[i] is '.' or '!' or '?')
-            {
-                // Skip ellipses (...)
-                if (reply[i] == '.' && i + 1 < reply.Length && reply[i + 1] == '.')
-                    continue;
-                count++;
-                if (count >= maxSentences)
-                    return reply[..(i + 1)].Trim();
-            }
-        }
-        return reply;
-    }
-
-    private static string EscapeXml(string text) =>
-        text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
-            .Replace("\"", "&quot;").Replace("'", "&apos;");
 }

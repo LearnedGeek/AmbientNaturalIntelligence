@@ -287,7 +287,21 @@ try
         builder.Services.AddHttpClient<ISpeechToTextService, WhisperSpeechToTextService>();
         builder.Services.AddSingleton<TwilioVoiceHandler>();
         builder.Services.AddSingleton<VoiceMediaEnrichmentService>();
-        builder.Services.AddSingleton<VoiceConversationService>();
+
+        // Voice orchestrator decomposition (SOLID §5.2) — session map is the
+        // only stateful piece, so it's the only Singleton; everything else
+        // is stateless and Transient so consumers stay free of captives.
+        builder.Services.AddSingleton<AniRuntime.Voice.Abstractions.IVoiceSessionStore,
+            AniRuntime.Voice.Internal.VoiceSessionStore>();
+        builder.Services.AddTransient<AniRuntime.Voice.Abstractions.IVoiceContextBuilder,
+            AniRuntime.Voice.Internal.VoiceContextBuilder>();
+        builder.Services.AddTransient<AniRuntime.Voice.Abstractions.IVoiceReplyGenerator,
+            AniRuntime.Voice.Internal.VoiceReplyGenerator>();
+        builder.Services.AddTransient<AniRuntime.Voice.Abstractions.IVoiceAudioSynthesizer,
+            AniRuntime.Voice.Internal.VoiceAudioSynthesizer>();
+        builder.Services.AddTransient<AniRuntime.Voice.Abstractions.IVoiceTwimlBuilder,
+            AniRuntime.Voice.Internal.VoiceTwimlBuilder>();
+        builder.Services.AddTransient<VoiceConversationService>();
 
         // Streaming voice (MAUI app WebSocket — Phase 5)
         var streamingEnabled = config.GetValue<bool>("Voice:StreamingEnabled");
