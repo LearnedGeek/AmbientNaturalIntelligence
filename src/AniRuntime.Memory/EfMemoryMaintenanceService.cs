@@ -1,5 +1,6 @@
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Memory.Entities;
 using AniRuntime.Memory.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -24,15 +25,18 @@ public sealed class EfMemoryMaintenanceService : IMemoryMaintenance
 {
     private readonly IDbContextFactory<AniDbContext> _dbFactory;
     private readonly SqliteMemoryService _legacy;
+    private readonly IMemoryAuditWriter _audit;
     private readonly ILogger<EfMemoryMaintenanceService> _log;
 
     public EfMemoryMaintenanceService(
         IDbContextFactory<AniDbContext> dbFactory,
         SqliteMemoryService legacy,
+        IMemoryAuditWriter audit,
         ILogger<EfMemoryMaintenanceService> log)
     {
         _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
         _legacy    = legacy    ?? throw new ArgumentNullException(nameof(legacy));
+        _audit     = audit     ?? throw new ArgumentNullException(nameof(audit));
         _log       = log       ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -134,12 +138,75 @@ public sealed class EfMemoryMaintenanceService : IMemoryMaintenance
     }
 
     /// <summary>
-    /// Re-INSERT a deleted memory from its audit-log entry. Currently
-    /// delegated to <see cref="SqliteMemoryService"/> because the
-    /// operation needs to also write a new audit-log row reflecting the
-    /// restore. Pending extraction of the audit-write helper into a
-    /// dedicated service so the EF port doesn't reimplement it inline.
+    /// Re-INSERT a soft-deleted memory from its audit-log entry. The
+    /// captured pre-delete content/type/importance becomes the restored
+    /// memory's body; a new audit-log row records the restore so the
+    /// roll-forward is itself audited.
+    ///
+    /// Returns false (with a warning logged) if the named audit entry
+    /// either doesn't exist or isn't a delete-action entry (only deletes
+    /// carry a usable contentBefore snapshot).
+    ///
+    /// Phase 5 SOLID port (2026-05-18): now uses <see cref="IMemoryAuditWriter"/>
+    /// for the restore-side audit write instead of delegating to the legacy.
     /// </summary>
-    public Task<bool> RestoreFromAuditAsync(long auditId, CancellationToken ct = default)
-        => _legacy.RestoreFromAuditAsync(auditId, ct);
+    public async Task<bool> RestoreFromAuditAsync(long auditId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var auditRepo = new MemoryAuditRepository(db);
+
+        var entry = await auditRepo.GetByIdAsync(auditId, ct).ConfigureAwait(false);
+        if (entry is null)
+        {
+            _log.LogWarning("Cannot restore audit entry {Id}: not found.", auditId);
+            return false;
+        }
+
+        if (entry.Action != "delete" || entry.ContentBefore is null)
+        {
+            _log.LogWarning("Cannot restore audit entry {Id}: action={Action}, has content={HasContent}",
+                auditId, entry.Action, entry.ContentBefore is not null);
+            return false;
+        }
+
+        // Re-insert the deleted memory. INSERT OR IGNORE semantics —
+        // if a row with this id already exists (e.g. someone manually
+        // recreated it), the restore is a no-op and we return false.
+        var memoryId = entry.MemoryId;
+        var exists = await db.Memories.AnyAsync(m => m.Id == memoryId, ct).ConfigureAwait(false);
+        if (exists)
+        {
+            _log.LogWarning("Cannot restore audit entry {Id}: memory {MemoryId} already exists.",
+                auditId, memoryId);
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        db.Memories.Add(new MemoryEntity
+        {
+            Id                = memoryId,
+            Type              = (Core.Models.MemoryType)(entry.TypeBefore ?? 4),
+            Content           = entry.ContentBefore!,
+            Importance        = entry.ImportanceBefore ?? 0.3f,
+            RelationalValence = 0.5f,
+            OccurredAt        = now,
+            CreatedAt         = now,
+        });
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        await _audit.WriteAsync(
+            memoryId:         memoryId,
+            action:           "create",
+            source:           "restore",
+            contentBefore:    null,
+            contentAfter:     entry.ContentBefore,
+            typeBefore:       null,
+            typeAfter:        entry.TypeBefore,
+            importanceBefore: null,
+            importanceAfter:  entry.ImportanceBefore,
+            ct: ct).ConfigureAwait(false);
+
+        _log.LogInformation("Restored memory {Id} from audit entry {AuditId}", memoryId, auditId);
+        return true;
+    }
 }

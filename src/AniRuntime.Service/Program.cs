@@ -108,6 +108,12 @@ try
     var aniOptions = config.GetSection("Ani").Get<AniOptions>() ?? new AniOptions();
     if (aniOptions.UseEfDataLayer)
     {
+        // Phase 5 extracted domain services. Used by EfMemoryPersistenceService +
+        // EfMemoryMaintenanceService for audit-log writes (replaces the private
+        // SqliteMemoryService.AuditAsync helper that previously kept these two
+        // ports delegated to legacy).
+        builder.Services.AddSingleton<IMemoryAuditWriter, EfMemoryAuditWriter>();
+
         // Register each focused service as the resolution for its ISP interface.
         // The composite IMemoryService resolves to a façade that injects all five.
         builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();

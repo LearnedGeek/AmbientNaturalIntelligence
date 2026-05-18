@@ -37,17 +37,20 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
 {
     private readonly IDbContextFactory<AniDbContext> _dbFactory;
     private readonly SqliteMemoryService _legacy;
+    private readonly IMemoryAuditWriter _audit;
     private readonly AniOptions _options;
     private readonly ILogger<EfMemoryPersistenceService> _log;
 
     public EfMemoryPersistenceService(
         IDbContextFactory<AniDbContext> dbFactory,
         SqliteMemoryService legacy,
+        IMemoryAuditWriter audit,
         IOptions<AniOptions> options,
         ILogger<EfMemoryPersistenceService> log)
     {
         _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
         _legacy    = legacy    ?? throw new ArgumentNullException(nameof(legacy));
+        _audit     = audit     ?? throw new ArgumentNullException(nameof(audit));
         _options   = options.Value;
         _log       = log       ?? throw new ArgumentNullException(nameof(log));
     }
@@ -184,13 +187,60 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
     }
 
     /// <summary>
-    /// Pending Phase 5 extraction — DeleteAsync writes an audit-log entry
-    /// as a side effect via the legacy <c>AuditAsync</c> helper. When the
-    /// audit-writer is extracted into its own service this method ports
-    /// to a clean EF implementation.
+    /// Hard-delete a memory + its links, with an audit-log entry capturing
+    /// the pre-delete content snapshot for rollback. Used by Feature 41
+    /// diagnostic auto-correction to remove InnerThought records driving
+    /// retrieval loops — never call for Episodic / conversation data.
+    ///
+    /// Phase 5 SOLID port (2026-05-18): now uses <see cref="IMemoryAuditWriter"/>
+    /// instead of delegating to the legacy AuditAsync helper. Three steps
+    /// run sequentially: (1) snapshot content+type+importance for audit,
+    /// (2) bulk-delete memory_links referencing this id, (3) delete the
+    /// memory row + write the audit entry. The audit-write happens via the
+    /// dedicated writer service so a future port that adds transactional
+    /// composition (single SaveChanges across delete + audit) only touches
+    /// this method.
     /// </summary>
-    public Task DeleteAsync(Guid id, CancellationToken ct = default)
-        => _legacy.DeleteAsync(id, ct);
+    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        // Snapshot for audit BEFORE deletion.
+        var snapshot = await db.Memories
+            .Where(m => m.Id == id)
+            .Select(m => new { m.Content, Type = (int)m.Type, m.Importance })
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
+
+        // Bulk-delete memory_links pointing into or out of this id. Done via
+        // ExecuteDelete so it's a single round-trip, no entity tracking.
+        await db.MemoryLinks
+            .Where(l => l.SourceId == id || l.TargetId == id)
+            .ExecuteDeleteAsync(ct)
+            .ConfigureAwait(false);
+
+        // Delete the memory row.
+        var rows = await db.Memories
+            .Where(m => m.Id == id)
+            .ExecuteDeleteAsync(ct)
+            .ConfigureAwait(false);
+
+        if (rows > 0 && snapshot is not null)
+        {
+            await _audit.WriteAsync(
+                memoryId:         id,
+                action:           "delete",
+                source:           "manual",
+                contentBefore:    snapshot.Content,
+                contentAfter:     null,
+                typeBefore:       snapshot.Type,
+                typeAfter:        null,
+                importanceBefore: snapshot.Importance,
+                importanceAfter:  null,
+                ct: ct).ConfigureAwait(false);
+            _log.LogInformation("Deleted memory \"{Id}\"", id);
+        }
+    }
 
     public async Task SaveConfabulationFlagAsync(
         string contactMessage,
