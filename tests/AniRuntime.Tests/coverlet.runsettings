@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverlet runsettings for SonarCloud.
+
+  Tells the `XPlat Code Coverage` data collector (which is coverlet under
+  the hood) to emit OpenCover format. SonarCloud's `sonar.cs.opencover.reportsPaths`
+  picks up `**/coverage.opencover.xml` from the workflow.
+
+  Without this, the default emitter is cobertura, which SonarCloud doesn't
+  read for C#.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>opencover</Format>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

@@ -19,7 +19,7 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -32,10 +32,15 @@ jobs:
       # and learnedgeek-libs/ sits next to it under $GITHUB_WORKSPACE.
       # Project files at depth 3 (src/X/X.csproj) walk three `..` to reach
       # the workspace root, then descend into learnedgeek-libs.
+      #
+      # fetch-depth: 0 — SonarCloud needs full git history for blame/PR
+      # decoration. Without it, "new code" detection on PRs misattributes
+      # lines.
       - name: Checkout AmbientNaturalIntelligence
         uses: actions/checkout@v4
         with:
           path: AmbientNaturalIntelligence
+          fetch-depth: 0
 
       - name: Checkout learnedgeek-libs (private sibling repo)
         uses: actions/checkout@v4
@@ -49,6 +54,13 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # SonarScanner for .NET is a Java tool; needs JDK 17+.
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -56,6 +68,49 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache SonarCloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@v4
+        with:
+          path: ./.sonar/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+
+      - name: Install SonarCloud scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ./.sonar/scanner
+          dotnet tool update dotnet-sonarscanner --tool-path ./.sonar/scanner
+
+      # Begin SonarCloud analysis — must come BEFORE restore/build/test so
+      # the scanner can instrument the build. The end-step (after tests)
+      # uploads the results.
+      #
+      # Coverage report path: tests emit OpenCover XML via the runsettings
+      # at tests/AniRuntime.Tests/coverlet.runsettings. The glob walks the
+      # whole workspace because the dotnet test runner writes coverage
+      # under TestResults/<guid>/coverage.opencover.xml.
+      - name: Begin SonarCloud analysis
+        if: env.SONAR_TOKEN != ''
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./.sonar/scanner/dotnet-sonarscanner begin \
+            /k:"LearnedGeek_AmbientNaturalIntelligence" \
+            /o:"learnedgeek" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.coverage.exclusions="tests/**/*,**/Program.cs,**/Migrations/**/*"
 
       # Build and test via the test project — this transitively restores and builds
       # all src projects except AniRuntime.MauiClient (net10.0-android), which
@@ -70,12 +125,17 @@ jobs:
       # Regression-class harness (2026-05-14): SPEC tests for currently-open
       # failure classes carry [Trait("Category", "RegressionOpen")]. These
       # are designed-to-fail markers that close when the production fix
-      # ships (see docs/spec/ANI-Test-Harness-Plan.md and GitHub issues
-      # labeled `failure-class`). They are NOT regressions; excluding them
-      # from CI keeps the gate honest about "did this commit break
-      # something" vs "is there known unaddressed work." H.4 (issue #27)
-      # will add a CLOSED-regression check: previously-closed scenarios
-      # must stay closed (closed→open transition = real regression).
+      # ships (see ANI-Test-Harness-Plan in the ani-docs paired repo and
+      # GitHub issues labeled `failure-class`). They are NOT regressions;
+      # excluding them from CI keeps the gate honest about "did this
+      # commit break something" vs "is there known unaddressed work."
+      # H.4 (issue #27) will add a CLOSED-regression check: previously-
+      # closed scenarios must stay closed (closed→open transition = real
+      # regression).
+      #
+      # Coverage: --settings points at the runsettings that emits OpenCover
+      # format (SonarCloud requirement for .NET). Default cobertura output
+      # would be ignored by the scanner.
       - name: Test
         run: >
           dotnet test
@@ -86,6 +146,7 @@ jobs:
           --logger "trx;LogFileName=test-results.trx"
           --results-directory ./test-results
           --collect:"XPlat Code Coverage"
+          --settings tests/AniRuntime.Tests/coverlet.runsettings
 
       - name: Upload test results
         if: always()
@@ -94,3 +155,12 @@ jobs:
           name: test-results
           path: AmbientNaturalIntelligence/test-results/**
           retention-days: 7
+
+      # End SonarCloud analysis — uploads scan + coverage to SonarCloud.
+      # Runs only if Begin step ran (gated on SONAR_TOKEN being set so
+      # contributor fork-PRs without the secret don't fail the build).
+      - name: End SonarCloud analysis
+        if: env.SONAR_TOKEN != ''
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./.sonar/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
