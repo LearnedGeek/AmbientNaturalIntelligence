@@ -215,7 +215,10 @@ internal static class Program
         var relMean = entries.Average(e => e.Relatedness);
         var autMean = entries.Average(e => e.Autonomy);
         var comMean = entries.Average(e => e.Competence);
-        var autZeroCount = entries.Count(e => e.Autonomy == 0);
+        // SonarCloud S1244 — Autonomy is recorded as exact 0.0f when the cycle
+        // produced no autonomy signal (not a computed result), so a small-epsilon
+        // range is the semantically correct check.
+        var autZeroCount = entries.Count(e => MathF.Abs(e.Autonomy) < 1e-6f);
         var autZeroPct = 100.0 * autZeroCount / entries.Count;
 
         svg.AppendLine("<!-- Stats footer -->");

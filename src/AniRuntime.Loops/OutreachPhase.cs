@@ -992,7 +992,11 @@ public class OutreachPhase
             normB += b[i] * b[i];
         }
         var denom = MathF.Sqrt(normA) * MathF.Sqrt(normB);
-        return denom == 0 ? 0 : dot / denom;
+        // SonarCloud S1244 — guarding against divide-by-zero on a product of
+        // square roots. A < 1e-12 threshold catches both true-zero (one of the
+        // vectors was all zeros) and floating-point underflow without changing
+        // behavior for any realistic embedding magnitudes.
+        return denom < 1e-12f ? 0 : dot / denom;
     }
 
     internal static float ParseValenceScore(string raw)

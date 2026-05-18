@@ -239,7 +239,10 @@ public class ConversationReplyPhase
                 elapsedMinutes: 5.0,
                 rate: _aniOptions.TensionAccumulationRate,
                 dissipationMultiplier: _aniOptions.TensionDissipationMultiplier);
-            if (emotionalState.ContactGapTension != previousTension)
+            // SonarCloud S1244 — log only when the value actually moved. Epsilon
+            // matches the F3 log format's resolution; anything below 5e-4 wouldn't
+            // be distinguishable in the rendered line anyway.
+            if (MathF.Abs(emotionalState.ContactGapTension - previousTension) > 5e-4f)
             {
                 _log.LogInformation("Contact-gap tension dissipating: {Previous:F3} → {New:F3}",
                     previousTension, emotionalState.ContactGapTension);

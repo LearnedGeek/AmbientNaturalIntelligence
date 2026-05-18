@@ -128,7 +128,9 @@ public class CognitiveCycleProcessor
                 _aniOptions.TensionOnsetHours,
                 _aniOptions.TensionAccumulationRate,
                 _aniOptions.TensionMax);
-            if (emotionalState.ContactGapTension != previousTension)
+            // SonarCloud S1244 — log only when the value moved beyond the F3
+            // log format's display resolution.
+            if (MathF.Abs(emotionalState.ContactGapTension - previousTension) > 5e-4f)
             {
                 _log.LogDebug("Contact-gap tension: {Previous:F3} → {New:F3} (hours since contact: {Hours:F1})",
                     previousTension, emotionalState.ContactGapTension, hoursSinceContact);

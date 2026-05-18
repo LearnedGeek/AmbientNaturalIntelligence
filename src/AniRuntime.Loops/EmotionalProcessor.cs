@@ -89,8 +89,17 @@ public class EmotionalProcessor
             if (isAmbientCycle && severity > 0.85f)
                 severity = 0.85f;
 
-            // Skip if all zeros — no emotional impact
-            if (warmth == 0f && energy == 0f && worry == 0f && playfulness == 0f)
+            // Skip if all zeros — no emotional impact.
+            // SonarCloud S1244 — IEEE 754 float-equality is unreliable for arithmetic
+            // results; here we deliberately want "all four exactly zero" semantics
+            // (the per-dimension scorer assigns exact 0.0f when no change is
+            // identified). A small-epsilon range matches the actual signal: any
+            // delta below 1e-6 is below the cycle's reporting resolution anyway.
+            const float ZeroEpsilon = 1e-6f;
+            if (MathF.Abs(warmth) < ZeroEpsilon
+                && MathF.Abs(energy) < ZeroEpsilon
+                && MathF.Abs(worry) < ZeroEpsilon
+                && MathF.Abs(playfulness) < ZeroEpsilon)
                 return;
 
             // Tier promotion: high-severity thoughts promote to longer-lasting tiers

@@ -131,7 +131,12 @@ public partial class MainPage : ContentPage
         catch { /* best effort cleanup */ }
         finally
         {
+            // SonarCloud S2930 — dispose the CTS after cancel. A new CTS is
+            // allocated on the next ConnectAsync; the existing one would
+            // otherwise leak its OS handle (kernel WaitHandle under the hood).
             _sessionCts?.Cancel();
+            _sessionCts?.Dispose();
+            _sessionCts = null;
             _ws?.Dispose();
             _ws = null;
             _isConnected = false;
