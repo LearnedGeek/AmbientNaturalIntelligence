@@ -50,7 +50,7 @@ public class MmrRerankTests
     [Fact]
     public void ApplyMmrRerank_EmptyInput_ReturnsEmpty()
     {
-        var result = SqliteMemoryService.ApplyMmrRerank(new List<ScoredMemory>(), topK: 5, lambda: 0.3f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(new List<ScoredMemory>(), topK: 5, lambda: 0.3f);
         result.Should().BeEmpty();
     }
 
@@ -62,7 +62,7 @@ public class MmrRerankTests
             MakeCandidate(0.9f, 1.0f, "00000001"),
             MakeCandidate(0.8f, 0.5f, "00000002"),
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 0, lambda: 0.3f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 0, lambda: 0.3f);
         result.Should().BeEmpty();
     }
 
@@ -74,7 +74,7 @@ public class MmrRerankTests
             MakeCandidate(0.9f, 1.0f, "00000001"),
             MakeCandidate(0.8f, 0.5f, "00000002"),
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 10, lambda: 0.3f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 10, lambda: 0.3f);
         result.Should().HaveCount(2);
     }
 
@@ -89,7 +89,7 @@ public class MmrRerankTests
             MakeCandidate(0.9f, 1.0f, "00000002"),  // highest composite — must be first
             MakeCandidate(0.7f, 0.0f, "00000003"),
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 3, lambda: 0.5f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 3, lambda: 0.5f);
         result[0].CompositeScore.Should().Be(0.9f);
     }
 
@@ -104,7 +104,7 @@ public class MmrRerankTests
             MakeCandidate(0.9f, 1.0f, "00000002"),
             MakeCandidate(0.7f, 1.0f, "00000003"),
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 3, lambda: 0.0f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 3, lambda: 0.0f);
         result.Select(r => r.CompositeScore).Should().Equal(0.9f, 0.7f, 0.5f);
     }
 
@@ -123,7 +123,7 @@ public class MmrRerankTests
             MakeCandidate(0.80f, 0.0f, "00000002"), // orthogonal — diversity-wins target
             MakeCandidate(0.90f, 1.0f, "00000003"), // at axis — high penalty after first pick
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 2, lambda: 0.5f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 2, lambda: 0.5f);
 
         result[0].Record.Content.Should().Be("candidate-00000001");
         // With λ=0.5, the second pick's adjusted scores are:
@@ -147,7 +147,7 @@ public class MmrRerankTests
             MakeCandidate(0.80f, 0.0f, "00000002"),
             MakeCandidate(0.90f, 1.0f, "00000003"),
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 2, lambda: 0.05f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 2, lambda: 0.05f);
 
         result[0].Record.Content.Should().Be("candidate-00000001");
         result[1].Record.Content.Should().Be("candidate-00000003");
@@ -170,7 +170,7 @@ public class MmrRerankTests
             MakeCandidate(0.60f, 0.0f, "00000003"),  // orthogonal
             MakeCandidate(0.60f, 0.5f, "00000004"),  // 0.5 to axis
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 3, lambda: 0.8f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 3, lambda: 0.8f);
 
         // First two picks: at-axis and near-axis (highest scores, first diversity
         // pick still close to axis because 0.98 − 0.8·0.95 = 0.22 vs
@@ -205,7 +205,7 @@ public class MmrRerankTests
             noEmbedding,
             MakeCandidate(0.80f, 1.0f, "00000002"),
         };
-        var result = SqliteMemoryService.ApplyMmrRerank(candidates, topK: 2, lambda: 0.5f);
+        var result = EfSemanticSearchComposer.ApplyMmrRerank(candidates, topK: 2, lambda: 0.5f);
 
         // First pick: no-embedding (highest score).
         result[0].Record.Content.Should().Be("candidate-no-embedding");
@@ -230,12 +230,12 @@ public class MmrRerankTests
 
         // λ=0.1: second-pick score penalty is small, 0.90 − 0.09 = 0.81 vs 0.70 − 0 = 0.70.
         //        Near-axis candidate wins.
-        var lowLambda = SqliteMemoryService.ApplyMmrRerank(candidates(), topK: 2, lambda: 0.1f);
+        var lowLambda = EfSemanticSearchComposer.ApplyMmrRerank(candidates(), topK: 2, lambda: 0.1f);
         lowLambda[1].Record.Content.Should().Be("candidate-00000002");
 
         // λ=0.8: near-axis 0.90 − 0.72 = 0.18 vs orthogonal 0.70 − 0 = 0.70.
         //        Orthogonal wins.
-        var highLambda = SqliteMemoryService.ApplyMmrRerank(candidates(), topK: 2, lambda: 0.8f);
+        var highLambda = EfSemanticSearchComposer.ApplyMmrRerank(candidates(), topK: 2, lambda: 0.8f);
         highLambda[1].Record.Content.Should().Be("candidate-00000003");
     }
 }

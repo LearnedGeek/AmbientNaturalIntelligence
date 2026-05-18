@@ -46,7 +46,7 @@ public class OwnOutputCeilingTests
     [Fact]
     public void ApplyOwnOutputCeiling_EmptyRanked_ReturnsEmpty()
     {
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             rankedTopK: new List<ScoredMemory>(),
             allCandidates: new List<ScoredMemory>(),
             topK: 5,
@@ -63,7 +63,7 @@ public class OwnOutputCeilingTests
             Make(0.9f, RetrievalOrigin.OwnOutput, "00000001"),
             Make(0.8f, RetrievalOrigin.OwnOutput, "00000002"),
         };
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, new List<ScoredMemory>(ranked),
             topK: 2, maxOwnOutputFraction: 1.0f);
         result.Should().BeEquivalentTo(ranked, opts => opts.WithStrictOrdering());
@@ -85,7 +85,7 @@ public class OwnOutputCeilingTests
         };
         var all = new List<ScoredMemory>(ranked);
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 4, maxOwnOutputFraction: 0.25f);
 
         result.Should().BeEquivalentTo(ranked, opts => opts.WithStrictOrdering());
@@ -115,7 +115,7 @@ public class OwnOutputCeilingTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 5, maxOwnOutputFraction: 0.25f);
 
         result.Count.Should().Be(5, "ceiling should preserve pool size by backfilling");
@@ -154,7 +154,7 @@ public class OwnOutputCeilingTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 4, maxOwnOutputFraction: 0.25f);
 
         result.Count.Should().Be(3,
@@ -176,7 +176,7 @@ public class OwnOutputCeilingTests
         };
         var all = new List<ScoredMemory>(ranked);
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 4, maxOwnOutputFraction: 0.25f);
 
         result.Count.Should().Be(1,
@@ -204,7 +204,7 @@ public class OwnOutputCeilingTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 4, maxOwnOutputFraction: 0.25f);
 
         // Expected order: 0.90 (own-output preserved), 0.85 (External backfill),
@@ -228,7 +228,7 @@ public class OwnOutputCeilingTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 2, maxOwnOutputFraction: 0.0f);
 
         result.Should().NotContain(r => RetrievalOriginClassifier.IsOwnOutput(r.OriginTier),
@@ -247,7 +247,7 @@ public class OwnOutputCeilingTests
         };
         var all = new List<ScoredMemory>(ranked);
 
-        var result = SqliteMemoryService.ApplyOwnOutputCeiling(
+        var result = EfSemanticSearchComposer.ApplyOwnOutputCeiling(
             ranked, all, topK: 1, maxOwnOutputFraction: -0.5f);
 
         // -0.5 clamped to 0; 0 own-output allowed. No backfill so result empty.

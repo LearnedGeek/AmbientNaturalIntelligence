@@ -51,7 +51,7 @@ public class ProtectedSlotsBackfillTests
     [Fact]
     public void ApplyProtectedSlotsBackfill_EmptyRanked_ReturnsEmpty()
     {
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             rankedTopK: new List<ScoredMemory>(),
             allCandidates: new List<ScoredMemory>(),
             topK: 5,
@@ -67,7 +67,7 @@ public class ProtectedSlotsBackfillTests
             Make(0.9f, RetrievalOrigin.Caregiver, "00000001"),
             Make(0.8f, RetrievalOrigin.Caregiver, "00000002"),
         };
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, allCandidates: new List<ScoredMemory>(ranked),
             topK: 2, minNonCaregiverFraction: 0f);
         result.Should().BeEquivalentTo(ranked, opts => opts.WithStrictOrdering());
@@ -92,7 +92,7 @@ public class ProtectedSlotsBackfillTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 4, minNonCaregiverFraction: 0.30f);
 
         result.Should().BeEquivalentTo(ranked, opts => opts.WithStrictOrdering());
@@ -118,7 +118,7 @@ public class ProtectedSlotsBackfillTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 3, minNonCaregiverFraction: 0.30f);
 
         result.Should().BeEquivalentTo(ranked, opts => opts.WithStrictOrdering());
@@ -146,7 +146,7 @@ public class ProtectedSlotsBackfillTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 3, minNonCaregiverFraction: 0.30f);
 
         result.Should().HaveCount(3);
@@ -178,7 +178,7 @@ public class ProtectedSlotsBackfillTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 5, minNonCaregiverFraction: 0.40f);
 
         result.Should().HaveCount(5);
@@ -205,7 +205,7 @@ public class ProtectedSlotsBackfillTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 3, minNonCaregiverFraction: 0.30f);
 
         // World candidate at 0.85 should land in the middle of the result:
@@ -236,7 +236,7 @@ public class ProtectedSlotsBackfillTests
         var all = new List<ScoredMemory>(ranked);
 
         // Quota is 1; ranked already has 1 non-caregiver. Should not swap.
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 3, minNonCaregiverFraction: 0.30f);
 
         result.Should().BeEquivalentTo(ranked, opts => opts.WithStrictOrdering());
@@ -264,7 +264,7 @@ public class ProtectedSlotsBackfillTests
         };
         var all = ranked.Concat(remainder).ToList();
 
-        var result = SqliteMemoryService.ApplyProtectedSlotsBackfill(
+        var result = EfSemanticSearchComposer.ApplyProtectedSlotsBackfill(
             ranked, all, topK: 5, minNonCaregiverFraction: 0.40f);
 
         result.Should().HaveCount(5);
