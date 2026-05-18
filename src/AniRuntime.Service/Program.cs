@@ -404,22 +404,26 @@ try
     // and the test-mode tracker are also Transient/Singleton per the lifetime
     // discipline noted in ANI-Orchestrator-SOLID-Refactor-Plan.md §7.
     builder.Services.AddSingleton<ITestModeTracker, AniRuntime.Loops.Admin.TestModeTracker>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.HelpCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.TestModeOnCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.TestModeOffCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.StatusCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.ResetMoodCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.NewThreadCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.RebuildLinksCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.RebuildEmergenceCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.DiagnoseCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.TagCommand>();
-    builder.Services.AddTransient<IAdminCommand, AniRuntime.Loops.Admin.Commands.AuditCommand>();
-    // The dispatcher itself is stateless; Transient is appropriate. It is also
-    // exposed via IAdminCommandHandler so the Perception layer can route
-    // inbound admin commands without depending on Loops (Apr 28, 2026 fix).
-    builder.Services.AddTransient<AdminCommandHandler>();
-    builder.Services.AddTransient<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
+    // Phase 5 DI audit (May 18 2026): admin commands + dispatcher were
+    // initially Transient. Consumer chain: TwilioInboundPerceptionSource
+    // (Singleton) → IAdminCommandHandler — captures the Transient at first
+    // resolution, defeating the Transient lifetime. Commands are all
+    // stateless; making them Singleton is correct and explicit.
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.HelpCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.TestModeOnCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.TestModeOffCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.StatusCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.ResetMoodCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.NewThreadCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.RebuildLinksCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.RebuildEmergenceCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.DiagnoseCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.TagCommand>();
+    builder.Services.AddSingleton<IAdminCommand, AniRuntime.Loops.Admin.Commands.AuditCommand>();
+    // Stateless dispatcher; consumed by the Singleton TwilioInboundPerceptionSource
+    // via IAdminCommandHandler, so Singleton is required (not just safe).
+    builder.Services.AddSingleton<AdminCommandHandler>();
+    builder.Services.AddSingleton<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
     builder.Services.AddSingleton<EmotionalProcessor>();
     builder.Services.AddSingleton<ContextBuilder>();
     builder.Services.AddSingleton<AniRuntime.LLM.ContextCompressor>();
@@ -434,22 +438,29 @@ try
     // the reply phase and the cognitive cycle's outreach gate.
     builder.Services.AddSingleton<IWithdrawalStateTracker, WithdrawalStateTracker>();
     // §5.4b — reply body lives in the pipeline; phase is a thin facade.
-    // Pipeline is stateless (Transient); phase is Transient too (so it
-    // can consume Transient pipeline without a captive-dependency trap).
-    builder.Services.AddTransient<IConversationReplyPipeline, ConversationReplyPipeline>();
-    builder.Services.AddTransient<ConversationReplyPhase>();
+    // Phase 5 DI audit (May 18 2026): both registrations were initially
+    // Transient on the reasoning "consumed only by the Transient phase,
+    // so no captive." That was wrong — the phase is also consumed by the
+    // Singleton CognitiveCyclePipeline, which captured Transient instances
+    // at first resolution anyway. Pipeline + phase are stateless and the
+    // consumer chain is Singleton; Singleton is correct and explicit.
+    builder.Services.AddSingleton<IConversationReplyPipeline, ConversationReplyPipeline>();
+    builder.Services.AddSingleton<ConversationReplyPhase>();
     // Outreach decomposition (SOLID §5.3) — phase is a thin router.
+    // Phase 5 DI audit (May 18 2026): OutreachPipeline + OutreachPhase
+    // were initially Transient on the reasoning "consumed only by the
+    // Transient phase, so no captive." That was wrong — the phase is
+    // also consumed by the Singleton CognitiveCyclePipeline, which
+    // captured those Transients at first resolution. Pipeline + phase are
+    // stateless; Singleton matches the consumer chain. ThreadRecorder
+    // remains Singleton (stateless but shared with Singleton ReactiveShareService).
     // ReactiveShareService + SilenceChoiceRecorder hold per-day / cooldown
-    // state, so they are Singleton. The OutboundThreadRecorder is stateless
-    // but consumed by ReactiveShareService — must therefore also be
-    // Singleton (Singleton-consumes-Transient = captive-dependency trap).
-    // OutreachPipeline is stateless; consumed only by the Transient
-    // OutreachPhase, so it stays Transient (matches the DI-discipline note).
+    // state and are Singleton by intent.
     builder.Services.AddSingleton<IOutboundThreadRecorder, AniRuntime.Loops.Outreach.OutboundThreadRecorder>();
-    builder.Services.AddTransient<IOutreachPipeline, AniRuntime.Loops.Outreach.OutreachPipeline>();
+    builder.Services.AddSingleton<IOutreachPipeline, AniRuntime.Loops.Outreach.OutreachPipeline>();
     builder.Services.AddSingleton<IReactiveShareService, AniRuntime.Loops.Outreach.ReactiveShareService>();
     builder.Services.AddSingleton<ISilenceChoiceRecorder, AniRuntime.Loops.Outreach.SilenceChoiceRecorder>();
-    builder.Services.AddTransient<OutreachPhase>();
+    builder.Services.AddSingleton<OutreachPhase>();
     builder.Services.AddSingleton<ReflectionPhase>();
     // §5.5 — cycle body lives in CognitiveCyclePipeline. SINGLETON because
     // it holds the per-process cycle-count + lastAssociativeAnchor state
