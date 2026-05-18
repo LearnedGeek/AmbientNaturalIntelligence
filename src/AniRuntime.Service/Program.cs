@@ -442,6 +442,10 @@ try
     // EmotionalProcessor as a direct dep. Stateless and consumed by the
     // Singleton ConversationReplyPipeline → Singleton matches.
     builder.Services.AddSingleton<IPostReplyEmotionalProcessor, PostReplyEmotionalProcessor>();
+    // §5.4d — dispatch + persist + desire reset extracted. Removes three
+    // pipeline deps (IReplyChannelResolver, DesireEngine, and the dead
+    // AniActionDispatcher injection). Stateless → Singleton.
+    builder.Services.AddSingleton<IReplyDispatcher, ReplyDispatcher>();
     // §5.4b — reply body lives in the pipeline; phase is a thin facade.
     // Phase 5 DI audit (May 18 2026): both registrations were initially
     // Transient on the reasoning "consumed only by the Transient phase,

@@ -98,9 +98,18 @@ public static class ConversationReplyPhaseTestBuilder
             emotional, persist, analytics, withdrawal, aniOptions,
             NullLogger<PostReplyEmotionalProcessor>.Instance);
 
+        var replyDispatcher = new ReplyDispatcher(
+            channels, conversations, desire, aniOptions,
+            NullLogger<ReplyDispatcher>.Instance);
+
+        // dispatcher (AniActionDispatcher) was injected but unused by the
+        // pipeline pre-§5.4d — kept in this builder's positional signature
+        // for caller-side parity with the prior shape, then discarded here.
+        _ = dispatcher;
+
         return new ConversationReplyPipeline(
-            state, persist, search, analytics, ollama, conversations, channels,
-            dispatcher, desire, postReply, contextBuilder, keywords, intent,
+            state, persist, search, analytics, ollama, conversations,
+            replyDispatcher, postReply, contextBuilder, keywords, intent,
             gateState, compressor, claimVerifier, withdrawal, aniOptions, ollamaOptions,
             NullLogger<ConversationReplyPipeline>.Instance,
             mlClassifier, personaCache, em9Detector, outputGate, vibeBias,

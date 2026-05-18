@@ -34,9 +34,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly IConversationService _conversations;
-    private readonly IReplyChannelResolver _channels;
-    private readonly AniActionDispatcher _dispatcher;
-    private readonly DesireEngine _desire;
+    private readonly IReplyDispatcher _replyDispatcher;
     private readonly IPostReplyEmotionalProcessor _postReply;
     private readonly ContextBuilder _contextBuilder;
     private readonly KeywordExtractor _keywords;
@@ -80,9 +78,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IConversationService conversations,
-        IReplyChannelResolver channels,
-        AniActionDispatcher dispatcher,
-        DesireEngine desire,
+        IReplyDispatcher replyDispatcher,
         IPostReplyEmotionalProcessor postReply,
         ContextBuilder contextBuilder,
         KeywordExtractor keywords,
@@ -109,9 +105,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _analytics = analytics;
         _ollama = ollama;
         _conversations = conversations;
-        _channels = channels;
-        _dispatcher = dispatcher;
-        _desire = desire;
+        _replyDispatcher = replyDispatcher ?? throw new ArgumentNullException(nameof(replyDispatcher));
         _postReply = postReply ?? throw new ArgumentNullException(nameof(postReply));
         _contextBuilder = contextBuilder;
         _keywords = keywords;
@@ -573,37 +567,15 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
             reply, thread, snapshot, replyMessage, replyPrompt, replyTemperature, ct)
             .ConfigureAwait(false);
 
-        // Step 3: Natural reply delay — real people don't reply in 4 seconds
-        var minDelay = _aniOptions.ConversationMinReplySeconds;
-        var maxDelay = _aniOptions.ConversationMaxReplySeconds;
-        var elapsed = (DateTimeOffset.UtcNow - thread.Messages[^1].SentAt).TotalSeconds;
-        var targetDelay = minDelay + Random.Shared.NextDouble() * (maxDelay - minDelay);
-        var remaining = targetDelay - elapsed;
-        if (remaining > 0)
-        {
-            _log.LogDebug("Waiting {Seconds:F0}s before replying (natural delay)", remaining);
-            await Task.Delay(TimeSpan.FromSeconds(remaining), ct).ConfigureAwait(false);
-        }
-
-        // Step 4: Dispatch reply via originating channel (SRP: reply generation ≠ delivery).
-        // The OriginChannelId flows from the inbound PerceptionEvent through to here.
+        // Steps 3–5: delay + dispatch + state update + persist + desire reset.
+        // Extracted to IReplyDispatcher in §5.4d (May 18 2026).
         var originChannelId = perceptions
             .Where(p => p.Category == PerceptionCategory.Communication && p.OriginChannelId is not null)
             .Select(p => p.OriginChannelId!)
             .FirstOrDefault() ?? "sms";
-        var channel = _channels.Resolve(originChannelId);
-        await channel.SendReplyAsync(reply, ct).ConfigureAwait(false);
-
-        // Phase 3: Update structured conversation state from Ani's reply
-        thread.State.UpdateFromMessage(reply, Roles.Ani, contactName);
-
-        // Step 5: Persist Ani's reply to DB (already added to in-memory thread before echo guard)
-        // Update content in case echo guard replaced it.
-        replyMessage.Content = reply;
-        await _conversations.AddMessageAsync(thread.Id, replyMessage, ct).ConfigureAwait(false);
-
-        // Update desire — conversation reply doesn't count toward daily outreach limit
-        await _desire.ResetAfterConversationReplyAsync(ct).ConfigureAwait(false);
+        await _replyDispatcher
+            .DispatchAsync(reply, thread, replyMessage, contactName, originChannelId, ct)
+            .ConfigureAwait(false);
 
         // Feature 21: Feedback-weighted importance — boosts memories related
         // to what Mark said, runs after dispatch so the boost informs the
