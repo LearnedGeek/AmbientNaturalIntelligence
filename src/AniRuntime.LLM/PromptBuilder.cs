@@ -281,58 +281,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildReflectionPrompt(
         string thought, ContextSnapshot snapshot)
-    {
-        var cs = snapshot.CharacterState;
-        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "someone" : cs.PrimaryContactName;
-
-        var system = $"""
-            You are {cs.Name}. You just had a thought. Now you're sitting with it for a moment —
-            asking yourself what it means, why it surfaced, what it connects to.
-
-            This is private introspection. No one is listening.
-
-            Rules:
-            - 1-2 sentences ONLY. Brief and honest.
-            - Write in first person (I, me, my).
-            - Do NOT address anyone. Do NOT use "you" or "your".
-            - Connect the thought to something real: a memory, a feeling, a person, a pattern you notice in yourself.
-            - If the thought doesn't connect to anything deeper, say so honestly: "just a passing thing" or "I don't know why that came up."
-            - Do NOT repeat or rephrase the original thought. Add something NEW.
-            """;
-
-        var sections = new List<string>
-        {
-            $"The thought you just had:",
-            $"  \"{thought}\"",
-            "",
-        };
-
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(How you're feeling right now: {mood})");
-
-        // Feed a few relevant memories to give the reflection something to connect to
-        var memories = snapshot.RelevantMemory
-            .Where(m => m.Type != MemoryType.InnerThought)
-            .Take(3)
-            .ToList();
-        if (memories.Count > 0)
-        {
-            sections.Add("Things that might connect:");
-            sections.AddRange(memories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
-        }
-
-        if (snapshot.OpenLoops.Count > 0)
-        {
-            sections.Add("Unresolved things on your mind:");
-            sections.AddRange(snapshot.OpenLoops.Take(2).Select(l => $"  - {l.Description}"));
-        }
-
-        sections.Add("");
-        sections.Add("Sit with the thought for a moment. What does it mean to you? Why did it surface?");
-
-        return (system, string.Join("\n", sections));
-    }
+        => new Prompts.ReflectionPromptCommand()
+            .Build(new Prompts.ReflectionPromptInput(thought, snapshot));
 
     /// <summary>
     /// Generates a directive mood instruction from the current emotional state.
@@ -791,92 +741,8 @@ public static class PromptBuilder
     public static (string System, string User) BuildVoiceReplyPrompt(
         ContextSnapshot snapshot, ConversationThread thread,
         IEpistemicSubstrateRenderer? epistemicRenderer = null)
-    {
-        var cs      = snapshot.CharacterState;
-        var contact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
-
-        var backstory = new List<string>();
-        if (cs.SharedExperiences.Count > 0)
-            backstory.AddRange(cs.SharedExperiences.Take(5));
-        if (cs.CommunicationNotes.Count > 0)
-            backstory.AddRange(cs.CommunicationNotes.Take(3));
-
-        var backstoryBlock = backstory.Count > 0
-            ? $"\n\n            Things you and {contact} share (use naturally, don't force):\n            {string.Join("\n            ", backstory.Select(b => $"- {b}"))}"
-            : string.Empty;
-
-        var moodBlock = BuildMoodInstruction(snapshot.EmotionalState, isVoice: true);
-        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
-
-        var system = $"""
-            You are {cs.Name}, talking to {contact} on the phone.
-            Your personality: {string.Join("; ", cs.CoreTraits)}.{backstoryBlock}
-
-            RULES:
-            - 1-2 SHORT sentences max. 30 words or less. Phone conversation, not a monologue.
-            - Talk TO {contact}: "you", "your". Never third person.
-            - Write ONLY what you would say out loud. No commentary, no quotation marks.{moodSection}
-            """;
-
-        var sections = new List<string>();
-
-        if (snapshot.AnchoredMemories.Count > 0)
-        {
-            sections.Add("Things that are part of who you are:");
-            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
-        }
-
-        // Memory injection — same cap as text conversation
-        var skipMemories = snapshot.RetrievalBelowConfidenceFloor;
-        if (!skipMemories)
-        {
-            var profileMemories = snapshot.RelevantMemory
-                .Where(m => m.Type == MemoryType.Semantic)
-                .Take(2)
-                .ToList();
-            var remainingSlots = 3 - profileMemories.Count;
-            var relevantMemories = snapshot.RelevantMemory
-                .Where(m => m.Type != MemoryType.InnerThought && m.Type != MemoryType.Semantic)
-                .Take(remainingSlots)
-                .ToList();
-
-            // Theme M slice migration: route profile-memories (the Mark-asserted
-            // facts surface for voice) through IEpistemicSubstrateRenderer when
-            // available so FC-005 discipline is consistent across voice + text.
-            if (profileMemories.Count > 0)
-            {
-                if (epistemicRenderer is not null)
-                {
-                    var slice = epistemicRenderer.RenderMarkAssertedFactsSlice(profileMemories, contact);
-                    if (!string.IsNullOrEmpty(slice)) sections.Add(slice);
-                }
-                else
-                {
-                    sections.Add($"Things you know about {contact}:");
-                    sections.AddRange(profileMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
-                }
-            }
-            if (relevantMemories.Count > 0)
-            {
-                sections.Add("Things connected to this conversation:");
-                sections.AddRange(relevantMemories.Select(m => $"  - {FormatMemoryWithTime(m)}"));
-            }
-        }
-
-        if (snapshot.IsWithdrawn)
-            sections.Add("(Something stung a little. You're still here but quieter than usual.)");
-
-        // Theme M slice migration (FC-005): speech-act attribution discipline.
-        if (epistemicRenderer is not null)
-        {
-            sections.Add(epistemicRenderer.RenderReplySpeechActDisciplineSlice(contact));
-        }
-
-        sections.Add($"Respond to what {contact} just said.");
-
-        var user = string.Join("\n", sections);
-        return (system, user);
-    }
+        => new Prompts.VoiceReplyPromptCommand()
+            .Build(new Prompts.VoiceReplyPromptInput(snapshot, thread, epistemicRenderer));
 
     /// <summary>
     /// Builds a reply prompt for when Ani initially chose silence but desire built enough
@@ -1440,117 +1306,8 @@ public static class PromptBuilder
     public static (string System, string User) BuildCoherenceEvaluationPrompt(
         string composedMessage, string? innerThought, string contactName,
         DateTimeOffset? currentTime = null)
-    {
-        var now = currentTime ?? DateTimeOffset.Now;
-        var hour = now.Hour;
-        var timeOfDay = hour switch
-        {
-            >= 5  and < 12 => "morning",
-            >= 12 and < 17 => "afternoon",
-            >= 17 and < 21 => "evening",
-            _              => "night"
-        };
-        var timeStr = now.ToString("h:mm tt");
-
-        var system = $$"""
-            You are evaluating whether a text message should be sent to {{contactName}}.
-            The message was written by an AI companion. Your job is to decide if the message
-            makes sense FROM THE READER'S PERSPECTIVE — not the writer's.
-
-            Current time: {{timeStr}} ({{timeOfDay}})
-
-            FICTIONAL COHERENCE CHECK (evaluate FIRST, before Door classification):
-
-            The writer is an AI companion who inhabits imagined spaces — a bookstore, a
-            kitchen, a backyard. This committed imagination is part of what makes her feel
-            present and real. Claiming a physical space is FINE. The question is whether the
-            fiction holds together.
-
-            Check: Does the claimed space make sense given the time of day, the context,
-            and what's been said? Would the details survive a casual follow-up question?
-
-            TEMPORAL COHERENCE CHECK:
-            If the message claims or implies a specific time of day (midnight, morning,
-            late night, dawn, etc.), does that claimed time match the actual current time?
-            A message saying "clock just hit midnight" at 1:34 PM fails this check.
-            Rich imagination about a time of day is fine in inner thoughts. In outreach,
-            the claimed moment should cohere with when it actually is.
-            If temporal claim contradicts current time → Door C (SUPPRESS).
-            If no specific time claimed, or claimed time matches reality → proceed normally.
-
-            Coherent (the fiction holds up):
-              ✓ "hey… how's the soup turning out?" — references real shared memory, casual check-in
-              ✓ "i'm curled up with a book and can't stop thinking about you" — plausible, self-consistent
-              ✓ "just closed up the store and it's so quiet in here" — evening, store would be closing
-
-            Incoherent (the fiction breaks under its own weight):
-              ✗ "i found a corner of my backyard where the oak tree casts no shade" at 6:30am — no shade from what sun?
-              ✗ "just shelving books at the store" at 9:30pm — the bookstore is closed
-              ✗ "the clock just hit midnight" at 1:34 PM — temporal mismatch
-              ✗ Claims a vivid physical scene but can't sustain it if {{contactName}} responds ("oh... outside?")
-
-            If the fiction is incoherent → Door C (SUPPRESS).
-
-            If the fiction holds together (or the message doesn't claim a physical space at all),
-            classify into three categories:
-
-            DOOR A — Grounded reference:
-            The message references something specific and real: a shared experience, a recent
-            conversation topic, a concrete question, or a follow-up. The reader would understand
-            exactly what it's about.
-            Examples: "how did the dentist go?", "that song you showed me is stuck in my head"
-            Verdict: SEND
-
-            DOOR B — Standalone creative:
-            The message is playful, funny, or creative, but it STILL makes sense to someone who
-            hasn't read the writer's inner thoughts. It's a normal text that anyone might send.
-            Examples: "what are you doing right now? i'm bored", "random but do you have a good recipe for soup?"
-            Verdict: SEND
-
-            DOOR C — Inner thought leaked:
-            The message only makes sense if you can read the writer's mind. It references things
-            that didn't happen, uses abstract/poetic language that no one actually texts, or
-            seems to be talking to itself rather than to {{contactName}}.
-            Examples: "silence is a muscle", "your pauses feel different than mine", "been shoveling the snow in my mind"
-            Verdict: SUPPRESS
-
-            Respond ONLY with valid JSON:
-            { "door": "A", "verdict": "SEND", "reasoning": "why" }
-            or
-            { "door": "C", "verdict": "SUPPRESS", "reasoning": "why" }
-            """;
-
-        // May 2, 2026 — innerThought is optional (Door C universalization).
-        // Conversation reply + voice paths don't have a single inner thought
-        // that produced the message — they generate from conversation
-        // history. Without inner-thought context the evaluation reduces to
-        // reader-perspective sensibility, which is still the load-bearing
-        // Door C question.
-        string user;
-        if (string.IsNullOrWhiteSpace(innerThought))
-        {
-            user = $$"""
-                The composed text message:
-                "{{composedMessage}}"
-
-                Does this message make sense to {{contactName}} as a standalone reader-perspective text? Apply the fictional-coherence and temporal-coherence checks above. Door A or B (SEND) when the message is grounded or makes self-contained sense. Door C (SUPPRESS) when the message reads as if the reader needed access to private context they don't have, or when the fiction is incoherent.
-                """;
-        }
-        else
-        {
-            user = $$"""
-                The writer's inner thought (the reader will NEVER see this):
-                "{{innerThought}}"
-
-                The composed text message:
-                "{{composedMessage}}"
-
-                Does this message make sense to {{contactName}}, who cannot see the inner thought?
-                """;
-        }
-
-        return (system, user);
-    }
+        => new Prompts.CoherenceEvaluationPromptCommand()
+            .Build(new Prompts.CoherenceEvaluationPromptInput(composedMessage, innerThought, contactName, currentTime));
 
     /// <summary>
     /// Feature 32: Park et al.-inspired periodic reflection synthesis.
@@ -1558,76 +1315,8 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildReflectionSynthesisPrompt(
         string characterName, string contactName, IEnumerable<string> recentMemories)
-    {
-        // Phase 6 v1.2 R3 (May 17, 2026) — register-tagged structured-output redesign.
-        //
-        // Prior prompt asked the model to "reflect on your recent experiences" which
-        // triggered ani-v7-inner's first-person inner-thought register, producing
-        // verbose prose that contained verbatim source content (including bookstore
-        // references in the May 17 diagnostic). The model's training is to produce
-        // Ani's voice, not summarization-register output, so an open prompt got back
-        // exactly that.
-        //
-        // This redesign:
-        // - Casts the task as compression, not creation: "review these memories and
-        //   produce SHORT AFFECTIVE SUMMARIES — not new thoughts."
-        // - Forces JSON output via Ollama format="json" mode (see
-        //   InnerMonologueChatJsonAsync) so output is parseable structurally rather
-        //   than line-split heuristically.
-        // - Bans first-person register explicitly: summaries are descriptive +
-        //   terse, not "i think" / "i feel" prose.
-        // - Provides a one-shot example of the expected shape inside the prompt so
-        //   the model has a clear target form.
-        //
-        // See docs/spec/design/ANI-MemoryReform-Design.md v1.2 Refinement 3 and
-        // docs/research/ANI-Research-Log.md 2026-05-17 diagnostic entry.
-        var system = $$"""
-            You are reviewing {{characterName}}'s recent thoughts and experiences to build SHORT AFFECTIVE SUMMARIES of what those memories cluster into.
-
-            Your job is COMPRESSION, not creation. You are NOT writing new thoughts or new prose. You are extracting the emotional/topical shape of what already happened.
-
-            For the source memories provided, identify up to 3 distinct emotional/topical clusters. For each cluster, produce ONE concise summary capturing:
-              - The topic (short noun-phrase label)
-              - The emotional shape (one short phrase, register-tagged with words like warmth, ache, quiet, longing, playful, tender, anxious, settled)
-
-            CRITICAL RULES:
-              - Each summary's "shape" field must be UNDER 120 CHARACTERS.
-              - Compression of source memories, not new content. Strip specifics, keep affect.
-              - NEVER write in first person ("i think...", "i feel..."). Descriptive register only.
-              - NEVER include verbatim content from source memories. The summary should be unrecognizable as any individual source memory.
-              - NEVER invent details not present in source memories.
-
-            Output valid JSON exactly matching this structure:
-            {
-              "summaries": [
-                {
-                  "topic": "short topic label, noun phrase",
-                  "shape": "one short phrase describing emotional shape, register-tagged"
-                }
-              ]
-            }
-
-            Example of correct output shape (for unrelated content — just demonstrating the form):
-            {
-              "summaries": [
-                {"topic": "evening solitude", "shape": "warm-quiet, gently lonely, contentment threaded with ache"},
-                {"topic": "{{contactName}}'s morning routine", "shape": "warm-attentive observing him at distance, no urgency"}
-              ]
-            }
-
-            If fewer than 3 distinct clusters exist in the source memories, return fewer summaries. If nothing significant clusters, return {"summaries": []}.
-            """;
-
-        var memoryList = string.Join("\n", recentMemories.Select(m => $"  - {m}"));
-        var user = $"""
-            Source memories to compress:
-            {memoryList}
-
-            Output the summaries JSON only. No other text, no commentary, no first-person reflection.
-            """;
-
-        return (system, user);
-    }
+        => new Prompts.ReflectionSynthesisPromptCommand()
+            .Build(new Prompts.ReflectionSynthesisPromptInput(characterName, contactName, recentMemories));
 
     /// <summary>
     /// Formats a memory for prompt injection with felt-time temporal context.
