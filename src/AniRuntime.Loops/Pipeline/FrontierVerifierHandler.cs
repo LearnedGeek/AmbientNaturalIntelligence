@@ -275,10 +275,14 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
             ? string.Join(", ", contacts)
             : string.Empty;
 
-        // Day-of-week derives from local-time projection of GeneratedAt
-        // so the verifier prompt's "Day of week:" line matches the local
-        // calendar Mark experiences, not the UTC calendar.
-        var localTime = artifact.GeneratedAt.LocalDateTime;
+        // Day-of-week reads the wall-clock value at the offset the producer
+        // stored on the artifact (DateTimeOffset.Now bakes Mark's local TZ
+        // into GeneratedAt). Use .DateTime, NOT .LocalDateTime: the latter
+        // re-projects through the running machine's TZ, which silently flips
+        // the day when the artifact's offset differs from the host's TZ
+        // (e.g. UTC CI runner reading a CDT-offset artifact at 19:30 CDT
+        // would see 00:30 UTC the next day and report Tuesday for Monday).
+        var localTime = artifact.GeneratedAt.DateTime;
 
         return new FrontierVerifierRequest(
             ComposedMessage:        composedText,
