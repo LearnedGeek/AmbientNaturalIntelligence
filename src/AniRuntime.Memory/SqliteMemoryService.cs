@@ -1602,13 +1602,23 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     {
         if (sourceIds.Count == 0) return new List<string>();
 
-        var idList = string.Join(",", sourceIds.Select(id => $"'{id}'"));
+        // SonarCloud S2077 — parameterise the IN-clause instead of interpolating
+        // GUID strings into SQL. The IDs are GUIDs validated upstream so the
+        // attack surface was theoretical, but parameterisation is the correct
+        // shape regardless and silences the rule.
+        var idArray = sourceIds.ToArray();
+        var paramNames = new string[idArray.Length];
+        for (var i = 0; i < idArray.Length; i++) paramNames[i] = "$id" + i;
+        var idListSql = string.Join(",", paramNames);
+
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
-            SELECT DISTINCT target_id FROM memory_links WHERE source_id IN ({idList})
+            SELECT DISTINCT target_id FROM memory_links WHERE source_id IN ({idListSql})
             UNION
-            SELECT DISTINCT source_id FROM memory_links WHERE target_id IN ({idList})
+            SELECT DISTINCT source_id FROM memory_links WHERE target_id IN ({idListSql})
             """;
+        for (var i = 0; i < idArray.Length; i++)
+            cmd.Parameters.AddWithValue(paramNames[i], idArray[i]);
 
         var linked = new List<string>();
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -2281,7 +2291,11 @@ public class SqliteMemoryService : IMemoryService, IDisposable
     {
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT id, memory_id, action, source, content_before, content_after, type_before, type_after, importance_before, importance_after, occurred_at FROM memory_audit ORDER BY occurred_at DESC LIMIT {limit}";
+        // SonarCloud S2077 — parameterise the LIMIT clause. The value is a typed
+        // int so the actual injection risk was zero, but parameter binding is
+        // the correct shape and silences the static-analysis flag.
+        cmd.CommandText = "SELECT id, memory_id, action, source, content_before, content_after, type_before, type_after, importance_before, importance_after, occurred_at FROM memory_audit ORDER BY occurred_at DESC LIMIT $limit";
+        cmd.Parameters.AddWithValue("$limit", limit);
 
         var entries = new List<AuditEntry>();
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
