@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -118,7 +119,7 @@ public class DiagnosticService : IDiagnosticService
         foreach (var line in rerankLines)
         {
             // Extract first memory snippet from re-rank line (format: "topic=score, topic=score")
-            var match = Regex.Match(line, @"Diversity re-rank: (.{20,50})=");
+            var match = SafeRegex.Match(line, @"Diversity re-rank: (.{20,50})=");
             if (match.Success)
             {
                 var snippet = match.Groups[1].Value.Trim();
@@ -177,10 +178,10 @@ public class DiagnosticService : IDiagnosticService
 
         foreach (var line in moodLines)
         {
-            var wMatch = Regex.Match(line, @"W=([0-9.]+)");
-            var eMatch = Regex.Match(line, @"E=([0-9.]+)");
-            var cMatch = Regex.Match(line, @"C=([0-9.]+)");
-            var pMatch = Regex.Match(line, @"P=([0-9.]+)");
+            var wMatch = SafeRegex.Match(line, @"W=([0-9.]+)");
+            var eMatch = SafeRegex.Match(line, @"E=([0-9.]+)");
+            var cMatch = SafeRegex.Match(line, @"C=([0-9.]+)");
+            var pMatch = SafeRegex.Match(line, @"P=([0-9.]+)");
 
             if (wMatch.Success && float.TryParse(wMatch.Groups[1].Value, out var w) && (w >= 0.95f || w <= 0.05f))
                 extremeCount["Warmth"]++;
@@ -222,7 +223,7 @@ public class DiagnosticService : IDiagnosticService
 
         var corrections = lines.Count(l =>
             l.Contains("Inbound SMS from Mark:") &&
-            correctionPatterns.Any(p => Regex.IsMatch(l, p, RegexOptions.IgnoreCase)));
+            correctionPatterns.Any(p => SafeRegex.IsMatch(l, p, RegexOptions.IgnoreCase)));
 
         if (corrections == 0) return [];
 
@@ -247,7 +248,7 @@ public class DiagnosticService : IDiagnosticService
         var idCounts = new Dictionary<string, int>();
         foreach (var line in mergeLines)
         {
-            var match = Regex.Match(line, @"Memory merge: updated ([a-f0-9-]+)");
+            var match = SafeRegex.Match(line, @"Memory merge: updated ([a-f0-9-]+)");
             if (match.Success)
                 idCounts[match.Groups[1].Value] = idCounts.GetValueOrDefault(match.Groups[1].Value) + 1;
         }
@@ -272,7 +273,7 @@ public class DiagnosticService : IDiagnosticService
         var firstBlock = blocked.FirstOrDefault();
         if (firstBlock is null) return [];
 
-        var timeMatch = Regex.Match(firstBlock, @"^(\d{2}):(\d{2}):");
+        var timeMatch = SafeRegex.Match(firstBlock, @"^(\d{2}):(\d{2}):");
         if (!timeMatch.Success) return [];
 
         var hour = int.Parse(timeMatch.Groups[1].Value);
@@ -297,7 +298,7 @@ public class DiagnosticService : IDiagnosticService
         var findings = new List<DiagnosticFinding>();
         foreach (var line in decisionLines)
         {
-            var timeMatch = Regex.Match(line, @"^(\d{2}):(\d{2}):");
+            var timeMatch = SafeRegex.Match(line, @"^(\d{2}):(\d{2}):");
             if (!timeMatch.Success) continue;
 
             var actualHour = int.Parse(timeMatch.Groups[1].Value);
@@ -347,7 +348,7 @@ public class DiagnosticService : IDiagnosticService
         var maxMessages = 0;
         foreach (var line in echoChecks)
         {
-            var match = Regex.Match(line, @"against (\d+) prior messages");
+            var match = SafeRegex.Match(line, @"against (\d+) prior messages");
             if (match.Success && int.TryParse(match.Groups[1].Value, out var count))
                 maxMessages = Math.Max(maxMessages, count);
         }
@@ -382,11 +383,11 @@ public class DiagnosticService : IDiagnosticService
             var content = line[(line.IndexOf("): ", StringComparison.Ordinal) + 3)..];
 
             // Extract notable phrases — numbers with context, quoted phrases, distinctive fragments
-            var numberPhrases = Regex.Matches(content, @"\b\d+\s+degrees?\b|\b\d+°");
+            var numberPhrases = SafeRegex.Matches(content, @"\b\d+\s+degrees?\b|\b\d+°");
             foreach (Match m in numberPhrases)
                 phraseCounts[m.Value] = phraseCounts.GetValueOrDefault(m.Value) + 1;
 
-            var quotedPhrases = Regex.Matches(content, @"'[^']{10,40}'");
+            var quotedPhrases = SafeRegex.Matches(content, @"'[^']{10,40}'");
             foreach (Match m in quotedPhrases)
                 phraseCounts[m.Value] = phraseCounts.GetValueOrDefault(m.Value) + 1;
         }
@@ -449,7 +450,7 @@ public class DiagnosticService : IDiagnosticService
 
     private static TimeSpan? ParseLogTime(string line)
     {
-        var match = Regex.Match(line, @"^(\d{2}):(\d{2}):(\d{2})");
+        var match = SafeRegex.Match(line, @"^(\d{2}):(\d{2}):(\d{2})");
         if (!match.Success) return null;
 
         return new TimeSpan(

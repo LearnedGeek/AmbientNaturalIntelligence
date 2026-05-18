@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniRuntime.Core.Utilities;
 using AniRuntime.Core.Models;
 
 namespace AniRuntime.Loops.Coreference;
@@ -65,22 +66,22 @@ public sealed class FrameCoherenceChecker : IFrameCoherenceChecker
             // ── "we" + shared-action verbs ───────────────────────────
             // Covers: "we talked," "we decided," "we agreed," "we both,"
             //         "we wanted," "we chose," "we set for," "we both wanted"
-            (new Regex(@"\bwe\s+(talked|decided|agreed|both|wanted|chose|set\s+for|both\s+wanted)\b", opts),
+            (SafeRegex.Create(@"\bwe\s+(talked|decided|agreed|both|wanted|chose|set\s+for|both\s+wanted)\b", opts),
              "we + shared-action verb (talked/decided/agreed/both/wanted/chose/set for)"),
 
             // "we're set for" / "we're all set" / "we're going" / "we're planning" / "we are going to"
-            (new Regex(@"\bwe(?:'re|\s+are)\s+(all\s+set|set|going|planning|going\s+to)\b", opts),
+            (SafeRegex.Create(@"\bwe(?:'re|\s+are)\s+(all\s+set|set|going|planning|going\s+to)\b", opts),
              "we're / we are + shared-plan verb (all set/set/going/planning/going to)"),
 
             // ── Memory-anchor predicates ─────────────────────────────
             // "remember when ..." / "that thing you said" / "that one we" / "the one we"
-            (new Regex(@"\bremember\s+when\b", opts),
+            (SafeRegex.Create(@"\bremember\s+when\b", opts),
              "remember when"),
-            (new Regex(@"\bthat\s+thing\s+you\s+said\b", opts),
+            (SafeRegex.Create(@"\bthat\s+thing\s+you\s+said\b", opts),
              "that thing you said"),
-            (new Regex(@"\bthat\s+one\s+we\b", opts),
+            (SafeRegex.Create(@"\bthat\s+one\s+we\b", opts),
              "that one we"),
-            (new Regex(@"\bthe\s+one\s+we\b", opts),
+            (SafeRegex.Create(@"\bthe\s+one\s+we\b", opts),
              "the one we"),
 
             // ── Mark-quote attribution ───────────────────────────────
@@ -88,7 +89,7 @@ public sealed class FrameCoherenceChecker : IFrameCoherenceChecker
             // quoted. Covers "Mark told us," "Mark told me," "you told
             // us," "you told me" — the latter being the conversational
             // shorthand for the same shape.
-            (new Regex(@"\b(mark|you)\s+told\s+(us|me)\b", opts),
+            (SafeRegex.Create(@"\b(mark|you)\s+told\s+(us|me)\b", opts),
              "Mark/you + told us/told me"),
 
             // ── Present-tense state assertion about Mark ─────────────
@@ -99,7 +100,7 @@ public sealed class FrameCoherenceChecker : IFrameCoherenceChecker
             // optional adverb (still / just / already / now) sits
             // between "probably" and the state-verb, so the regex
             // permits up to two intervening word-tokens.
-            (new Regex(@"\b(?:you're|you\s+are)\s+probably\s+(?:\w+\s+){0,2}(doing|sitting|at|on)\b", opts),
+            (SafeRegex.Create(@"\b(?:you're|you\s+are)\s+probably\s+(?:\w+\s+){0,2}(doing|sitting|at|on)\b", opts),
              "you're / you are + probably + state-verb (doing/sitting/at/on)"),
 
             // ── Canonical-character third-party attribution ──────────
@@ -109,7 +110,7 @@ public sealed class FrameCoherenceChecker : IFrameCoherenceChecker
             // the frame is non-shared, attributing speech to canonical
             // characters as if Mark heard it too is the type-9
             // fabricated-source pattern.
-            (new Regex(@"\b(mia|sarah|kevin)\s+told\s+(us|me)\b", opts),
+            (SafeRegex.Create(@"\b(mia|sarah|kevin)\s+told\s+(us|me)\b", opts),
              "canonical-character + told us/told me (Mia/Sarah/Kevin)"),
         };
     }
