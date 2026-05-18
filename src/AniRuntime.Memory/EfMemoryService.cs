@@ -414,8 +414,26 @@ public sealed class EfMemoryService : IMemoryService
     // IMemoryAnalytics
     // ══════════════════════════════════════════════════════════════════
 
-    public Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default)
-        => _legacy.GetOpenLoopsAsync(ct);
+    public async Task<IEnumerable<OpenLoop>> GetOpenLoopsAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.Memories
+            .Where(m => m.Type == MemoryType.OpenLoop && !m.IsResolved)
+            .OrderBy(m => m.OccurredAt)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        return rows.Select(r => new OpenLoop
+        {
+            Id          = r.Id,
+            Description = r.Content,
+            Context     = r.RawJson ?? string.Empty,
+            Urgency     = r.Importance,
+            IsResolved  = r.IsResolved,
+            CreatedAt   = r.CreatedAt,
+            ResolvedAt  = r.ResolvedAt,
+        }).ToList();
+    }
 
     public async Task<List<MemoryContradiction>> GetFlaggedContradictionsAsync(
         bool includeResolved = false, CancellationToken ct = default)
@@ -450,14 +468,54 @@ public sealed class EfMemoryService : IMemoryService
         }).ToList();
     }
 
-    public Task<int> GetRecentMessageCountAsync(int days, CancellationToken ct = default)
-        => _legacy.GetRecentMessageCountAsync(days, ct);
+    public async Task<int> GetRecentMessageCountAsync(int days, CancellationToken ct = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-days);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.Memories
+            .Where(m => m.Type == MemoryType.Episodic
+                     && m.Content.StartsWith("Conversation (")
+                     && m.OccurredAt > cutoff)
+            .CountAsync(ct)
+            .ConfigureAwait(false);
+    }
 
-    public Task<float> GetAverageConversationValenceAsync(int days, CancellationToken ct = default)
-        => _legacy.GetAverageConversationValenceAsync(days, ct);
+    public async Task<float> GetAverageConversationValenceAsync(int days, CancellationToken ct = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-days);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.Memories
+            .Where(m => m.Type == MemoryType.Episodic
+                     && m.Content.StartsWith("Conversation (")
+                     && m.OccurredAt > cutoff)
+            .Select(m => (float?)m.RelationalValence)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+        if (rows.Count == 0) return 0.5f;
+        return rows.Where(v => v.HasValue).Select(v => v!.Value).DefaultIfEmpty(0.5f).Average();
+    }
 
-    public Task<(int outreach, int inbound)> GetInitiativeBalanceAsync(int days, CancellationToken ct = default)
-        => _legacy.GetInitiativeBalanceAsync(days, ct);
+    public async Task<(int outreach, int inbound)> GetInitiativeBalanceAsync(int days, CancellationToken ct = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-days);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        var outreach = await db.Memories
+            .Where(m => m.Type == MemoryType.Episodic
+                     && m.Content.Contains("reached out:")
+                     && m.OccurredAt > cutoff)
+            .CountAsync(ct)
+            .ConfigureAwait(false);
+
+        var inbound = await db.Memories
+            .Where(m => m.Type == MemoryType.Episodic
+                     && m.Content.StartsWith("Conversation (")
+                     && m.OccurredAt > cutoff)
+            .CountAsync(ct)
+            .ConfigureAwait(false);
+
+        return (outreach, inbound);
+    }
 
     public async Task<List<EmotionalContribution>> GetActiveContributionsAsync(CancellationToken ct = default)
     {
@@ -476,8 +534,30 @@ public sealed class EfMemoryService : IMemoryService
         return entities.Select(MapContribution).ToList();
     }
 
-    public Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default)
-        => _legacy.GetProcessedThemesAsync(maxThemes, ct);
+    public async Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default)
+    {
+        // "Processed" = contribution elapsed-time exceeds 7 half-lives (effectively
+        // zero residual). Computed in C# because the per-row half-life comparison
+        // isn't expressible as a stable SQLite filter (half_life_hours is a float
+        // multiplied with elapsed hours; ~10s of contributions to scan).
+        var now = DateTimeOffset.UtcNow;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.EmotionalContributions
+            .OrderByDescending(c => c.CreatedAt)
+            .Select(c => new { c.SourceContent, c.CreatedAt, c.HalfLifeHours })
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var themes = new List<string>();
+        foreach (var r in rows)
+        {
+            var elapsed = (float)(now - r.CreatedAt).TotalHours;
+            if (elapsed > r.HalfLifeHours * 7 && themes.Count < maxThemes)
+                themes.Add(r.SourceContent);
+            if (themes.Count >= maxThemes) break;
+        }
+        return themes;
+    }
 
     // ══════════════════════════════════════════════════════════════════
     // IMemoryMaintenance
