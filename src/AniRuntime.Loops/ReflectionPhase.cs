@@ -226,9 +226,22 @@ public class ReflectionPhase
         var savedGistIds = new List<Guid>(); // Phase 6 v1.2 R2: tracked for soft-delete post-loop
         foreach (var observation in observations)
         {
-            // Skip if we already have a reflection memory with this prefix
+            // Phase 6 v1.2 follow-on (2026-05-17 evening): the existingProfiles
+            // 50-char-prefix dedup was originally designed to prevent old-shape
+            // reflections from regenerating profile facts like "About Mark:
+            // Learning Spanish" cycle after cycle. With v1.2-shape gists
+            // (content prefix "[topic:") the same dedup over-fires because
+            // many distinct gists share opening tokens ("[topic: warmth...",
+            // "[topic: tender...") — empirically caused the 2026-05-17
+            // 19:30 scan to terminate at iter=9 instead of draining the
+            // 1654-record eligible pool. Fix: skip the prefix-dedup for
+            // v1.2-shape output; each compression-cycle gist captures a
+            // distinct slice and should not be deduped against prior gists.
+            // Old-shape repetition prevention is preserved for legacy-path
+            // observations.
             var prefix = observation.Length >= 50 ? observation[..50] : observation;
-            if (existingProfiles.Contains(prefix))
+            var isV12Shape = observation.StartsWith("[topic:", StringComparison.OrdinalIgnoreCase);
+            if (!isV12Shape && existingProfiles.Contains(prefix))
             {
                 _log.LogDebug("Reflection: skipping duplicate '{Prefix}...'", prefix[..Math.Min(40, prefix.Length)]);
                 continue;
