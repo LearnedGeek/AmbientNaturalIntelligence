@@ -38,31 +38,292 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
     private readonly IDbContextFactory<AniDbContext> _dbFactory;
     private readonly SqliteMemoryService _legacy;
     private readonly IMemoryAuditWriter _audit;
+    private readonly IMemoryMergePolicy _mergePolicy;
+    private readonly IOllamaClient? _ollama;
     private readonly AniOptions _options;
     private readonly ILogger<EfMemoryPersistenceService> _log;
+
+    // Serializes concurrent saves so the merge-policy decision + insert/merge
+    // sequence is effectively atomic at the service layer. Two concurrent
+    // SaveAsync calls could otherwise both miss each other in the merge-candidate
+    // search and insert duplicates. Save cadence is low; serialization is cheap.
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
 
     public EfMemoryPersistenceService(
         IDbContextFactory<AniDbContext> dbFactory,
         SqliteMemoryService legacy,
         IMemoryAuditWriter audit,
+        IMemoryMergePolicy mergePolicy,
         IOptions<AniOptions> options,
-        ILogger<EfMemoryPersistenceService> log)
+        ILogger<EfMemoryPersistenceService> log,
+        IOllamaClient? ollama = null)
     {
-        _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
-        _legacy    = legacy    ?? throw new ArgumentNullException(nameof(legacy));
-        _audit     = audit     ?? throw new ArgumentNullException(nameof(audit));
-        _options   = options.Value;
-        _log       = log       ?? throw new ArgumentNullException(nameof(log));
+        _dbFactory   = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
+        _legacy      = legacy    ?? throw new ArgumentNullException(nameof(legacy));
+        _audit       = audit     ?? throw new ArgumentNullException(nameof(audit));
+        _mergePolicy = mergePolicy ?? throw new ArgumentNullException(nameof(mergePolicy));
+        _options     = options.Value;
+        _log         = log       ?? throw new ArgumentNullException(nameof(log));
+        _ollama      = ollama;
     }
 
     /// <summary>
-    /// Pending Phase 5 extraction — Feature 30 three-tier dedup-merge
-    /// (exact-duplicate skip / similarity-window merge / insert)
-    /// belongs in a <c>MemoryMergePolicy</c> domain service that this
-    /// persistence service depends on. For now, delegated to legacy.
+    /// Persist a memory record with the full Feature 30 + Apr 21 rumination
+    /// pipeline. Phase 5 SOLID port (2026-05-18) — no longer delegates to
+    /// legacy; uses <see cref="IMemoryMergePolicy"/> for the merge decision
+    /// and the cross-type profile correction, and EF Core for the
+    /// insert/upsert + Feature 31 link creation.
+    ///
+    /// Pipeline (behaviour-preserved from the legacy SaveAsync):
+    /// <list type="number">
+    ///   <item>Auto-embed via <see cref="IOllamaClient"/> if no embedding
+    ///     supplied. Failure is logged but doesn't block the save.</item>
+    ///   <item>InnerThought-only rumination guard via the merge policy.</item>
+    ///   <item>Three-tier dedup-merge for dedupable types (InnerThought,
+    ///     Semantic, OpenLoop, Commitment): ≥0.95 skip, 0.85-0.95 LLM-merge
+    ///     into existing record, &lt;0.85 fall through.</item>
+    ///   <item>Cross-type profile correction for Perception/Episodic
+    ///     contact-speaking records.</item>
+    ///   <item>Upsert (preserving created_at on update) + audit-log entry.</item>
+    ///   <item>Feature 31 link creation (top 3 cosine 0.5-0.85 neighbours).</item>
+    /// </list>
     /// </summary>
-    public Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
-        => _legacy.SaveAsync(record, ct);
+    public async Task SaveAsync(MemoryRecord record, CancellationToken ct = default)
+    {
+        await _saveLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // 1. Auto-embed if needed.
+            if (record.Embedding is null && _ollama is not null && !string.IsNullOrWhiteSpace(record.Content))
+            {
+                try
+                {
+                    record.Embedding = await _ollama.EmbedAsync(record.Content, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Failed to generate embedding for {Type} record — saving without", record.Type);
+                }
+            }
+
+            // 2. Rumination guard — InnerThought only, only when option enabled.
+            if (_options.RuminationGuardEnabled
+                && record.Type == MemoryType.InnerThought
+                && record.Embedding is not null)
+            {
+                if (await _mergePolicy.IsRuminationAsync(record, ct).ConfigureAwait(false))
+                {
+                    var preview = record.Content is null
+                        ? "(null)"
+                        : record.Content[..Math.Min(60, record.Content.Length)];
+                    _log.LogInformation(
+                        "Rumination guard: skipping InnerThought — ≥{Min} similar thoughts in last {Hours}h at similarity ≥{Threshold:F2}. Content: {Preview}",
+                        _options.RuminationClusterMinSize,
+                        _options.RuminationWindowHours,
+                        _options.RuminationSimilarityThreshold,
+                        preview);
+                    return;
+                }
+            }
+
+            // 3. Feature 30 three-tier dedup-merge.
+            if (record.Embedding is not null)
+            {
+                var candidate = await _mergePolicy.FindMergeCandidateAsync(record, ct).ConfigureAwait(false);
+                if (candidate is not null)
+                {
+                    if (candidate.IsExactDuplicate)
+                    {
+                        _log.LogDebug("Semantic dedup: skipping {Type} — too similar to recent memory: {Content}",
+                            record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
+                        return;
+                    }
+
+                    var merged = await _mergePolicy.MergeAsync(
+                        candidate.ExistingId, candidate.ExistingContent, record.Content, ct)
+                        .ConfigureAwait(false);
+
+                    if (merged is not null)
+                    {
+                        // Create links for the surviving (merged) record using the
+                        // existing record's id — the incoming record was never
+                        // inserted, so using record.Id would FK-orphan the link.
+                        var originalId = record.Id;
+                        record.Id = candidate.ExistingId;
+                        await CreateLinksAsync(record, ct).ConfigureAwait(false);
+                        record.Id = originalId;
+                        return;
+                    }
+                    // Merge failed — fall through to normal insert.
+                }
+            }
+
+            // 4. Cross-type profile correction for contact-speaking records.
+            var isContactSpeaking =
+                record.Content.StartsWith("Mark said:",   StringComparison.OrdinalIgnoreCase) ||
+                record.Content.StartsWith("Mark texted:", StringComparison.OrdinalIgnoreCase);
+
+            if (record.Embedding is not null
+                && record.Type is MemoryType.Perception or MemoryType.Episodic
+                && isContactSpeaking)
+            {
+                await _mergePolicy.TryProfileCorrectionAsync(record, ct).ConfigureAwait(false);
+            }
+
+            // 5. Insert (or upsert if id collides) + audit.
+            await InsertMemoryAsync(record, ct).ConfigureAwait(false);
+
+            // 6. Feature 31 link creation.
+            await CreateLinksAsync(record, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _saveLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// EF Core upsert preserving <c>created_at</c> on the existing row.
+    /// Writes a create or update audit entry depending on whether the
+    /// id already existed. Behaviour-preserved from legacy
+    /// <c>SqliteMemoryService.InsertMemoryAsync</c>.
+    /// </summary>
+    private async Task InsertMemoryAsync(MemoryRecord record, CancellationToken ct)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        var existing = await db.Memories.FirstOrDefaultAsync(m => m.Id == record.Id, ct)
+            .ConfigureAwait(false);
+
+        string? contentBefore    = null;
+        int?    typeBefore       = null;
+        float?  importanceBefore = null;
+        bool    isUpdate         = existing is not null;
+
+        if (existing is not null)
+        {
+            contentBefore    = existing.Content;
+            typeBefore       = (int)existing.Type;
+            importanceBefore = existing.Importance;
+
+            existing.Type              = record.Type;
+            existing.Content           = record.Content;
+            existing.RawJson           = record.RawJson;
+            existing.Importance        = record.Importance;
+            existing.RelationalValence = record.RelationalValence;
+            existing.Embedding         = record.Embedding;
+            existing.IsResolved        = record.IsResolved;
+            existing.SourceName        = record.SourceName;
+            existing.OccurredAt        = record.OccurredAt;
+            // created_at intentionally preserved — birth-stamp shouldn't move.
+            existing.ResolvedAt        = record.ResolvedAt;
+            existing.Tier              = record.DecayTier;
+            existing.AnchorReason      = record.AnchorReason;
+            existing.AnchoredAt        = record.AnchoredAt;
+            existing.Provenance        = record.Provenance;
+        }
+        else
+        {
+            db.Memories.Add(new MemoryEntity
+            {
+                Id                = record.Id,
+                Type              = record.Type,
+                Content           = record.Content,
+                RawJson           = record.RawJson,
+                Importance        = record.Importance,
+                RelationalValence = record.RelationalValence,
+                Embedding         = record.Embedding,
+                IsResolved        = record.IsResolved,
+                SourceName        = record.SourceName,
+                OccurredAt        = record.OccurredAt,
+                CreatedAt         = record.CreatedAt,
+                ResolvedAt        = record.ResolvedAt,
+                Tier              = record.DecayTier,
+                AnchorReason      = record.AnchorReason,
+                AnchoredAt        = record.AnchoredAt,
+                Provenance        = record.Provenance,
+            });
+        }
+
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        await _audit.WriteAsync(
+            memoryId:         record.Id,
+            action:           isUpdate ? "update" : "create",
+            source:           record.SourceName ?? "cognitive-cycle",
+            contentBefore:    contentBefore,
+            contentAfter:     record.Content,
+            typeBefore:       typeBefore,
+            typeAfter:        (int)record.Type,
+            importanceBefore: importanceBefore,
+            importanceAfter:  record.Importance,
+            ct: ct).ConfigureAwait(false);
+
+        _log.LogDebug("Saved {Type} memory: {Content}",
+            record.Type, record.Content[..Math.Min(50, record.Content.Length)]);
+    }
+
+    /// <summary>
+    /// Feature 31 — create up to 3 <c>relates_to</c> links from this record
+    /// to recent memories with cosine in the [0.5, 0.85) band (related but
+    /// not merge-duplicates). Failure is non-blocking — link errors don't
+    /// roll back the save.
+    /// </summary>
+    private async Task CreateLinksAsync(MemoryRecord record, CancellationToken ct)
+    {
+        if (record.Embedding is null) return;
+
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+            var recent = await db.Memories
+                .Where(m => m.Id != record.Id && m.Embedding != null)
+                .OrderByDescending(m => m.OccurredAt)
+                .Take(20)
+                .Select(m => new { m.Id, m.Embedding })
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
+
+            var candidates = new List<(Guid TargetId, float Similarity)>();
+            foreach (var row in recent)
+            {
+                if (row.Embedding is null || row.Embedding.Length != record.Embedding.Length) continue;
+                var similarity = VectorMath.CosineSimilarity(record.Embedding, row.Embedding);
+                if (similarity is >= 0.5f and < 0.85f)
+                    candidates.Add((row.Id, similarity));
+            }
+
+            if (candidates.Count == 0) return;
+
+            var now = DateTimeOffset.UtcNow;
+            var top = candidates.OrderByDescending(l => l.Similarity).Take(3).ToList();
+
+            foreach (var (targetId, _) in top)
+            {
+                // INSERT OR IGNORE semantics: composite PK collision = no-op.
+                var exists = await db.MemoryLinks.AnyAsync(
+                    l => l.SourceId == record.Id && l.TargetId == targetId && l.Relationship == "relates_to", ct)
+                    .ConfigureAwait(false);
+                if (exists) continue;
+
+                db.MemoryLinks.Add(new MemoryLinkEntity
+                {
+                    SourceId     = record.Id,
+                    TargetId     = targetId,
+                    Relationship = "relates_to",
+                    CreatedAt    = now,
+                });
+            }
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+            _log.LogDebug("Memory links: created {Count} links for {Id}", top.Count, record.Id);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Memory link creation failed — continuing without links");
+        }
+    }
 
     public async Task SaveCharacterStateAsync(CharacterStateDoc doc, CancellationToken ct = default)
     {

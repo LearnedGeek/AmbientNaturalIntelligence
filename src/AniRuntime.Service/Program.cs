@@ -114,6 +114,12 @@ try
         // ports delegated to legacy).
         builder.Services.AddSingleton<IMemoryAuditWriter, EfMemoryAuditWriter>();
 
+        // Feature 30 three-tier dedup-merge + Apr 21 rumination guard +
+        // cross-type profile correction. Used by EfMemoryPersistenceService.SaveAsync.
+        // EfMemoryMergePolicy takes an optional IOllamaClient for the LLM-mediated
+        // merge step; resolved as the same singleton instance used elsewhere.
+        builder.Services.AddSingleton<IMemoryMergePolicy, EfMemoryMergePolicy>();
+
         // Register each focused service as the resolution for its ISP interface.
         // The composite IMemoryService resolves to a façade that injects all five.
         builder.Services.AddSingleton<IMemoryPersistence, EfMemoryPersistenceService>();
