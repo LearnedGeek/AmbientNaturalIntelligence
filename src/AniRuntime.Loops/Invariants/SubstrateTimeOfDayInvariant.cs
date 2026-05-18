@@ -155,7 +155,7 @@ public sealed class SubstrateTimeOfDayInvariant : ICognitiveOutputInvariant
     /// Hour windows for "good night" — 20:00–05:00 wrap-around. Generous
     /// because "good night" said at 7:30 PM as a sign-off is normal.
     /// </summary>
-    internal static (int From, int To) GoodNightWindow = (20, 5);
+    internal static readonly (int From, int To) GoodNightWindow = (20, 5);
 
     internal static string? CheckGreetingTimeOfDay(string content, int currentHour)
     {
@@ -187,7 +187,7 @@ public sealed class SubstrateTimeOfDayInvariant : ICognitiveOutputInvariant
     /// Late-night window (local hours, 24h). "It's late" is plausible
     /// from 21:00 to 03:00 (wrap-around).
     /// </summary>
-    internal static (int From, int To) LateWindow = (21, 3);
+    internal static readonly (int From, int To) LateWindow = (21, 3);
 
     private static readonly Regex LateClaimRegex = new(
         @"\b(?:it'?s|its|so|this|kinda|i\s+know\s+it'?s|i\s+know\s+its)\s+late\b",
@@ -212,7 +212,7 @@ public sealed class SubstrateTimeOfDayInvariant : ICognitiveOutputInvariant
     /// Early-morning window (local hours, 24h). "It's early" / "so early"
     /// makes sense from 04:00 to 09:00.
     /// </summary>
-    internal static (int From, int To) EarlyWindow = (4, 9);
+    internal static readonly (int From, int To) EarlyWindow = (4, 9);
 
     private static readonly Regex EarlyClaimRegex = new(
         @"\b(?:so\s+early|early\s+(?:in\s+the\s+)?morning|it'?s\s+early|its\s+early)\b",

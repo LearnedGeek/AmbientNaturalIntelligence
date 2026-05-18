@@ -9,7 +9,7 @@ namespace AniRuntime.Voice;
 /// All mutable state is synchronized — no direct property mutation from multiple threads.
 /// Separates state management (S in SOLID) from the orchestrator's pipeline logic.
 /// </summary>
-public class VoiceSessionState
+public class VoiceSessionState : IDisposable
 {
     private readonly object _lock = new();
     private volatile bool _isAniSpeaking;

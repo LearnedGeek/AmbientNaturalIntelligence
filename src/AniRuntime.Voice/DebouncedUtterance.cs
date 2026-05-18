@@ -10,7 +10,7 @@ namespace AniRuntime.Voice;
 /// Extracted from DeepgramStreamingSTTService to isolate turn-detection logic (SRP)
 /// and enable independent testing without a WebSocket connection.
 /// </summary>
-public class DebouncedUtterance
+public class DebouncedUtterance : IDisposable
 {
     private readonly int _debounceMs;
     private readonly ILogger _log;
