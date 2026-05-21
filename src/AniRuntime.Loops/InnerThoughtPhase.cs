@@ -234,14 +234,28 @@ public class InnerThoughtPhase
             .Take(8)
             .ToList();
 
+        // Theme J Phase J.5h (Issue #47, 2026-05-21) — feed
+        // SourceAttributionInvariant the contact-side signal. Populated
+        // explicitly (empty list when no Mark turns recently, not null) so
+        // the invariant can distinguish "no Mark turns to ground claims"
+        // (run + fire on fabrication) from "no context available" (soft-skip).
+        var contactName = snapshot.CharacterState?.PrimaryContactName ?? Roles.Mark;
+        var contactRecentMessages = snapshot.RecentHistory?
+            .Where(m => string.Equals(m.Role, Roles.Mark, StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(m.Role, contactName, StringComparison.OrdinalIgnoreCase))
+            .Select(m => m.Content)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .ToList() ?? new List<string>();
+
         var artifact = new CognitiveArtifact
         {
             Content                 = thought,
             ProducerKind            = CognitiveProducerKind.InnerThought,
             IntendedSink            = CognitiveOutputSink.PersistedMemory,
-            ContactName             = snapshot.CharacterState?.PrimaryContactName ?? Roles.Mark,
+            ContactName             = contactName,
             GeneratedAt             = DateTimeOffset.UtcNow,
             PriorAniMessages        = priorThoughts,
+            ContactRecentMessages   = contactRecentMessages,
             SystemPromptText        = systemPromptText,
         };
 

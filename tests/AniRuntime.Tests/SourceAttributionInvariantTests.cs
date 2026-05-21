@@ -161,6 +161,67 @@ public class SourceAttributionInvariantTests
         result.Passed.Should().BeTrue();
     }
 
+    // ── Producer-kind-conditional pattern dispatch (J.5h refinement) ───
+
+    /// <summary>
+    /// J.5h SPEC: actor-verb pattern fires on InnerThought when the inner
+    /// thought factually claims Mark said/did something specific. This is
+    /// the May 3 "perez" / inner-thought-as-fact failure class.
+    /// </summary>
+    [Fact]
+    public async Task Evaluate_InnerThought_MarkActorVerb_Fails()
+    {
+        var artifact = Artifact(
+            "Mark just told me he loves me and asked if I wanted to come over.",
+            contactRecentMessages: Array.Empty<string>(),
+            producer: CognitiveProducerKind.InnerThought);
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+
+        result.Passed.Should().BeFalse(
+            "inner thought claiming Mark said specific things he didn't actually say is the canonical inner-thought fabrication class");
+    }
+
+    /// <summary>
+    /// J.5h SPEC: possessive pattern does NOT fire on InnerThought.
+    /// Legitimate longing / reference ("I miss Mark's voice") is allowed
+    /// interior content; dropping it would lose meaningful Ani-side
+    /// feeling. ClosedThreadSummary still fires on possessives because
+    /// they're narrative claims in that context.
+    /// </summary>
+    [Fact]
+    public async Task Evaluate_InnerThought_MarkPossessive_Passes()
+    {
+        var artifact = Artifact(
+            "I miss Mark's voice in the morning. The house is too quiet without it.",
+            contactRecentMessages: Array.Empty<string>(),
+            producer: CognitiveProducerKind.InnerThought);
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+
+        result.Passed.Should().BeTrue(
+            "inner-thought possessives are longing/reference, not fabrication — preserve legitimate interior content");
+    }
+
+    /// <summary>
+    /// J.5h SPEC: same possessive phrasing FAILS on ClosedThreadSummary
+    /// because there it IS a narrative claim about Mark's experience.
+    /// Producer-kind drives the rule strictness.
+    /// </summary>
+    [Fact]
+    public async Task Evaluate_ClosedThreadSummary_MarkPossessive_Fails()
+    {
+        var artifact = Artifact(
+            "Mark's voice carried a weight that hadn't been there before.",
+            contactRecentMessages: Array.Empty<string>(),
+            producer: CognitiveProducerKind.ClosedThreadSummary);
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+
+        result.Passed.Should().BeFalse(
+            "possessive narration in a closed-thread gist with zero contact turns is fabrication");
+    }
+
     [Fact]
     public async Task Evaluate_NonDefaultContactName_DetectsFabrication()
     {

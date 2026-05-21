@@ -69,8 +69,12 @@ public sealed class SourceAttributionInvariant : ICognitiveOutputInvariant
         "stayed","softened","brightened","tensed",
     };
 
+    // Pattern allows up to 2 filler words between contact and verb so
+    // "Mark just told me" / "Mark slowly walked over" / "Mark might have
+    // said" match. Adverb-rich phrasing is a common fabrication shape
+    // because the LLM uses adverbs to add narrative texture.
     private static readonly Regex ContactActorVerbPattern =
-        new(@"\b(?<contact>\w+)\s+(" + string.Join("|", ActorVerbs) + @")\b",
+        new(@"\b(?<contact>\w+)\s+(?:\w+\s+){0,2}(" + string.Join("|", ActorVerbs) + @")\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ContactPossessivePattern =
@@ -119,16 +123,28 @@ public sealed class SourceAttributionInvariant : ICognitiveOutputInvariant
         }
 
         // Pattern 2 — contact-name possessive narration.
-        // Example: "Mark's voice", "Mark's heart skipped a beat".
-        foreach (Match m in ContactPossessivePattern.Matches(artifact.Content))
+        // Example: "Mark's voice softened", "Mark's heart skipped a beat".
+        //
+        // Applies to ClosedThreadSummary only — possessive references in
+        // a gist are narrative claims ("Mark's voice softened as he
+        // recalled..."). InnerThought is allowed possessive references for
+        // legitimate Ani-side feeling ("I miss Mark's voice in the
+        // morning") — those aren't fabrications. Dropping them would lose
+        // legitimate interior content; the actor-verb + joint-actor
+        // patterns catch the dangerous inner-thought fabrications without
+        // false-positiving on longing/reference.
+        if (artifact.ProducerKind == CognitiveProducerKind.ClosedThreadSummary)
         {
-            if (string.Equals(m.Groups["contact"].Value, contact, StringComparison.OrdinalIgnoreCase))
+            foreach (Match m in ContactPossessivePattern.Matches(artifact.Content))
             {
-                var hint =
-                    $"output narrates {contact}-side experience (\"{m.Value}\") but the source thread "
-                  + $"had no {contact} turns. Possessive references to {contact}'s body, voice, or "
-                  + $"feelings are fabrication when {contact} hasn't been present in the input.";
-                return Task.FromResult(InvariantResult.Fail(hint));
+                if (string.Equals(m.Groups["contact"].Value, contact, StringComparison.OrdinalIgnoreCase))
+                {
+                    var hint =
+                        $"output narrates {contact}-side experience (\"{m.Value}\") but the source thread "
+                      + $"had no {contact} turns. Possessive references to {contact}'s body, voice, or "
+                      + $"feelings are fabrication when {contact} hasn't been present in the input.";
+                    return Task.FromResult(InvariantResult.Fail(hint));
+                }
             }
         }
 
