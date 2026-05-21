@@ -1,5 +1,5 @@
+using AniRuntime.Voice.TagMapping;
 using FluentAssertions;
-using LearnedGeek.ML;
 using LearnedGeek.ML.Interfaces;
 using LearnedGeek.ML.Models;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,6 +7,13 @@ using Moq;
 
 namespace AniRuntime.Tests;
 
+/// <summary>
+/// 2026-05-20 — relocated back to ANI from <c>learnedgeek-libs/LearnedGeek.ML.Tests</c>
+/// following the resolution of Issue #2 (move tag-mapping subsystem back to ANI).
+/// Tests behavior identical to pre-move; namespace updated to consume the
+/// AniRuntime.Voice.TagMapping implementation. ITextClassificationService stays
+/// in the library since it's genuinely cross-project.
+/// </summary>
 public class MLVoiceTagEnricherTests
 {
     private readonly Mock<ITextClassificationService> _classifier = new();
@@ -81,7 +88,7 @@ public class MLVoiceTagEnricherTests
     {
         var emotion = new EmotionResult("happiness", 0.80f,
             new Dictionary<string, float> { ["happiness"] = 0.80f });
-        var sarcasm = new SarcasmResult(true, 0.30f); // Below 0.50 threshold
+        var sarcasm = new SarcasmResult(true, 0.30f);
         var resolution = new TagResolution("[cheerful]", "static", "happiness", 0.80f);
 
         _classifier.Setup(c => c.ClassifyEmotionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))

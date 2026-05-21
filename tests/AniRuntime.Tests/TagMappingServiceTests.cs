@@ -1,21 +1,26 @@
+using AniRuntime.Voice.TagMapping;
 using FluentAssertions;
 using LearnedGeek.ML.Models;
-using LearnedGeek.ML.TagMapping;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AniRuntime.Tests;
 
+/// <summary>
+/// 2026-05-20 — relocated back to ANI from <c>learnedgeek-libs/LearnedGeek.ML.Tests</c>
+/// following the resolution of Issue #2 (move tag-mapping subsystem back to ANI).
+/// Tests behavior identical to pre-move; namespace updated to consume the
+/// AniRuntime.Voice.TagMapping implementation.
+/// </summary>
 public class TagMappingServiceTests
 {
     private readonly TagMappingService _sut;
 
     public TagMappingServiceTests()
     {
-        // LearnedGeek.ML's csproj copies StaticTagMap.json into the test's
-        // bin output via <None Update> + CopyToOutputDirectory. Letting
+        // StaticTagMap.json is copied into the test's bin output via
+        // AniRuntime.Voice.csproj's <None Update> directive. Letting
         // TagMappingService auto-resolve via AppContext.BaseDirectory keeps
-        // this test stable across in-tree vs cross-repo project layouts
-        // (May 2 2026 extraction to learnedgeek-libs).
+        // this test stable.
         _sut = new TagMappingService(NullLogger<TagMappingService>.Instance);
     }
 
@@ -216,7 +221,6 @@ public class TagMappingServiceTests
     [Fact]
     public void Resolve_SecondaryEmotionMatch_MatchesFromScores()
     {
-        // Primary is neutral, but has secondary sarcasm in scores
         var emotion = new EmotionResult(
             "neutral", 0.40f,
             new Dictionary<string, float>
@@ -234,7 +238,6 @@ public class TagMappingServiceTests
     [Fact]
     public void Resolve_OvernightHourRange_WrapsCorrectly()
     {
-        // Happiness at 2 AM should match the 22-4 range
         var emotion = MakeEmotion("happiness", 0.80f);
         var twoAm = new DateTimeOffset(2026, 3, 31, 2, 0, 0, TimeSpan.Zero);
 
@@ -247,7 +250,6 @@ public class TagMappingServiceTests
     [Fact]
     public void RecordFeedback_DoesNotThrow()
     {
-        // Stage 1: just logs, no exceptions
         var act = () => _sut.RecordFeedback("[cheerful]", "happiness", true);
         act.Should().NotThrow();
     }
@@ -268,5 +270,4 @@ public class TagMappingServiceTests
         return new EmotionResult(primary, confidence,
             new Dictionary<string, float> { [primary] = confidence });
     }
-
 }

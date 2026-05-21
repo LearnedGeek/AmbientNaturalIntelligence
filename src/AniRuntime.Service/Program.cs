@@ -431,6 +431,19 @@ try
     builder.Services.AddSingleton<AdminCommandHandler>();
     builder.Services.AddSingleton<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
     builder.Services.AddSingleton<EmotionalProcessor>();
+    // 2026-05-19 — sub-builders of the ContextBuilder SRP decomposition.
+    // See `ANI-Testability-Architecture-Plan.md` §2. Singleton matches
+    // ContextBuilder's lifetime (consumes them via DI).
+    builder.Services.AddSingleton<IEmotionalContextBuilder,
+        AniRuntime.Loops.Context.EmotionalContextBuilder>();
+    builder.Services.AddSingleton<IRetrievalContextBuilder,
+        AniRuntime.Loops.Context.RetrievalContextBuilder>();
+    builder.Services.AddSingleton<IConversationContextBuilder,
+        AniRuntime.Loops.Context.ConversationContextBuilder>();
+    builder.Services.AddSingleton<IEpistemicContextBuilder,
+        AniRuntime.Loops.Context.EpistemicContextBuilder>();
+    builder.Services.AddSingleton<IStateContextBuilder,
+        AniRuntime.Loops.Context.StateContextBuilder>();
     builder.Services.AddSingleton<ContextBuilder>();
     builder.Services.AddSingleton<AniRuntime.LLM.ContextCompressor>();
     builder.Services.AddSingleton<AniRuntime.LLM.KeywordExtractor>();
@@ -502,6 +515,16 @@ try
     // ── LearnedGeek.ML — LM-Kit emotion/sarcasm classification ─────────────
     builder.Services.Configure<MLOptions>(config.GetSection("LMKit"));
     builder.Services.AddLearnedGeekML();
+    // 2026-05-20 — types moved out of LearnedGeek.ML library back to ANI;
+    // AddLearnedGeekML no longer auto-registers them. Register here directly.
+    // See learnedgeek-libs Issues #1 (PersonaSummaryCache) and #2 (tag-mapping
+    // subsystem + ClassificationComparisonService) for the rationale.
+    builder.Services.AddSingleton<PersonaSummaryCache>();
+    builder.Services.AddSingleton<
+        AniRuntime.Voice.TagMapping.ITagMappingService,
+        AniRuntime.Voice.TagMapping.TagMappingService>();
+    builder.Services.AddSingleton<AniRuntime.Voice.TagMapping.MLVoiceTagEnricher>();
+    builder.Services.AddSingleton<AniRuntime.Dashboard.Classification.ClassificationComparisonService>();
 
     // ── H3: Rate limiting — prevent webhook flooding ──────────────────────────
     builder.Services.AddRateLimiter(options =>

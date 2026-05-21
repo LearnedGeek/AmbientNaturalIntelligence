@@ -9,12 +9,22 @@
   <ItemGroup>
     <ProjectReference Include="..\AniRuntime.Core\AniRuntime.Core.csproj" />
     <ProjectReference Include="..\AniRuntime.LLM\AniRuntime.LLM.csproj" />
+    <!-- 2026-05-20 — tag-mapping subsystem moved from LearnedGeek.ML to here
+         per learnedgeek-libs Issue #2. Library reference needed for the
+         ITextClassificationService dependency in MLVoiceTagEnricher. -->
+    <ProjectReference Include="..\..\..\learnedgeek-libs\LearnedGeek.ML\LearnedGeek.ML.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="TagMapping\StaticTagMap.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
