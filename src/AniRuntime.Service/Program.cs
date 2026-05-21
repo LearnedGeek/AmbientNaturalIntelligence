@@ -196,6 +196,13 @@ try
         // gate so every artifact with PriorAniMessages context routes
         // through the same check, including J.5a remediation regen output.
         .UsePostInvariant<SelfEchoInvariant>()
+        // Theme J Phase J.5h (Issue #47, 2026-05-21) — class-wide source
+        // attribution. Empirical anchor: 26 of 26 one-sided ClosedThreadSummary
+        // closures over May 14 → May 21 fabricated Mark-side narration.
+        // Applies to ClosedThreadSummary + InnerThought producer kinds when
+        // ContactRecentMessages is non-null and empty (signal: source had
+        // zero contact turns). See SourceAttributionInvariant.cs.
+        .UsePostInvariant<SourceAttributionInvariant>()
         .UsePostInvariant<PromptTemplateLeakInvariant>()
         // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
         .UsePostInvariant<ConfabulationInvariant>()

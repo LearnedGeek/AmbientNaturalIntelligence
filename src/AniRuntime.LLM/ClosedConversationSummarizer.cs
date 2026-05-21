@@ -30,6 +30,7 @@ namespace AniRuntime.LLM;
 public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
 {
     private readonly IOllamaClient                          _ollama;
+    private readonly ICognitiveOutputGate?                  _gate;
     private readonly ILogger<ClosedConversationSummarizer>  _log;
 
     /// <summary>
@@ -62,9 +63,11 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
 
     public ClosedConversationSummarizer(
         IOllamaClient                          ollama,
-        ILogger<ClosedConversationSummarizer>  log)
+        ILogger<ClosedConversationSummarizer>  log,
+        ICognitiveOutputGate?                  gate = null)
     {
         _ollama = ollama;
+        _gate   = gate;
         _log    = log;
     }
 
@@ -94,6 +97,16 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
 
         var gist = await GenerateGistAsync(thread, ct).ConfigureAwait(false);
 
+        // Theme J Phase J.5h (Issue #47, 2026-05-21): producer migration —
+        // pass the generated gist through CognitiveOutputGate so the new
+        // SourceAttributionInvariant can catch one-sided-thread fabrications.
+        // On Pass: persist as 'valid'. On Remediate/Fail: persist with the
+        // validity reason embedded so substrate retrieval excludes it by
+        // default. No retry — the prompt fragment is the primary defense;
+        // the gate is the backstop, and a regenerate-loop on every thread
+        // close is too expensive for the LLM-call budget.
+        var validity = await EvaluateGistAsync(gist, thread, markTurns, ct).ConfigureAwait(false);
+
         float[]? embedding = null;
         try { embedding = await _ollama.EmbedAsync(gist, ct).ConfigureAwait(false); }
         catch (Exception ex)
@@ -114,14 +127,68 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
             TurnCount               = thread.Messages.Count,
             DurationSeconds         = (thread.LastMessageAt - thread.StartedAt).TotalSeconds,
             Embedding               = embedding,
+            Validity                = validity,
         };
 
         _log.LogInformation(
-            "ClosedConversationRecord produced: thread={ThreadId} turns={Turns} valence={Valence:+0.00;-0.00} keywords={Keywords}",
-            thread.Id, thread.Messages.Count, outcomeValence,
+            "ClosedConversationRecord produced: thread={ThreadId} turns={Turns} valence={Valence:+0.00;-0.00} validity={Validity} keywords={Keywords}",
+            thread.Id, thread.Messages.Count, outcomeValence, validity,
             string.Join(",", keywords));
 
         return record;
+    }
+
+    /// <summary>
+    /// J.5h gate evaluation. Returns <c>"valid"</c> on Pass; otherwise a
+    /// validity string that downstream retrieval filters out by default
+    /// (substrate consumers go through <see cref="IClosedConversationStore"/>
+    /// which excludes non-valid records). Audit consumers still surface
+    /// the record via the <c>IncludingInvalid</c> overloads.
+    ///
+    /// Returns <c>"valid"</c> when the gate isn't wired (legacy / test path);
+    /// the gate is optional so the summarizer remains usable in test contexts
+    /// that don't construct the full pipeline.
+    /// </summary>
+    private async Task<string> EvaluateGistAsync(
+        string                              gist,
+        ConversationThread                  thread,
+        IReadOnlyList<ConversationMessage>  markTurns,
+        CancellationToken                   ct)
+    {
+        if (_gate is null) return "valid";
+
+        var artifact = new CognitiveArtifact
+        {
+            Content               = gist,
+            ProducerKind          = CognitiveProducerKind.ClosedThreadSummary,
+            IntendedSink          = CognitiveOutputSink.PersistedSummary,
+            ContactRecentMessages = markTurns.Select(m => m.Content).ToList(),
+        };
+
+        try
+        {
+            var result = await _gate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
+            if (result.Verdict == OutputGateVerdict.Pass) return "valid";
+
+            var fired = result.FiredInvariants.Count > 0 ? result.FiredInvariants[0] : "unknown";
+            _log.LogWarning(
+                "ClosedConversationSummarizer: gate fired {Invariant} for thread {ThreadId} — quarantining as invalid_fabrication. Hint: {Hint}",
+                fired, thread.Id, result.RemediationHint ?? "(none)");
+
+            return fired switch
+            {
+                "source-attribution" => "invalid_fabrication",
+                _                    => "invalid_other",
+            };
+        }
+        catch (Exception ex)
+        {
+            // Gate failure must not block summary persistence. Log and pass.
+            _log.LogWarning(ex,
+                "ClosedConversationSummarizer: gate evaluation threw for thread {ThreadId} — defaulting to valid.",
+                thread.Id);
+            return "valid";
+        }
     }
 
     // ===== Per-turn register classification =====
@@ -389,12 +456,20 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
         // J.5e (May 1, 2026): the verbatim-7-token rule is now defined ONCE
         // in AntiParrotPromptFragments and referenced by both V1.2 (here)
         // and the gate's AntiParrotInvariant. Single source of truth.
-        var noVerbatim = AntiParrotPromptFragments.NoVerbatimContactTurnsRule("Mark");
+        var noVerbatim  = AntiParrotPromptFragments.NoVerbatimContactTurnsRule("Mark");
+
+        // J.5h (Issue #47, 2026-05-21): class-wide attribution rule.
+        // Same single-source-of-truth pattern as the anti-parrot rule;
+        // the SourceAttributionInvariant on the gate enforces the same
+        // rule post-hoc when the LLM ignores the instruction.
+        var attribution = SourceAttributionPromptFragments.AttributionRule("Mark", "Ani");
+
         var system = $$"""
             You are a paraphrase-only summariser. Produce a 1–2 sentence summary of the conversation between Mark (the contact) and Ani.
 
             HARD CONSTRAINTS:
             - {{noVerbatim}}
+            - {{attribution}}
             - DO NOT use direct speech ("she said", "he asked"). Use paraphrase.
             - Focus on what shifted EMOTIONALLY between them, not what was literally said.
             - 1 to 2 sentences. No more.
