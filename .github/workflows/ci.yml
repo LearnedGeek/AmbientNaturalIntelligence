@@ -110,7 +110,7 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
-            /d:sonar.coverage.exclusions="tests/**/*,**/Program.cs,**/Migrations/**/*"
+            /d:sonar.coverage.exclusions="tests/**/*,**/Program.cs,**/Migrations/**/*,src/AniRuntime.MauiClient/**/*,src/AniRuntime.Dashboard/**/*"
 
       # Build and test via the test project — this transitively restores and builds
       # all src projects except AniRuntime.MauiClient (net10.0-android), which

@@ -50,7 +50,12 @@ public sealed class VoiceReplyGenerator : IVoiceReplyGenerator
         CancellationToken ct)
     {
         var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
-        var prompt = PromptBuilder.BuildVoiceReplyPrompt(snapshot, thread, rendererForPrompt);
+        // 2026-05-20 — voice path mirrors the May 18 SMS-path role-flip fix.
+        // Reuses LeanConversationPromptDirectiveInSystem flag so both reply
+        // paths flip together. See D-005 in ANI-Decisions-Pending.md (resolved).
+        var prompt = PromptBuilder.BuildVoiceReplyPrompt(
+            snapshot, thread, rendererForPrompt,
+            directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem);
 
         var history = bufferedMessages
             .TakeLast(MaxHistoryMessages)

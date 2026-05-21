@@ -4,10 +4,24 @@ using AniRuntime.Core.Models;
 namespace AniRuntime.LLM.Prompts;
 
 /// <summary>Typed input for <see cref="VoiceReplyPromptCommand"/>.</summary>
+/// <param name="DirectiveInSystem">
+/// 2026-05-20 — when true, the directive block (anchored memories, facts
+/// slice, speech-act discipline slice, "Respond to..." imperative) folds
+/// into the system prompt and the returned <c>User</c> is empty. The
+/// structural fix carried over from the May 18 SMS-path fix
+/// (<see cref="LeanConversationPromptInput.DirectiveInSystem"/>) — the
+/// voice path has the same two-adjacent-user-role-messages anti-pattern
+/// pre-fix. Voice hasn't been exercised in months so the latent failure
+/// hasn't surfaced empirically; applied proactively pending re-validation
+/// when voice is next used. Reuses
+/// <c>AniOptions.LeanConversationPromptDirectiveInSystem</c> flag so both
+/// reply paths flip together.
+/// </param>
 public sealed record VoiceReplyPromptInput(
     ContextSnapshot Snapshot,
     ConversationThread Thread,
-    IEpistemicSubstrateRenderer? EpistemicRenderer = null);
+    IEpistemicSubstrateRenderer? EpistemicRenderer = null,
+    bool DirectiveInSystem = false);
 
 /// <summary>
 /// Reply prompt for voice (phone) conversations. Shorter, spoken-style,
@@ -100,6 +114,20 @@ public sealed class VoiceReplyPromptCommand : IPromptCommand<VoiceReplyPromptInp
         sections.Add($"Respond to what {contact} just said.");
 
         var user = string.Join("\n", sections);
+
+        // 2026-05-20 — role-flip structural fix carried over from
+        // LeanConversationPromptCommand (May 18). When DirectiveInSystem is
+        // true, fold the directive block into the system message and return
+        // an empty user. Contact's actual utterance remains in RecentHistory
+        // as the only user-role content, eliminating the
+        // two-adjacent-user-messages shape that caused parrot + slice-leak
+        // on the SMS path.
+        if (input.DirectiveInSystem)
+        {
+            var mergedSystem = system + "\n\n" + user;
+            return new PromptPair(mergedSystem, string.Empty);
+        }
+
         return new PromptPair(system, user);
     }
 }

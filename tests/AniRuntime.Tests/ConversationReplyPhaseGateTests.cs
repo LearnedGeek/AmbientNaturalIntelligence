@@ -56,9 +56,8 @@ public class ConversationReplyPhaseGateTests : AniTestBase
         diagnostic.Setup(d => d.RunDiagnosticAsync(It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new DiagnosticReport());
         var contextBuilder = new ContextBuilder(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
-            MockOllama.Object, desire, diagnostic.Object, options,
-            NullLogger<ContextBuilder>.Instance);
+            NoOpState(), NoOpRetrieval(), NoOpEpistemic(), NoOpConversation(), NoOpEmotional(),
+            options, NullLogger<ContextBuilder>.Instance);
         var keywordExtractor = new KeywordExtractor(
             MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();

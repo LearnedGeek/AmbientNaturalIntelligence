@@ -135,9 +135,8 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
             MockOllama.Object, DefaultOptions,
             NullLogger<EmotionalProcessor>.Instance);
         var contextBuilder = new ContextBuilder(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
-            MockOllama.Object, desire, mockDiagnostic.Object, DefaultOptions,
-            NullLogger<ContextBuilder>.Instance);
+            NoOpState(), NoOpRetrieval(), NoOpEpistemic(), NoOpConversation(), NoOpEmotional(),
+            DefaultOptions, NullLogger<ContextBuilder>.Instance);
         var keywordExtractor = new KeywordExtractor(
             MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();

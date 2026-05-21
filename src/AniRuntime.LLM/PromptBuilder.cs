@@ -185,9 +185,11 @@ public static class PromptBuilder
     /// </summary>
     public static (string System, string User) BuildVoiceReplyPrompt(
         ContextSnapshot snapshot, ConversationThread thread,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        bool directiveInSystem = false)
         => new Prompts.VoiceReplyPromptCommand()
-            .Build(new Prompts.VoiceReplyPromptInput(snapshot, thread, epistemicRenderer));
+            .Build(new Prompts.VoiceReplyPromptInput(
+                snapshot, thread, epistemicRenderer, directiveInSystem));
 
     /// <summary>
     /// Builds a reply prompt for when Ani initially chose silence but desire built enough
