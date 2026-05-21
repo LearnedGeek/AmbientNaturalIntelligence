@@ -145,6 +145,12 @@ try
     // consumption gated on the V1.5a observation window.
     // See docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md.
     builder.Services.AddSingleton<IVibeBiasService, VibeBiasService>();
+    // Issue #46 (2026-05-21) — V1.5a structured-record persistence so
+    // Gate 3 + #43 + #45 read recommended-register data from SQLite
+    // instead of grepping Serilog output. Same data plane as
+    // SqliteClosedConversationStore; new dedicated table
+    // vibe_bias_observations.
+    builder.Services.AddSingleton<IVibeBiasObservationStore, SqliteVibeBiasObservationStore>();
 
     // Theme M Phase M.1 (May 6, 2026) — conscious-substrate gist composer
     // producing tension-state (§4.8) + register-state (§4.3) slices.

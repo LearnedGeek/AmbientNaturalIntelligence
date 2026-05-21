@@ -49,6 +49,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     private readonly Em9Detector? _em9;
     private readonly IReplyEvaluator _replyEvaluator;
     private readonly IVibeBiasService? _vibeBias;
+    // Issue #46 (2026-05-21) — V1.5a structured-record persistence.
+    private readonly IVibeBiasObservationStore? _vibeBiasObservations;
     // Theme M Phase M.0 (May 5, 2026) — conscious-substrate gist composer.
     // Optional dependency; M.0 ships a no-op composer that returns Empty.
     // M.1+ provides a real composer that produces slice content.
@@ -92,7 +94,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         Em9Detector? em9Detector = null,
         IVibeBiasService? vibeBias = null,
         IConsciousSubstrateGist? consciousGist = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        IVibeBiasObservationStore? vibeBiasObservations = null)
     {
         _state = state;
         _persist = persist;
@@ -118,6 +121,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _vibeBias = vibeBias;
         _consciousGist = consciousGist;
         _epistemicRenderer = epistemicRenderer;
+        _vibeBiasObservations = vibeBiasObservations;
         _log = log;
     }
 
@@ -288,7 +292,9 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // valence on each prior record, never from Mark's-delta. See
         // docs/spec/ANI-VibeLoop-V1.5-Retrieval-Time-Biasing-Plan.md §V1.5a.
         await VibeBiasObservation.ObserveAsync(
-            _vibeBias, snapshot, callSite: "reply", _log, ct).ConfigureAwait(false);
+            _vibeBias, snapshot, callSite: "reply", _log, ct,
+            observationStore: _vibeBiasObservations,
+            threadId:         thread.Id).ConfigureAwait(false);
 
         // Theme M Phase M.1 (May 5, 2026 evening) — conscious-substrate gist
         // composition + injection. The composer reads EmotionalState and produces

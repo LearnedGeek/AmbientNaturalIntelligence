@@ -43,6 +43,8 @@ public sealed class OutreachPipeline : IOutreachPipeline
     private readonly Em9Detector? _em9;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IVibeBiasService? _vibeBias;
+    // Issue #46 (2026-05-21) — V1.5a structured-record persistence.
+    private readonly IVibeBiasObservationStore? _vibeBiasObservations;
     private readonly IOutreachFrameSelector? _frameSelector;
     private readonly IFrameCoherenceChecker? _frameChecker;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
@@ -67,7 +69,8 @@ public sealed class OutreachPipeline : IOutreachPipeline
         IVibeBiasService? vibeBias = null,
         IOutreachFrameSelector? frameSelector = null,
         IFrameCoherenceChecker? frameChecker = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        IVibeBiasObservationStore? vibeBiasObservations = null)
     {
         _state             = state          ?? throw new ArgumentNullException(nameof(state));
         _persist           = persist        ?? throw new ArgumentNullException(nameof(persist));
@@ -82,6 +85,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
         _em9               = em9Detector;
         _outputGate        = outputGate;
         _vibeBias          = vibeBias;
+        _vibeBiasObservations = vibeBiasObservations;
         _frameSelector     = frameSelector;
         _frameChecker      = frameChecker;
         _epistemicRenderer = epistemicRenderer;
@@ -152,7 +156,9 @@ public sealed class OutreachPipeline : IOutreachPipeline
         }
 
         await VibeBiasObservation.ObserveAsync(
-            _vibeBias, snapshot, callSite: "outreach", _log, ct).ConfigureAwait(false);
+            _vibeBias, snapshot, callSite: "outreach", _log, ct,
+            observationStore: _vibeBiasObservations,
+            threadId:         null).ConfigureAwait(false);
 
         // Theme N N.3 — outreach source-frame selection
         OutreachFrame? selectedFrame = null;

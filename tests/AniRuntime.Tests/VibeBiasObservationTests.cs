@@ -229,6 +229,157 @@ public class VibeBiasObservationTests
         capturedAsOf.Should().BeOnOrBefore(afterCall);
     }
 
+    /// <summary>
+    /// Issue #46 spec: when an <see cref="IVibeBiasObservationStore"/> is
+    /// provided, ObserveAsync persists one structured record per
+    /// successful pass — carrying call site, contact name, candidate
+    /// count, tier breakdown, surfaced-records JSON, recommended register,
+    /// recommended value, and diversity score reason.
+    /// </summary>
+    [Fact]
+    public async Task ObserveAsync_WithStore_PersistsStructuredRecord()
+    {
+        var registers = ClosedConversationSummarizer.Registers;
+        var vec       = new float[registers.Count];
+        var tendIdx   = -1;
+        for (var i = 0; i < registers.Count; i++)
+            if (registers[i] == "Tenderness") { tendIdx = i; break; }
+        vec[tendIdx]  = 0.81f;
+
+        var result = new VibeBiasResult(
+            AllCandidates: new[]
+            {
+                new VibeBiasContribution(Guid.NewGuid(), 0.45f, 0.6f, "Heavy",  15.1f, new float[registers.Count], +1.0f),
+                new VibeBiasContribution(Guid.NewGuid(), 0.30f, 0.5f, "Medium", 30.0f, new float[registers.Count], -0.2f),
+                new VibeBiasContribution(Guid.NewGuid(), 0.10f, 0.3f, "Light",  60.0f, new float[registers.Count],  0.0f),
+            },
+            SurfacedTopN: new[]
+            {
+                new VibeBiasContribution(Guid.NewGuid(), 0.45f, 0.6f, "Heavy", 15.1f, new float[registers.Count], +1.0f),
+            },
+            RecommendedStrategyRegister: vec,
+            DiversityScoreReason:        "MMR surfaced top 1 (lambda=0.30)");
+
+        _mockBias.Setup(b => b.ComputeBiasAsync(
+                It.IsAny<string>(), It.IsAny<MarkRegisterContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+        var mockStore = new Mock<IVibeBiasObservationStore>(MockBehavior.Strict);
+        VibeBiasObservationRecord? captured = null;
+        mockStore.Setup(s => s.SaveAsync(It.IsAny<VibeBiasObservationRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<VibeBiasObservationRecord, CancellationToken>((r, _) => captured = r)
+            .Returns(Task.CompletedTask);
+
+        var threadId = Guid.NewGuid();
+        await VibeBiasObservation.ObserveAsync(
+            biasService:        _mockBias.Object,
+            snapshot:           SnapshotWithClosedConversation(),
+            callSite:           "reply",
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None,
+            observationStore:   mockStore.Object,
+            threadId:           threadId);
+
+        captured.Should().NotBeNull();
+        captured!.CallSite.Should().Be("reply");
+        captured.ThreadId.Should().Be(threadId);
+        captured.ContactName.Should().Be("Mark");
+        captured.CandidateCount.Should().Be(3);
+        captured.TierBreakdownLight.Should().Be(1);
+        captured.TierBreakdownMedium.Should().Be(1);
+        captured.TierBreakdownHeavy.Should().Be(1);
+        captured.RecommendedRegister.Should().Be("Tenderness");
+        captured.RecommendedValue.Should().BeApproximately(0.81f, 0.0001f);
+        captured.DiversityScoreReason.Should().Be("MMR surfaced top 1 (lambda=0.30)");
+        captured.SurfacedRecordsJson.Should().Contain("\"weight\":0.45");
+        captured.SurfacedRecordsJson.Should().Contain("\"tier\":\"Heavy\"");
+    }
+
+    /// <summary>
+    /// Issue #46 spec: outreach call site persists with null ThreadId —
+    /// outreach is pre-thread, so the schema's nullable thread_id is
+    /// exercised explicitly.
+    /// </summary>
+    [Fact]
+    public async Task ObserveAsync_OutreachCallSite_PersistsWithNullThreadId()
+    {
+        _mockBias.Setup(b => b.ComputeBiasAsync(
+                It.IsAny<string>(), It.IsAny<MarkRegisterContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyResult());
+
+        var mockStore = new Mock<IVibeBiasObservationStore>(MockBehavior.Strict);
+        VibeBiasObservationRecord? captured = null;
+        mockStore.Setup(s => s.SaveAsync(It.IsAny<VibeBiasObservationRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<VibeBiasObservationRecord, CancellationToken>((r, _) => captured = r)
+            .Returns(Task.CompletedTask);
+
+        await VibeBiasObservation.ObserveAsync(
+            biasService:        _mockBias.Object,
+            snapshot:           SnapshotWithClosedConversation(),
+            callSite:           "outreach",
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None,
+            observationStore:   mockStore.Object,
+            threadId:           null);
+
+        captured.Should().NotBeNull();
+        captured!.CallSite.Should().Be("outreach");
+        captured.ThreadId.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Issue #46 spec: when the structured-record store throws,
+    /// the failure is logged and swallowed. Observational invariant —
+    /// persistence failure must NOT propagate into dispatch.
+    /// </summary>
+    [Fact]
+    public async Task ObserveAsync_StoreThrows_DoesNotPropagate()
+    {
+        _mockBias.Setup(b => b.ComputeBiasAsync(
+                It.IsAny<string>(), It.IsAny<MarkRegisterContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyResult());
+
+        var mockStore = new Mock<IVibeBiasObservationStore>(MockBehavior.Strict);
+        mockStore.Setup(s => s.SaveAsync(It.IsAny<VibeBiasObservationRecord>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("sqlite write failed"));
+
+        var act = async () => await VibeBiasObservation.ObserveAsync(
+            biasService:        _mockBias.Object,
+            snapshot:           SnapshotWithClosedConversation(),
+            callSite:           "reply",
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None,
+            observationStore:   mockStore.Object,
+            threadId:           Guid.NewGuid());
+
+        await act.Should().NotThrowAsync(
+            "persistence failure must not propagate — observational instrumentation invariant");
+    }
+
+    /// <summary>
+    /// Issue #46 spec: when no store is provided (null), the helper still
+    /// emits Serilog telemetry as before — the persistence add-on is
+    /// opt-in via DI, not required.
+    /// </summary>
+    [Fact]
+    public async Task ObserveAsync_NullStore_StillEmitsTelemetryWithoutThrowing()
+    {
+        _mockBias.Setup(b => b.ComputeBiasAsync(
+                It.IsAny<string>(), It.IsAny<MarkRegisterContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyResult());
+
+        var act = async () => await VibeBiasObservation.ObserveAsync(
+            biasService:        _mockBias.Object,
+            snapshot:           SnapshotWithClosedConversation(),
+            callSite:           "outreach",
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None,
+            observationStore:   null,
+            threadId:           null);
+
+        await act.Should().NotThrowAsync();
+    }
+
     [Fact]
     public async Task ObserveAsync_VectorOrderMatchesCanonicalRegisters()
     {

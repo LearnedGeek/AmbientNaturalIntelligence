@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
@@ -12,6 +13,14 @@ namespace AniRuntime.Loops;
 /// NOT consumed by any prompt builder. V1.5b activation will replace
 /// this call site with one that also feeds <c>SurfacedTopN</c> +
 /// <c>RecommendedStrategyRegister</c> into composition prompts.
+///
+/// 2026-05-21 — Issue #46 adds structured-record persistence via
+/// <see cref="IVibeBiasObservationStore"/> alongside the Serilog output,
+/// so downstream consumers (V1.5b Gate 3 review, #43 effectiveness
+/// matrix, #45 effectiveness substrate write-back) can join recommended-
+/// register against <c>closed_conversation_records</c> by <c>thread_id</c>
+/// without log-scraping. Persistence failure does not propagate — the
+/// observational invariant (never affect dispatch) is preserved.
 ///
 /// "Current Mark register" input comes from
 /// <c>snapshot.RecentClosedConversation?.MarkRegister</c> — the cheapest
@@ -35,13 +44,24 @@ internal static class VibeBiasObservation
     /// quickly; never throws — observational instrumentation MUST NOT
     /// affect dispatch semantics. Callers can fire-and-forget after a
     /// best-effort try/catch wrapper.
+    ///
+    /// <paramref name="observationStore"/> is optional (nullable) so the
+    /// helper remains usable from tests and from any future call site
+    /// that hasn't been wired through DI yet. When provided, one
+    /// structured record is persisted per successful observation pass.
+    ///
+    /// <paramref name="threadId"/> is null for outreach call sites (no
+    /// active thread at the V1.5a observation point) and the active
+    /// thread id for reply call sites.
     /// </summary>
     public static async Task ObserveAsync(
-        IVibeBiasService?         biasService,
-        ContextSnapshot           snapshot,
-        string                    callSite,
-        ILogger                   log,
-        CancellationToken         ct)
+        IVibeBiasService?           biasService,
+        ContextSnapshot             snapshot,
+        string                      callSite,
+        ILogger                     log,
+        CancellationToken           ct,
+        IVibeBiasObservationStore?  observationStore = null,
+        Guid?                       threadId         = null)
     {
         if (biasService is null) return;
 
@@ -78,6 +98,12 @@ internal static class VibeBiasObservation
                 ct:          ct).ConfigureAwait(false);
 
             EmitTelemetry(result, callSite, log);
+
+            if (observationStore is not null)
+            {
+                await PersistAsync(
+                    observationStore, result, callSite, contactName, threadId, log, ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -112,6 +138,63 @@ internal static class VibeBiasObservation
         log.LogInformation(
             "V15_BIAS_RECOMMENDED callSite={CallSite} top_register={TopRegister} top_value={TopValue:F2} surfaced_count={Count} reason={Reason}",
             callSite, topRegister.Name, topRegister.Value, result.SurfacedTopN.Count, result.DiversityScoreReason);
+    }
+
+    /// <summary>
+    /// Issue #46 — persist one structured observation record. Wrapped in
+    /// best-effort try/catch so SQLite failure can't propagate into
+    /// dispatch. Logs <c>V15_BIAS_PERSIST_FAILURE</c> at warning level
+    /// when persistence throws.
+    /// </summary>
+    private static async Task PersistAsync(
+        IVibeBiasObservationStore   store,
+        VibeBiasResult              result,
+        string                      callSite,
+        string                      contactName,
+        Guid?                       threadId,
+        ILogger                     log,
+        CancellationToken           ct)
+    {
+        try
+        {
+            var tierBreakdown = TierBreakdown(result.AllCandidates);
+            var topRegister   = TopRegisterName(result.RecommendedStrategyRegister);
+
+            var surfacedJson = JsonSerializer.Serialize(
+                result.SurfacedTopN.Select(c => new
+                {
+                    recordId  = c.RecordId,
+                    weight    = c.BiasWeight,
+                    tier      = c.HalfLifeTier,
+                    ageHours  = c.AgeHours,
+                    valence   = c.OutcomeValence,
+                }));
+
+            var record = new VibeBiasObservationRecord
+            {
+                Id                    = Guid.NewGuid(),
+                ObservedAt            = DateTimeOffset.UtcNow,
+                CallSite              = callSite,
+                ThreadId              = threadId,
+                ContactName           = contactName,
+                CandidateCount        = result.AllCandidates.Count,
+                TierBreakdownLight    = tierBreakdown.Light,
+                TierBreakdownMedium   = tierBreakdown.Medium,
+                TierBreakdownHeavy    = tierBreakdown.Heavy,
+                SurfacedRecordsJson   = surfacedJson,
+                RecommendedRegister   = topRegister.Name,
+                RecommendedValue      = topRegister.Value,
+                DiversityScoreReason  = result.DiversityScoreReason,
+            };
+
+            await store.SaveAsync(record, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(
+                ex, "V15_BIAS_PERSIST_FAILURE callSite={CallSite} — structured record save failed; Serilog telemetry intact",
+                callSite);
+        }
     }
 
     private static (int Light, int Medium, int Heavy) TierBreakdown(
