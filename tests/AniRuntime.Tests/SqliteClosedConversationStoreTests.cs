@@ -187,6 +187,126 @@ public class SqliteClosedConversationStoreTests : IDisposable
     }
 
     /// <summary>
+    /// J.5h-data SPEC (Issue #47): validity defaults to "valid" on a fresh
+    /// record and round-trips through Save → Read.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_DefaultValidity_RoundtripsAsValid()
+    {
+        var record = SampleRecord();
+        record.Validity.Should().Be("valid", "fresh-record default per the model");
+
+        await _store.SaveAsync(record);
+        var loaded = await _store.GetByIdAsync(record.Id);
+
+        loaded.Should().NotBeNull();
+        loaded!.Validity.Should().Be("valid");
+    }
+
+    /// <summary>
+    /// J.5h-data SPEC: explicit validity value (e.g., "invalid_fabrication")
+    /// round-trips through Save → Read when the audit override is set.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_ExplicitValidity_RoundtripsExactly()
+    {
+        var record = SampleRecord();
+        record.Validity = "invalid_fabrication";
+
+        await _store.SaveAsync(record);
+        var loaded = await _store.GetByIdIncludingInvalidAsync(record.Id);
+
+        loaded.Should().NotBeNull();
+        loaded!.Validity.Should().Be("invalid_fabrication");
+    }
+
+    /// <summary>
+    /// J.5h-data SPEC: by default, GetByIdAsync filters out non-valid
+    /// records. Substrate consumers never see quarantined fabrications.
+    /// </summary>
+    [Fact]
+    public async Task GetByIdAsync_InvalidRecord_DefaultFilterHidesIt()
+    {
+        var record = SampleRecord();
+        record.Validity = "invalid_fabrication";
+        await _store.SaveAsync(record);
+
+        var hidden = await _store.GetByIdAsync(record.Id);
+        hidden.Should().BeNull("default filter must exclude non-valid records");
+
+        var visible = await _store.GetByIdIncludingInvalidAsync(record.Id);
+        visible.Should().NotBeNull("audit override surfaces quarantined records for paper-figure / audit work");
+        visible!.Validity.Should().Be("invalid_fabrication");
+    }
+
+    /// <summary>
+    /// J.5h-data SPEC: GetByThreadIdAsync also default-filters; invalid
+    /// records don't surface through thread-lookup either.
+    /// </summary>
+    [Fact]
+    public async Task GetByThreadIdAsync_InvalidRecord_DefaultFilterHidesIt()
+    {
+        var threadId = Guid.NewGuid();
+        var record   = SampleRecord(threadId: threadId);
+        record.Validity = "invalid_fabrication";
+        await _store.SaveAsync(record);
+
+        (await _store.GetByThreadIdAsync(threadId)).Should().BeNull();
+        (await _store.GetByThreadIdIncludingInvalidAsync(threadId)).Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// J.5h-data SPEC: GetRecentAsync default-excludes non-valid records;
+    /// GetRecentIncludingInvalidAsync returns them. This is the load-bearing read
+    /// path — V1.5 bias + outreach grounding go through here.
+    /// </summary>
+    [Fact]
+    public async Task GetRecentAsync_DefaultExcludesInvalid_IncludeInvalidReturnsAll()
+    {
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-30);
+        var validRecord   = SampleRecord(closedAt: t0.AddMinutes(20), gist: "valid record");
+        var invalidRecord = SampleRecord(closedAt: t0.AddMinutes(10), gist: "invalid record");
+        invalidRecord.Validity = "invalid_fabrication";
+
+        await _store.SaveAsync(validRecord);
+        await _store.SaveAsync(invalidRecord);
+
+        var defaultRead = (await _store.GetRecentAsync(10)).ToList();
+        defaultRead.Should().HaveCount(1, "default filter must exclude non-valid");
+        defaultRead[0].Gist.Should().Be("valid record");
+
+        var fullRead = (await _store.GetRecentIncludingInvalidAsync(10)).ToList();
+        fullRead.Should().HaveCount(2, "audit override surfaces both");
+        fullRead.Select(r => r.Validity).Should().BeEquivalentTo(new[] { "valid", "invalid_fabrication" });
+    }
+
+    /// <summary>
+    /// J.5h-data SPEC: UPSERT preserves the validity value through
+    /// re-saves. A re-summarization pass that updates the gist must NOT
+    /// accidentally re-validate a previously-quarantined record unless it
+    /// explicitly sets Validity = "valid".
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_OnConflictId_PreservesExplicitValidity()
+    {
+        var record = SampleRecord();
+        record.Validity = "invalid_fabrication";
+        await _store.SaveAsync(record);
+
+        record.Gist = "rewritten gist content";
+        // Validity left as invalid_fabrication — the rewrite should NOT
+        // silently re-validate.
+        await _store.SaveAsync(record);
+
+        var loaded = await _store.GetByIdIncludingInvalidAsync(record.Id);
+        loaded.Should().NotBeNull();
+        loaded!.Validity.Should().Be("invalid_fabrication");
+        loaded.Gist.Should().Be("rewritten gist content");
+    }
+
+
+
+    /// <summary>
     /// SPEC: empty register dicts and empty topic-keyword lists roundtrip
     /// as empty collections, not null. Defensive against JSON-deserialise
     /// quirks.

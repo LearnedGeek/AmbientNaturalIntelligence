@@ -89,4 +89,22 @@ public class ClosedConversationRecord
     /// IOllamaClient.EmbedAsync).
     /// </summary>
     public float[]? Embedding { get; set; }
+
+    /// <summary>
+    /// Theme J J.5h-data (2026-05-21, Issue #47) — record validity for
+    /// substrate retrieval. Default <c>"valid"</c>; downstream consumers
+    /// (V1.5 bias, outreach grounding, dashboard) filter on this column so
+    /// known-fabricated records stop polluting substrate while remaining
+    /// preserved for audit and paper-figure work.
+    ///
+    /// Known values:
+    ///   - <c>"valid"</c> — default, retrievable.
+    ///   - <c>"invalid_fabrication"</c> — Ani-only thread closures where the
+    ///     summarizer fabricated Mark-side narration. Backfilled for the 26
+    ///     May 14 → May 21 records identified in the 2026-05-21 audit.
+    ///
+    /// Open enum (string, not bool) so future quarantine categories can
+    /// be added without schema churn.
+    /// </summary>
+    public string Validity { get; set; } = "valid";
 }
