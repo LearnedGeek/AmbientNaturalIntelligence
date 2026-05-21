@@ -281,6 +281,43 @@ public class SqliteClosedConversationStoreTests : IDisposable
     }
 
     /// <summary>
+    /// J.5h-data Step 3 SPEC: GistV2 round-trips. Defaults to null on
+    /// fresh records; explicit values persist through save/read.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_GistV2Null_RoundtripsAsNull()
+    {
+        var record = SampleRecord();
+        record.GistV2.Should().BeNull("default on a fresh record");
+
+        await _store.SaveAsync(record);
+        var loaded = await _store.GetByIdAsync(record.Id);
+
+        loaded.Should().NotBeNull();
+        loaded!.GistV2.Should().BeNull();
+    }
+
+    /// <summary>
+    /// J.5h-data Step 3 SPEC: re-summarized gist persists. The re-summarization
+    /// backfill writes corrected content to GistV2 while leaving the
+    /// original fabricated Gist intact for paper-figure comparison.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_GistV2Populated_RoundtripsExactly()
+    {
+        var record = SampleRecord();
+        record.Validity = "invalid_fabrication";
+        record.GistV2   = "Ani reached out about the bookstore shift. Mark has not responded yet.";
+
+        await _store.SaveAsync(record);
+        var loaded = await _store.GetByIdIncludingInvalidAsync(record.Id);
+
+        loaded.Should().NotBeNull();
+        loaded!.GistV2.Should().Be("Ani reached out about the bookstore shift. Mark has not responded yet.");
+        loaded.Gist.Should().Be(record.Gist, "original fabricated Gist must survive — paper-figure comparison depends on it");
+    }
+
+    /// <summary>
     /// J.5h-data SPEC: UPSERT preserves the validity value through
     /// re-saves. A re-summarization pass that updates the gist must NOT
     /// accidentally re-validate a previously-quarantined record unless it

@@ -71,7 +71,8 @@ public class SqliteClosedConversationStore : IClosedConversationStore, IDisposab
                 turn_count                  INTEGER NOT NULL,
                 duration_seconds            REAL NOT NULL,
                 embedding                   BLOB,
-                validity                    TEXT NOT NULL DEFAULT 'valid'
+                validity                    TEXT NOT NULL DEFAULT 'valid',
+                gist_v2                     TEXT
             );
 
             CREATE INDEX IF NOT EXISTS ix_closed_conv_closed_at
@@ -82,16 +83,27 @@ public class SqliteClosedConversationStore : IClosedConversationStore, IDisposab
             """;
         cmd.ExecuteNonQuery();
 
-        // Theme J J.5h-data (Issue #47, 2026-05-21): retro-add the validity
-        // column on databases that pre-date it. The CREATE TABLE IF NOT EXISTS
-        // above won't add the column when the table already exists; the
-        // ALTER TABLE below covers that case. Mirrors the Feature 38
-        // emergence_log pattern.
+        // Theme J J.5h-data (Issue #47, 2026-05-21): retro-add columns on
+        // databases that pre-date them. The CREATE TABLE IF NOT EXISTS
+        // above won't add columns when the table already exists; ALTER
+        // TABLE statements below cover that case. Mirrors the Feature 38
+        // emergence_log pattern. Each wrapped in its own try/catch so
+        // partial-migration databases (validity already added, gist_v2
+        // not yet) succeed.
         try
         {
             using var alterCmd = conn.CreateCommand();
             alterCmd.CommandText =
                 "ALTER TABLE closed_conversation_records ADD COLUMN validity TEXT NOT NULL DEFAULT 'valid'";
+            alterCmd.ExecuteNonQuery();
+        }
+        catch (SqliteException) { /* Column already exists — safe to ignore */ }
+
+        try
+        {
+            using var alterCmd = conn.CreateCommand();
+            alterCmd.CommandText =
+                "ALTER TABLE closed_conversation_records ADD COLUMN gist_v2 TEXT";
             alterCmd.ExecuteNonQuery();
         }
         catch (SqliteException) { /* Column already exists — safe to ignore */ }
@@ -111,13 +123,13 @@ public class SqliteClosedConversationStore : IClosedConversationStore, IDisposab
                 id, thread_id, closed_at, gist, topic_keywords_json,
                 mark_register_json, ani_register_json, outcome_signal_seed_json,
                 outcome_signal_valence, turn_count, duration_seconds, embedding,
-                validity
+                validity, gist_v2
             )
             VALUES (
                 $id, $thread_id, $closed_at, $gist, $topic_keywords_json,
                 $mark_register_json, $ani_register_json, $outcome_signal_seed_json,
                 $outcome_signal_valence, $turn_count, $duration_seconds, $embedding,
-                $validity
+                $validity, $gist_v2
             )
             ON CONFLICT(id) DO UPDATE SET
                 thread_id                = excluded.thread_id,
@@ -131,7 +143,8 @@ public class SqliteClosedConversationStore : IClosedConversationStore, IDisposab
                 turn_count               = excluded.turn_count,
                 duration_seconds         = excluded.duration_seconds,
                 embedding                = excluded.embedding,
-                validity                 = excluded.validity
+                validity                 = excluded.validity,
+                gist_v2                  = excluded.gist_v2
             """;
 
         cmd.Parameters.AddWithValue("$id",                       record.Id.ToString());
@@ -147,6 +160,7 @@ public class SqliteClosedConversationStore : IClosedConversationStore, IDisposab
         cmd.Parameters.AddWithValue("$duration_seconds",         record.DurationSeconds);
         cmd.Parameters.AddWithValue("$embedding",                (object?)SerialiseEmbedding(record.Embedding) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$validity",                 string.IsNullOrWhiteSpace(record.Validity) ? "valid" : record.Validity);
+        cmd.Parameters.AddWithValue("$gist_v2",                  (object?)record.GistV2 ?? DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -234,7 +248,21 @@ public class SqliteClosedConversationStore : IClosedConversationStore, IDisposab
             DurationSeconds         = reader.GetDouble(reader.GetOrdinal("duration_seconds")),
             Embedding               = reader.IsDBNull(embeddingOrd) ? null : DeserialiseEmbedding((byte[])reader.GetValue(embeddingOrd)),
             Validity                = ReadValidity(reader),
+            GistV2                  = ReadOptionalString(reader, "gist_v2"),
         };
+    }
+
+    private static string? ReadOptionalString(SqliteDataReader reader, string column)
+    {
+        try
+        {
+            var ord = reader.GetOrdinal(column);
+            return reader.IsDBNull(ord) ? null : reader.GetString(ord);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

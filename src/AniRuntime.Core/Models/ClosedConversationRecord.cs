@@ -100,11 +100,29 @@ public class ClosedConversationRecord
     /// Known values:
     ///   - <c>"valid"</c> — default, retrievable.
     ///   - <c>"invalid_fabrication"</c> — Ani-only thread closures where the
-    ///     summarizer fabricated Mark-side narration. Backfilled for the 26
+    ///     summarizer fabricated Mark-side narration. Backfilled for the 28
     ///     May 14 → May 21 records identified in the 2026-05-21 audit.
+    ///   - <c>"invalid_other"</c> — gate fired a non-source-attribution
+    ///     invariant; producer quarantines the record.
     ///
     /// Open enum (string, not bool) so future quarantine categories can
     /// be added without schema churn.
     /// </summary>
     public string Validity { get; set; } = "valid";
+
+    /// <summary>
+    /// Theme J J.5h-data Step 3 (Issue #47) — re-summarized gist produced
+    /// by the post-J.5h pipeline (with <c>SourceAttributionInvariant</c>
+    /// active) against the original source thread. Populated only for
+    /// quarantined records (<see cref="Validity"/> = <c>"invalid_fabrication"</c>)
+    /// where the broken-vs-fixed comparison is research-meaningful;
+    /// null on valid records (the original <see cref="Gist"/> is correct
+    /// and there's no fixed-version to compare against).
+    ///
+    /// Surfaces in paper-figure work as the "fixed" half of the
+    /// before/after table. Substrate retrieval still reads
+    /// <see cref="Gist"/>; this field is for audit/comparison only and
+    /// is never injected into runtime prompts.
+    /// </summary>
+    public string? GistV2 { get; set; }
 }
