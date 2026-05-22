@@ -12,6 +12,8 @@
 @inject EmotionalProcessor EmotionalProcessor
 @inject ITextClassificationService MLClassifier
 @inject IOptions<AniOptions> AniOptionsAccessor
+@* Issue #41 Path B (2026-05-21) — batch classify writes per-turn through SQLite store *@
+@inject IExpressionClassificationStore ClassificationStore
 
 <h1>Research Findings</h1>
 <p><em>Empirical results from ANI's deployment — presentation-ready with context and methodology.</em></p>
@@ -857,6 +859,7 @@
 
                 var classified = 0;
 
+                var pairIndex = 0;
                 foreach (var (userMsg, respMsg) in turns)
                 {
                     try
@@ -868,6 +871,16 @@
                         _convCombined.Coupling[key] = _convCombined.Coupling.GetValueOrDefault(key, 0) + 1;
                         _convCombined.TurnPairs++;
                         classified++;
+
+                        // Issue #41 Path B (2026-05-21) — persist each
+                        // classification through the SQLite store. Two rows
+                        // per pair (user + response). Source='batch_dashboard',
+                        // anchored to source_file + source_index. Per-row
+                        // persistence enables future drill-down + cell-level
+                        // queries that the aggregate-only JSON cannot answer.
+                        await PersistBatchClassificationAsync(fileName, pairIndex, "user",     userMsg, userEmo.PrimaryEmotion);
+                        await PersistBatchClassificationAsync(fileName, pairIndex, "response", respMsg, respEmo.PrimaryEmotion);
+                        pairIndex++;
 
                         if (classified % 25 == 0)
                         {
@@ -929,6 +942,44 @@
             return Path.Combine(
                 AppContext.BaseDirectory, "..", "..", "..", "data", "conversation-classifier-results.json");
         }
+    }
+
+    /// <summary>
+    /// Issue #41 Path B (2026-05-21) — persist one batch classification
+    /// through the SQLite store. Wrapped in best-effort try/catch so a
+    /// store hiccup never aborts the batch classify run.
+    /// </summary>
+    private async Task PersistBatchClassificationAsync(
+        string fileName, int sourceIndex, string role, string text, string emotion)
+    {
+        try
+        {
+            var record = new ExpressionClassificationRecord
+            {
+                Source            = "batch_dashboard",
+                SourceFile        = fileName,
+                SourceIndex       = sourceIndex,
+                Role              = role,
+                ContentHash       = HashContent(text),
+                ExpressedEmotion  = emotion,
+                FeltRegister      = null,   // batch path doesn't run the 9-register classifier
+                Confidence        = null,
+                ClassifiedAt      = DateTimeOffset.UtcNow,
+            };
+            await ClassificationStore.SaveAsync(record);
+        }
+        catch
+        {
+            // Best-effort — UI continues even if persistence fails. Legacy
+            // JSON write still runs as a safety belt during this transition.
+        }
+    }
+
+    private static string HashContent(string text)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
     private async Task SaveConversationResultsAsync()
