@@ -151,6 +151,12 @@ try
     // SqliteClosedConversationStore; new dedicated table
     // vibe_bias_observations.
     builder.Services.AddSingleton<IVibeBiasObservationStore, SqliteVibeBiasObservationStore>();
+    // Issue #41 Path B (Theme I prerequisite, 2026-05-21) — per-turn
+    // expression classification persistence. Replaces the pre-#41 JSON
+    // file substrate in Research.razor. Runtime + batch sources share
+    // one table; aggregation queries (Cramér's V, cross-tab) read from
+    // here for both dashboard heatmap and paper-figure tooling.
+    builder.Services.AddSingleton<IExpressionClassificationStore, SqliteExpressionClassificationStore>();
 
     // Theme M Phase M.1 (May 6, 2026) — conscious-substrate gist composer
     // producing tension-state (§4.8) + register-state (§4.3) slices.
