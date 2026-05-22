@@ -31,6 +31,7 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
 {
     private readonly IOllamaClient                          _ollama;
     private readonly ICognitiveOutputGate?                  _gate;
+    private readonly IExpressionClassificationStore?        _classificationStore;
     private readonly ILogger<ClosedConversationSummarizer>  _log;
 
     /// <summary>
@@ -64,11 +65,13 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
     public ClosedConversationSummarizer(
         IOllamaClient                          ollama,
         ILogger<ClosedConversationSummarizer>  log,
-        ICognitiveOutputGate?                  gate = null)
+        ICognitiveOutputGate?                  gate = null,
+        IExpressionClassificationStore?        classificationStore = null)
     {
-        _ollama = ollama;
-        _gate   = gate;
-        _log    = log;
+        _ollama              = ollama;
+        _gate                = gate;
+        _classificationStore = classificationStore;
+        _log                 = log;
     }
 
     public async Task<ClosedConversationRecord> SummariseAsync(
@@ -81,8 +84,8 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
         var markTurns = thread.Messages.Where(m => m.Role == Roles.Mark).ToList();
         var aniTurns  = thread.Messages.Where(m => m.Role == Roles.Ani).ToList();
 
-        var markRegisterPerTurn = await ClassifyTurnsAsync(markTurns, ct).ConfigureAwait(false);
-        var aniRegisterPerTurn  = await ClassifyTurnsAsync(aniTurns, ct).ConfigureAwait(false);
+        var markRegisterPerTurn = await ClassifyTurnsAsync(markTurns, thread.Id, ct).ConfigureAwait(false);
+        var aniRegisterPerTurn  = await ClassifyTurnsAsync(aniTurns,  thread.Id, ct).ConfigureAwait(false);
 
         var markRegister = BuildPrevalenceVector(markRegisterPerTurn);
         var aniRegister  = BuildPrevalenceVector(aniRegisterPerTurn);
@@ -194,7 +197,7 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
     // ===== Per-turn register classification =====
 
     private async Task<List<string>> ClassifyTurnsAsync(
-        IReadOnlyList<ConversationMessage> turns, CancellationToken ct)
+        IReadOnlyList<ConversationMessage> turns, Guid threadId, CancellationToken ct)
     {
         var labels = new List<string>(turns.Count);
         foreach (var t in turns)
@@ -205,20 +208,74 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
                 continue;
             }
 
+            string label;
             try
             {
                 var (sys, user) = BuildRegisterClassificationPrompt(t.Content);
                 var raw = await _ollama.ChatJsonAsync(
                     sys, Array.Empty<ChatMessage>(), user, ct).ConfigureAwait(false);
-                labels.Add(ParseRegister(raw));
+                label = ParseRegister(raw);
             }
             catch (Exception ex)
             {
                 _log.LogDebug(ex, "Register classification failed for turn — labelling Unclassified.");
-                labels.Add("Unclassified");
+                label = "Unclassified";
             }
+
+            labels.Add(label);
+
+            // Issue #41 Path B (2026-05-21) — persist per-turn classification
+            // through the new SQLite store alongside the in-memory label list
+            // already returned to the summariser. Best-effort: persistence
+            // failure must not abort the summarisation cycle.
+            await PersistClassificationAsync(t, threadId, label, ct).ConfigureAwait(false);
         }
         return labels;
+    }
+
+    /// <summary>
+    /// Issue #41 Path B — write the per-turn classification through the
+    /// SQLite store. No-op when the store isn't wired (legacy / test paths
+    /// that construct the summariser without DI). Errors are swallowed so
+    /// a transient SQLite failure can't break the summarisation cycle.
+    /// </summary>
+    private async Task PersistClassificationAsync(
+        ConversationMessage turn, Guid threadId, string feltRegister, CancellationToken ct)
+    {
+        if (_classificationStore is null) return;
+        if (string.IsNullOrWhiteSpace(turn.Content)) return;
+
+        try
+        {
+            var record = new ExpressionClassificationRecord
+            {
+                Source         = "runtime",
+                ThreadId       = threadId,
+                MessageId      = null,                       // ConversationMessage has no DB id surface yet
+                Role           = turn.Role,
+                ContentHash    = HashContent(turn.Content),
+                FeltRegister   = feltRegister == "Unclassified" ? null : feltRegister,
+                // ExpressedEmotion left null on runtime path — closed-conv
+                // summariser doesn't currently call ClassifyEmotionAsync.
+                // Filled in by the batch dashboard path (#41 chunk 3/8).
+                Confidence     = null,
+                ClassifiedAt   = DateTimeOffset.UtcNow,
+            };
+            await _classificationStore.SaveAsync(record, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex,
+                "Per-turn classification persistence failed for thread={ThreadId} — continuing without persistence.",
+                threadId);
+        }
+    }
+
+    private static string HashContent(string text)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
     /// <summary>
