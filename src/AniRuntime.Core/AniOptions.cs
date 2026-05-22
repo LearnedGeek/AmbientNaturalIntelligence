@@ -464,6 +464,39 @@ public class AniOptions
     public bool ConversationConfabRegroupingEnabled { get; set; } = true;
 
     /// <summary>
+    /// Issue #52 (2026-05-22) — Pre-compose semantic retrieval of the inbound
+    /// contact message in the reply pipeline. When true, before composing the
+    /// reply, runs <c>IMemorySearch.SearchWithScoresAsync(lastMessage, K)</c>
+    /// and populates <c>snapshot.RelevantMemory</c> with hits above
+    /// <see cref="RetrievalConfidenceFloor"/> (excluding Interior tier).
+    ///
+    /// <para>Closes the "Ani never forgets but can't retrieve" gap surfaced
+    /// by the 2026-05-22 Mia query: when Mark introduces a topic not already
+    /// in conversation history or perception stream, the existing
+    /// conversation-mode retrieval bypass means no substrate is surfaced.
+    /// This adds a single embedding query against the contact message to
+    /// guarantee at least one retrieval pass before composition. Mirrors the
+    /// outreach grounding pattern at OutreachPipeline.cs line 131.</para>
+    ///
+    /// <para>Independent of <see cref="ConversationConfabRegroupingEnabled"/>
+    /// (which gates the reactive post-compose detection branch). Both can be
+    /// active simultaneously — pre-compose retrieval grounds the initial
+    /// composition; confab-regrouping is a fallback if the model still drifts.</para>
+    /// </summary>
+    public bool ConversationReplyPreComposeRetrievalEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Issue #52 — Top-K for the pre-compose retrieval query.
+    /// </summary>
+    public int ConversationReplyPreComposeRetrievalTopK { get; set; } = 5;
+
+    /// <summary>
+    /// Issue #52 — Max records surfaced into <c>snapshot.RelevantMemory</c>
+    /// from the pre-compose retrieval (after cosine-floor + Interior filter).
+    /// </summary>
+    public int ConversationReplyPreComposeRetrievalTake { get; set; } = 3;
+
+    /// <summary>
     /// Posture-S+1 — the local model used as the metadata-recognizer in the
     /// hybrid cycle. <c>qwen3:14b</c> was selected for clean structured
     /// output discipline (single-Qwen probe round was the empirical

@@ -264,6 +264,61 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // The LLM call to extract and verify claims added latency without improving
         // conversation quality. The model handles unknown topics naturally.
 
+        // Issue #52 (2026-05-22) — Pre-compose semantic retrieval of contact message.
+        // The ContextBuilder runs in conversationMode: true which intentionally bypasses
+        // tier-scoped retrieval. That bypass leaves a gap: when Mark introduces a topic
+        // not already in the perception stream or conversation history (the Mia case),
+        // composition has no substrate to ground in. A single embedding query against
+        // the inbound message — same shape as the outreach grounding pattern — closes
+        // the gap without re-enabling the heavyweight ambient retrieval pipeline.
+        if (_aniOptions.ConversationReplyPreComposeRetrievalEnabled &&
+            !string.IsNullOrWhiteSpace(lastMessage))
+        {
+            try
+            {
+                var preComposeResults = (await _search.SearchWithScoresAsync(
+                    lastMessage,
+                    _aniOptions.ConversationReplyPreComposeRetrievalTopK,
+                    ct).ConfigureAwait(false)).ToList();
+
+                var preComposeExternal = preComposeResults
+                    // Issue #52: exclude Interior-tier records (Ani's own inner thoughts).
+                    // Substrate for outbound reply must come from external sources — same
+                    // invariant as the confab-regroup branch and outreach grounding (Theme G G3.4).
+                    .Where(s => s.Record.Provenance != EpistemicTier.Interior)
+                    .ToList();
+
+                var preComposeGrounded = preComposeExternal
+                    .Where(s => s.CosineSimilarity >= (float)_aniOptions.RetrievalConfidenceFloor)
+                    .Select(s => s.Record)
+                    .Take(_aniOptions.ConversationReplyPreComposeRetrievalTake)
+                    .ToList();
+
+                if (preComposeGrounded.Count > 0)
+                {
+                    snapshot.RelevantMemory = preComposeGrounded;
+                    var topHit = preComposeExternal
+                        .OrderByDescending(s => s.CosineSimilarity)
+                        .FirstOrDefault();
+                    _log.LogInformation(
+                        "Reply pre-compose retrieval: {Count} memories surfaced (top cosine={Cosine:F2}, source={Source})",
+                        preComposeGrounded.Count,
+                        topHit?.CosineSimilarity ?? 0f,
+                        topHit?.Record.SourceName ?? "(none)");
+                }
+                else
+                {
+                    _log.LogDebug(
+                        "Reply pre-compose retrieval: 0 memories above floor (raw hits={RawCount})",
+                        preComposeResults.Count);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Reply pre-compose retrieval failed — composing without surfaced substrate");
+            }
+        }
+
         // Step 2: Generate reply
         // Conversation mode: lean prompt, creative temperature.
         // No memory grounding check — the conversation provides all context.
