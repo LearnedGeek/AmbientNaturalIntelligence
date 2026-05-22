@@ -40,6 +40,22 @@ public interface IMemoryMergePolicy
 {
     Task<bool> IsRuminationAsync(MemoryRecord record, CancellationToken ct = default);
 
+    /// <summary>
+    /// Issue #56 (2026-05-22) — exact-content duplicate check across the full
+    /// table for dedupable types. Faster and stricter than
+    /// <see cref="FindMergeCandidateAsync"/> (which scans only the last 50 records
+    /// of the same type via cosine similarity). When the incoming record's
+    /// (Type, Content, SourceName) exactly matches an existing row, returns the
+    /// existing row's id so the caller can short-circuit the insert.
+    ///
+    /// <para>Closes the failure mode behind the 5-copy Mia character-seed
+    /// records in production: the cosine merge policy's 50-row window can miss
+    /// older seeds when later writes have buried them, but exact-string match
+    /// on (Type, Content, SourceName) catches re-seed events deterministically
+    /// regardless of table size.</para>
+    /// </summary>
+    Task<Guid?> FindExactContentDuplicateAsync(MemoryRecord record, CancellationToken ct = default);
+
     Task<MergeCandidate?> FindMergeCandidateAsync(MemoryRecord record, CancellationToken ct = default);
 
     /// <summary>

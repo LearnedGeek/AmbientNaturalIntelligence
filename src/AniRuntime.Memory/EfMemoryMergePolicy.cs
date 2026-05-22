@@ -103,6 +103,39 @@ public sealed class EfMemoryMergePolicy : IMemoryMergePolicy
         }
     }
 
+    public async Task<Guid?> FindExactContentDuplicateAsync(
+        MemoryRecord record, CancellationToken ct = default)
+    {
+        if (!DedupableTypes.Contains(record.Type)) return null;
+        if (string.IsNullOrEmpty(record.Content)) return null;
+
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+            // Match on (Type, Content, SourceName). SourceName matters because a
+            // character-seed Mia record and a (hypothetical) user-typed Mia record
+            // should not collapse — same content, different origin/trust tier.
+            // Null SourceName matches null SourceName (EF Core translates correctly).
+            var existing = await db.Memories
+                .Where(m => m.Type == record.Type
+                         && m.Content == record.Content
+                         && m.SourceName == record.SourceName
+                         && m.Id != record.Id)
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => (Guid?)m.Id)
+                .FirstOrDefaultAsync(ct)
+                .ConfigureAwait(false);
+
+            return existing;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Exact-content dedup query failed — falling through to cosine-merge policy");
+            return null;
+        }
+    }
+
     public async Task<MergeCandidate?> FindMergeCandidateAsync(
         MemoryRecord record, CancellationToken ct = default)
     {

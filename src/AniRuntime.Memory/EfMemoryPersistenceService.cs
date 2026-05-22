@@ -116,6 +116,24 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
                 }
             }
 
+            // Issue #56 (2026-05-22) — exact-content dedup. Runs before the
+            // cosine-based merge policy because cosine search only scans the last
+            // 50 records of the same type, which can miss older seeds buried
+            // behind newer writes. Exact match on (Type, Content, SourceName)
+            // catches deterministically regardless of table size — empirically
+            // this is the failure mode behind the 5-copy Mia character-seed
+            // records in production. Conservative: only blocks exact-string
+            // matches; near-duplicates still flow into the cosine merge tier.
+            var exactDuplicateId = await _mergePolicy.FindExactContentDuplicateAsync(record, ct)
+                .ConfigureAwait(false);
+            if (exactDuplicateId is not null)
+            {
+                _log.LogInformation(
+                    "Exact-content dedup: skipping {Type} insert (sourceName={Source}) — identical record already exists at {ExistingId}",
+                    record.Type, record.SourceName ?? "(null)", exactDuplicateId.Value);
+                return;
+            }
+
             // 3. Feature 30 three-tier dedup-merge.
             if (record.Embedding is not null)
             {
