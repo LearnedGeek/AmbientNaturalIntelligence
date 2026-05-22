@@ -1004,7 +1004,82 @@
         catch { /* non-fatal — results still in memory */ }
     }
 
+    /// <summary>
+    /// Issue #41 Path B (2026-05-21) — prefer SQLite, fall back to JSON.
+    /// When the new per-turn store has batch-source rows, rebuild
+    /// <c>_convCombined</c> from them (pair-grouped by source_file +
+    /// source_index, same shape as the legacy JSON aggregate). Otherwise
+    /// fall back to <see cref="LoadConversationResultsFromJsonAsync"/> for
+    /// continuity during the transition. The JSON fallback is removed in
+    /// chunk 8/8 after the user verifies V values match.
+    /// </summary>
     private async Task LoadConversationResultsAsync()
+    {
+        var loadedFromStore = await TryLoadConversationResultsFromStoreAsync();
+        if (loadedFromStore) return;
+        await LoadConversationResultsFromJsonAsync();
+    }
+
+    /// <summary>
+    /// Issue #41 Path B — read batch_dashboard rows from the SQLite store
+    /// and rebuild the in-memory coupling matrix. Returns true if any data
+    /// was loaded, false to signal the JSON fallback should run.
+    /// </summary>
+    private async Task<bool> TryLoadConversationResultsFromStoreAsync()
+    {
+        try
+        {
+            var rows = (await ClassificationStore.GetRecentAsync(10000, source: "batch_dashboard")).ToList();
+            if (rows.Count == 0) return false;
+
+            _convCombined = new ConversationStage { Label = "OG Ani (Combined)" };
+            _convFiles.AddRange(rows.Select(r => r.SourceFile)
+                                    .Where(f => !string.IsNullOrEmpty(f))
+                                    .Distinct()!
+                                    .ToList()!);
+
+            // Pair (user, response) rows by source_file + source_index.
+            var groups = rows
+                .Where(r => r.SourceFile is not null && r.SourceIndex is not null && r.ExpressedEmotion is not null)
+                .GroupBy(r => (r.SourceFile!, r.SourceIndex!.Value))
+                .Where(g => g.Count() == 2);
+
+            foreach (var g in groups)
+            {
+                var u = g.FirstOrDefault(r => r.Role == "user");
+                var v = g.FirstOrDefault(r => r.Role == "response");
+                if (u is null || v is null) continue;
+
+                var key = $"{u.ExpressedEmotion}|{v.ExpressedEmotion}";
+                _convCombined.Coupling[key] = _convCombined.Coupling.GetValueOrDefault(key, 0) + 1;
+                _convCombined.TurnPairs++;
+            }
+
+            _convCombined.Expressions = _convCombined.Coupling.Keys
+                .SelectMany(k => k.Split('|'))
+                .Distinct()
+                .OrderBy(e => e)
+                .ToList();
+
+            int diagCount = 0, totalCount = 0;
+            foreach (var kvp in _convCombined.Coupling)
+            {
+                var parts = kvp.Key.Split('|');
+                totalCount += kvp.Value;
+                if (parts.Length == 2 && parts[0] == parts[1])
+                    diagCount += kvp.Value;
+            }
+            _convCombined.DiagonalPct = totalCount > 0 ? (float)diagCount / totalCount * 100 : 0;
+
+            return _convCombined.TurnPairs > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task LoadConversationResultsFromJsonAsync()
     {
         try
         {
