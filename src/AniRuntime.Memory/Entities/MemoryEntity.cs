@@ -62,4 +62,14 @@ public class MemoryEntity
 
     [Column("provenance")]
     public EpistemicTier Provenance { get; set; } = EpistemicTier.Episodic;
+
+    /// <summary>
+    /// Issue #62 (2026-05-23) — substrate-correction propagation for `///tag`
+    /// walk-back. Values: <c>"valid"</c> (default, surfaces in retrieval) or
+    /// <c>"invalid_confabulation"</c> (excluded from default retrieval; preserved
+    /// for audit/paper-figure comparison). Mirrors the J.5h <c>validity</c>
+    /// column pattern on <c>closed_conversation_records</c>.
+    /// </summary>
+    [Column("validity")]
+    public string Validity { get; set; } = "valid";
 }

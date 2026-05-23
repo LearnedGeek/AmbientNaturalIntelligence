@@ -43,6 +43,22 @@ public interface IMemoryPersistence
         CancellationToken ct = default);
 
     /// <summary>
+    /// Issue #62 (2026-05-23) — substrate-correction propagation for `///tag`
+    /// walk-back. Finds the most recent Episodic conversation record whose
+    /// content matches <paramref name="aniReplyContent"/> (the formatted
+    /// "I said to Mark: ..." / "Ani said: ..." form) and sets its
+    /// <c>validity</c> column to <c>'invalid_confabulation'</c>. Default
+    /// retrieval surfaces filter on validity = 'valid' so the record stops
+    /// surfacing as substrate.
+    ///
+    /// <para>Returns the number of records updated (typically 1; 0 if no
+    /// matching Episodic record exists — e.g. the turn predated the
+    /// conversation-Episodic write path or was already invalidated).</para>
+    /// </summary>
+    Task<int> MarkConversationTurnInvalidAsync(
+        string aniReplyContent, CancellationToken ct = default);
+
+    /// <summary>
     /// Feature 32: Returns the N most recent memories across all types.
     /// Excludes reflection-sourced memories to prevent synthesis loops.
     /// </summary>

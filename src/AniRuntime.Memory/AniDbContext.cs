@@ -82,6 +82,8 @@ public class AniDbContext : DbContext
             entity.Property(e => e.Provenance).HasConversion<string>();     // EpistemicTier as TEXT
             entity.HasIndex(e => e.Type).HasDatabaseName("ix_memories_type");
             entity.HasIndex(e => e.OccurredAt).HasDatabaseName("ix_memories_occurred").IsDescending();
+            // Issue #62 (2026-05-23) — walk-back substrate-correction.
+            entity.HasIndex(e => e.Validity).HasDatabaseName("ix_memories_validity");
         });
 
         // ── MemoryLinkEntity (composite PK + 2 FKs to memories) ────────

@@ -82,6 +82,9 @@ public sealed class EfMemoryServiceFacade : IMemoryService
         string? notes = null, string? canonicalCategory = null, CancellationToken ct = default)
         => _persistence.SaveConfabulationFlagAsync(contactMessage, aniReply, topicCategory, notes, canonicalCategory, ct);
 
+    public Task<int> MarkConversationTurnInvalidAsync(string aniReplyContent, CancellationToken ct = default)
+        => _persistence.MarkConversationTurnInvalidAsync(aniReplyContent, ct);
+
     public Task<IEnumerable<MemoryRecord>> GetRecentAsync(int limit = 10, CancellationToken ct = default)
         => _persistence.GetRecentAsync(limit, ct);
 

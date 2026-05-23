@@ -534,6 +534,64 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<int> MarkConversationTurnInvalidAsync(
+        string aniReplyContent, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(aniReplyContent)) return 0;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        // Match the most-recent Episodic conversation record whose content contains
+        // the Ani reply. Conversation records are stored with a speaker prefix
+        // ("I said to Mark: \"...\"" / "Ani said: \"...\""), so the raw Ani reply
+        // is a substring of the stored content. Restrict to Episodic + the
+        // conversation source so we don't accidentally invalidate a Semantic
+        // backstory fact that happens to share text.
+        var candidates = await db.Memories
+            .Where(m => m.Type == MemoryType.Episodic
+                     && m.SourceName == "conversation"
+                     && m.Validity == "valid"
+                     && m.Content.Contains(aniReplyContent))
+            .OrderByDescending(m => m.OccurredAt)
+            .Take(5)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        if (candidates.Count == 0)
+        {
+            _log.LogInformation(
+                "Walk-back tag: no matching valid Episodic conversation record found for ani reply (first 60 chars): {Preview}",
+                aniReplyContent[..Math.Min(60, aniReplyContent.Length)]);
+            return 0;
+        }
+
+        var updated = 0;
+        foreach (var entity in candidates)
+        {
+            entity.Validity = "invalid_confabulation";
+            updated++;
+
+            await _audit.WriteAsync(
+                memoryId:         entity.Id,
+                action:           "walk-back-invalidate",
+                source:           "TagCommand",
+                contentBefore:    entity.Content,
+                contentAfter:     entity.Content,
+                typeBefore:       (int)entity.Type,
+                typeAfter:        (int)entity.Type,
+                importanceBefore: entity.Importance,
+                importanceAfter:  entity.Importance,
+                ct: ct).ConfigureAwait(false);
+        }
+
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        _log.LogInformation(
+            "Walk-back tag: invalidated {Count} conversation record(s) for ani reply (first 60 chars): {Preview}",
+            updated, aniReplyContent[..Math.Min(60, aniReplyContent.Length)]);
+
+        return updated;
+    }
+
     public async Task<IEnumerable<MemoryRecord>> GetRecentAsync(int limit = 10, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);

@@ -101,7 +101,39 @@ public sealed class TagCommand : IAdminCommand
         await _persist.SaveConfabulationFlagAsync(
             markMessage, aniReply, topicCategory: note, notes: null, ct: ct).ConfigureAwait(false);
 
-        return $"Tagged [{note}]:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"";
+        // Issue #62 (2026-05-23) — substrate-correction propagation. When the tag
+        // label indicates the Ani reply was a confabulation Mark is calling out,
+        // mark the source Episodic conversation record as invalid so retrieval
+        // surfaces stop laundering it as canonical substrate (Lucy case 5/21→5/23).
+        var noteLower = note.ToLowerInvariant();
+        var isInvalidationTag =
+            noteLower.Contains("confab") ||
+            noteLower.Contains("fabricat") ||
+            noteLower.Contains("walk back") ||
+            noteLower.Contains("walkback") ||
+            noteLower.Contains("made up") ||
+            noteLower.Contains("hallucination");
+
+        var invalidatedSuffix = string.Empty;
+        if (isInvalidationTag)
+        {
+            try
+            {
+                var updated = await _persist.MarkConversationTurnInvalidAsync(aniReply, ct)
+                    .ConfigureAwait(false);
+                invalidatedSuffix = updated > 0
+                    ? $"\nSubstrate-invalidated {updated} record(s)."
+                    : "\nNo matching substrate record to invalidate.";
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "Walk-back substrate-invalidation failed — flag was still saved");
+                invalidatedSuffix = "\nFlag saved, but substrate invalidation failed (see logs).";
+            }
+        }
+
+        return $"Tagged [{note}]:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"{invalidatedSuffix}";
     }
 
     internal static bool IsValidTagAnchor(ConversationThread? thread) =>

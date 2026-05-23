@@ -70,8 +70,14 @@ public sealed class MemoryRepository : IMemoryRepository
 
     public async Task<IReadOnlyList<MemoryEntity>> GetForSemanticSearchAsync(CancellationToken ct = default)
     {
+        // Issue #62: default-exclude records marked as walked-back confabulations
+        // via Mark's `///tag` admin command. Records stay in the table for audit
+        // / paper-figure comparison; this filter removes them from the retrieval
+        // substrate so they don't re-launder into new compositions.
         return await _db.Memories
-            .Where(m => m.Embedding != null && m.Tier != DecayTier.Compressed)
+            .Where(m => m.Embedding != null
+                     && m.Tier != DecayTier.Compressed
+                     && m.Validity == "valid")
             .ToListAsync(ct);
     }
 
