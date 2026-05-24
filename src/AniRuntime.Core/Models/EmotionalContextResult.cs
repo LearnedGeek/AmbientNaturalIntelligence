@@ -15,4 +15,8 @@ public sealed record EmotionalContextResult(
     RelationshipHealth?     RelationshipHealth,
     EmotionalDrift?         EmotionalDrift,
     string?                 PatternAwareness,
-    IReadOnlyList<string>   ProcessedThemes);
+    IReadOnlyList<string>   ProcessedThemes,
+    // Theme R.6 (#64) — per-thought decayed-contribution trajectory summary.
+    // Null when no active contributions exist; otherwise carries volatility +
+    // dominant-registers summary for composer-side structural branching.
+    EmotionalContributionTrajectory? ContributionTrajectory = null);

@@ -84,6 +84,15 @@ public class ContextSnapshot
     public string? DominantRegister { get; set; }
 
     /// <summary>
+    /// Theme R.6 (2026-05-24, #64) — per-thought decayed-contribution
+    /// trajectory summary. Populated by <c>EmotionalContextBuilder</c> from
+    /// <c>IMemoryAnalytics.GetActiveContributionsAsync</c>. Composers branch
+    /// structurally on volatility level + dominant-registers list.
+    /// <para>Null when fewer than 2 recent contributions are available.</para>
+    /// </summary>
+    public EmotionalContributionTrajectory? ContributionTrajectory { get; set; }
+
+    /// <summary>
     /// Theme R.4 (2026-05-24, #64) — Layer 2 Phase 2a Ryan & Deci motivation
     /// vector (Relatedness / Autonomy / Competence). Populated by
     /// <c>ContextBuilder</c> from <c>IMotivationVectorTracker.Current</c>;

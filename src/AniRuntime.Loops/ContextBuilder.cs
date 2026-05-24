@@ -118,6 +118,8 @@ public class ContextBuilder
             EmotionalDrift                = emotional.EmotionalDrift,
             PatternAwareness              = emotional.PatternAwareness,
             ProcessedThemes               = emotional.ProcessedThemes.ToList(),
+            // Theme R.6 (#64) — contribution trajectory summary from analytics.
+            ContributionTrajectory        = emotional.ContributionTrajectory,
             ThoughtDiversityNudge         = state.ThoughtDiversityNudge,
             GroundedFacts                 = epistemic.GroundedFacts,
             InteriorContext               = epistemic.InteriorContext,

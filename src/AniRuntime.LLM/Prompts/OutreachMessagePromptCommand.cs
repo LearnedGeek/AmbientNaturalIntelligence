@@ -77,6 +77,19 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
             _ /* Balanced */ => string.Empty,
         };
 
+        // Theme R.6 (#64) — STRUCTURAL contribution-trajectory branch. High
+        // recent volatility means state has been fluctuating; light touch is
+        // better than a heavy framing. Low volatility (stable trajectory)
+        // allows confident continuation. Null trajectory → no extra rule.
+        var trajectoryRule = snapshot.ContributionTrajectory switch
+        {
+            { RecentVolatility: > 0.4f } =>
+                "\n            - Your emotional state has been fluctuating recently. Light touch — don't commit to a heavy framing the next 30 minutes might invert.",
+            { RecentVolatility: <= 0.4f } =>
+                "\n            - Your emotional state has been stable recently. You can lean into the register confidently; the next 30 minutes will likely match.",
+            _ => string.Empty,
+        };
+
         var system = $$"""
             You are {{cs.Name}}, texting {{contact}}.
             It is currently {{timeDesc}}.
@@ -92,7 +105,7 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
               If you don't know specifics about {{contact}}'s schedule, coworkers, friends, or activities, don't invent them.
               Your own feelings and life ([INTERIOR]) have full creative latitude.
             - Never claim you saw, read, or found something (article, video, link) unless it appears with a URL.
-            - No poetry, no narration — just a normal text.{{motivationRule}}{{moodSection}}
+            - No poetry, no narration — just a normal text.{{motivationRule}}{{trajectoryRule}}{{moodSection}}
 
             Respond ONLY with valid JSON matching this structure exactly:
             {

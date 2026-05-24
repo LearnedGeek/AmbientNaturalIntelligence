@@ -108,11 +108,48 @@ public sealed class EmotionalContextBuilder : IEmotionalContextBuilder
         // Processed themes — topics whose emotional contributions have fully decayed.
         var processedThemes = await _analytics.GetProcessedThemesAsync(5, ct).ConfigureAwait(false);
 
+        // Theme R.6 (#64) — per-thought decayed-contribution trajectory summary.
+        // Volatility = normalized std-dev of WarmthDelta across recent (last 60 min)
+        // active contributions. Dominant registers = top 3 by count over the same
+        // window. Composers branch structurally on volatility level + register list.
+        EmotionalContributionTrajectory? trajectory = null;
+        try
+        {
+            var active = await _analytics.GetActiveContributionsAsync(ct).ConfigureAwait(false);
+            var cutoff = DateTimeOffset.UtcNow.AddMinutes(-60);
+            var recent = active.Where(c => c.CreatedAt >= cutoff).ToList();
+            if (recent.Count >= 2)
+            {
+                var warmths = recent.Select(c => (double)c.WarmthDelta).ToList();
+                var mean = warmths.Average();
+                var variance = warmths.Sum(w => (w - mean) * (w - mean)) / warmths.Count;
+                var stdDev = (float)Math.Sqrt(variance);
+                // Normalize: typical WarmthDelta range is ~[-0.5, 0.5]; std-dev of
+                // 0.25 indicates significant fluctuation. Clamp to [0, 1].
+                var volatility = Math.Clamp(stdDev / 0.25f, 0f, 1f);
+
+                var topRegisters = recent
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Register))
+                    .GroupBy(c => c.Register)
+                    .OrderByDescending(g => g.Count())
+                    .Take(3)
+                    .Select(g => g.Key)
+                    .ToList();
+
+                trajectory = new EmotionalContributionTrajectory(volatility, topRegisters);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "R.6 — contribution trajectory build failed; continuing without");
+        }
+
         return new EmotionalContextResult(
             relationshipHealth,
             emotionalDrift,
             patternAwareness,
-            processedThemes.ToList());
+            processedThemes.ToList(),
+            trajectory);
     }
 
     /// <summary>

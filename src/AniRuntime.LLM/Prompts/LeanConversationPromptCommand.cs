@@ -79,6 +79,16 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             _ /* Balanced */ => string.Empty,
         };
 
+        // Theme R.6 (#64) — STRUCTURAL contribution-trajectory branch.
+        var trajectoryRule = snapshot.ContributionTrajectory switch
+        {
+            { RecentVolatility: > 0.4f } =>
+                "\n            - State has been fluctuating recently — keep the reply light, don't anchor heavily.",
+            { RecentVolatility: <= 0.4f } =>
+                "\n            - State has been stable recently — confident continuation is fine.",
+            _ => string.Empty,
+        };
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
             It is {now:h:mm tt} on {now:dddd, MMMM d}.
@@ -88,7 +98,7 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             RULES:
             {energyRule}
             - Talk TO {contact}: "you", "your". Never third person.
-            - Write ONLY the text message. No commentary, no quotation marks.{motivationRule}
+            - Write ONLY the text message. No commentary, no quotation marks.{motivationRule}{trajectoryRule}
             """;
 
         // Two-stage positioning: WHAT IS TRUE first, then IMMEDIATE constraint
