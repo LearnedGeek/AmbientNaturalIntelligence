@@ -26,6 +26,10 @@ public class VoiceTurnPipeline
     private readonly AniOptions _aniOptions;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
+    // Theme R.2 (#64) — populate snapshot.DominantRegister so voice composer
+    // (LeanConversationPrompt, shared with reply) inherits R.1's register-driven
+    // branch. Quick wire pending R.7's full ContextBuilder consolidation of voice.
+    private readonly IDominantRegisterTracker? _registerTracker;
     private readonly ILogger<VoiceTurnPipeline> _log;
 
     public VoiceTurnPipeline(
@@ -36,7 +40,8 @@ public class VoiceTurnPipeline
         IOptions<AniOptions> aniOptions,
         ILogger<VoiceTurnPipeline> log,
         ICognitiveOutputGate? outputGate = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        IDominantRegisterTracker? registerTracker = null)
     {
         _memory            = memory;
         _conversations     = conversations;
@@ -45,6 +50,7 @@ public class VoiceTurnPipeline
         _aniOptions        = aniOptions.Value;
         _outputGate        = outputGate;
         _epistemicRenderer = epistemicRenderer;
+        _registerTracker   = registerTracker;
         _log               = log;
     }
 
@@ -284,6 +290,10 @@ public class VoiceTurnPipeline
             OpenLoops        = new List<OpenLoop>(),
             RecentHistory    = new List<ChatMessage>(),
             BuiltAt          = DateTimeOffset.UtcNow,
+            // Theme R.2 (#64) — register inherited so the shared
+            // LeanConversationPrompt's R.1 branch reaches voice. R.7 will
+            // route voice through ContextBuilder and remove this direct read.
+            DominantRegister = _registerTracker?.Current,
         };
     }
 }

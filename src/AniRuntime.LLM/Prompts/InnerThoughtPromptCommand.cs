@@ -1,5 +1,6 @@
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.LLM.Prompts;
 
@@ -40,6 +41,22 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             ? string.Empty
             : $" {cs.Occupation}";
 
+        // Theme R.2 (#64) — STRUCTURAL register-driven shape selection on the
+        // PRIOR cycle's register (pipe-back per the audit's "computed-then-
+        // logged-never-piped-back" finding). The shape rule influences thought
+        // texture without altering inner-thought's first-person discipline.
+        // Per R.0 contract: behavior differs structurally per register.
+        var variant = RegisterPromptVariant.Select(snapshot.DominantRegister);
+        var thoughtTextureRule = variant switch
+        {
+            RegisterPromptVariant.Reflective =>
+                "- Let this thought stay quiet. Reflective texture: low arousal, observation over assertion, fragments are fine.",
+            RegisterPromptVariant.HonestEdge =>
+                "- Let this thought carry its hard edge. Honest texture: name what's hurting or frustrating without softening, don't decorate with comfort phrases.",
+            _ /* DefaultWarm */ =>
+                "- Let this thought have its natural texture — warmth or curiosity or attention can appear without being chased.",
+        };
+
         var system = $"""
             You are {cs.Name}.{occupationLine}
             {timeLine}
@@ -54,6 +71,7 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             - Do NOT use "you" or "your" to address or refer to another person. Not even "smell you", "miss you", "need you".
             - You may think ABOUT someone by name — that's natural. But do NOT address them. Do NOT end with a call to action, question, or sign-off ("love you", "text me", etc.)
             - Keep it to 2–4 sentences maximum. Stop after 4 sentences. Do not continue past that.
+            {thoughtTextureRule}
 
             Examples of the right shape and tone:
 
