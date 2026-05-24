@@ -6,6 +6,7 @@ using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.Core.Utilities;
 using AniRuntime.LLM;
+using AniRuntime.Loops;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -26,10 +27,11 @@ public class VoiceTurnPipeline
     private readonly AniOptions _aniOptions;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
-    // Theme R.2 (#64) — populate snapshot.DominantRegister so voice composer
-    // (LeanConversationPrompt, shared with reply) inherits R.1's register-driven
-    // branch. Quick wire pending R.7's full ContextBuilder consolidation of voice.
-    private readonly IDominantRegisterTracker? _registerTracker;
+    // Theme R.7 (#64, supersedes R.2 quick-wire) — voice now routes through
+    // ContextBuilder for snapshot construction, inheriting all R.1-R.6
+    // architectural-input wiring (register, vibe, motivation, open loops,
+    // trajectory, anchored, gist, etc.) instead of building its own thin snapshot.
+    private readonly ContextBuilder? _contextBuilder;
     private readonly ILogger<VoiceTurnPipeline> _log;
 
     public VoiceTurnPipeline(
@@ -41,7 +43,7 @@ public class VoiceTurnPipeline
         ILogger<VoiceTurnPipeline> log,
         ICognitiveOutputGate? outputGate = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
-        IDominantRegisterTracker? registerTracker = null)
+        ContextBuilder? contextBuilder = null)
     {
         _memory            = memory;
         _conversations     = conversations;
@@ -50,7 +52,7 @@ public class VoiceTurnPipeline
         _aniOptions        = aniOptions.Value;
         _outputGate        = outputGate;
         _epistemicRenderer = epistemicRenderer;
-        _registerTracker   = registerTracker;
+        _contextBuilder    = contextBuilder;
         _log               = log;
     }
 
@@ -272,8 +274,31 @@ public class VoiceTurnPipeline
         // The orchestrator handles this when the client signals "playback_done".
     }
 
+    /// <summary>
+    /// Theme R.7 (#64, 2026-05-24) — voice routes through ContextBuilder when
+    /// available so it inherits the full R.1-R.6 architectural-input wiring
+    /// (DominantRegister, VibeRecommendedRegister, MotivationVector, OpenLoops,
+    /// ContributionTrajectory, AnchoredMemories, GroundedFacts, RecentMemory).
+    /// Falls back to the pre-R.7 thin snapshot when ContextBuilder isn't
+    /// registered (test fixtures, isolated deployments).
+    /// </summary>
     private async Task<ContextSnapshot> BuildVoiceContextAsync(CancellationToken ct)
     {
+        if (_contextBuilder is not null)
+        {
+            // Voice has no perception aggregation surface (per the 5/24 audit,
+            // a known gap). Pass an empty list; ContextBuilder honors that.
+            // conversationMode: true matches the reply-pipeline convention —
+            // voice is also a direct-address surface.
+            return await _contextBuilder.BuildContextSnapshotAsync(
+                perceptions: new List<PerceptionEvent>(),
+                ct: ct,
+                emotionalState: null,
+                conversationMode: true).ConfigureAwait(false);
+        }
+
+        // Fallback path — pre-R.7 thin snapshot. Used only when ContextBuilder
+        // isn't injected (test fixtures, isolated deployments).
         var characterTask = _memory.GetCharacterStateAsync(ct);
         var emotionalTask = _memory.GetEmotionalStateAsync(ct);
         var anchoredTask  = _memory.GetAnchoredMemoriesAsync(ct);
@@ -290,10 +315,6 @@ public class VoiceTurnPipeline
             OpenLoops        = new List<OpenLoop>(),
             RecentHistory    = new List<ChatMessage>(),
             BuiltAt          = DateTimeOffset.UtcNow,
-            // Theme R.2 (#64) — register inherited so the shared
-            // LeanConversationPrompt's R.1 branch reaches voice. R.7 will
-            // route voice through ContextBuilder and remove this direct read.
-            DominantRegister = _registerTracker?.Current,
         };
     }
 }
