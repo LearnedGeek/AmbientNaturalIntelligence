@@ -40,14 +40,16 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
         var moodBlock = PromptBuilder.BuildMoodInstruction(snapshot.EmotionalState);
         var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
 
-        // Theme R.1 (#64) — STRUCTURAL register-driven shape selection.
-        // The register from snapshot.DominantRegister (populated by
-        // CognitiveCyclePipeline after the most-recent hybrid-path inner
-        // thought) picks one of three system-prompt variants. Different
-        // register → different shape instruction. Per R.0 contract: the
-        // composer's behavior differs structurally when the input differs,
-        // not just via appended mood text.
-        var variant = RegisterPromptVariant.Select(snapshot.DominantRegister);
+        // Theme R.1 + R.3 (#64) — STRUCTURAL register-driven shape selection.
+        // R.1: snapshot.DominantRegister (Ani's current state from latest
+        //      hybrid-path inner thought) picks one of three variants.
+        // R.3: snapshot.VibeRecommendedRegister (V1.5 effectiveness-lookup)
+        //      OVERRIDES DominantRegister when present — strategy signal wins.
+        //      Null vibe → fall back to dominant.
+        // Different effective register → different shape instruction. Per R.0
+        // contract: composer behavior differs structurally per input.
+        var effectiveRegister = snapshot.VibeRecommendedRegister ?? snapshot.DominantRegister;
+        var variant = RegisterPromptVariant.Select(effectiveRegister);
         var shapeInstruction = variant switch
         {
             RegisterPromptVariant.Reflective =>

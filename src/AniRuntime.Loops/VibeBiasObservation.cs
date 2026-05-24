@@ -99,6 +99,24 @@ internal static class VibeBiasObservation
 
             EmitTelemetry(result, callSite, log);
 
+            // Theme R.3 (#64) — move vibe loop from observational to driving.
+            // Snapshot is mutated in-place so the downstream composer (called
+            // immediately after Observe in the same RunAsync) sees the
+            // recommendation as a structured input. Defensive: only set when
+            // there's a meaningful surfaced top-N (avoid feeding noise into
+            // composer-side branching).
+            if (result.SurfacedTopN.Count > 0)
+            {
+                var topRegister = TopRegisterName(result.RecommendedStrategyRegister);
+                if (!string.IsNullOrWhiteSpace(topRegister.Name))
+                {
+                    snapshot.VibeRecommendedRegister = topRegister.Name;
+                    log.LogDebug(
+                        "R.3 — vibe-recommended register set on snapshot: {Register} (value={Value:F2})",
+                        topRegister.Name, topRegister.Value);
+                }
+            }
+
             if (observationStore is not null)
             {
                 await PersistAsync(

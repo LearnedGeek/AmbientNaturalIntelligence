@@ -47,10 +47,13 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             ? " " + string.Join(" ", cs.NatureGrounding.Take(2))
             : string.Empty;
 
-        // Theme R.1 (#64) — STRUCTURAL register-driven shape selection.
-        // Picks one of three system-prompt variants per snapshot.DominantRegister.
-        // Per R.0 contract: behavior differs structurally when input differs.
-        var variant = RegisterPromptVariant.Select(snapshot.DominantRegister);
+        // Theme R.1 + R.3 (#64) — STRUCTURAL register-driven shape selection.
+        // VibeRecommendedRegister (V1.5 effectiveness signal) overrides
+        // DominantRegister when present — strategy effectiveness wins over
+        // current state. Null vibe → fall back to dominant. Null both →
+        // default-warm variant.
+        var effectiveRegister = snapshot.VibeRecommendedRegister ?? snapshot.DominantRegister;
+        var variant = RegisterPromptVariant.Select(effectiveRegister);
         var energyRule = variant switch
         {
             RegisterPromptVariant.Reflective =>

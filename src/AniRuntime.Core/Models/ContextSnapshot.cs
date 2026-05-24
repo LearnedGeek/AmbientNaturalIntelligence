@@ -84,6 +84,18 @@ public class ContextSnapshot
     public string? DominantRegister { get; set; }
 
     /// <summary>
+    /// Theme R.3 (2026-05-24, #64) — V1.5 vibe-loop recommended-strategy register.
+    /// Populated by <c>VibeBiasObservation.ObserveAsync</c> after computing the
+    /// bias result; reflects which strategy register the V1.5 effectiveness
+    /// lookup recommends for this moment.
+    /// <para>Composers prefer this over <see cref="DominantRegister"/> when set —
+    /// strategy-effectiveness signal wins over current state. Null when no
+    /// vibe observation has run this cycle (composers fall back to DominantRegister,
+    /// then to default-warm).</para>
+    /// </summary>
+    public string? VibeRecommendedRegister { get; set; }
+
+    /// <summary>
     /// Feature 4: Relationship health — slow-moving composite score capturing the
     /// macro arc of the relationship. Updates once per day max.
     /// </summary>
