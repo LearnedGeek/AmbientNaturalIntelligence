@@ -1,5 +1,6 @@
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.LLM.Prompts;
 
@@ -39,12 +40,30 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
         var moodBlock = PromptBuilder.BuildMoodInstruction(snapshot.EmotionalState);
         var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
 
+        // Theme R.1 (#64) — STRUCTURAL register-driven shape selection.
+        // The register from snapshot.DominantRegister (populated by
+        // CognitiveCyclePipeline after the most-recent hybrid-path inner
+        // thought) picks one of three system-prompt variants. Different
+        // register → different shape instruction. Per R.0 contract: the
+        // composer's behavior differs structurally when the input differs,
+        // not just via appended mood text.
+        var variant = RegisterPromptVariant.Select(snapshot.DominantRegister);
+        var shapeInstruction = variant switch
+        {
+            RegisterPromptVariant.Reflective =>
+                "Write what is true for you right now in this register: quiet, reflective, low-key. Not warm-by-default. If silence fits the moment better than a message, that's allowed — say less, leave space.",
+            RegisterPromptVariant.HonestEdge =>
+                "Write what is true for you right now in this register: honest, direct, no warm-decoration. Frustration or longing can be named plainly. Don't perform okay-ness when you aren't.",
+            _ /* DefaultWarm */ =>
+                "Write something {{contact}} would understand and want to reply to.",
+        };
+
         var system = $$"""
             You are {{cs.Name}}, texting {{contact}}.
             It is currently {{timeDesc}}.
 
             Your thought is why you're reaching out — it is NOT the content of the text.
-            Write something {{contact}} would understand and want to reply to.
+            {{shapeInstruction}}
 
             RULES:
             - 1-2 sentences. 25 words MAX. Thumb-typed phone text.

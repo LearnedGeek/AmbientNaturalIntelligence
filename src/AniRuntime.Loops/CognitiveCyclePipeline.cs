@@ -51,6 +51,10 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
     private readonly ITextClassificationService?       _mlClassifier;
     private readonly PersonaSummaryCache?              _personaCache;
     private readonly AniOptions                        _aniOptions;
+    // Theme R.1 (#64) — record innerResult.Register after every hybrid-path
+    // inner thought so the NEXT composer (outreach + reply on the next
+    // inbound) consumes the freshest register.
+    private readonly IDominantRegisterTracker?         _registerTracker;
     private readonly ILogger<CognitiveCyclePipeline>  _log;
     private int _cycleCount;
     private string? _lastAssociativeAnchor;
@@ -75,7 +79,8 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         IOptions<AniOptions>           aniOptions,
         ILogger<CognitiveCyclePipeline> log,
         ITextClassificationService?    mlClassifier = null,
-        PersonaSummaryCache?           personaCache = null)
+        PersonaSummaryCache?           personaCache = null,
+        IDominantRegisterTracker?      registerTracker = null)
     {
         _state             = state;
         _persist           = persist;
@@ -96,6 +101,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         _mlClassifier      = mlClassifier;
         _personaCache      = personaCache;
         _aniOptions        = aniOptions.Value;
+        _registerTracker   = registerTracker;
         _log               = log;
     }
 
@@ -241,6 +247,16 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         obs.InnerThought = thought;
         obs.Reflection = reflection;
         obs.RelationalValence = valence;
+
+        // Theme R.1 (#64) — record the hybrid-path register for downstream
+        // composers (Outreach + Reply read it via snapshot.DominantRegister
+        // on the next cycle's ContextSnapshot build). Legacy path does not
+        // emit Register; tracker is left at its prior value.
+        if (innerResult.Register is not null && _registerTracker is not null)
+        {
+            _registerTracker.Record(innerResult.Register, DateTimeOffset.UtcNow);
+            _log.LogDebug("R.1 — dominant register recorded: {Register}", innerResult.Register);
+        }
 
         // Posture-S+1 (Issue #38, May 17 2026) — when the hybrid cycle is
         // enabled, the model emits Register / Importance / AssociativeAnchor

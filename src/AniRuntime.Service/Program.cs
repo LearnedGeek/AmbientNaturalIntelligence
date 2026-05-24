@@ -386,6 +386,10 @@ try
     builder.Services.AddSingleton<IRetrievalOriginTracker, RetrievalOriginTracker>();
     builder.Services.AddSingleton<IPerceptionSource, RetrievalSelfDominancePerceptionSource>();
 
+    // Theme R.1 (#64, 2026-05-24) — most-recent inner-thought dominant register,
+    // populated into ContextSnapshot.DominantRegister for composer-side branching.
+    builder.Services.AddSingleton<IDominantRegisterTracker, DominantRegisterTracker>();
+
     // Internal-State Perception Framework — signal #1 (Apr 27, 2026): register
     // saturation. Polls active emotional contributions; emits an interior
     // perception when one register dominates above threshold. Default off via

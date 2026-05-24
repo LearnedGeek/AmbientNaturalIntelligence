@@ -35,6 +35,10 @@ public class ContextBuilder
     private readonly IConversationContextBuilder _conversationCtx;
     private readonly IEmotionalContextBuilder    _emotional;
     private readonly IRetrievalOriginTracker?    _originTracker;
+    // Theme R.1 (#64) — most-recent inner-thought dominant register, populated
+    // into snapshot.DominantRegister for composer-side branching. Nullable
+    // ctor arg keeps existing test fixtures working without forced wiring.
+    private readonly IDominantRegisterTracker?   _registerTracker;
     private readonly AniOptions                  _aniOptions;
     private readonly ILogger<ContextBuilder>     _log;
 
@@ -46,7 +50,8 @@ public class ContextBuilder
         IEmotionalContextBuilder    emotional,
         IOptions<AniOptions>        aniOptions,
         ILogger<ContextBuilder>     log,
-        IRetrievalOriginTracker?    originTracker = null)
+        IRetrievalOriginTracker?    originTracker = null,
+        IDominantRegisterTracker?   registerTracker = null)
     {
         _stateCtx        = stateCtx;
         _retrieval       = retrieval;
@@ -56,6 +61,7 @@ public class ContextBuilder
         _aniOptions      = aniOptions.Value;
         _log             = log;
         _originTracker   = originTracker;
+        _registerTracker = registerTracker;
     }
 
     public async Task<ContextSnapshot> BuildContextSnapshotAsync(
@@ -110,6 +116,10 @@ public class ContextBuilder
             ThoughtDiversityNudge         = state.ThoughtDiversityNudge,
             GroundedFacts                 = epistemic.GroundedFacts,
             InteriorContext               = epistemic.InteriorContext,
+            // Theme R.1 (#64) — read-only consumption from the singleton
+            // tracker. Null on cold start; populated by CognitiveCyclePipeline
+            // after the next hybrid-path inner-thought.
+            DominantRegister              = _registerTracker?.Current,
             // RecentExchanges is populated by the reply path from the active
             // conversation thread, not here — ambient cycles leave it empty.
         };

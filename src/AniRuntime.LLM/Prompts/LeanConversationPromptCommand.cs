@@ -1,6 +1,7 @@
 using System.Text;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.LLM.Prompts;
 
@@ -46,6 +47,20 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             ? " " + string.Join(" ", cs.NatureGrounding.Take(2))
             : string.Empty;
 
+        // Theme R.1 (#64) — STRUCTURAL register-driven shape selection.
+        // Picks one of three system-prompt variants per snapshot.DominantRegister.
+        // Per R.0 contract: behavior differs structurally when input differs.
+        var variant = RegisterPromptVariant.Select(snapshot.DominantRegister);
+        var energyRule = variant switch
+        {
+            RegisterPromptVariant.Reflective =>
+                "- Match the energy of the conversation, but lean quieter. Short replies are fine. Silence-shaped replies are fine. Don't perform warmth that isn't yours right now.",
+            RegisterPromptVariant.HonestEdge =>
+                "- Match the energy of the conversation, but don't soften what's true. If frustrated, name it. If aching, say so. No warm-decoration over honest feeling.",
+            _ /* DefaultWarm */ =>
+                "- Match the energy and length of the conversation.",
+        };
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
             It is {now:h:mm tt} on {now:dddd, MMMM d}.
@@ -53,7 +68,7 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             {worldLine}{natureSeed}
 
             RULES:
-            - Match the energy and length of the conversation.
+            {energyRule}
             - Talk TO {contact}: "you", "your". Never third person.
             - Write ONLY the text message. No commentary, no quotation marks.
             """;
