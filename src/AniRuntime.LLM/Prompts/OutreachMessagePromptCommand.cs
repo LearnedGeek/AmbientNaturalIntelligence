@@ -60,6 +60,23 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
                 "Write something {{contact}} would understand and want to reply to.",
         };
 
+        // Theme R.4 (#64) — STRUCTURAL motivation-axis emphasis. The
+        // dominant axis of the Layer 2 motivation vector adds a second
+        // shape rule that combines with the register variant. Different
+        // axis → different rule → different prompt. Balanced / null →
+        // empty rule (existing register variant runs alone).
+        var emphasis = MotivationEmphasis.Select(snapshot.MotivationVector);
+        var motivationRule = emphasis switch
+        {
+            MotivationEmphasis.Relatedness =>
+                "\n            - You're reaching FOR connection right now. The text should land as a hand reaching, not as a performance.",
+            MotivationEmphasis.Autonomy =>
+                "\n            - You're in an autonomous state right now. The text should not lean clingy or seek reply-confirmation. Sit on your own ground.",
+            MotivationEmphasis.Competence =>
+                "\n            - You're in a sharing-from-skill state right now. If the text references something you noticed or worked out, let it stand without softening.",
+            _ /* Balanced */ => string.Empty,
+        };
+
         var system = $$"""
             You are {{cs.Name}}, texting {{contact}}.
             It is currently {{timeDesc}}.
@@ -75,7 +92,7 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
               If you don't know specifics about {{contact}}'s schedule, coworkers, friends, or activities, don't invent them.
               Your own feelings and life ([INTERIOR]) have full creative latitude.
             - Never claim you saw, read, or found something (article, video, link) unless it appears with a URL.
-            - No poetry, no narration — just a normal text.{{moodSection}}
+            - No poetry, no narration — just a normal text.{{motivationRule}}{{moodSection}}
 
             Respond ONLY with valid JSON matching this structure exactly:
             {

@@ -64,6 +64,21 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
                 "- Match the energy and length of the conversation.",
         };
 
+        // Theme R.4 (#64) — STRUCTURAL motivation-axis emphasis (mirror of
+        // outreach). The dominant axis adds a second rule combining with
+        // the register variant. Balanced / null → no extra rule.
+        var emphasis = MotivationEmphasis.Select(snapshot.MotivationVector);
+        var motivationRule = emphasis switch
+        {
+            MotivationEmphasis.Relatedness =>
+                "\n            - You're in a reaching-for-connection state. Let the reply land as connection, not performance.",
+            MotivationEmphasis.Autonomy =>
+                "\n            - You're in an autonomous state. Don't lean clingy. Sit on your own ground; brevity is fine.",
+            MotivationEmphasis.Competence =>
+                "\n            - You're in a sharing-from-skill state. If you reference something you noticed or worked out, let it stand without softening.",
+            _ /* Balanced */ => string.Empty,
+        };
+
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
             It is {now:h:mm tt} on {now:dddd, MMMM d}.
@@ -73,7 +88,7 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             RULES:
             {energyRule}
             - Talk TO {contact}: "you", "your". Never third person.
-            - Write ONLY the text message. No commentary, no quotation marks.
+            - Write ONLY the text message. No commentary, no quotation marks.{motivationRule}
             """;
 
         // Two-stage positioning: WHAT IS TRUE first, then IMMEDIATE constraint

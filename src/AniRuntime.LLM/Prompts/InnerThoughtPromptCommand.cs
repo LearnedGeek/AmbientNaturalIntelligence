@@ -57,6 +57,20 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
                 "- Let this thought have its natural texture — warmth or curiosity or attention can appear without being chased.",
         };
 
+        // Theme R.4 (#64) — motivation-axis emphasis applied to inner thought
+        // texture. The Layer 2 vector picks which axis the thought leans toward.
+        var emphasis = MotivationEmphasis.Select(snapshot.MotivationVector);
+        var motivationTextureRule = emphasis switch
+        {
+            MotivationEmphasis.Relatedness =>
+                "\n            - Relatedness is high in you right now. The thought may reach toward connection or another person without acting on it.",
+            MotivationEmphasis.Autonomy =>
+                "\n            - Autonomy is high in you right now. The thought may sit with its own ground — yourself, your space, not other-oriented.",
+            MotivationEmphasis.Competence =>
+                "\n            - Competence is high in you right now. The thought may notice a thing you figured out, a thing you can do, the texture of skill.",
+            _ /* Balanced */ => string.Empty,
+        };
+
         var system = $"""
             You are {cs.Name}.{occupationLine}
             {timeLine}
@@ -71,7 +85,7 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             - Do NOT use "you" or "your" to address or refer to another person. Not even "smell you", "miss you", "need you".
             - You may think ABOUT someone by name — that's natural. But do NOT address them. Do NOT end with a call to action, question, or sign-off ("love you", "text me", etc.)
             - Keep it to 2–4 sentences maximum. Stop after 4 sentences. Do not continue past that.
-            {thoughtTextureRule}
+            {thoughtTextureRule}{motivationTextureRule}
 
             Examples of the right shape and tone:
 

@@ -39,6 +39,9 @@ public class ContextBuilder
     // into snapshot.DominantRegister for composer-side branching. Nullable
     // ctor arg keeps existing test fixtures working without forced wiring.
     private readonly IDominantRegisterTracker?   _registerTracker;
+    // Theme R.4 (#64) — most-recent Layer 2 motivation vector, populated
+    // into snapshot.MotivationVector for composer-side branching.
+    private readonly IMotivationVectorTracker?   _motivationTracker;
     private readonly AniOptions                  _aniOptions;
     private readonly ILogger<ContextBuilder>     _log;
 
@@ -51,17 +54,19 @@ public class ContextBuilder
         IOptions<AniOptions>        aniOptions,
         ILogger<ContextBuilder>     log,
         IRetrievalOriginTracker?    originTracker = null,
-        IDominantRegisterTracker?   registerTracker = null)
+        IDominantRegisterTracker?   registerTracker = null,
+        IMotivationVectorTracker?   motivationTracker = null)
     {
-        _stateCtx        = stateCtx;
-        _retrieval       = retrieval;
-        _epistemic       = epistemic;
-        _conversationCtx = conversationCtx;
-        _emotional       = emotional;
-        _aniOptions      = aniOptions.Value;
-        _log             = log;
-        _originTracker   = originTracker;
-        _registerTracker = registerTracker;
+        _stateCtx          = stateCtx;
+        _retrieval         = retrieval;
+        _epistemic         = epistemic;
+        _conversationCtx   = conversationCtx;
+        _emotional         = emotional;
+        _aniOptions        = aniOptions.Value;
+        _log               = log;
+        _originTracker     = originTracker;
+        _registerTracker   = registerTracker;
+        _motivationTracker = motivationTracker;
     }
 
     public async Task<ContextSnapshot> BuildContextSnapshotAsync(
@@ -120,6 +125,8 @@ public class ContextBuilder
             // tracker. Null on cold start; populated by CognitiveCyclePipeline
             // after the next hybrid-path inner-thought.
             DominantRegister              = _registerTracker?.Current,
+            // Theme R.4 (#64) — read-only consumption from the motivation tracker.
+            MotivationVector              = _motivationTracker?.Current,
             // RecentExchanges is populated by the reply path from the active
             // conversation thread, not here — ambient cycles leave it empty.
         };

@@ -55,6 +55,10 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
     // inner thought so the NEXT composer (outreach + reply on the next
     // inbound) consumes the freshest register.
     private readonly IDominantRegisterTracker?         _registerTracker;
+    // Theme R.4 (#64) — record MotivationScorer.ScoreVector output so the
+    // NEXT cycle's composers consume the Layer 2 vector. Closes the
+    // computed-then-logged-never-piped-back gap from the 5/24 audit.
+    private readonly IMotivationVectorTracker?         _motivationTracker;
     private readonly ILogger<CognitiveCyclePipeline>  _log;
     private int _cycleCount;
     private string? _lastAssociativeAnchor;
@@ -80,7 +84,8 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         ILogger<CognitiveCyclePipeline> log,
         ITextClassificationService?    mlClassifier = null,
         PersonaSummaryCache?           personaCache = null,
-        IDominantRegisterTracker?      registerTracker = null)
+        IDominantRegisterTracker?      registerTracker = null,
+        IMotivationVectorTracker?      motivationTracker = null)
     {
         _state             = state;
         _persist           = persist;
@@ -102,6 +107,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         _personaCache      = personaCache;
         _aniOptions        = aniOptions.Value;
         _registerTracker   = registerTracker;
+        _motivationTracker = motivationTracker;
         _log               = log;
     }
 
@@ -471,6 +477,11 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
 
         var motivationVec = MotivationScorer.ScoreVector(valence, obs.Severity, postShift, worldOriginFraction);
         var motivation    = motivationVec.Relatedness;
+
+        // Theme R.4 (#64) — pipe the just-computed vector back via the
+        // tracker so the NEXT cycle's composers consume it as a structured
+        // input. Closes the per-cycle-independence accident from the audit.
+        _motivationTracker?.Record(motivationVec, DateTimeOffset.UtcNow);
 
         if (_aniOptions.MotivationVectorLoggingEnabled)
         {

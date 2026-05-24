@@ -84,6 +84,16 @@ public class ContextSnapshot
     public string? DominantRegister { get; set; }
 
     /// <summary>
+    /// Theme R.4 (2026-05-24, #64) — Layer 2 Phase 2a Ryan & Deci motivation
+    /// vector (Relatedness / Autonomy / Competence). Populated by
+    /// <c>ContextBuilder</c> from <c>IMotivationVectorTracker.Current</c>;
+    /// updated after every cognitive cycle's <c>MotivationScorer.ScoreVector</c>
+    /// call. Composers branch on the dominant axis — STRUCTURAL consumption.
+    /// <para>Null on cold start. Consumers default to existing prompt shape.</para>
+    /// </summary>
+    public MotivationVector? MotivationVector { get; set; }
+
+    /// <summary>
     /// Theme R.3 (2026-05-24, #64) — V1.5 vibe-loop recommended-strategy register.
     /// Populated by <c>VibeBiasObservation.ObserveAsync</c> after computing the
     /// bias result; reflects which strategy register the V1.5 effectiveness

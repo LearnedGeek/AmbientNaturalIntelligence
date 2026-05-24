@@ -390,6 +390,10 @@ try
     // populated into ContextSnapshot.DominantRegister for composer-side branching.
     builder.Services.AddSingleton<IDominantRegisterTracker, DominantRegisterTracker>();
 
+    // Theme R.4 (#64, 2026-05-24) — most-recent Layer 2 motivation vector,
+    // populated into ContextSnapshot.MotivationVector for composer-side branching.
+    builder.Services.AddSingleton<IMotivationVectorTracker, MotivationVectorTracker>();
+
     // Internal-State Perception Framework — signal #1 (Apr 27, 2026): register
     // saturation. Polls active emotional contributions; emits an interior
     // perception when one register dominates above threshold. Default off via
