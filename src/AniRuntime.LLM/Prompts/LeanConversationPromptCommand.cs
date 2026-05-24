@@ -144,6 +144,23 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             user.AppendLine();
         }
 
+        // Theme R.5 (#64) — STRUCTURAL open-loop consumption (mirror of
+        // Outreach R.5 + InnerThought's existing OpenLoops section). When
+        // unresolved threads exist with the contact, surface them so the
+        // composer can reference one if it's the right moment.
+        var openLoops = snapshot.OpenLoops
+            .Where(l => !string.IsNullOrWhiteSpace(l.Description))
+            .Take(3)
+            .ToList();
+        if (openLoops.Count > 0)
+        {
+            user.AppendLine($"[OPEN LOOPS] unresolved threads with {contact}:");
+            foreach (var l in openLoops)
+                user.AppendLine($"  - {l.Description}");
+            user.AppendLine($"If your reply is the right place to follow up on one of these, do that rather than inventing a topic.");
+            user.AppendLine();
+        }
+
         user.Append($"Reply to {contact}'s message.");
 
         // 2026-05-18 — role-flip structural fix. When DirectiveInSystem is

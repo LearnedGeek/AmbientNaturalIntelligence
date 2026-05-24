@@ -170,6 +170,22 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
             sections.AddRange(interior.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
         }
 
+        // Theme R.5 (#64) — STRUCTURAL open-loop consumption. Generalizes
+        // InnerThoughtPromptCommand's existing OpenLoops section pattern to
+        // the outreach surface. When unresolved threads exist with Mark,
+        // surface them so the composer can reference one if it's the right
+        // moment (rather than inventing a frame).
+        var openLoops = snapshot.OpenLoops
+            .Where(l => !string.IsNullOrWhiteSpace(l.Description))
+            .Take(3)
+            .ToList();
+        if (openLoops.Count > 0)
+        {
+            sections.Add($"\n[OPEN LOOPS] unresolved threads with {contact} you might naturally reference:");
+            sections.AddRange(openLoops.Select(l => $"  - {l.Description}"));
+            sections.Add("If one of these is the right thing to follow up on right now, prefer that over an invented topic.");
+        }
+
         // Recent conversation rendering: closed gist (preferred) or active-thread structured.
         var closed = snapshot.RecentClosedConversation;
         var structured = snapshot.StructuredConversationSummary;
