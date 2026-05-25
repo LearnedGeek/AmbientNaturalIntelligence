@@ -261,7 +261,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         if (innerResult.Register is not null && _registerTracker is not null)
         {
             _registerTracker.Record(innerResult.Register, DateTimeOffset.UtcNow);
-            _log.LogDebug("R.1 — dominant register recorded: {Register}", innerResult.Register);
+            _log.LogInformation("R.1 — dominant register recorded: {Register}", innerResult.Register);
         }
 
         // Posture-S+1 (Issue #38, May 17 2026) — when the hybrid cycle is
