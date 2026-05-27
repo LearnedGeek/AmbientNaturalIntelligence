@@ -13,22 +13,45 @@ namespace AniRuntime.Core.Interfaces;
 /// <para>
 /// Producer/consumer separation: this interface is the SINGLE place that
 /// asks "what does this text feel like?" Implementations produce an
-/// <see cref="EmotionVector"/> with schema-flexible axes (e.g. EmoLLaMA-
-/// chat-7B contributes <c>anger / fear / joy / sadness / valence</c>;
-/// future models can contribute additional axes such as <c>arousal</c>,
-/// <c>severity</c>, etc. without breaking this interface).
+/// <see cref="EmotionVector"/> with schema-flexible axes carried in the
+/// vector's dictionary, not the type structure. The production scorer
+/// (PR-2) targets EmoLLaMA-chat-7B with EI-reg and E-c combined, emitting
+/// namespaced keys: <c>ei.{emotion}</c> for EI-reg regression intensities,
+/// <c>ec.{emotion}</c> for E-c multilabel presence, and <c>dim.{feature}</c>
+/// for V-reg dimensional features. Future scorers can introduce additional
+/// axes (arousal, dominance, severity) without breaking this interface or
+/// any consumer that doesn't need the new axes.
 /// </para>
 ///
 /// <para>
-/// Consumers — inner-thought cycle, outreach, conversation, vibe loop,
-/// dashboard, voice-tag selector — read the produced vector via
-/// <see cref="EmotionVectorProjector"/> projections. No consumer calls
-/// this interface directly outside the contribution-write path.
+/// Consumers (inner-thought cycle, outreach, conversation, vibe loop,
+/// dashboard, voice-tag selector) read the produced vector through a
+/// projection helper introduced in a follow-on PR. Projection rules
+/// (mapping a vector to a 9-register taxonomy label, a 12-family
+/// composition family, dashboard delta values) are deferred to a separate
+/// design conversation because the projection rules must not be
+/// hardcoded constants embedded in production code; they belong in
+/// configuration so that adding or tuning a register taxonomy does not
+/// require a code change. No consumer calls this interface directly
+/// outside the contribution-write path.
+/// </para>
+///
+/// <para>
+/// Fractal-seed constraint: the substrate's axis count is the upper bound
+/// on what every downstream projection can ever discriminate. EmoLLaMA's
+/// EI-reg covers four categorical emotions (anger, fear, joy, sadness) and
+/// V-reg covers valence; the seven additional E-c-only emotions
+/// (anticipation, disgust, love, optimism, pessimism, surprise, trust)
+/// arrive as binary presence rather than gradient intensity. Distinctions
+/// the substrate cannot represent cannot be recovered downstream. Choosing
+/// the substrate is the highest-leverage architectural decision in the
+/// affective layer.
 /// </para>
 ///
 /// <para>
 /// Empirical case for replacing the existing discrete classifier paths:
-/// #67 5-axis validation chain. Architectural design: #68.
+/// #67 5-axis validation chain. Architectural design: #68. Production-data
+/// evaluation: `papers-short/emollm-production-eval/`.
 /// </para>
 /// </summary>
 public interface IEmotionalSubstrateScorer
@@ -42,12 +65,14 @@ public interface IEmotionalSubstrateScorer
     /// </summary>
     /// <param name="text">The source content to score. Implementations
     /// must handle empty/whitespace input gracefully (typically by
-    /// returning a zero vector with the same schema).</param>
+    /// returning a vector with neutral / zero values).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>An <see cref="EmotionVector"/> whose
     /// <see cref="EmotionVector.Components"/> dictionary contains axis
-    /// values in [0.0, 1.0], keyed by lowercased axis name (use
-    /// <see cref="EmotionAxis"/> + <see cref="EmotionAxisExtensions.Key"/>
-    /// for standard axes).</returns>
+    /// values in [0.0, 1.0], keyed by namespaced axis name (e.g.
+    /// <c>"ei.anger"</c>, <c>"ec.surprise"</c>, <c>"dim.valence"</c>).
+    /// Consumers using <see cref="EmotionAxis"/> or
+    /// <see cref="DimensionAxis"/> enums construct the namespaced key
+    /// themselves via the task-prefix convention.</returns>
     Task<EmotionVector> ScoreAsync(string text, CancellationToken ct);
 }

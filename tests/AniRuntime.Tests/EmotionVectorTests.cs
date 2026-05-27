@@ -71,10 +71,37 @@ public class EmotionVectorTests
     [InlineData(EmotionAxis.Fear,    "fear")]
     [InlineData(EmotionAxis.Joy,     "joy")]
     [InlineData(EmotionAxis.Sadness, "sadness")]
-    [InlineData(EmotionAxis.Valence, "valence")]
-    public void Key_extension_produces_lowercase_string_form_of_enum(EmotionAxis axis, string expected)
+    public void EmotionAxis_Key_extension_produces_lowercase_string_form(EmotionAxis axis, string expected)
     {
         axis.Key().Should().Be(expected);
+    }
+
+    [Fact]
+    public void DimensionAxis_Key_extension_produces_lowercase_valence()
+    {
+        DimensionAxis.Valence.Key().Should().Be("valence");
+    }
+
+    [Fact]
+    public void Get_DimensionAxis_overload_reads_dimensional_features()
+    {
+        var vec = new EmotionVector(
+            new Dictionary<string, double> { ["valence"] = 0.7 },
+            "test-schema");
+
+        vec.Get(DimensionAxis.Valence).Should().Be(0.7);
+    }
+
+    [Fact]
+    public void EmotionAxis_and_DimensionAxis_are_distinct_namespaces()
+    {
+        // Type system check: if Valence were still in EmotionAxis this wouldn't
+        // compile because EmotionAxis would still have the Valence member.
+        // Asserting the enum's member count makes the regression explicit.
+        Enum.GetValues<EmotionAxis>().Should().HaveCount(4,
+            "EmotionAxis is categorical-emotion only — Valence belongs in DimensionAxis");
+        Enum.GetValues<DimensionAxis>().Should().HaveCount(1,
+            "DimensionAxis currently contains only Valence; future scorers may add Arousal/Dominance");
     }
 
     [Fact]

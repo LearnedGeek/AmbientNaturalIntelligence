@@ -47,9 +47,20 @@ public sealed record EmotionVector(
         Components.TryGetValue(axis, out var v) ? v : null;
 
     /// <summary>
-    /// Convenience overload for known-axis access via the
+    /// Convenience overload for known categorical-emotion axes via the
     /// <see cref="EmotionAxis"/> enum. Equivalent to
-    /// <c>Get(axis.Key())</c>.
+    /// <c>Get(axis.Key())</c>. Note this accesses the bare-key form
+    /// (e.g. <c>"anger"</c>); consumers that need namespaced
+    /// production-substrate keys (<c>"ei.anger"</c>, <c>"ec.anger"</c>) must
+    /// use the raw-string <see cref="Get(string)"/> overload directly.
     /// </summary>
     public double? Get(EmotionAxis axis) => Get(axis.Key());
+
+    /// <summary>
+    /// Convenience overload for known dimensional axes via the
+    /// <see cref="DimensionAxis"/> enum. Equivalent to
+    /// <c>Get(axis.Key())</c>. Same bare-vs-namespaced caveat as the
+    /// <see cref="EmotionAxis"/> overload applies.
+    /// </summary>
+    public double? Get(DimensionAxis axis) => Get(axis.Key());
 }
