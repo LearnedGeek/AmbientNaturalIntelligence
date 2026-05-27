@@ -830,6 +830,11 @@ public class OllamaOptions
     public string? InnerMonologueModel { get; set; }
     public string EmbedModel           { get; set; } = "nomic-embed-text";
 
+    // Contribution 9 PR-2 (Issue #68): substrate-measurement model. EmoLLaMA-chat-7B
+    // serves the continuous-vector emotion scorer (EI-reg + E-c combined per call),
+    // emitting namespaced axes (ei.*, ec.*, dim.*) into EmotionVector.Components.
+    public string SubstrateModel       { get; set; } = "emollama-chat-7b";
+
     // AC4: Temperature splitting — lower temperature for memory-grounded responses
     // (factual recall, past conversations) to reduce confabulation. Standard temperature
     // for creative/emotional expression (playful banter, inner thoughts).
