@@ -311,11 +311,21 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
 
         var ranked = passingFloor.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
 
+        // Pre-filter top cosine: the best cosine in the candidate pool
+        // BEFORE the floor was applied. Distinct from the post-filter
+        // top_cosine field below — when no records pass the floor the
+        // post-filter field shows 0.000 as the empty-list default, which
+        // hides whether the pool actually had healthy embeddings sitting
+        // just under the floor or pathologically all-zero embeddings.
+        // This field disambiguates definitively on every cycle.
+        var preFilterTopCosine = scored.Count > 0 ? scored.Max(s => s.CosineSimilarity) : 0f;
+
         _log.LogDebug(
-            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}, anchored_bypassed_floor={AnchoredBypassed}",
+            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, pre_filter_top_cosine={PreFilterTopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}, anchored_bypassed_floor={AnchoredBypassed}",
             tier, candidates.Count, ranked.Count,
             ranked.Count > 0 ? ranked[0].CompositeScore   : 0f,
             ranked.Count > 0 ? ranked[0].CosineSimilarity : 0f,
+            preFilterTopCosine,
             includeRecency, minCosine, droppedByFloor, anchoredBypassed);
 
         return ranked;
