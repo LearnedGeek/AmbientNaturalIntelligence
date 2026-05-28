@@ -306,19 +306,17 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
             })
             .ToList();
 
-        var passingFloor = minCosine > 0f
-            ? scored.Where(s => s.CosineSimilarity >= minCosine).ToList()
-            : scored;
-        var droppedByFloor = scored.Count - passingFloor.Count;
+        var (passingFloor, droppedByFloor, anchoredBypassed) =
+            ApplyCosineFloorWithAnchoredBypass(scored, minCosine);
 
         var ranked = passingFloor.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
 
         _log.LogDebug(
-            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}",
+            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}, anchored_bypassed_floor={AnchoredBypassed}",
             tier, candidates.Count, ranked.Count,
             ranked.Count > 0 ? ranked[0].CompositeScore   : 0f,
             ranked.Count > 0 ? ranked[0].CosineSimilarity : 0f,
-            includeRecency, minCosine, droppedByFloor);
+            includeRecency, minCosine, droppedByFloor, anchoredBypassed);
 
         return ranked;
     }
@@ -467,6 +465,62 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
     //    for test-binary compatibility — these are also exercised by the
     //    SqliteMemoryService legacy code path under UseEfDataLayer=false).
     // ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Foundation-memory bypass (May 28, 2026) — apply the cosine-similarity
+    /// noise floor used by the verifier and composition substrate paths, but
+    /// let anchored records (foundation memories: character seeds, world
+    /// canon, Mia/Sarah/Kevin identity scaffolding) pass regardless of
+    /// query-relevance. The floor exists to filter "topically unrelated
+    /// noise," but anchored records are never noise — they're scaffolding
+    /// that must always reach the consumer that asked.
+    ///
+    /// <para>
+    /// Empirical anchor: 2026-05-28 01:56 outreach where 1002 Facts-tier
+    /// candidates all scored below the 0.75 verifier floor, including the
+    /// anchored character-seed record about Mia, so the verifier received
+    /// zero canonical substrate and a spatial-presence confabulation
+    /// ("Hey love, I'm pulling up to Mia's right now…") dispatched.
+    /// </para>
+    ///
+    /// <para>
+    /// Returns the filtered list (anchored ∪ cosine-passers), the count of
+    /// records dropped by the floor (excluding anchored bypasses), and the
+    /// count of anchored records that passed only because of the bypass.
+    /// </para>
+    /// </summary>
+    internal static (List<ScoredMemory> PassingFloor, int DroppedByFloor, int AnchoredBypassed)
+        ApplyCosineFloorWithAnchoredBypass(List<ScoredMemory> scored, float minCosine)
+    {
+        if (minCosine <= 0f)
+            return (scored, 0, 0);
+
+        var passingFloor = new List<ScoredMemory>(scored.Count);
+        var droppedByFloor = 0;
+        var anchoredBypassed = 0;
+
+        foreach (var s in scored)
+        {
+            var passesCosine = s.CosineSimilarity >= minCosine;
+            var isAnchored = s.Record.DecayTier == DecayTier.Anchored;
+
+            if (passesCosine)
+            {
+                passingFloor.Add(s);
+            }
+            else if (isAnchored)
+            {
+                passingFloor.Add(s);
+                anchoredBypassed++;
+            }
+            else
+            {
+                droppedByFloor++;
+            }
+        }
+
+        return (passingFloor, droppedByFloor, anchoredBypassed);
+    }
 
     /// <summary>
     /// Agentic Lens Layer 1 Phase 1b — MMR diversity rerank.
