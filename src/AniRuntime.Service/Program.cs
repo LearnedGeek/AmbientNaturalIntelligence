@@ -301,6 +301,11 @@ try
         client.Timeout     = TimeSpan.FromMinutes(2);
     });
 
+    // Contribution 9 PR-2 (Issue #68): EmoLLaMA-chat-7B substrate scorer.
+    // Single source of truth for continuous-vector emotion measurement,
+    // replacing the two divergent Ollama-via-prompt classifier paths from #66.
+    builder.Services.AddSingleton<IEmotionalSubstrateScorer, EmoLLamaSubstrateScorer>();
+
     // ── Voice & Media (Feature 20) — conditional on Voice:Enabled ─────────────
     var voiceEnabled = config.GetValue<bool>("Voice:Enabled");
     builder.Services.AddSingleton<MediaCacheService>();
