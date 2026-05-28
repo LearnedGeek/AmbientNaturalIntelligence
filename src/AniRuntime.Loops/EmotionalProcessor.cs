@@ -22,6 +22,7 @@ public class EmotionalProcessor
     private readonly IOllamaClient _ollama;
     private readonly AniOptions _aniOptions;
     private readonly ITextClassificationService? _mlClassifier;
+    private readonly IEmotionalSubstrateScorer? _substrateScorer;
     private readonly ILogger<EmotionalProcessor> _log;
 
     // Alignment map: which ML emotions correspond to which heuristic registers
@@ -46,7 +47,8 @@ public class EmotionalProcessor
         IOllamaClient ollama,
         IOptions<AniOptions> aniOptions,
         ILogger<EmotionalProcessor> log,
-        ITextClassificationService? mlClassifier = null)
+        ITextClassificationService? mlClassifier = null,
+        IEmotionalSubstrateScorer? substrateScorer = null)
     {
         _state = state;
         _persist = persist;
@@ -55,6 +57,7 @@ public class EmotionalProcessor
         _aniOptions = aniOptions.Value;
         _log = log;
         _mlClassifier = mlClassifier;
+        _substrateScorer = substrateScorer;
     }
 
     /// <summary>
@@ -78,6 +81,30 @@ public class EmotionalProcessor
                 .ConfigureAwait(false);
 
             var (warmth, energy, worry, playfulness, register, severity) = ParseEmotionalShift(raw, effectiveMax);
+
+            // Contribution 9 PR-2 (Issue #68) — shadow-mode substrate scoring.
+            // EmoLLaMA-chat-7B substrate vector logged in parallel with the
+            // discrete classifier above for paired-observation data. No behavior
+            // change: the substrate vector is observed only, not yet consumed by
+            // contribution composition. Migration of this consumer to substrate-
+            // first is a separate follow-on PR.
+            if (_substrateScorer is not null)
+            {
+                try
+                {
+                    var substrate = await _substrateScorer.ScoreAsync(content, ct).ConfigureAwait(false);
+                    _log.LogInformation(
+                        "Substrate shadow-score: schema={Schema} discreteRegister={Register} discreteSeverity={Severity:F2} substrate={Components}",
+                        substrate.MeasurementSchema,
+                        register,
+                        severity,
+                        JsonSerializer.Serialize(substrate.Components));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _log.LogWarning(ex, "Substrate shadow-scoring failed; continuing with discrete classifier only");
+                }
+            }
 
             // Cap ambient thought severity at 0.85 — only real events (conversations,
             // hurt/care detection) should reach Global tier (threshold 0.98).
