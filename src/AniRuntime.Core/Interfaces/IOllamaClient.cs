@@ -33,6 +33,34 @@ public interface IOllamaClient
     /// structural fix: the right tool for compression-style summarization.
     /// </summary>
     Task<string>  ChatJsonWithModelAsync(string model, string systemPrompt, IEnumerable<ChatMessage> history, string userMessage, CancellationToken ct = default, string? keepAlive = null);
+
+    /// <summary>
+    /// Contribution 9 PR-3 (Issue #68, May 28, 2026) — raw text-completion
+    /// against an explicitly-named model via Ollama's <c>/api/generate</c>
+    /// endpoint. Required for models that were fine-tuned with a
+    /// non-chat-format instruction template (e.g. EmoLLaMA's
+    /// Human:/Task:/Text:/Emotion:/Intensity Score: shape, where the
+    /// chat-API role split silently breaks the trained behavior).
+    /// </summary>
+    /// <param name="model">Explicit Ollama model name.</param>
+    /// <param name="prompt">Verbatim prompt — caller composes the full
+    /// template; no role-split, no implicit system message.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="temperature">Optional sampling temperature. Default 0.0
+    /// for deterministic task output.</param>
+    /// <param name="maxTokens">Optional cap on generated tokens. Default 16
+    /// — task outputs (single number or short emotion list) need very few
+    /// tokens; capping prevents the model from drifting into narrative
+    /// completion.</param>
+    /// <param name="keepAlive">Optional keep-alive override.</param>
+    Task<string> GenerateAsync(
+        string model,
+        string prompt,
+        CancellationToken ct = default,
+        float? temperature = null,
+        int? maxTokens = null,
+        string? keepAlive = null);
+
     Task<float[]> EmbedAsync(string text, CancellationToken ct = default);
 
     /// <summary>

@@ -243,6 +243,40 @@ public class OllamaClient : IOllamaClient
         }
     }
 
+    public async Task<string> GenerateAsync(
+        string model, string prompt, CancellationToken ct = default,
+        float? temperature = null, int? maxTokens = null, string? keepAlive = null)
+    {
+        // Contribution 9 PR-3 (Issue #68) — /api/generate for raw text
+        // completion. EmoLLaMA and similar task-tuned base models were
+        // fine-tuned on a specific instruction template that the chat-API
+        // role split silently breaks. The caller composes the verbatim
+        // prompt; we just pass it through.
+        var options = new Dictionary<string, object>();
+        if (temperature.HasValue) options["temperature"] = temperature.Value;
+        if (maxTokens.HasValue)   options["num_predict"] = maxTokens.Value;
+
+        var alive   = keepAlive ?? "5m";
+        var request = options.Count > 0
+            ? (object)new { model, prompt, stream = false, options, keep_alive = alive }
+            : (object)new { model, prompt, stream = false, keep_alive = alive };
+
+        var response = await _http.PostAsJsonAsync(
+            "/api/generate", request, JsonOpts, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content
+            .ReadFromJsonAsync<GenerateResponse>(JsonOpts, ct)
+            .ConfigureAwait(false);
+
+        return body?.Response ?? string.Empty;
+    }
+
+    private sealed class GenerateResponse
+    {
+        [JsonPropertyName("response")] public string? Response { get; set; }
+    }
+
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
         // Short keep_alive for embeddings — the model is small but adds up.
