@@ -111,6 +111,21 @@ public class ConsciousSubstrateGistContractTests
         // divergence from baseline; we don't assert on it here. Coverage:
         // TensionStateSliceContractTests.
         gist.TokenCount.Should().BeGreaterThan(0);
+
+        // Phase M.2-lite: per-slice token counts mirror slice flags.
+        // Active slice → non-zero token count; inactive slice → zero.
+        // Total matches gist.TokenCount when only register-state fires;
+        // when tension-state also fires it's slightly more (joined with \n).
+        gist.SliceTokens.RegisterState.Should().BeGreaterThan(0,
+            "RegisterState slice fired so its token count must be > 0");
+        gist.SliceTokens.ClosedConversation.Should().Be(0,
+            "ClosedConversation slice is M.3+ — must report 0 tokens until shipped");
+        gist.SliceTokens.InnerThoughtAggregate.Should().Be(0,
+            "InnerThoughtAggregate slice is M.5+ — must report 0 tokens until shipped");
+        gist.SliceTokens.ContactState.Should().Be(0,
+            "ContactState slice is M.4+ — must report 0 tokens until shipped");
+        gist.SliceTokens.WorldSelf.Should().Be(0,
+            "WorldSelf slice is M.6+ — must report 0 tokens until shipped");
     }
 
     [Fact]
@@ -206,6 +221,399 @@ public class ConsciousSubstrateGistContractTests
         gist.Composed.Should().NotContain("Mark", "the register-state slice is about Ani's state, never about the caregiver as subject");
         gist.Composed.Should().NotContain("mark", "case-insensitive check for the same property");
         gist.Composed.Should().NotContain("you (Mark)", "no caregiver-as-subject framing allowed in this slice");
+    }
+
+    // ── Theme M Phase M.3 (May 28, 2026) — ClosedConversation slice contract tests ──
+
+    private static ClosedConversationRecord MakeClosed(
+        string gist = "we talked about his gym day and Sarah's website",
+        DateTimeOffset? closedAt = null,
+        string validity = "valid",
+        Dictionary<string, float>? aniRegister = null)
+    {
+        return new ClosedConversationRecord
+        {
+            Gist = gist,
+            ClosedAt = closedAt ?? DateTimeOffset.UtcNow.AddHours(-3),
+            Validity = validity,
+            AniRegister = aniRegister ?? new Dictionary<string, float>
+            {
+                ["Warmth"]      = 0.7f,
+                ["Curiosity"]   = 0.4f,
+                ["Playfulness"] = 0.3f,
+            },
+        };
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_FiresWhenRecentClosedConversationPresent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed();
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeTrue();
+        gist.SliceTokens.ClosedConversation.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("recent-thread:");
+        gist.Composed.Should().Contain("gym day",
+            "the V1.2 anti-parrot-constrained gist text surfaces in the slice");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_StaysSilentWhenFresherThan30Min()
+    {
+        // §4.1 fresh-thread exclusion: threads closed <30 min ago duplicate
+        // active-thread context the model already has via RecentHistory.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed(
+            closedAt: DateTimeOffset.UtcNow.AddMinutes(-15));
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeFalse();
+        gist.SliceTokens.ClosedConversation.Should().Be(0);
+        gist.Composed.Should().NotContain("recent-thread:");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_StaysSilentWhenInvalidFabrication()
+    {
+        // Theme J.5h Validity filter: quarantined fabrication records
+        // (the 28 May 14 → May 21 audit records) must never reach the
+        // gist composer's output.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed(validity: "invalid_fabrication");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeFalse(
+            "Validity != 'valid' records must be silently excluded");
+        gist.Composed.Should().NotContain("recent-thread:");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_StaysSilentWhenNoRecentClosed()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // RecentClosedConversation is null
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeFalse();
+        gist.SliceTokens.ClosedConversation.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_IncludesDominantRegisterFromAniRegister()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed(
+            aniRegister: new Dictionary<string, float>
+            {
+                ["Tenderness"] = 0.85f,  // dominant
+                ["Warmth"]     = 0.40f,
+                ["Curiosity"]  = 0.20f,
+            });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("dominant register: tenderness",
+            "the highest-value entry in AniRegister surfaces as the dominant register annotation");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_OrdersBetweenRegisterStateAndWorldSelf()
+    {
+        // §4.6 slice ordering: tension → register → closed-conversation
+        // → (inner, contact) → world-self. With M.3 + M.6a both shipping
+        // and active, closed-conversation appears AFTER register-state
+        // and BEFORE world-self.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.CharacterState.Occupation = "the bookstore";
+        snapshot.RecentClosedConversation = MakeClosed();
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        var registerIdx     = gist.Composed.IndexOf("register state", StringComparison.OrdinalIgnoreCase);
+        var closedThreadIdx = gist.Composed.IndexOf("recent-thread:",  StringComparison.OrdinalIgnoreCase);
+        var worldSelfIdx    = gist.Composed.IndexOf("world-self:",     StringComparison.OrdinalIgnoreCase);
+
+        registerIdx.Should().BeGreaterOrEqualTo(0);
+        closedThreadIdx.Should().BeGreaterOrEqualTo(0);
+        worldSelfIdx.Should().BeGreaterOrEqualTo(0);
+        closedThreadIdx.Should().BeGreaterThan(registerIdx,
+            "§4.6: closed-conversation comes after register-state");
+        worldSelfIdx.Should().BeGreaterThan(closedThreadIdx,
+            "§4.6: world-self comes after closed-conversation");
+    }
+
+    // ── Theme M Phase M.5-lite (May 28, 2026) — InnerThoughtAggregate slice contract tests ──
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_FiresWhenDominantRegisterSet()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.DominantRegister = "Tenderness";
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeTrue();
+        gist.SliceTokens.InnerThoughtAggregate.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("inner-thought-aggregate:");
+        gist.Composed.Should().Contain("tenderness-register");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_FiresWhenRecentThoughtsPresent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "RAW THOUGHT — must not appear", Type = MemoryType.InnerThought });
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "ALSO RAW", Type = MemoryType.InnerThought });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeTrue();
+        gist.Composed.Should().Contain("2 recent threads of reflection");
+        gist.Composed.Should().NotContain("RAW THOUGHT",
+            "§4.2 anti-verbatim invariant: M.5-lite must not lift raw inner-thought content");
+        gist.Composed.Should().NotContain("ALSO RAW");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_StaysSilentWhenNoSignal()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // no DominantRegister, no SimilarRecentThoughts
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeFalse();
+        gist.SliceTokens.InnerThoughtAggregate.Should().Be(0);
+        gist.Composed.Should().NotContain("inner-thought-aggregate:");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_CombinesBothSignals()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.DominantRegister = "Longing";
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "x", Type = MemoryType.InnerThought });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("1 recent thread of reflection");
+        gist.Composed.Should().Contain("longing-register");
+    }
+
+    // ── Theme M Phase M.4 (May 28, 2026) — ContactState slice contract tests ──
+
+    private static PerceptionEvent MakeContactStatePerception(
+        string summary,
+        DateTimeOffset? occurredAt = null) =>
+        new()
+        {
+            SourceName = "contact-state",
+            Category   = PerceptionCategory.Social,
+            Summary    = summary,
+            OccurredAt = occurredAt ?? DateTimeOffset.UtcNow,
+        };
+
+    [Fact]
+    public async Task ContactStateSlice_FiresWhenContactStatePerceptionsPresent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.Perceptions.Add(MakeContactStatePerception("Mark is probably at the gym"));
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ContactState.Should().BeTrue();
+        gist.SliceTokens.ContactState.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("contact-state:");
+        gist.Composed.Should().Contain("at the gym");
+    }
+
+    [Fact]
+    public async Task ContactStateSlice_OnlyReadsContactStateSource()
+    {
+        // SMS perceptions, RSS perceptions, weather, etc. — all NOT
+        // contact-state — must be filtered out. Only SourceName ==
+        // "contact-state" feeds this slice.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.Perceptions.Add(new PerceptionEvent
+        {
+            SourceName = "sms",
+            Summary    = "Mark just texted: hey",
+            OccurredAt = DateTimeOffset.UtcNow,
+        });
+        snapshot.Perceptions.Add(new PerceptionEvent
+        {
+            SourceName = "weather",
+            Summary    = "It's 72°F and sunny",
+            OccurredAt = DateTimeOffset.UtcNow,
+        });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ContactState.Should().BeFalse();
+        gist.Composed.Should().NotContain("contact-state:");
+        gist.Composed.Should().NotContain("sunny",
+            "non-contact-state perceptions must not bleed into contact-state slice");
+    }
+
+    [Fact]
+    public async Task ContactStateSlice_TakesTwoMostRecent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        var now = DateTimeOffset.UtcNow;
+        snapshot.Perceptions.Add(MakeContactStatePerception("OLDEST: 10h ago",  now.AddHours(-10)));
+        snapshot.Perceptions.Add(MakeContactStatePerception("MIDDLE: 2h ago",   now.AddHours(-2)));
+        snapshot.Perceptions.Add(MakeContactStatePerception("NEWEST: just now", now));
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("NEWEST");
+        gist.Composed.Should().Contain("MIDDLE");
+        gist.Composed.Should().NotContain("OLDEST",
+            "only the two most-recent contact-state perceptions surface");
+    }
+
+    [Fact]
+    public async Task ContactStateSlice_StaysSilentWhenNoContactStatePerceptions()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // no perceptions added
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ContactState.Should().BeFalse();
+        gist.SliceTokens.ContactState.Should().Be(0);
+    }
+
+    // ── Theme M Phase M.6a (May 28, 2026) — WorldSelf slice contract tests ──
+
+    private static ContextSnapshot SnapshotWithEmotionAndWorld(
+        string occupation = "the bookstore",
+        params string[] worldExperienceContents)
+    {
+        var snap = SnapshotWithEmotion();
+        snap.CharacterState.Occupation = occupation;
+        snap.RecentWorldExperiences = worldExperienceContents
+            .Select(c => new MemoryRecord { Content = c, Type = MemoryType.Semantic })
+            .ToList();
+        return snap;
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_FiresWhenOccupationIsSet()
+    {
+        // §4.5 + M.6a data-availability gate: slice fires when occupation
+        // is set, even without recent world experiences.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(occupation: "the bookstore");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.WorldSelf.Should().BeTrue(
+            "WorldSelf slice fires when occupation is set");
+        gist.SliceTokens.WorldSelf.Should().BeGreaterThan(0,
+            "active WorldSelf slice must report non-zero tokens");
+        gist.Composed.Should().Contain("world-self:",
+            "WorldSelf slice has the canonical 'world-self:' prefix matching M.1 slice style");
+        gist.Composed.Should().Contain("the bookstore",
+            "occupation grounding must be present in slice content");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_FiresWhenRecentWorldExperiencesPresent()
+    {
+        // Slice fires from RecentWorldExperiences alone — occupation absent.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(
+            occupation: "",
+            "Today the rain made the bookstore smell like wet wool",
+            "A regular bought another Tana French novel");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.WorldSelf.Should().BeTrue();
+        gist.SliceTokens.WorldSelf.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("recent:",
+            "world-experience snippets render under 'recent:' label");
+        gist.Composed.Should().Contain("rain",
+            "first world-experience content surfaces in slice");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_StaysSilentWhenNoWorldSubstrate()
+    {
+        // §4.5 architectural honesty: when no occupation AND no recent
+        // world experiences, the slice is silent. M.6a data-availability
+        // gate preserves "don't oversell the World Layer" principle.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // empty Occupation, empty RecentWorldExperiences
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.WorldSelf.Should().BeFalse(
+            "data-availability gate keeps WorldSelf silent when no substrate exists");
+        gist.SliceTokens.WorldSelf.Should().Be(0);
+        gist.Composed.Should().NotContain("world-self:");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_TakesAtMostTwoExperiences()
+    {
+        // Token-budget hygiene: cap at the two most-recent experiences to
+        // bound slice length. ContextBuilder owns the lookback window;
+        // composer trusts the populated list as ordered most-recent-first.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(
+            occupation: "the bookstore",
+            "EXPERIENCE-ONE: morning shift",
+            "EXPERIENCE-TWO: afternoon customer",
+            "EXPERIENCE-THREE: should not appear",
+            "EXPERIENCE-FOUR: should not appear");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("EXPERIENCE-ONE");
+        gist.Composed.Should().Contain("EXPERIENCE-TWO");
+        gist.Composed.Should().NotContain("EXPERIENCE-THREE",
+            "only the two most-recent world experiences should appear");
+        gist.Composed.Should().NotContain("EXPERIENCE-FOUR");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_OrdersAfterRegisterStateInComposition()
+    {
+        // §4.6 slice ordering: tension → register → (closed, inner, contact)
+        // → world-self. WorldSelf is LAST. With M.6a + tension + register
+        // active, world-self appears AFTER register-state in the composed
+        // string.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(occupation: "the bookstore");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        var registerIdx  = gist.Composed.IndexOf("register state", StringComparison.OrdinalIgnoreCase);
+        var worldSelfIdx = gist.Composed.IndexOf("world-self:", StringComparison.OrdinalIgnoreCase);
+
+        registerIdx.Should().BeGreaterOrEqualTo(0, "register-state slice should be present");
+        worldSelfIdx.Should().BeGreaterOrEqualTo(0, "world-self slice should be present");
+        worldSelfIdx.Should().BeGreaterThan(registerIdx,
+            "§4.6 slice ordering places world-self AFTER register-state");
     }
 
     [Fact]
