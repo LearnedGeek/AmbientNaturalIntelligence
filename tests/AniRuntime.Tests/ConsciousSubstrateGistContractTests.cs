@@ -353,6 +353,67 @@ public class ConsciousSubstrateGistContractTests
             "§4.6: world-self comes after closed-conversation");
     }
 
+    // ── Theme M Phase M.5-lite (May 28, 2026) — InnerThoughtAggregate slice contract tests ──
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_FiresWhenDominantRegisterSet()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.DominantRegister = "Tenderness";
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeTrue();
+        gist.SliceTokens.InnerThoughtAggregate.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("inner-thought-aggregate:");
+        gist.Composed.Should().Contain("tenderness-register");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_FiresWhenRecentThoughtsPresent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "RAW THOUGHT — must not appear", Type = MemoryType.InnerThought });
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "ALSO RAW", Type = MemoryType.InnerThought });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeTrue();
+        gist.Composed.Should().Contain("2 recent threads of reflection");
+        gist.Composed.Should().NotContain("RAW THOUGHT",
+            "§4.2 anti-verbatim invariant: M.5-lite must not lift raw inner-thought content");
+        gist.Composed.Should().NotContain("ALSO RAW");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_StaysSilentWhenNoSignal()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // no DominantRegister, no SimilarRecentThoughts
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeFalse();
+        gist.SliceTokens.InnerThoughtAggregate.Should().Be(0);
+        gist.Composed.Should().NotContain("inner-thought-aggregate:");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_CombinesBothSignals()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.DominantRegister = "Longing";
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "x", Type = MemoryType.InnerThought });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("1 recent thread of reflection");
+        gist.Composed.Should().Contain("longing-register");
+    }
+
     // ── Theme M Phase M.4 (May 28, 2026) — ContactState slice contract tests ──
 
     private static PerceptionEvent MakeContactStatePerception(

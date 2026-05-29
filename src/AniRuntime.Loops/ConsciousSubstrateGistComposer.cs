@@ -103,7 +103,21 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         // requires separate observation gate per Mark + Claude joint review).
         var contactStateSlice = ComposeContactStateSlice(snapshot.Perceptions);
 
-        // §4.1 closed-conversation slice (Theme M Phase M.3, May 28, 2026).
+        // §4.2 inner-thought-aggregate slice (Theme M Phase M.5-lite,
+        // May 28, 2026). The full §4.2 design calls for LLM paraphrase
+        // generation across recent inner thoughts with cosine-distance
+        // anti-verbatim checks — that's M.5-full, deferred. M.5-lite
+        // ships the slice using PRE-AGGREGATED snapshot fields
+        // (DominantRegister + SimilarRecentThoughts count) — zero parrot
+        // risk because the source data is already synthesized aggregate
+        // signal, not raw inner-thought text. Reduced richness vs the
+        // §4.2 spec but immediate substrate-thinness contribution and
+        // safe by construction.
+        var innerThoughtSlice = ComposeInnerThoughtAggregateSlice(
+            snapshot.DominantRegister,
+            snapshot.SimilarRecentThoughts);
+
+        // §4.4 contact-state slice (Theme M Phase M.4, May 28, 2026).
         // Reads ContextSnapshot.RecentClosedConversation (Vibe Loop V1.4
         // substrate). Anti-parrot already enforced at gist-generation time
         // (V1.2 constraint). Theme J.5h Validity filter excludes the 26
@@ -130,22 +144,24 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             snapshot.RecentWorldExperiences);
 
         // Compose: §4.6 slice ordering — tension → register →
-        // closed-conversation → (inner — unshipped) → contact-state →
-        // world-self.
-        var sliceParts = new List<string>(5);
+        // closed-conversation → inner-thought-aggregate → contact-state
+        // → world-self. All six slices now ship at M.5-lite.
+        var sliceParts = new List<string>(6);
         var flags = new GistSliceFlags
         {
-            TensionState       = !string.IsNullOrEmpty(tensionSlice),
-            RegisterState      = !string.IsNullOrEmpty(registerSlice),
-            ClosedConversation = !string.IsNullOrEmpty(closedConversationSlice),
-            ContactState       = !string.IsNullOrEmpty(contactStateSlice),
-            WorldSelf          = !string.IsNullOrEmpty(worldSelfSlice),
+            TensionState           = !string.IsNullOrEmpty(tensionSlice),
+            RegisterState          = !string.IsNullOrEmpty(registerSlice),
+            ClosedConversation     = !string.IsNullOrEmpty(closedConversationSlice),
+            InnerThoughtAggregate  = !string.IsNullOrEmpty(innerThoughtSlice),
+            ContactState           = !string.IsNullOrEmpty(contactStateSlice),
+            WorldSelf              = !string.IsNullOrEmpty(worldSelfSlice),
         };
-        if (flags.TensionState)       sliceParts.Add(tensionSlice);
-        if (flags.RegisterState)      sliceParts.Add(registerSlice);
-        if (flags.ClosedConversation) sliceParts.Add(closedConversationSlice);
-        if (flags.ContactState)       sliceParts.Add(contactStateSlice);
-        if (flags.WorldSelf)          sliceParts.Add(worldSelfSlice);
+        if (flags.TensionState)          sliceParts.Add(tensionSlice);
+        if (flags.RegisterState)         sliceParts.Add(registerSlice);
+        if (flags.ClosedConversation)    sliceParts.Add(closedConversationSlice);
+        if (flags.InnerThoughtAggregate) sliceParts.Add(innerThoughtSlice);
+        if (flags.ContactState)          sliceParts.Add(contactStateSlice);
+        if (flags.WorldSelf)             sliceParts.Add(worldSelfSlice);
 
         if (sliceParts.Count == 0)
             return Task.FromResult(ConsciousSubstrateGist.Empty);
@@ -161,11 +177,12 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         // contribute tokens or just compete for budget against existing ones.
         var sliceTokens = new GistSliceTokens
         {
-            TensionState       = ApproxTokens(tensionSlice),
-            RegisterState      = ApproxTokens(registerSlice),
-            ClosedConversation = ApproxTokens(closedConversationSlice),
-            ContactState       = ApproxTokens(contactStateSlice),
-            WorldSelf          = ApproxTokens(worldSelfSlice),
+            TensionState          = ApproxTokens(tensionSlice),
+            RegisterState         = ApproxTokens(registerSlice),
+            ClosedConversation    = ApproxTokens(closedConversationSlice),
+            InnerThoughtAggregate = ApproxTokens(innerThoughtSlice),
+            ContactState          = ApproxTokens(contactStateSlice),
+            WorldSelf             = ApproxTokens(worldSelfSlice),
         };
 
         if (tokens > maxTokens)
@@ -401,6 +418,63 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             .OrderByDescending(kv => kv.Value)
             .FirstOrDefault();
         return string.IsNullOrWhiteSpace(top.Key) ? null : top.Key.ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Compose the §4.2 inner-thought-aggregate slice — Theme M Phase
+    /// M.5-lite (May 28, 2026). Returns the slice text or empty string
+    /// when no aggregate signal is available. Internal for testing.
+    ///
+    /// <para>
+    /// **M.5-lite vs full §4.2 design:** the §4.2 spec calls for LLM
+    /// paraphrase generation across recent inner-thought records with
+    /// cosine-distance anti-verbatim checks against each source. That
+    /// generation step + its parrot-safety machinery is M.5-full, deferred.
+    /// M.5-lite ships the slice using PRE-AGGREGATED snapshot fields
+    /// (<see cref="ContextSnapshot.DominantRegister"/> +
+    /// <see cref="ContextSnapshot.SimilarRecentThoughts"/> count) — zero
+    /// parrot risk because the source data is ALREADY synthesized
+    /// aggregate signal, not raw inner-thought text.
+    /// </para>
+    ///
+    /// <para>
+    /// **§4.2 generation invariant satisfied by construction:** because
+    /// M.5-lite does not read raw inner-thought content, it cannot
+    /// possibly lift verbatim phrasing from any single record. The
+    /// cosine-distance check the full M.5 spec calls for is unnecessary
+    /// at this scope.
+    /// </para>
+    ///
+    /// <para>
+    /// **Reduced richness vs the §4.2 design:** the slice surfaces
+    /// "she's been holding tenderness-register thinking across N recent
+    /// reflections" rather than "she's been thinking about how the
+    /// bookshelf creaks in the rain." Less evocative; safer; immediate
+    /// substrate-thinness contribution. M.5-full can supersede when the
+    /// LLM-generation-with-cosine-check infrastructure is wired.
+    /// </para>
+    /// </summary>
+    internal static string ComposeInnerThoughtAggregateSlice(
+        string?                      dominantRegister,
+        IReadOnlyList<MemoryRecord>? similarRecentThoughts)
+    {
+        var parts = new List<string>();
+
+        var thoughtCount = similarRecentThoughts?.Count ?? 0;
+        if (thoughtCount > 0)
+        {
+            parts.Add(thoughtCount == 1
+                ? "1 recent thread of reflection"
+                : $"{thoughtCount} recent threads of reflection");
+        }
+
+        if (!string.IsNullOrWhiteSpace(dominantRegister))
+        {
+            parts.Add($"holding {dominantRegister.Trim().ToLowerInvariant()}-register");
+        }
+
+        if (parts.Count == 0) return string.Empty;
+        return "inner-thought-aggregate: " + string.Join("; ", parts) + ".";
     }
 
     /// <summary>
