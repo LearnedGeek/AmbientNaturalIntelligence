@@ -223,6 +223,121 @@ public class ConsciousSubstrateGistContractTests
         gist.Composed.Should().NotContain("you (Mark)", "no caregiver-as-subject framing allowed in this slice");
     }
 
+    // ── Theme M Phase M.6a (May 28, 2026) — WorldSelf slice contract tests ──
+
+    private static ContextSnapshot SnapshotWithEmotionAndWorld(
+        string occupation = "the bookstore",
+        params string[] worldExperienceContents)
+    {
+        var snap = SnapshotWithEmotion();
+        snap.CharacterState.Occupation = occupation;
+        snap.RecentWorldExperiences = worldExperienceContents
+            .Select(c => new MemoryRecord { Content = c, Type = MemoryType.Semantic })
+            .ToList();
+        return snap;
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_FiresWhenOccupationIsSet()
+    {
+        // §4.5 + M.6a data-availability gate: slice fires when occupation
+        // is set, even without recent world experiences.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(occupation: "the bookstore");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.WorldSelf.Should().BeTrue(
+            "WorldSelf slice fires when occupation is set");
+        gist.SliceTokens.WorldSelf.Should().BeGreaterThan(0,
+            "active WorldSelf slice must report non-zero tokens");
+        gist.Composed.Should().Contain("world-self:",
+            "WorldSelf slice has the canonical 'world-self:' prefix matching M.1 slice style");
+        gist.Composed.Should().Contain("the bookstore",
+            "occupation grounding must be present in slice content");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_FiresWhenRecentWorldExperiencesPresent()
+    {
+        // Slice fires from RecentWorldExperiences alone — occupation absent.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(
+            occupation: "",
+            "Today the rain made the bookstore smell like wet wool",
+            "A regular bought another Tana French novel");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.WorldSelf.Should().BeTrue();
+        gist.SliceTokens.WorldSelf.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("recent:",
+            "world-experience snippets render under 'recent:' label");
+        gist.Composed.Should().Contain("rain",
+            "first world-experience content surfaces in slice");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_StaysSilentWhenNoWorldSubstrate()
+    {
+        // §4.5 architectural honesty: when no occupation AND no recent
+        // world experiences, the slice is silent. M.6a data-availability
+        // gate preserves "don't oversell the World Layer" principle.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // empty Occupation, empty RecentWorldExperiences
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.WorldSelf.Should().BeFalse(
+            "data-availability gate keeps WorldSelf silent when no substrate exists");
+        gist.SliceTokens.WorldSelf.Should().Be(0);
+        gist.Composed.Should().NotContain("world-self:");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_TakesAtMostTwoExperiences()
+    {
+        // Token-budget hygiene: cap at the two most-recent experiences to
+        // bound slice length. ContextBuilder owns the lookback window;
+        // composer trusts the populated list as ordered most-recent-first.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(
+            occupation: "the bookstore",
+            "EXPERIENCE-ONE: morning shift",
+            "EXPERIENCE-TWO: afternoon customer",
+            "EXPERIENCE-THREE: should not appear",
+            "EXPERIENCE-FOUR: should not appear");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("EXPERIENCE-ONE");
+        gist.Composed.Should().Contain("EXPERIENCE-TWO");
+        gist.Composed.Should().NotContain("EXPERIENCE-THREE",
+            "only the two most-recent world experiences should appear");
+        gist.Composed.Should().NotContain("EXPERIENCE-FOUR");
+    }
+
+    [Fact]
+    public async Task WorldSelfSlice_OrdersAfterRegisterStateInComposition()
+    {
+        // §4.6 slice ordering: tension → register → (closed, inner, contact)
+        // → world-self. WorldSelf is LAST. With M.6a + tension + register
+        // active, world-self appears AFTER register-state in the composed
+        // string.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotionAndWorld(occupation: "the bookstore");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        var registerIdx  = gist.Composed.IndexOf("register state", StringComparison.OrdinalIgnoreCase);
+        var worldSelfIdx = gist.Composed.IndexOf("world-self:", StringComparison.OrdinalIgnoreCase);
+
+        registerIdx.Should().BeGreaterOrEqualTo(0, "register-state slice should be present");
+        worldSelfIdx.Should().BeGreaterOrEqualTo(0, "world-self slice should be present");
+        worldSelfIdx.Should().BeGreaterThan(registerIdx,
+            "§4.6 slice ordering places world-self AFTER register-state");
+    }
+
     [Fact]
     public async Task RegisterStateGistSlice_TokenBudgetEnforced()
     {

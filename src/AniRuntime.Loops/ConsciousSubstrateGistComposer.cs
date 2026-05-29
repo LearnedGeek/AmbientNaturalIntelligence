@@ -91,17 +91,33 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         // §4.3 register-state slice (SECOND in ordering).
         var registerSlice = ComposeRegisterStateSlice(emotional);
 
-        // Compose: tension-state on its own line, blank, then register-state.
-        // §4.6 rule: "merged into prose, not enumerated" — for two slices
-        // this is two short clauses separated by blank line.
-        var sliceParts = new List<string>(2);
+        // §4.5 world-self slice (LAST in §4.6 ordering — Theme M Phase M.6a,
+        // May 28, 2026). The substrate-thinness fix for the "we're in a
+        // coffee shop together" shared-presence confabulation class.
+        // M.6a ships with a data-availability gate (include when occupation
+        // is set OR RecentWorldExperiences has content) rather than the
+        // Layer-1/Layer-2 conditional gating the §4.5 May-5 decision named.
+        // The Layer-2 desire-axis conditional (M.6b) is deferred until
+        // Agentic Lens Layer 2 (Feature 42) ships; until then, this
+        // data-availability gate preserves §4.5's "don't oversell the
+        // World Layer" principle — if no world-experience seeds exist in
+        // the window, the slice is silent.
+        var worldSelfSlice = ComposeWorldSelfSlice(
+            snapshot.CharacterState,
+            snapshot.RecentWorldExperiences);
+
+        // Compose: §4.6 slice ordering — tension → register → (closed,
+        // inner, contact — unshipped) → world-self.
+        var sliceParts = new List<string>(3);
         var flags = new GistSliceFlags
         {
             TensionState  = !string.IsNullOrEmpty(tensionSlice),
             RegisterState = !string.IsNullOrEmpty(registerSlice),
+            WorldSelf     = !string.IsNullOrEmpty(worldSelfSlice),
         };
         if (flags.TensionState)  sliceParts.Add(tensionSlice);
         if (flags.RegisterState) sliceParts.Add(registerSlice);
+        if (flags.WorldSelf)     sliceParts.Add(worldSelfSlice);
 
         if (sliceParts.Count == 0)
             return Task.FromResult(ConsciousSubstrateGist.Empty);
@@ -119,6 +135,7 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         {
             TensionState  = ApproxTokens(tensionSlice),
             RegisterState = ApproxTokens(registerSlice),
+            WorldSelf     = ApproxTokens(worldSelfSlice),
         };
 
         if (tokens > maxTokens)
@@ -286,6 +303,75 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
                $"{dominant.Name} {dominantBand} ({dominant.Value:F2}), " +
                $"{secondary.Name} {secondaryBand} ({secondary.Value:F2}). " +
                $"drift: {driftName} {driftSign}{driftDelta:F2} {driftPosition}{contactGap}.";
+    }
+
+    /// <summary>
+    /// Compose the §4.5 world-self slice (Theme M Phase M.6a, May 28, 2026).
+    /// Returns the slice text or empty string if no World Layer substrate is
+    /// available. Internal for testing.
+    ///
+    /// <para>
+    /// **Data-availability gate (M.6a):** the slice fires when occupation is
+    /// set on the character state OR <c>RecentWorldExperiences</c> has
+    /// content. When both are absent, the slice is silent — preserving the
+    /// §4.5 May-5 architectural honesty principle ("don't oversell the World
+    /// Layer's weight by including it every cycle").
+    /// </para>
+    ///
+    /// <para>
+    /// **Why this slice (§4.5):** *"what her own life has been doing"* —
+    /// recent World Layer occasion seeds and their elaborations, summarized.
+    /// The bookstore mornings, the customer with the grey coat, the slow
+    /// afternoon. Complements the Mark-oriented slices with self-oriented
+    /// substrate, addressing centrality gravity at the source. Without this
+    /// slice, the composer has no canonical-occupation grounding when
+    /// generating — leading to shared-presence confabulations like
+    /// "we're in a coffee shop together" (2026-05-28 12:35 SafeAck).
+    /// </para>
+    ///
+    /// <para>
+    /// **Layer-2 desire-axis conditional inclusion (the original §4.5
+    /// design):** deferred to M.6b — requires Agentic Lens Layer 2
+    /// (Feature 42) MotivationVector + Layer 5 prompt-variant selection.
+    /// </para>
+    /// </summary>
+    internal static string ComposeWorldSelfSlice(
+        CharacterStateDoc?           characterState,
+        IReadOnlyList<MemoryRecord>? recentWorldExperiences)
+    {
+        var parts = new List<string>();
+
+        // Occupation grounding — the load-bearing piece for "you are a
+        // bookstore clerk in Wisconsin, not in a coffee shop with Mark."
+        if (characterState is not null
+            && !string.IsNullOrWhiteSpace(characterState.Occupation))
+        {
+            parts.Add($"I work at: {characterState.Occupation.Trim()}");
+        }
+
+        // Recent World Layer experience snippets — up to 2 most recent,
+        // each truncated. Trust ContextBuilder's lookback-window filtering;
+        // we don't re-filter here.
+        if (recentWorldExperiences is not null && recentWorldExperiences.Count > 0)
+        {
+            var snippets = recentWorldExperiences
+                .Take(2)
+                .Select(m => TruncateForSlice(m.Content, 60))
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList();
+            if (snippets.Count > 0)
+                parts.Add("recent: " + string.Join("; ", snippets));
+        }
+
+        if (parts.Count == 0) return string.Empty;
+        return "world-self: " + string.Join("; ", parts) + ".";
+    }
+
+    private static string TruncateForSlice(string? content, int maxChars)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return string.Empty;
+        var trimmed = content.Trim();
+        return trimmed.Length <= maxChars ? trimmed : trimmed[..maxChars].TrimEnd() + "…";
     }
 
     private static string Band(float value) => value switch
