@@ -109,6 +109,18 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         var composed = string.Join("\n", sliceParts);
         var tokens   = ApproxTokens(composed);
 
+        // Phase M.2-lite (May 28, 2026): per-slice token counts so
+        // M0_GIST_COMPOSITION telemetry can surface token-share by slice.
+        // Without this breakdown the substrate-thinness diagnosis can only
+        // see the total — not whether one slice is bloated while another
+        // is starved, and not whether new slices (M.3-M.6) actually
+        // contribute tokens or just compete for budget against existing ones.
+        var sliceTokens = new GistSliceTokens
+        {
+            TensionState  = ApproxTokens(tensionSlice),
+            RegisterState = ApproxTokens(registerSlice),
+        };
+
         if (tokens > maxTokens)
         {
             _log.LogWarning(
@@ -122,9 +134,10 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             {
                 return Task.FromResult(new ConsciousSubstrateGist
                 {
-                    Composed   = registerSlice,
-                    Slices     = new GistSliceFlags { RegisterState = true },
-                    TokenCount = ApproxTokens(registerSlice),
+                    Composed    = registerSlice,
+                    Slices      = new GistSliceFlags { RegisterState = true },
+                    SliceTokens = new GistSliceTokens { RegisterState = ApproxTokens(registerSlice) },
+                    TokenCount  = ApproxTokens(registerSlice),
                 });
             }
             return Task.FromResult(ConsciousSubstrateGist.Empty);
@@ -132,9 +145,10 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
 
         return Task.FromResult(new ConsciousSubstrateGist
         {
-            Composed   = composed,
-            Slices     = flags,
-            TokenCount = tokens,
+            Composed    = composed,
+            Slices      = flags,
+            SliceTokens = sliceTokens,
+            TokenCount  = tokens,
         });
     }
 

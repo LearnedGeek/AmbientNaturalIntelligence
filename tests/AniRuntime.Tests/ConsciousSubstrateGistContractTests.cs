@@ -111,6 +111,21 @@ public class ConsciousSubstrateGistContractTests
         // divergence from baseline; we don't assert on it here. Coverage:
         // TensionStateSliceContractTests.
         gist.TokenCount.Should().BeGreaterThan(0);
+
+        // Phase M.2-lite: per-slice token counts mirror slice flags.
+        // Active slice → non-zero token count; inactive slice → zero.
+        // Total matches gist.TokenCount when only register-state fires;
+        // when tension-state also fires it's slightly more (joined with \n).
+        gist.SliceTokens.RegisterState.Should().BeGreaterThan(0,
+            "RegisterState slice fired so its token count must be > 0");
+        gist.SliceTokens.ClosedConversation.Should().Be(0,
+            "ClosedConversation slice is M.3+ — must report 0 tokens until shipped");
+        gist.SliceTokens.InnerThoughtAggregate.Should().Be(0,
+            "InnerThoughtAggregate slice is M.5+ — must report 0 tokens until shipped");
+        gist.SliceTokens.ContactState.Should().Be(0,
+            "ContactState slice is M.4+ — must report 0 tokens until shipped");
+        gist.SliceTokens.WorldSelf.Should().Be(0,
+            "WorldSelf slice is M.6+ — must report 0 tokens until shipped");
     }
 
     [Fact]

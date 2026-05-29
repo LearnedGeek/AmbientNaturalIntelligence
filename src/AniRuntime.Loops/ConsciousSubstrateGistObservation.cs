@@ -140,7 +140,7 @@ internal static class ConsciousSubstrateGistObservation
             : 0.0;
 
         log.LogInformation(
-            "M0_GIST_COMPOSITION enabled={Enabled} slices=closed:{Closed},innerThought:{InnerThought},registerState:{RegisterState},contactState:{ContactState},worldSelf:{WorldSelf},tensionState:{TensionState} totalTokens={TotalTokens}",
+            "M0_GIST_COMPOSITION enabled={Enabled} slices=closed:{Closed},innerThought:{InnerThought},registerState:{RegisterState},contactState:{ContactState},worldSelf:{WorldSelf},tensionState:{TensionState} sliceTokens=closed:{ClosedTokens},innerThought:{InnerThoughtTokens},registerState:{RegisterStateTokens},contactState:{ContactStateTokens},worldSelf:{WorldSelfTokens},tensionState:{TensionStateTokens} totalTokens={TotalTokens}",
             aniOptions.ConsciousSubstrateGistEnabled,
             gist.Slices.ClosedConversation,
             gist.Slices.InnerThoughtAggregate,
@@ -148,6 +148,12 @@ internal static class ConsciousSubstrateGistObservation
             gist.Slices.ContactState,
             gist.Slices.WorldSelf,
             gist.Slices.TensionState,
+            gist.SliceTokens.ClosedConversation,
+            gist.SliceTokens.InnerThoughtAggregate,
+            gist.SliceTokens.RegisterState,
+            gist.SliceTokens.ContactState,
+            gist.SliceTokens.WorldSelf,
+            gist.SliceTokens.TensionState,
             gist.TokenCount);
 
         log.LogInformation(

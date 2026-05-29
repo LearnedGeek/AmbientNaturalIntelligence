@@ -42,6 +42,15 @@ public sealed record ConsciousSubstrateGist
     public GistSliceFlags Slices { get; init; } = new();
 
     /// <summary>
+    /// Theme M Phase M.2-lite (May 28, 2026) — per-slice token counts for
+    /// telemetry. Lets <c>M0_GIST_COMPOSITION</c> log line surface the
+    /// token-share of each slice so substrate-thinness diagnosis can see
+    /// WHERE the tokens go, not just the total. Required to measure
+    /// M.6a / M.3 / M.4 / M.5 impact as those slices land.
+    /// </summary>
+    public GistSliceTokens SliceTokens { get; init; } = new();
+
+    /// <summary>
     /// Approximate token count of <see cref="Composed"/>. Used for
     /// <c>M0_GIST_SUBSTRATE_RATIO</c> telemetry and budget enforcement.
     /// </summary>
@@ -78,4 +87,21 @@ public sealed record GistSliceFlags
 
     /// <summary>§4.8 Tension-state slice — active in M.1+ (with §4.3).</summary>
     public bool TensionState { get; init; }
+}
+
+/// <summary>
+/// Per-slice approximate token counts for the conscious-substrate gist
+/// (Theme M Phase M.2-lite, May 28, 2026). M.0/M.1 default to all-zero;
+/// composer populates per-slice counts as it composes. Used by
+/// <c>M0_GIST_COMPOSITION</c> telemetry to surface token-share by slice
+/// so substrate-thinness diagnosis can see WHERE the tokens go.
+/// </summary>
+public sealed record GistSliceTokens
+{
+    public int ClosedConversation { get; init; }
+    public int InnerThoughtAggregate { get; init; }
+    public int RegisterState { get; init; }
+    public int ContactState { get; init; }
+    public int WorldSelf { get; init; }
+    public int TensionState { get; init; }
 }
