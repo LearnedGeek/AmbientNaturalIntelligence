@@ -223,6 +223,136 @@ public class ConsciousSubstrateGistContractTests
         gist.Composed.Should().NotContain("you (Mark)", "no caregiver-as-subject framing allowed in this slice");
     }
 
+    // ── Theme M Phase M.3 (May 28, 2026) — ClosedConversation slice contract tests ──
+
+    private static ClosedConversationRecord MakeClosed(
+        string gist = "we talked about his gym day and Sarah's website",
+        DateTimeOffset? closedAt = null,
+        string validity = "valid",
+        Dictionary<string, float>? aniRegister = null)
+    {
+        return new ClosedConversationRecord
+        {
+            Gist = gist,
+            ClosedAt = closedAt ?? DateTimeOffset.UtcNow.AddHours(-3),
+            Validity = validity,
+            AniRegister = aniRegister ?? new Dictionary<string, float>
+            {
+                ["Warmth"]      = 0.7f,
+                ["Curiosity"]   = 0.4f,
+                ["Playfulness"] = 0.3f,
+            },
+        };
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_FiresWhenRecentClosedConversationPresent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed();
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeTrue();
+        gist.SliceTokens.ClosedConversation.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("recent-thread:");
+        gist.Composed.Should().Contain("gym day",
+            "the V1.2 anti-parrot-constrained gist text surfaces in the slice");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_StaysSilentWhenFresherThan30Min()
+    {
+        // §4.1 fresh-thread exclusion: threads closed <30 min ago duplicate
+        // active-thread context the model already has via RecentHistory.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed(
+            closedAt: DateTimeOffset.UtcNow.AddMinutes(-15));
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeFalse();
+        gist.SliceTokens.ClosedConversation.Should().Be(0);
+        gist.Composed.Should().NotContain("recent-thread:");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_StaysSilentWhenInvalidFabrication()
+    {
+        // Theme J.5h Validity filter: quarantined fabrication records
+        // (the 28 May 14 → May 21 audit records) must never reach the
+        // gist composer's output.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed(validity: "invalid_fabrication");
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeFalse(
+            "Validity != 'valid' records must be silently excluded");
+        gist.Composed.Should().NotContain("recent-thread:");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_StaysSilentWhenNoRecentClosed()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // RecentClosedConversation is null
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeFalse();
+        gist.SliceTokens.ClosedConversation.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_IncludesDominantRegisterFromAniRegister()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = MakeClosed(
+            aniRegister: new Dictionary<string, float>
+            {
+                ["Tenderness"] = 0.85f,  // dominant
+                ["Warmth"]     = 0.40f,
+                ["Curiosity"]  = 0.20f,
+            });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("dominant register: tenderness",
+            "the highest-value entry in AniRegister surfaces as the dominant register annotation");
+    }
+
+    [Fact]
+    public async Task ClosedConversationSlice_OrdersBetweenRegisterStateAndWorldSelf()
+    {
+        // §4.6 slice ordering: tension → register → closed-conversation
+        // → (inner, contact) → world-self. With M.3 + M.6a both shipping
+        // and active, closed-conversation appears AFTER register-state
+        // and BEFORE world-self.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.CharacterState.Occupation = "the bookstore";
+        snapshot.RecentClosedConversation = MakeClosed();
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        var registerIdx     = gist.Composed.IndexOf("register state", StringComparison.OrdinalIgnoreCase);
+        var closedThreadIdx = gist.Composed.IndexOf("recent-thread:",  StringComparison.OrdinalIgnoreCase);
+        var worldSelfIdx    = gist.Composed.IndexOf("world-self:",     StringComparison.OrdinalIgnoreCase);
+
+        registerIdx.Should().BeGreaterOrEqualTo(0);
+        closedThreadIdx.Should().BeGreaterOrEqualTo(0);
+        worldSelfIdx.Should().BeGreaterOrEqualTo(0);
+        closedThreadIdx.Should().BeGreaterThan(registerIdx,
+            "§4.6: closed-conversation comes after register-state");
+        worldSelfIdx.Should().BeGreaterThan(closedThreadIdx,
+            "§4.6: world-self comes after closed-conversation");
+    }
+
     // ── Theme M Phase M.6a (May 28, 2026) — WorldSelf slice contract tests ──
 
     private static ContextSnapshot SnapshotWithEmotionAndWorld(

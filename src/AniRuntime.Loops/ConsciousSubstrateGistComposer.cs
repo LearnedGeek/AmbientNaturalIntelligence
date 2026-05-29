@@ -91,6 +91,17 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         // §4.3 register-state slice (SECOND in ordering).
         var registerSlice = ComposeRegisterStateSlice(emotional);
 
+        // §4.1 closed-conversation slice (Theme M Phase M.3, May 28, 2026).
+        // Reads ContextSnapshot.RecentClosedConversation (Vibe Loop V1.4
+        // substrate). Anti-parrot already enforced at gist-generation time
+        // (V1.2 constraint). Theme J.5h Validity filter excludes the 26
+        // quarantined fabrication records. §4.1 fresh-thread exclusion
+        // (<30 min) avoids duplicating active-thread context the model
+        // already has.
+        var closedConversationSlice = ComposeClosedConversationSlice(
+            snapshot.RecentClosedConversation,
+            DateTimeOffset.UtcNow);
+
         // §4.5 world-self slice (LAST in §4.6 ordering — Theme M Phase M.6a,
         // May 28, 2026). The substrate-thinness fix for the "we're in a
         // coffee shop together" shared-presence confabulation class.
@@ -106,18 +117,20 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             snapshot.CharacterState,
             snapshot.RecentWorldExperiences);
 
-        // Compose: §4.6 slice ordering — tension → register → (closed,
-        // inner, contact — unshipped) → world-self.
-        var sliceParts = new List<string>(3);
+        // Compose: §4.6 slice ordering — tension → register →
+        // closed-conversation → (inner, contact — unshipped) → world-self.
+        var sliceParts = new List<string>(4);
         var flags = new GistSliceFlags
         {
-            TensionState  = !string.IsNullOrEmpty(tensionSlice),
-            RegisterState = !string.IsNullOrEmpty(registerSlice),
-            WorldSelf     = !string.IsNullOrEmpty(worldSelfSlice),
+            TensionState       = !string.IsNullOrEmpty(tensionSlice),
+            RegisterState      = !string.IsNullOrEmpty(registerSlice),
+            ClosedConversation = !string.IsNullOrEmpty(closedConversationSlice),
+            WorldSelf          = !string.IsNullOrEmpty(worldSelfSlice),
         };
-        if (flags.TensionState)  sliceParts.Add(tensionSlice);
-        if (flags.RegisterState) sliceParts.Add(registerSlice);
-        if (flags.WorldSelf)     sliceParts.Add(worldSelfSlice);
+        if (flags.TensionState)       sliceParts.Add(tensionSlice);
+        if (flags.RegisterState)      sliceParts.Add(registerSlice);
+        if (flags.ClosedConversation) sliceParts.Add(closedConversationSlice);
+        if (flags.WorldSelf)          sliceParts.Add(worldSelfSlice);
 
         if (sliceParts.Count == 0)
             return Task.FromResult(ConsciousSubstrateGist.Empty);
@@ -133,9 +146,10 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         // contribute tokens or just compete for budget against existing ones.
         var sliceTokens = new GistSliceTokens
         {
-            TensionState  = ApproxTokens(tensionSlice),
-            RegisterState = ApproxTokens(registerSlice),
-            WorldSelf     = ApproxTokens(worldSelfSlice),
+            TensionState       = ApproxTokens(tensionSlice),
+            RegisterState      = ApproxTokens(registerSlice),
+            ClosedConversation = ApproxTokens(closedConversationSlice),
+            WorldSelf          = ApproxTokens(worldSelfSlice),
         };
 
         if (tokens > maxTokens)
@@ -303,6 +317,74 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
                $"{dominant.Name} {dominantBand} ({dominant.Value:F2}), " +
                $"{secondary.Name} {secondaryBand} ({secondary.Value:F2}). " +
                $"drift: {driftName} {driftSign}{driftDelta:F2} {driftPosition}{contactGap}.";
+    }
+
+    /// <summary>
+    /// Compose the §4.1 closed-conversation slice (Theme M Phase M.3,
+    /// May 28, 2026). Returns the slice text or empty string when no
+    /// usable closed-conversation substrate is available.
+    ///
+    /// <para>
+    /// **Producer:** <see cref="ContextSnapshot.RecentClosedConversation"/>
+    /// — Vibe Loop V1.4 substrate. The gist text is already anti-parrot-
+    /// constrained at generation time (V1.2 LMKit summarizer).
+    /// </para>
+    ///
+    /// <para>
+    /// **Substrate hygiene (Theme J.5h):** records with
+    /// <c>Validity != "valid"</c> are quarantined fabrications (the 28
+    /// records identified in the 2026-05-21 audit). The slice silently
+    /// excludes them — never injected into runtime prompts.
+    /// </para>
+    ///
+    /// <para>
+    /// **Fresh-thread exclusion (§4.1):** threads closed less than 30
+    /// minutes ago are excluded to avoid duplicating active-thread
+    /// context the conversation reply model already has via
+    /// <c>RecentHistory</c>.
+    /// </para>
+    ///
+    /// <para>
+    /// **Slice content:** *what just happened between us* in canonical
+    /// paraphrased form — gist text + age annotation + dominant register
+    /// at close. Outcome-valence annotation is omitted intentionally
+    /// because the tension-state slice (§4.8) already surfaces it
+    /// ("last conversation left me regulated well (+0.45)"); §4.6
+    /// composition rule allows slice reduction when an upstream slice
+    /// covers the same ground.
+    /// </para>
+    /// </summary>
+    internal static string ComposeClosedConversationSlice(
+        ClosedConversationRecord? closed,
+        DateTimeOffset now)
+    {
+        if (closed is null) return string.Empty;
+        if (!string.Equals(closed.Validity, "valid", StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+        if (string.IsNullOrWhiteSpace(closed.Gist)) return string.Empty;
+
+        var age = now - closed.ClosedAt;
+        if (age < TimeSpan.FromMinutes(30)) return string.Empty;
+
+        var ageLabel = age.TotalHours < 24
+            ? $"{Math.Max(1, (int)age.TotalHours)}h ago"
+            : $"{Math.Max(1, (int)age.TotalDays)}d ago";
+
+        var registerClause = ResolveDominantRegister(closed.AniRegister) is { } register
+            ? $"; dominant register: {register}"
+            : string.Empty;
+
+        return $"recent-thread: closed {ageLabel}, {closed.Gist.Trim()}{registerClause}.";
+    }
+
+    private static string? ResolveDominantRegister(IReadOnlyDictionary<string, float>? register)
+    {
+        if (register is null || register.Count == 0) return null;
+        var top = register
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Key))
+            .OrderByDescending(kv => kv.Value)
+            .FirstOrDefault();
+        return string.IsNullOrWhiteSpace(top.Key) ? null : top.Key.ToLowerInvariant();
     }
 
     /// <summary>
