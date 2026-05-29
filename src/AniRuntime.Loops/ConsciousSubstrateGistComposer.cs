@@ -91,6 +91,18 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         // §4.3 register-state slice (SECOND in ordering).
         var registerSlice = ComposeRegisterStateSlice(emotional);
 
+        // §4.4 contact-state slice (Theme M Phase M.4, May 28, 2026).
+        // Reads ContactStatePerceptionSource outputs from snapshot.Perceptions
+        // (these are NOT persisted by PerceptionPhase per Apr 2026 design
+        // — they're "Mark is probably X" routine guesses, fine as conscious
+        // context but poison for retrieval). Slice surfaces current routine
+        // awareness without polluting the verifier substrate.
+        //
+        // M.4 ships the slice only; the outreach-consumer extension named
+        // in the original §4.4 plan is deferred (out of fast-track scope —
+        // requires separate observation gate per Mark + Claude joint review).
+        var contactStateSlice = ComposeContactStateSlice(snapshot.Perceptions);
+
         // §4.1 closed-conversation slice (Theme M Phase M.3, May 28, 2026).
         // Reads ContextSnapshot.RecentClosedConversation (Vibe Loop V1.4
         // substrate). Anti-parrot already enforced at gist-generation time
@@ -118,18 +130,21 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             snapshot.RecentWorldExperiences);
 
         // Compose: §4.6 slice ordering — tension → register →
-        // closed-conversation → (inner, contact — unshipped) → world-self.
-        var sliceParts = new List<string>(4);
+        // closed-conversation → (inner — unshipped) → contact-state →
+        // world-self.
+        var sliceParts = new List<string>(5);
         var flags = new GistSliceFlags
         {
             TensionState       = !string.IsNullOrEmpty(tensionSlice),
             RegisterState      = !string.IsNullOrEmpty(registerSlice),
             ClosedConversation = !string.IsNullOrEmpty(closedConversationSlice),
+            ContactState       = !string.IsNullOrEmpty(contactStateSlice),
             WorldSelf          = !string.IsNullOrEmpty(worldSelfSlice),
         };
         if (flags.TensionState)       sliceParts.Add(tensionSlice);
         if (flags.RegisterState)      sliceParts.Add(registerSlice);
         if (flags.ClosedConversation) sliceParts.Add(closedConversationSlice);
+        if (flags.ContactState)       sliceParts.Add(contactStateSlice);
         if (flags.WorldSelf)          sliceParts.Add(worldSelfSlice);
 
         if (sliceParts.Count == 0)
@@ -149,6 +164,7 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             TensionState       = ApproxTokens(tensionSlice),
             RegisterState      = ApproxTokens(registerSlice),
             ClosedConversation = ApproxTokens(closedConversationSlice),
+            ContactState       = ApproxTokens(contactStateSlice),
             WorldSelf          = ApproxTokens(worldSelfSlice),
         };
 
@@ -385,6 +401,54 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             .OrderByDescending(kv => kv.Value)
             .FirstOrDefault();
         return string.IsNullOrWhiteSpace(top.Key) ? null : top.Key.ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Compose the §4.4 contact-state slice (Theme M Phase M.4, May 28, 2026).
+    /// Returns the slice text or empty string when no contact-state perceptions
+    /// are available. Internal for testing.
+    ///
+    /// <para>
+    /// **Source:** <c>ContactStatePerceptionSource</c>-emitted entries in
+    /// <see cref="ContextSnapshot.Perceptions"/> (SourceName == "contact-state").
+    /// These perceptions are intentionally NOT persisted by
+    /// <c>PerceptionPhase</c> (Apr 2026 design: routine guesses like "Mark
+    /// is probably at the gym" match too many queries and poison retrieval).
+    /// Reading them for the conscious-substrate gist is exactly the
+    /// architectural intent — they're context for Ani's current frame, not
+    /// claims for verifier substrate.
+    /// </para>
+    ///
+    /// <para>
+    /// **Slice content (§4.4):** *what Mark has been doing in life right now*
+    /// — current routine awareness. Takes the two most-recent contact-state
+    /// perceptions by <see cref="PerceptionEvent.OccurredAt"/> and renders
+    /// their summaries.
+    /// </para>
+    ///
+    /// <para>
+    /// **M.4 scope:** the slice only. The original §4.4 plan also extends
+    /// the consumer surface from <c>ConversationReplyPhase</c> to
+    /// <c>OutreachPhase</c> behind a separate feature flag; that extension
+    /// is deferred per the fast-track scope decision (2026-05-28).
+    /// </para>
+    /// </summary>
+    internal static string ComposeContactStateSlice(
+        IReadOnlyList<PerceptionEvent>? perceptions)
+    {
+        if (perceptions is null || perceptions.Count == 0) return string.Empty;
+
+        var contactState = perceptions
+            .Where(p => string.Equals(p.SourceName, "contact-state",
+                                      StringComparison.OrdinalIgnoreCase))
+            .Where(p => !string.IsNullOrWhiteSpace(p.Summary))
+            .OrderByDescending(p => p.OccurredAt)
+            .Take(2)
+            .Select(p => p.Summary.Trim())
+            .ToList();
+
+        if (contactState.Count == 0) return string.Empty;
+        return "contact-state: Mark right now — " + string.Join("; ", contactState) + ".";
     }
 
     /// <summary>

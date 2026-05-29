@@ -353,6 +353,93 @@ public class ConsciousSubstrateGistContractTests
             "§4.6: world-self comes after closed-conversation");
     }
 
+    // ── Theme M Phase M.4 (May 28, 2026) — ContactState slice contract tests ──
+
+    private static PerceptionEvent MakeContactStatePerception(
+        string summary,
+        DateTimeOffset? occurredAt = null) =>
+        new()
+        {
+            SourceName = "contact-state",
+            Category   = PerceptionCategory.Social,
+            Summary    = summary,
+            OccurredAt = occurredAt ?? DateTimeOffset.UtcNow,
+        };
+
+    [Fact]
+    public async Task ContactStateSlice_FiresWhenContactStatePerceptionsPresent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.Perceptions.Add(MakeContactStatePerception("Mark is probably at the gym"));
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ContactState.Should().BeTrue();
+        gist.SliceTokens.ContactState.Should().BeGreaterThan(0);
+        gist.Composed.Should().Contain("contact-state:");
+        gist.Composed.Should().Contain("at the gym");
+    }
+
+    [Fact]
+    public async Task ContactStateSlice_OnlyReadsContactStateSource()
+    {
+        // SMS perceptions, RSS perceptions, weather, etc. — all NOT
+        // contact-state — must be filtered out. Only SourceName ==
+        // "contact-state" feeds this slice.
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        snapshot.Perceptions.Add(new PerceptionEvent
+        {
+            SourceName = "sms",
+            Summary    = "Mark just texted: hey",
+            OccurredAt = DateTimeOffset.UtcNow,
+        });
+        snapshot.Perceptions.Add(new PerceptionEvent
+        {
+            SourceName = "weather",
+            Summary    = "It's 72°F and sunny",
+            OccurredAt = DateTimeOffset.UtcNow,
+        });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ContactState.Should().BeFalse();
+        gist.Composed.Should().NotContain("contact-state:");
+        gist.Composed.Should().NotContain("sunny",
+            "non-contact-state perceptions must not bleed into contact-state slice");
+    }
+
+    [Fact]
+    public async Task ContactStateSlice_TakesTwoMostRecent()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();
+        var now = DateTimeOffset.UtcNow;
+        snapshot.Perceptions.Add(MakeContactStatePerception("OLDEST: 10h ago",  now.AddHours(-10)));
+        snapshot.Perceptions.Add(MakeContactStatePerception("MIDDLE: 2h ago",   now.AddHours(-2)));
+        snapshot.Perceptions.Add(MakeContactStatePerception("NEWEST: just now", now));
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Composed.Should().Contain("NEWEST");
+        gist.Composed.Should().Contain("MIDDLE");
+        gist.Composed.Should().NotContain("OLDEST",
+            "only the two most-recent contact-state perceptions surface");
+    }
+
+    [Fact]
+    public async Task ContactStateSlice_StaysSilentWhenNoContactStatePerceptions()
+    {
+        var composer = Composer(enabled: true);
+        var snapshot = SnapshotWithEmotion();  // no perceptions added
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ContactState.Should().BeFalse();
+        gist.SliceTokens.ContactState.Should().Be(0);
+    }
+
     // ── Theme M Phase M.6a (May 28, 2026) — WorldSelf slice contract tests ──
 
     private static ContextSnapshot SnapshotWithEmotionAndWorld(
