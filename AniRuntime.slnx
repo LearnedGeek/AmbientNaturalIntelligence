@@ -15,4 +15,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/AniRuntime.Tests/AniRuntime.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AniRuntime.Eval/AniRuntime.Eval.csproj" />
+  </Folder>
 </Solution>
