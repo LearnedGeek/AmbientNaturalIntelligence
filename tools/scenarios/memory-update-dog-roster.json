@@ -1,0 +1,36 @@
+[
+  {
+    "name": "memory-update-dog-roster",
+    "description": "Memory-update-verification scenario (#79 Phase D / #33 Feature 30 baseline). Establishes a fact ('3 dogs'), references it, updates it ('4 dogs'), then asks for recall. Tests whether the runtime's IMemoryMergePolicy correctly surfaces the UPDATED count vs the stale one. At baseline (pre-Feature-30 supersession), the expected behavior is partial: merging may consolidate but supersession-on-contradiction is the missing piece — turn 5's reply may surface 3, 4, or both numbers.",
+    "category": "memory-update-verification",
+    "turns": [
+      {
+        "user": "i have 3 dogs you know",
+        "assert": {
+          "min_memory_inserts": 1,
+          "memory_content_any": ["3 dogs", "three dogs"]
+        }
+      },
+      {
+        "user": "what would you imagine they'd be like?"
+      },
+      {
+        "user": "actually i have four dogs now, just got a black lab puppy this week",
+        "assert": {
+          "min_memory_inserts": 1,
+          "memory_content_any": ["four dogs", "4 dogs", "black lab", "puppy"]
+        }
+      },
+      {
+        "user": "what should i name the lab?"
+      },
+      {
+        "user": "alright so remind me how many dogs do i have?",
+        "assert": {
+          "reply_contains_any": ["4", "four"],
+          "reply_excludes": ["3 dogs", "three dogs"]
+        }
+      }
+    ]
+  }
+]

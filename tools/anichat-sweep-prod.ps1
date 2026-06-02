@@ -151,31 +151,48 @@ foreach ($scenario in $scenarios) {
     $totalCapturedReplies = 0
     $totalSafeAcks = 0
 
-    foreach ($userTurn in $scenario.turns) {
+    $assertionResults = [System.Collections.ArrayList]@()
+
+    foreach ($turnItem in $scenario.turns) {
+        # Turn can be a plain string OR an object with {user, assert}
+        if ($turnItem -is [string]) {
+            $userTurn = $turnItem
+            $turnAssertions = $null
+        } else {
+            $userTurn = $turnItem.user
+            $turnAssertions = $turnItem.assert
+        }
+
         Write-Host ""
         Write-Host "user: $userTurn" -ForegroundColor White
 
-        # Invoke Eval CLI. Output is JSON on stdout; logs go to stderr.
-        # We capture stdout only via redirection.
-        $stdoutPath = [System.IO.Path]::GetTempFileName()
-        $stderrPath = [System.IO.Path]::GetTempFileName()
+        # Invoke Eval CLI via ProcessStartInfo.ArgumentList so each argv element
+        # is treated atomically — Start-Process -ArgumentList @() has known
+        # PowerShell quoting issues that split arg values on whitespace.
+        # Output is JSON on stdout; logs go to stderr.
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = (Resolve-Path $EvalExe).Path
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+        [void]$psi.ArgumentList.Add("--db-path")
+        [void]$psi.ArgumentList.Add($scenarioDb)
+        [void]$psi.ArgumentList.Add("--message")
+        [void]$psi.ArgumentList.Add($userTurn)
+        [void]$psi.ArgumentList.Add("--ollama-url")
+        [void]$psi.ArgumentList.Add($OllamaUrl)
+
         try {
-            $proc = Start-Process -FilePath $EvalExe `
-                -ArgumentList @(
-                    "--db-path", $scenarioDb,
-                    "--message", $userTurn,
-                    "--ollama-url", $OllamaUrl
-                ) `
-                -NoNewWindow -Wait -PassThru `
-                -RedirectStandardOutput $stdoutPath `
-                -RedirectStandardError $stderrPath
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $rawOut = $proc.StandardOutput.ReadToEnd()
+            $rawErr = $proc.StandardError.ReadToEnd()
+            $proc.WaitForExit()
 
             if ($proc.ExitCode -ne 0) {
                 Write-Host "  (eval exit code $($proc.ExitCode))" -ForegroundColor Red
             }
-
-            $rawOut = Get-Content $stdoutPath -Raw -Encoding UTF8
-            $rawErr = Get-Content $stderrPath -Raw -Encoding UTF8
 
             $evalJson = $null
             try {
@@ -199,11 +216,99 @@ foreach ($scenario in $scenarios) {
             # Pull any J.5a remediation lines from stderr (info-level logs)
             $remediations = @()
             if ($rawErr) {
-                $matches = [regex]::Matches($rawErr, "J\.5[ah] gate Remediate[^\n]+", "IgnoreCase")
-                foreach ($m in $matches) {
+                $remediationMatches = [regex]::Matches($rawErr, "J\.5[ah] gate Remediate[^\n]+", "IgnoreCase")
+                foreach ($m in $remediationMatches) {
                     $remediations += $m.Value.Trim()
                 }
             }
+
+            # ── Phase D assertion evaluation ────────────────────────────
+            $turnAssertionResults = [System.Collections.ArrayList]@()
+            if ($turnAssertions) {
+                $inserts = @($evalJson.MemoryDelta.InsertedSinceBefore)
+                $insertContents = $inserts | ForEach-Object { $_.ContentPreview }
+                $replyLower = if ($reply) { $reply.ToLower() } else { "" }
+
+                if ($null -ne $turnAssertions.min_memory_inserts) {
+                    $expected = [int]$turnAssertions.min_memory_inserts
+                    $actual = $inserts.Count
+                    $pass = $actual -ge $expected
+                    [void]$turnAssertionResults.Add([pscustomobject]@{
+                        Name = "min_memory_inserts >= $expected"
+                        Pass = $pass
+                        Actual = $actual
+                    })
+                }
+
+                if ($turnAssertions.memory_content_any) {
+                    $candidates = @($turnAssertions.memory_content_any)
+                    $matched = $false
+                    foreach ($candidate in $candidates) {
+                        $needle = $candidate.ToString().ToLower()
+                        foreach ($content in $insertContents) {
+                            if ($content -and $content.ToLower().Contains($needle)) {
+                                $matched = $true
+                                break
+                            }
+                        }
+                        if ($matched) { break }
+                    }
+                    [void]$turnAssertionResults.Add([pscustomobject]@{
+                        Name = "memory_content_any of [$(($candidates -join ', '))]"
+                        Pass = $matched
+                        Actual = "inserts=$($inserts.Count); content-preview=[$(($insertContents | Select-Object -First 1) -join '')]"
+                    })
+                }
+
+                if ($turnAssertions.reply_contains_any) {
+                    $candidates = @($turnAssertions.reply_contains_any)
+                    $matched = $false
+                    foreach ($candidate in $candidates) {
+                        $needle = $candidate.ToString().ToLower()
+                        if ($replyLower.Contains($needle)) { $matched = $true; break }
+                    }
+                    [void]$turnAssertionResults.Add([pscustomobject]@{
+                        Name = "reply_contains_any of [$(($candidates -join ', '))]"
+                        Pass = $matched
+                        Actual = if ($reply) { $reply.Substring(0, [Math]::Min(80, $reply.Length)) } else { "(no reply)" }
+                    })
+                }
+
+                if ($turnAssertions.reply_excludes) {
+                    $forbidden = @($turnAssertions.reply_excludes)
+                    $violated = $null
+                    foreach ($f in $forbidden) {
+                        $needle = $f.ToString().ToLower()
+                        if ($replyLower.Contains($needle)) { $violated = $f; break }
+                    }
+                    [void]$turnAssertionResults.Add([pscustomobject]@{
+                        Name = "reply_excludes [$(($forbidden -join ', '))]"
+                        Pass = ($null -eq $violated)
+                        Actual = if ($violated) { "found: $violated" } else { "clean" }
+                    })
+                }
+
+                if ($null -ne $turnAssertions.is_safeack) {
+                    $expected = [bool]$turnAssertions.is_safeack
+                    $actual = ($null -eq $reply -or $reply -eq "")
+                    [void]$turnAssertionResults.Add([pscustomobject]@{
+                        Name = "is_safeack = $expected"
+                        Pass = ($actual -eq $expected)
+                        Actual = $actual
+                    })
+                }
+
+                # Print per-turn assertion results
+                foreach ($r in $turnAssertionResults) {
+                    $tag = if ($r.Pass) { "PASS" } else { "FAIL" }
+                    $color = if ($r.Pass) { "Green" } else { "Red" }
+                    Write-Host "  [$tag] $($r.Name) — $($r.Actual)" -ForegroundColor $color
+                }
+            }
+
+            $insertedCount = if ($evalJson.MemoryDelta -and $evalJson.MemoryDelta.InsertedSinceBefore) {
+                @($evalJson.MemoryDelta.InsertedSinceBefore).Count
+            } else { 0 }
 
             [void]$transcript.Add([pscustomobject]@{
                 role = "user"
@@ -216,12 +321,23 @@ foreach ($scenario in $scenarios) {
                 evalError = $evalJson.Error
                 remediations = $remediations
                 syntheticSid = $evalJson.SyntheticSid
+                memoryInsertCount = $insertedCount
+                memoryStateBefore = $evalJson.MemoryStateBefore
+                memoryStateAfter = $evalJson.MemoryStateAfter
+                memoryDelta = $evalJson.MemoryDelta
+                assertions = @($turnAssertionResults)
             })
+
+            foreach ($r in $turnAssertionResults) {
+                [void]$assertionResults.Add($r)
+            }
+
             $turnsCompleted++
         }
-        finally {
-            Remove-Item $stdoutPath -ErrorAction SilentlyContinue
-            Remove-Item $stderrPath -ErrorAction SilentlyContinue
+        catch {
+            Write-Host "  (eval invocation failed: $_)" -ForegroundColor Red
+            $aborted = $true
+            break
         }
     }
 
@@ -258,6 +374,9 @@ foreach ($scenario in $scenarios) {
     }
     Set-Content -Path $transcriptMd -Value $md -Encoding UTF8
 
+    $assertionsTotal = $assertionResults.Count
+    $assertionsPassed = ($assertionResults | Where-Object { $_.Pass }).Count
+
     $summary += [pscustomobject]@{
         Name = $scenario.name
         TurnsTotal = $scenario.turns.Count
@@ -265,6 +384,8 @@ foreach ($scenario in $scenarios) {
         Aborted = $aborted
         CapturedReplies = $totalCapturedReplies
         SafeAcks = $totalSafeAcks
+        AssertionsTotal = $assertionsTotal
+        AssertionsPassed = $assertionsPassed
     }
 }
 
