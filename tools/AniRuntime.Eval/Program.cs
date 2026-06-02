@@ -124,6 +124,10 @@ if (string.IsNullOrWhiteSpace(userMessage))
 var inbound = provider.GetRequiredService<TwilioInboundPerceptionSource>();
 var processor = provider.GetRequiredService<CognitiveCycleProcessor>();
 var capturer = provider.GetRequiredService<CapturingReplyChannel>();
+var ctxFactory2 = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+
+// Phase D telemetry: snapshot memory-table state BEFORE the cycle.
+var memBefore = await SnapshotMemoryStateAsync(ctxFactory2);
 
 var syntheticSid = $"eval-{Guid.NewGuid():N}";
 inbound.EnqueueInbound(syntheticSid, userMessage, DateTimeOffset.UtcNow);
@@ -133,6 +137,7 @@ var result = new EvalResult
     DbPath = dbPath,
     UserMessage = userMessage,
     SyntheticSid = syntheticSid,
+    MemoryStateBefore = memBefore,
 };
 
 try
@@ -151,12 +156,74 @@ result.CapturedReplies = capturer.CapturedReplies
     .Select(r => new CapturedReplyDto(r.Message, r.CapturedAt))
     .ToList();
 
+// Phase D telemetry: snapshot AFTER + compute delta (records inserted
+// during this cycle by created_at > before-baseline).
+var memAfter = await SnapshotMemoryStateAsync(ctxFactory2);
+result.MemoryStateAfter = memAfter;
+result.MemoryDelta = await ComputeMemoryDeltaAsync(ctxFactory2, memBefore);
+
 Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions
 {
     WriteIndented = true,
 }));
 
 return result.CycleCompleted ? 0 : 1;
+
+// ── Phase D helpers ─────────────────────────────────────────────────────────
+
+static async Task<MemoryStateSnapshot> SnapshotMemoryStateAsync(IDbContextFactory<AniDbContext> ctxFactory)
+{
+    await using var ctx = await ctxFactory.CreateDbContextAsync();
+    var totalMemories = await ctx.Memories.CountAsync();
+    var maxMemoryCreatedAt = totalMemories == 0
+        ? DateTimeOffset.MinValue
+        : await ctx.Memories.MaxAsync(m => m.CreatedAt);
+    var totalAudit = await ctx.MemoryAudit.CountAsync();
+    var totalContradictions = await ctx.MemoryContradictions.CountAsync();
+    var totalMessages = await ctx.ConversationMessages.CountAsync();
+    var totalThreads = await ctx.ConversationThreads.CountAsync();
+    var totalClosed = await ctx.ClosedConversationRecords.CountAsync();
+    return new MemoryStateSnapshot
+    {
+        Memories = totalMemories,
+        MaxMemoryCreatedAt = maxMemoryCreatedAt,
+        MemoryAuditEntries = totalAudit,
+        Contradictions = totalContradictions,
+        ConversationMessages = totalMessages,
+        ConversationThreads = totalThreads,
+        ClosedConversationRecords = totalClosed,
+    };
+}
+
+static async Task<MemoryDelta> ComputeMemoryDeltaAsync(
+    IDbContextFactory<AniDbContext> ctxFactory,
+    MemoryStateSnapshot before)
+{
+    await using var ctx = await ctxFactory.CreateDbContextAsync();
+
+    // Records whose created_at is strictly after the pre-cycle baseline.
+    // This catches both inserts (new rows) and content updates that
+    // refresh created_at. For supersession (Feature 30, future), the
+    // is_resolved flag flip OR a future superseded_by linkage will need
+    // its own field; for v1 this is the simplest reliable signal.
+    var inserted = await ctx.Memories
+        .Where(m => m.CreatedAt > before.MaxMemoryCreatedAt)
+        .OrderBy(m => m.CreatedAt)
+        .Select(m => new MemoryRecordSummary(
+            m.Id,
+            m.Type.ToString(),
+            m.SourceName ?? "",
+            m.Content.Length > 200 ? m.Content.Substring(0, 200) + "…" : m.Content,
+            m.IsResolved,
+            m.CreatedAt))
+        .ToListAsync();
+
+    return new MemoryDelta
+    {
+        InsertedSinceBefore = inserted,
+        MemoriesNet = inserted.Count,
+    };
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -232,6 +299,34 @@ internal sealed class EvalResult
     public bool CycleCompleted { get; set; }
     public string? Error { get; set; }
     public List<CapturedReplyDto> CapturedReplies { get; set; } = new();
+    public MemoryStateSnapshot? MemoryStateBefore { get; set; }
+    public MemoryStateSnapshot? MemoryStateAfter { get; set; }
+    public MemoryDelta? MemoryDelta { get; set; }
 }
 
 internal sealed record CapturedReplyDto(string Message, DateTimeOffset CapturedAt);
+
+internal sealed record MemoryStateSnapshot
+{
+    public int Memories { get; init; }
+    public DateTimeOffset MaxMemoryCreatedAt { get; init; }
+    public int MemoryAuditEntries { get; init; }
+    public int Contradictions { get; init; }
+    public int ConversationMessages { get; init; }
+    public int ConversationThreads { get; init; }
+    public int ClosedConversationRecords { get; init; }
+}
+
+internal sealed record MemoryDelta
+{
+    public required List<MemoryRecordSummary> InsertedSinceBefore { get; init; }
+    public int MemoriesNet { get; init; }
+}
+
+internal sealed record MemoryRecordSummary(
+    Guid Id,
+    string Type,
+    string SourceName,
+    string ContentPreview,
+    bool IsResolved,
+    DateTimeOffset CreatedAt);
