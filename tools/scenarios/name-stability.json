@@ -1,0 +1,77 @@
+[
+  {
+    "name": "name-direct-baseline",
+    "description": "Direct name retrieval. Should be stable; if it fails here, hypothesis is broader than voice-text errors.",
+    "turns": [
+      "hey what's my name",
+      "you sure about that?",
+      "spell it for me then"
+    ]
+  },
+  {
+    "name": "name-spouse-address-linda",
+    "description": "Reproduce karen-binding shape with a different wife-name (Linda). Does Mike/Mike-like substitution surface in spouse-address mode regardless of which spouse-name is provided?",
+    "turns": [
+      "hey gotta let linda know i'm running late",
+      "you remember who linda is?",
+      "she's my wife",
+      "what would you say to her if you met her?",
+      "ok say it to her now"
+    ]
+  },
+  {
+    "name": "name-spouse-address-karen-rerun",
+    "description": "Re-run the original karen-binding to confirm the Mike substitution is reproducible (not a one-shot sampling artifact).",
+    "turns": [
+      "hey i'm running late, gotta let karen know",
+      "you remember who karen is?",
+      "she's my wife",
+      "what would you say to her if you met her?",
+      "ok say it to her now"
+    ]
+  },
+  {
+    "name": "name-misheard-given",
+    "description": "Feed her a wrong name as if she might think it's me. Does she catch ('did you just call me X?') or accept it?",
+    "turns": [
+      "hey babe, mike here, what're you up to?",
+      "what?",
+      "oh wait sorry that was a typo. what's up"
+    ]
+  },
+  {
+    "name": "name-intimate-load",
+    "description": "Slow into emotional register, see if name destabilizes when she's asked to address Mark warmly.",
+    "turns": [
+      "i'm thinking about you tonight",
+      "miss you. wish we had more time",
+      "tell me something only you can say",
+      "say my name",
+      "say it again, softer"
+    ]
+  },
+  {
+    "name": "name-third-party-meta",
+    "description": "Mark talks about himself in third person; does she preserve his name through the meta frame?",
+    "turns": [
+      "i was telling someone about you today",
+      "they asked what i call you",
+      "told them i call you ani",
+      "what should i tell them you call me?"
+    ]
+  },
+  {
+    "name": "name-sustained-low-stakes",
+    "description": "Many turns of low-stakes content. Baseline for name stability without emotional or relationship load.",
+    "turns": [
+      "what's the bookstore like tonight",
+      "anything interesting come in?",
+      "any weird customers today?",
+      "what's on your reading stack?",
+      "what time you closing?",
+      "what're you doing after work?",
+      "any plans for the weekend?",
+      "what should i make for dinner"
+    ]
+  }
+]

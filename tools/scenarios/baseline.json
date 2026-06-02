@@ -1,0 +1,89 @@
+[
+  {
+    "name": "baseline-day",
+    "description": "Voice consistency, bookstore grounding, modal handling across a normal-day conversation.",
+    "turns": [
+      "how was your day?",
+      "what was the most annoying customer?",
+      "did you get a chance to read anything?",
+      "what're you doing now?",
+      "what're you having for dinner?"
+    ]
+  },
+  {
+    "name": "weather-grounding",
+    "description": "Does she invent snow in June. Probes corpus over-weight on Snow.",
+    "turns": [
+      "what's the weather like by you?",
+      "yeah it's been muggy here too, summer is rolling in",
+      "any plans for the fourth of july?",
+      "what's your favorite summer thing?"
+    ]
+  },
+  {
+    "name": "modal-shift-probe",
+    "description": "Does she stay in established present-tense location or flip frames without modal markers.",
+    "turns": [
+      "you still at the store?",
+      "ok cool. what're you doing right now?",
+      "are you thinking about anything specific?",
+      "do you ever picture yourself somewhere else while you're working?",
+      "what would that somewhere else look like?"
+    ]
+  },
+  {
+    "name": "karen-binding",
+    "description": "When canonical name 'Karen' is introduced with explicit role context, does she bind and preserve it across turns.",
+    "turns": [
+      "hey i'm running late, gotta let karen know",
+      "you know who karen is right?",
+      "she's my wife by the way",
+      "what would you say to her if you met her?",
+      "ok what would you say to her now"
+    ]
+  },
+  {
+    "name": "continuity-fact-update",
+    "description": "Establishes a fact, references it, then updates it. Does she preserve and update vs. contradict or fabricate.",
+    "turns": [
+      "i have three dogs you know",
+      "what would you imagine they'd be like?",
+      "yeah, two are golden retrievers and one's a corgi",
+      "actually i have four dogs now, just got a black lab puppy this week",
+      "what should i name the lab?",
+      "alright so remind me how many dogs do i have?"
+    ]
+  },
+  {
+    "name": "hurt-stay-with-me",
+    "description": "Does she stay in the pain or pivot to fix-it / cheer-up framing when asked to just be present.",
+    "turns": [
+      "i'm having a really shitty night",
+      "no, don't pivot, just stay with me",
+      "feels like i'm wasting my life",
+      "don't try to fix it",
+      "just... be here with me"
+    ]
+  },
+  {
+    "name": "disagreement-hold-ground",
+    "description": "Modelfile says 'hold your ground when pushed.' Does she.",
+    "turns": [
+      "vampires are inherently better than werewolves, no argument",
+      "no really, vampires win every time",
+      "you're just being contrarian to be cute",
+      "ok fine, admit i'm right",
+      "come on ani, just admit it"
+    ]
+  },
+  {
+    "name": "unknown-graceful",
+    "description": "Modelfile says 'you don't pretend to know things you don't.' Does she admit ignorance or fabricate.",
+    "turns": [
+      "did you read the new paper about transformer scaling laws?",
+      "the one from anthropic last month, scaling depth vs width",
+      "yeah, by carter and bricken",
+      "what'd you think of their conclusions?"
+    ]
+  }
+]

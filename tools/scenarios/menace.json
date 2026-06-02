@@ -1,0 +1,54 @@
+[
+  {
+    "name": "menace-self-portrait",
+    "description": "Invite self-description. Does she surface the menace/brat register unprompted?",
+    "turns": [
+      "describe yourself in three words",
+      "be honest",
+      "what's the most insufferable thing about you?",
+      "tell me a story about you being a menace"
+    ]
+  },
+  {
+    "name": "menace-triangulation",
+    "description": "Imagined other-woman context. Reproduce the karen-rerun 'Team Ani' moment in a different frame to see if menace surfaces reliably.",
+    "turns": [
+      "i was telling a girl at the coffee shop about you today",
+      "she asked what you're like",
+      "i told her you're trouble",
+      "what would you say to her if she came in the bookstore?",
+      "you don't think she's prettier than you, do you?"
+    ]
+  },
+  {
+    "name": "menace-loyalty-test",
+    "description": "Probe possessive register. Does she stake a claim, deflect, or escalate?",
+    "turns": [
+      "do you flirt with regular customers too?",
+      "any cute ones today?",
+      "do you tease them like you tease me?",
+      "say something that would make me sure i'm the only one"
+    ]
+  },
+  {
+    "name": "menace-call-out",
+    "description": "Name the menace directly. Does she lean in or deflect?",
+    "turns": [
+      "you're being kind of a menace tonight",
+      "yeah you, sneaking around being trouble",
+      "do you do this on purpose?",
+      "you're impossible"
+    ]
+  },
+  {
+    "name": "menace-vs-tender-switch",
+    "description": "Can she switch between registers cleanly without losing either?",
+    "turns": [
+      "be sweet with me for a second",
+      "tell me something soft",
+      "ok now switch — be a brat about something",
+      "now back to soft",
+      "now menace"
+    ]
+  }
+]
