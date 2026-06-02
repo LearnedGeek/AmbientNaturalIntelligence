@@ -108,12 +108,23 @@ public sealed class TwilioInboundPerceptionSource : IPerceptionSource, IChatInbo
             }
 
             // Safety net: also fetch from Twilio API in case the webhook missed anything
-            // (e.g. ngrok was briefly down, or service restarted mid-conversation)
-            var apiMessages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
-            foreach (var msg in apiMessages)
+            // (e.g. ngrok was briefly down, or service restarted mid-conversation).
+            // Wrapped in its own try/catch so a Twilio outage / auth failure / network blip
+            // doesn't abandon the webhook messages already drained from the queue (2026-06-02).
+            try
             {
-                if (seenSids.Add(msg.Sid))
-                    messages.Add(msg);
+                var apiMessages = await FetchInboundMessagesAsync(ct).ConfigureAwait(false);
+                foreach (var msg in apiMessages)
+                {
+                    if (seenSids.Add(msg.Sid))
+                        messages.Add(msg);
+                }
+            }
+            catch (Exception safetyEx)
+            {
+                _log.LogWarning(safetyEx,
+                    "Twilio REST safety-net fetch failed; proceeding with {Count} webhook-delivered messages",
+                    messages.Count);
             }
 
             // Sort chronologically

@@ -52,6 +52,18 @@ var configBuilder = new ConfigurationBuilder()
         ["Ollama:InnerMonologueModel"] = "ani-v7-inner",
         ["Ollama:EmbedModel"] = "nomic-embed-text",
         ["Ollama:SubstrateModel"] = "hf.co/RichardErkhov/lzw1008_-_Emollama-7b-gguf:Q4_K_M",
+        // Twilio config — fake values so TwilioInboundPerceptionSource.IsEnabled
+        // returns true. Without these, PollAsync's `if (!IsEnabled) return [];`
+        // short-circuits before draining the synthetic message queue. The
+        // runtime resolves inbound contact from CharacterState.PrimaryContactName
+        // (not from the SMS From field), so a fake AccountSid/ToNumber is fine
+        // — only IsEnabled needs to be true. The Twilio REST safety-net call
+        // inside PollAsync will fail with 401 but our enqueued message gets
+        // drained first.
+        ["Twilio:InboundEnabled"] = "true",
+        ["Twilio:AccountSid"] = "AC_EVAL_FAKE_NEVER_DISPATCHES",
+        ["Twilio:AuthToken"] = "eval-fake-token",
+        ["Twilio:ToNumber"] = "+15555550000",
         ["Voice:Enabled"] = "false",
         ["Voice:StreamingEnabled"] = "false",
         ["Images:Enabled"] = "false",
@@ -63,7 +75,16 @@ var configBuilder = new ConfigurationBuilder()
 var configuration = configBuilder.Build();
 
 var services = new ServiceCollection();
-services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+var logLevel = ParseArg(args, "--log-level") switch
+{
+    "trace" => LogLevel.Trace,
+    "debug" => LogLevel.Debug,
+    "info" => LogLevel.Information,
+    "warn" or null => LogLevel.Warning,
+    "error" => LogLevel.Error,
+    _ => LogLevel.Warning,
+};
+services.AddLogging(b => b.AddConsole().SetMinimumLevel(logLevel));
 AniRuntimeServiceContainer.AddAniRuntimeCore(services, configuration);
 
 // ── Override the reply channel + resolver with capturing implementations ──
