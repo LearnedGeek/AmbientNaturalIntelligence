@@ -84,7 +84,13 @@ var logLevel = ParseArg(args, "--log-level") switch
     "error" => LogLevel.Error,
     _ => LogLevel.Warning,
 };
-services.AddLogging(b => b.AddConsole().SetMinimumLevel(logLevel));
+// Route ALL logs to stderr so stdout contains only the JSON result.
+// Harness consumers pipe stdout to JSON-parsing without log-noise contamination.
+services.AddLogging(b =>
+{
+    b.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
+    b.SetMinimumLevel(logLevel);
+});
 AniRuntimeServiceContainer.AddAniRuntimeCore(services, configuration);
 
 // ── Override the reply channel + resolver with capturing implementations ──
