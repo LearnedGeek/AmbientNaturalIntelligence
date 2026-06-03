@@ -122,6 +122,14 @@ jobs:
       - name: Build
         run: dotnet build tests/AniRuntime.Tests/AniRuntime.Tests.csproj --no-restore --configuration Release
 
+      # AniRuntime.Eval is a CLI tool not referenced by the test project, so it
+      # isn't pulled into the transitive build above. Build it explicitly so
+      # CI catches breakage in the Phase A-E eval harness (Issue #79). Its
+      # ProjectReferences (Service, Loops, etc.) resolve against the already-
+      # restored package cache, so an explicit restore step isn't required.
+      - name: Build Eval CLI
+        run: dotnet build tools/AniRuntime.Eval/AniRuntime.Eval.csproj --configuration Release
+
       # Regression-class harness (2026-05-14): SPEC tests for currently-open
       # failure classes carry [Trait("Category", "RegressionOpen")]. These
       # are designed-to-fail markers that close when the production fix

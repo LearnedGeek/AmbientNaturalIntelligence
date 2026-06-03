@@ -119,6 +119,24 @@ jobs:
           path: AmbientNaturalIntelligence/test-results/**
           retention-days: 14
 
+      # AniRuntime.Eval is a CLI tool not referenced by the test project, so
+      # the transitive build above skips it. Build + publish it explicitly so
+      # the Phase A-E eval harness (Issue #79) is gated by CI and the binary
+      # is available as a workflow artifact for sweep runs.
+      - name: Build Eval CLI
+        run: dotnet build tools/AniRuntime.Eval/AniRuntime.Eval.csproj --configuration Release
+
+      - name: Publish Eval CLI
+        run: dotnet publish tools/AniRuntime.Eval/AniRuntime.Eval.csproj -c Release -o publish/eval --no-build
+
+      - name: Upload Eval CLI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-cli-${{ github.sha }}
+          path: AmbientNaturalIntelligence/publish/eval/**
+          retention-days: 14
+
       # If we get here, tests passed. Safe to deploy.
 
       - name: Check service exists
