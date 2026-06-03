@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 
 // ════════════════════════════════════════════════════════════════════════════
 // AniRuntime.Eval — Issue #79 Phase A
@@ -96,11 +97,16 @@ services.AddLogging(b =>
 {
     b.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
     b.AddProvider(telemetry);
-    // The telemetry capture needs Information-level events; clamp the minimum
-    // so we always see O_HANDLER_END regardless of the user-facing log-level
-    // (which controls the console sink only).
-    b.AddFilter<GateTelemetryCapture>("AniRuntime.Loops.Pipeline.CognitivePipeline", LogLevel.Information);
-    b.SetMinimumLevel(logLevel);
+    // The global minimum has to be the more permissive of the two channels,
+    // because MEL filters everything below SetMinimumLevel BEFORE per-provider
+    // filters run. Earlier code set it to logLevel (default Warning), which
+    // discarded the Theme O.2 Information events before they could reach
+    // GateTelemetryCapture — leaving GateRuns empty in every transcript even
+    // though the provider was wired. Pin global to Information; the console
+    // sink still respects logLevel via its own filter so user-facing noise
+    // stays at the requested level.
+    b.SetMinimumLevel(LogLevel.Information);
+    b.AddFilter<ConsoleLoggerProvider>(null, logLevel);
 });
 AniRuntimeServiceContainer.AddAniRuntimeCore(services, configuration);
 
