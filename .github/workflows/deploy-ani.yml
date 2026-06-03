@@ -46,6 +46,11 @@ env:
   # data/) and untracked files (appsettings.Development.json) survive
   # publish because publish is additive, not a mirror.
   PUBLISH_DIR: C:\dev\repos\AmbientNaturalIntelligence\publish\AniRuntime
+  # Stable on-server location for the Eval CLI so SSH sessions can invoke
+  # it directly (e.g. anichat-sweep-prod.ps1). Parallel to PUBLISH_DIR;
+  # NOT under it, because publish is additive and we don't want the eval
+  # binary to ship alongside the service install.
+  EVAL_PUBLISH_DIR: C:\dev\repos\AmbientNaturalIntelligence\publish\Eval
 
 jobs:
   deploy:
@@ -127,14 +132,14 @@ jobs:
         run: dotnet build tools/AniRuntime.Eval/AniRuntime.Eval.csproj --configuration Release
 
       - name: Publish Eval CLI
-        run: dotnet publish tools/AniRuntime.Eval/AniRuntime.Eval.csproj -c Release -o publish/eval --no-build
+        run: dotnet publish tools/AniRuntime.Eval/AniRuntime.Eval.csproj -c Release -o ${{ env.EVAL_PUBLISH_DIR }} --no-build
 
       - name: Upload Eval CLI
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-cli-${{ github.sha }}
-          path: AmbientNaturalIntelligence/publish/eval/**
+          path: ${{ env.EVAL_PUBLISH_DIR }}/**
           retention-days: 14
 
       # If we get here, tests passed. Safe to deploy.
