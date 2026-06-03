@@ -154,6 +154,13 @@ foreach ($name in $bothScenarios) {
     $prodMemoryInsertsTotal = 0
     $verdictCounts = @{ identical = 0; similar = 0; different = 0; 'bare-only-empty' = 0; 'prod-only-empty' = 0; 'both-empty' = 0 }
 
+    # Phase E.1 per-handler tally (scenario-scoped). Keyed by handler name;
+    # value is a hashtable of result counts (each Result string seen, e.g.
+    # "Pass", "Remediate", "Reject"). Result strings emitted verbatim from
+    # the Theme O.2 telemetry so the table reflects whatever the runtime
+    # actually labels them — no enum guessing here.
+    $scenarioHandlerTally = @{}
+
     for ($i = 0; $i -lt $turnCount; $i++) {
         $bp = if ($i -lt $barePairs.Count) { $barePairs[$i] } else { $null }
         $pp = if ($i -lt $prodPairs.Count) { $prodPairs[$i] } else { $null }
@@ -173,12 +180,36 @@ foreach ($name in $bothScenarios) {
 
         $prodRemediations = @()
         $prodMemoryInserts = 0
+        $prodGateRuns = @()
         if ($pp -and $pp.Assistant) {
             if ($pp.Assistant.remediations) { $prodRemediations = @($pp.Assistant.remediations) }
             if ($pp.Assistant.memoryInsertCount) { $prodMemoryInserts = [int]$pp.Assistant.memoryInsertCount }
+            if ($pp.Assistant.gateRuns) { $prodGateRuns = @($pp.Assistant.gateRuns) }
         }
         $prodRemediationsTotal += $prodRemediations.Count
         $prodMemoryInsertsTotal += $prodMemoryInserts
+
+        # Roll handler-verdict counts into the scenario tally so we can emit
+        # a per-invariant rollup at the sweep summary level. Counts each
+        # handler invocation (not each pipeline-final result) because the
+        # J.5h scope question is "which invariants over-fire on which reply
+        # shapes" — that's an invocation-level signal, not a final-verdict
+        # one. Short-circuited pipelines naturally produce fewer counts on
+        # downstream handlers, which is itself the interesting signal.
+        foreach ($run in $prodGateRuns) {
+            if (-not $run.HandlerVerdicts) { continue }
+            foreach ($v in $run.HandlerVerdicts) {
+                $handler = if ($v.Handler) { $v.Handler } else { '(unknown)' }
+                $resultKey = if ($v.Result) { $v.Result } else { '(unknown)' }
+                if (-not $scenarioHandlerTally.ContainsKey($handler)) {
+                    $scenarioHandlerTally[$handler] = @{}
+                }
+                if (-not $scenarioHandlerTally[$handler].ContainsKey($resultKey)) {
+                    $scenarioHandlerTally[$handler][$resultKey] = 0
+                }
+                $scenarioHandlerTally[$handler][$resultKey]++
+            }
+        }
 
         [void]$turnDiffs.Add([pscustomobject]@{
             Index = $i + 1
@@ -190,6 +221,7 @@ foreach ($name in $bothScenarios) {
             ProdSafeAck = $prodSafeAck
             ProdRemediations = $prodRemediations
             ProdMemoryInserts = $prodMemoryInserts
+            ProdGateRuns = $prodGateRuns
         })
     }
 
@@ -237,6 +269,49 @@ foreach ($name in $bothScenarios) {
         if ($td.ProdMemoryInserts -gt 0) {
             $md += "**Prod memory inserts this turn:** $($td.ProdMemoryInserts)`n`n"
         }
+
+        # Phase E.1 per-stage gate cascade. One block per producer pipeline
+        # (inner-thought, reply-composition, etc.). Truncate Details to
+        # keep markdown readable — the full text lives in the transcript
+        # JSON if anyone needs it for forensics.
+        if ($td.ProdGateRuns -and $td.ProdGateRuns.Count -gt 0) {
+            foreach ($run in $td.ProdGateRuns) {
+                $producerLabel = if ($run.Producer) { $run.Producer } else { '(unknown producer)' }
+                $modeLabel = if ($run.Mode) { $run.Mode } else { 'Full' }
+                $md += "**Gate cascade on prod reply — producer: ``$producerLabel`` (mode: $modeLabel):**`n"
+                if (-not $run.HandlerVerdicts -or @($run.HandlerVerdicts).Count -eq 0) {
+                    $md += "_(no handler verdicts captured — pipeline may have short-circuited before any handler ran)_`n"
+                } else {
+                    foreach ($v in $run.HandlerVerdicts) {
+                        $handler = if ($v.Handler) { $v.Handler } else { '(unknown)' }
+                        $result = if ($v.Result) { $v.Result } else { '(unknown)' }
+                        $duration = if ($v.DurationMs) { "$($v.DurationMs)ms" } else { '' }
+                        $details = if ($v.Details) { $v.Details } else { '' }
+                        # Single-line for the table-style list; truncate
+                        # details to ~120 chars and collapse newlines.
+                        $detailsClean = ($details -replace "[`r`n]+", ' ').Trim()
+                        if ($detailsClean.Length -gt 120) {
+                            $detailsClean = $detailsClean.Substring(0, 117) + '...'
+                        }
+                        $detailsPart = if ($detailsClean) { ": $detailsClean" } else { '' }
+                        $md += "- ``$handler`` — **$result** ($duration)$detailsPart`n"
+                    }
+                }
+                $finalReason = ''
+                if ($run.ShortCircuitHandler) {
+                    $reasonClean = if ($run.ShortCircuitReason) { ($run.ShortCircuitReason -replace "[`r`n]+", ' ').Trim() } else { '' }
+                    if ($reasonClean.Length -gt 160) { $reasonClean = $reasonClean.Substring(0, 157) + '...' }
+                    $finalReason = " — short-circuited at ``$($run.ShortCircuitHandler)``"
+                    if ($reasonClean) { $finalReason += " ($reasonClean)" }
+                }
+                $finalResult = if ($run.FinalResult) { $run.FinalResult } else { '(unknown)' }
+                # NB: PowerShell treats _ as a valid identifier char, so a
+                # bare $finalReason_ at end-of-string is parsed as one
+                # variable and eats the closing italic underscore. Wrap the
+                # expression in $() to terminate the variable name.
+                $md += "_Pipeline outcome: **$finalResult**$($finalReason)_`n`n"
+            }
+        }
     }
 
     Set-Content -Path $mdPath -Value $md -Encoding UTF8
@@ -251,6 +326,7 @@ foreach ($name in $bothScenarios) {
         ProdSafeAcks = $prodSafeAcks
         ProdRemediations = $prodRemediationsTotal
         ProdMemoryInserts = $prodMemoryInsertsTotal
+        HandlerTally = $scenarioHandlerTally
     }
 }
 
@@ -279,6 +355,77 @@ if ($prodOnly.Count -gt 0) {
     $summaryMd += "## Prod-only scenarios (not in bare run)`n`n"
     foreach ($n in $prodOnly) { $summaryMd += "- ``$n```n" }
     $summaryMd += "`n"
+}
+
+# ── Per-invariant verdict matrix (sweep-wide) ────────────────────────
+# Cross-scenario rollup of per-handler verdict counts. This is the
+# J.5h scope-decision signal: which handlers fire on what fraction of
+# invocations. A handler with a high Remediate/Reject rate over a large
+# sample is the candidate for retirement or rewrite under Phase J.5h
+# (`docs/spec/ANI-Theme-J-Guard-Consistency-Refactor-Plan.md`).
+$globalTally = @{}
+$allResultKeys = New-Object 'System.Collections.Generic.HashSet[string]'
+foreach ($s in $sweepSummary) {
+    if (-not $s.HandlerTally) { continue }
+    foreach ($handler in $s.HandlerTally.Keys) {
+        if (-not $globalTally.ContainsKey($handler)) {
+            $globalTally[$handler] = @{}
+        }
+        foreach ($resultKey in $s.HandlerTally[$handler].Keys) {
+            [void]$allResultKeys.Add($resultKey)
+            if (-not $globalTally[$handler].ContainsKey($resultKey)) {
+                $globalTally[$handler][$resultKey] = 0
+            }
+            $globalTally[$handler][$resultKey] += $s.HandlerTally[$handler][$resultKey]
+        }
+    }
+}
+
+if ($globalTally.Count -gt 0) {
+    # Sort result-key columns with Pass first (if present) so non-pass
+    # signal is visually grouped on the right where the eye lands.
+    $sortedResults = @($allResultKeys) | Sort-Object @{
+        Expression = { if ($_ -ieq 'Pass') { 0 } elseif ($_ -ieq 'Continue') { 1 } else { 2 } }
+    }, @{Expression = { $_ }}
+
+    $summaryMd += "## Per-invariant verdict matrix (Phase E.1)`n`n"
+    $summaryMd += "Counts per handler invocation across every turn in every scenario. "
+    $summaryMd += "**Non-pass rate** is the share of invocations that returned a non-``Pass`` result; "
+    $summaryMd += "high values flag handlers over-firing on the trained-model's output distribution and are the candidates for J.5h retirement review.`n`n"
+
+    $header = "| Handler | " + (($sortedResults | ForEach-Object { $_ }) -join ' | ') + " | Total | Non-pass rate |`n"
+    $sep = "|---|" + (($sortedResults | ForEach-Object { '---:' }) -join '|') + "|---:|---:|`n"
+    $summaryMd += $header
+    $summaryMd += $sep
+
+    # Sort handlers by non-pass-rate desc so the loudest ones come first.
+    $handlerRows = foreach ($handler in $globalTally.Keys) {
+        $counts = $globalTally[$handler]
+        $total = 0
+        foreach ($k in $counts.Keys) { $total += $counts[$k] }
+        $passCount = 0
+        if ($counts.ContainsKey('Pass')) { $passCount = $counts['Pass'] }
+        $nonPassRate = if ($total -gt 0) { 1.0 - ($passCount / $total) } else { 0.0 }
+        [pscustomobject]@{
+            Handler = $handler
+            Counts = $counts
+            Total = $total
+            NonPassRate = $nonPassRate
+        }
+    }
+    $handlerRows = $handlerRows | Sort-Object -Property NonPassRate -Descending
+
+    foreach ($row in $handlerRows) {
+        $cells = foreach ($r in $sortedResults) {
+            if ($row.Counts.ContainsKey($r)) { $row.Counts[$r] } else { 0 }
+        }
+        $rateDisplay = "{0:P0}" -f $row.NonPassRate
+        $summaryMd += "| ``$($row.Handler)`` | " + ($cells -join ' | ') + " | $($row.Total) | $rateDisplay |`n"
+    }
+    $summaryMd += "`n"
+} else {
+    $summaryMd += "## Per-invariant verdict matrix (Phase E.1)`n`n"
+    $summaryMd += "_No handler verdicts captured. Run a sweep produced by an Eval CLI build that includes Phase E.1 (commit d44fc54 or later) to populate this section._`n`n"
 }
 
 Set-Content -Path $summaryPath -Value $summaryMd -Encoding UTF8
