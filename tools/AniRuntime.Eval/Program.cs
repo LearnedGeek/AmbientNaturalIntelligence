@@ -84,11 +84,22 @@ var logLevel = ParseArg(args, "--log-level") switch
     "error" => LogLevel.Error,
     _ => LogLevel.Warning,
 };
+
+// Phase E telemetry: capture Theme O.2 pipeline events (O_HANDLER_START/END,
+// O_PIPELINE_START/END) into an in-memory list so we can emit per-stage gate
+// verdicts in the JSON result without re-parsing stderr.
+var telemetry = new GateTelemetryCapture();
+
 // Route ALL logs to stderr so stdout contains only the JSON result.
 // Harness consumers pipe stdout to JSON-parsing without log-noise contamination.
 services.AddLogging(b =>
 {
     b.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
+    b.AddProvider(telemetry);
+    // The telemetry capture needs Information-level events; clamp the minimum
+    // so we always see O_HANDLER_END regardless of the user-facing log-level
+    // (which controls the console sink only).
+    b.AddFilter<GateTelemetryCapture>("AniRuntime.Loops.Pipeline.CognitivePipeline", LogLevel.Information);
     b.SetMinimumLevel(logLevel);
 });
 AniRuntimeServiceContainer.AddAniRuntimeCore(services, configuration);
@@ -162,6 +173,13 @@ var memAfter = await SnapshotMemoryStateAsync(ctxFactory2);
 result.MemoryStateAfter = memAfter;
 result.MemoryDelta = await ComputeMemoryDeltaAsync(ctxFactory2, memBefore);
 
+// Phase E telemetry: extract per-stage gate verdicts from captured Theme O.2
+// events. Each artifact's verdict chain is bounded by an O_PIPELINE_START /
+// O_PIPELINE_END pair; in between are zero or more O_HANDLER_END events with
+// stage/handler/result/details. We group by ArtifactId so multiple
+// pipeline runs in the same cycle (e.g. inner thought + reply) stay separate.
+result.GateRuns = ExtractGateRuns(telemetry.Events);
+
 Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions
 {
     WriteIndented = true,
@@ -193,6 +211,63 @@ static async Task<MemoryStateSnapshot> SnapshotMemoryStateAsync(IDbContextFactor
         ConversationThreads = totalThreads,
         ClosedConversationRecords = totalClosed,
     };
+}
+
+static List<GateRun> ExtractGateRuns(IReadOnlyList<GateEvent> events)
+{
+    // Group consecutive events by ArtifactId. The runtime emits
+    // O_PIPELINE_START first (with artifact_id), then any number of
+    // O_HANDLER_END events for that pipeline, then O_PIPELINE_END.
+    var runs = new List<GateRun>();
+    GateRun? current = null;
+
+    lock (events)
+    {
+        foreach (var ev in events)
+        {
+            switch (ev.EventName)
+            {
+                case "O_PIPELINE_START":
+                    if (current != null) runs.Add(current);
+                    current = new GateRun
+                    {
+                        ArtifactId = ev.Properties.GetValueOrDefault("ArtifactId", ""),
+                        Producer = ev.Properties.GetValueOrDefault("Producer", ""),
+                        Mode = ev.Properties.GetValueOrDefault("Mode", "Full"),
+                        StartedAt = ev.Timestamp,
+                        HandlerVerdicts = new List<HandlerVerdict>(),
+                    };
+                    break;
+
+                case "O_HANDLER_END":
+                    if (current is not null)
+                    {
+                        current.HandlerVerdicts.Add(new HandlerVerdict(
+                            Stage: ev.Properties.GetValueOrDefault("Stage", ""),
+                            Handler: ev.Properties.GetValueOrDefault("Handler", ""),
+                            Result: ev.Properties.GetValueOrDefault("Result", ""),
+                            DurationMs: int.TryParse(ev.Properties.GetValueOrDefault("Duration", "0"), out var d) ? d : 0,
+                            Details: ev.Properties.GetValueOrDefault("Details", "")));
+                    }
+                    break;
+
+                case "O_PIPELINE_END":
+                    if (current is not null)
+                    {
+                        current.FinalResult = ev.Properties.GetValueOrDefault("Result", "");
+                        current.ShortCircuitHandler = ev.Properties.GetValueOrDefault("Handler", "");
+                        current.ShortCircuitReason = ev.Properties.GetValueOrDefault("Reason", "");
+                        current.EndedAt = ev.Timestamp;
+                        runs.Add(current);
+                        current = null;
+                    }
+                    break;
+            }
+        }
+    }
+
+    if (current is not null) runs.Add(current);
+    return runs;
 }
 
 static async Task<MemoryDelta> ComputeMemoryDeltaAsync(
@@ -302,7 +377,28 @@ internal sealed class EvalResult
     public MemoryStateSnapshot? MemoryStateBefore { get; set; }
     public MemoryStateSnapshot? MemoryStateAfter { get; set; }
     public MemoryDelta? MemoryDelta { get; set; }
+    public List<GateRun> GateRuns { get; set; } = new();
 }
+
+internal sealed class GateRun
+{
+    public required string ArtifactId { get; init; }
+    public required string Producer { get; init; }
+    public required string Mode { get; init; }
+    public DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset? EndedAt { get; set; }
+    public required List<HandlerVerdict> HandlerVerdicts { get; init; }
+    public string FinalResult { get; set; } = "";
+    public string ShortCircuitHandler { get; set; } = "";
+    public string ShortCircuitReason { get; set; } = "";
+}
+
+internal sealed record HandlerVerdict(
+    string Stage,
+    string Handler,
+    string Result,
+    int DurationMs,
+    string Details);
 
 internal sealed record CapturedReplyDto(string Message, DateTimeOffset CapturedAt);
 
