@@ -326,6 +326,7 @@ foreach ($scenario in $scenarios) {
                 memoryStateAfter = $evalJson.MemoryStateAfter
                 memoryDelta = $evalJson.MemoryDelta
                 assertions = @($turnAssertionResults)
+                gateRuns = $evalJson.GateRuns
             })
 
             foreach ($r in $turnAssertionResults) {
