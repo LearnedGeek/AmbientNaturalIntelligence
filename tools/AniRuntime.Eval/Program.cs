@@ -71,6 +71,16 @@ var configBuilder = new ConfigurationBuilder()
         // Emergence must be enabled: RebuildEmergenceCommand is unconditionally
         // registered as an IAdminCommand and depends on EmergenceStore.
         ["Emergence:Enabled"] = "true",
+        // 2026-06-03 — flipped on to test the May 18 "structural role-flip"
+        // hypothesis empirically (per ConversationReplyPipeline.cs:328 and
+        // AniOptions.cs:445 comments, this branch's primary failure mode
+        // — slice-leak / pipeline-parrot cascade — is what we just measured
+        // at 42% self-echo + 29% frontier-verifier short-circuit rates).
+        // When true, the directive block (slice + [FACTS] + CRITICAL +
+        // imperative) folds into the system message instead of being
+        // concatenated onto the user-role current turn. Compared against
+        // the 20260603-070619-full sweep as the directive-in-user baseline.
+        ["Ani:LeanConversationPromptDirectiveInSystem"] = "true",
     });
 
 var configuration = configBuilder.Build();
