@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
@@ -116,6 +117,17 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
             if (ct.IsCancellationRequested)
                 return Task.FromResult(InvariantResult.Pass());
             if (string.IsNullOrWhiteSpace(prior)) continue;
+            // 2026-06-03 — exclude the static safe-acknowledgement from the
+            // self-echo comparison pool. Once any prior turn dispatches the
+            // SafeAck fallback, the SafeAck text enters PriorAniMessages and
+            // every subsequent SafeAck attempt (which is the same constant
+            // string) trips this gate, producing a cascade where the model
+            // keeps SafeAck-ing because its prior SafeAck primes the
+            // detector. The cascade was visible in the 20260603-180719-full
+            // sweep (karen-binding turn 3, others). The static fallback is
+            // never *generated* output we want to vary; it's a structural
+            // dispatch artifact. Skip it explicitly.
+            if (IsSafeAcknowledgement(prior)) continue;
 
             var (isParroting, sharedLen, sharedPhrase) =
                 ParrotingDetector.Check(artifact.Content, prior, VerbatimNGramThreshold);
@@ -139,6 +151,19 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
         }
 
         return Task.FromResult(InvariantResult.Pass());
+    }
+
+    /// <summary>
+    /// Returns true when the prior message is the canonical
+    /// <see cref="GateFallbacks.SafeAcknowledgement"/> dispatched on cascade
+    /// failure. Compared trimmed and case-insensitive. Internal for testing.
+    /// </summary>
+    internal static bool IsSafeAcknowledgement(string prior)
+    {
+        if (string.IsNullOrWhiteSpace(prior)) return false;
+        return prior.Trim().Equals(
+            GateFallbacks.SafeAcknowledgement.Trim(),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
