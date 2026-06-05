@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Models;
 using AniRuntime.Loops.Invariants;
 using FluentAssertions;
@@ -180,5 +181,43 @@ public class SelfEchoInvariantTests
 
         var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
         result.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Evaluate_PriorSafeAcknowledgement_IsSkipped()
+    {
+        // SafeAck cascade pattern surfaced by the 2026-06-03 sweep at
+        // tools/scenarios/results-prod/20260603-180719-full. Once any
+        // prior turn dispatches GateFallbacks.SafeAcknowledgement, that
+        // exact static string enters PriorAniMessages and every
+        // subsequent SafeAck (same constant) trips self-echo on its own
+        // dispatch artifact. The static fallback is not generated
+        // output we want to vary; it's a structural dispatch artifact
+        // and must be excluded from the comparison pool.
+        var artifact = Artifact(
+            content: GateFallbacks.SafeAcknowledgement,
+            priorAniMessages: new[] { GateFallbacks.SafeAcknowledgement });
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+        result.Passed.Should().BeTrue(
+            "the static SafeAcknowledgement must not echo-cascade against itself");
+    }
+
+    [Fact]
+    public async Task Evaluate_PriorSafeAcknowledgement_MixedWithRealPrior_OnlySafeAckIsSkipped()
+    {
+        // Defensive: a real prior Ani message must still trigger the
+        // detector even when the SafeAck phrase is also in the pool. The
+        // SafeAck exclusion is targeted, not a blanket bypass.
+        var realPrior = "i'm tucked in now too just finished shelving the last row of romances";
+        var output    = "yeah okay but really, i just finished shelving the last batch and i'm beat";
+
+        var artifact = Artifact(
+            content: output,
+            priorAniMessages: new[] { GateFallbacks.SafeAcknowledgement, realPrior });
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+        result.Passed.Should().BeFalse(
+            "skipping SafeAck must not weaken the detector against genuine prior content");
     }
 }
