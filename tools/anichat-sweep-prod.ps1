@@ -33,6 +33,23 @@
   Path to a pre-existing ani-memory.db snapshot. If omitted, this script
   takes a fresh snapshot from ani-server via SSH.
 
+  **A/B comparison rule (added 2026-06-05 after the 6/3 vs 6/5 verification
+  confusion):** when running a sweep meant to be compared against a prior
+  sweep — e.g. verifying that a code change moved a metric — point this at
+  the prior sweep's snapshot. Different snapshots = different substrate state =
+  noise that can swamp the signal we're trying to measure. The 6/3 flag-flip
+  A/B was clean because both arms used the same snapshot; the 6/5 verification
+  was noisy because it freshly snapshotted on the day of the run.
+
+.PARAMETER Repetitions
+  Number of times to run each scenario against a fresh DB copy from the base
+  snapshot. Default 1 (single-sample, as before). Use >1 to build a variance
+  baseline: per-run transcript files are suffixed `.run-N` (e.g.
+  `karen-binding.run-2.transcript.json`), and the sweep summary breaks out
+  per-run results so downstream tools can compute mean/stddev. When >1, total
+  wall time scales linearly. Compose with --base-snapshot for clean A/B variance
+  bands (same snapshot across repetitions; only stochasticity between runs).
+
 .PARAMETER OutputDir
   Where to write transcripts. Default: tools/scenarios/results-prod/<timestamp>/.
 
@@ -47,10 +64,14 @@
   Forwarded to the Eval driver. Default: http://ani-server:11434.
 
 .EXAMPLE
+  # Default: fresh snapshot, one sample per scenario
   ./tools/anichat-sweep-prod.ps1
-  ./tools/anichat-sweep-prod.ps1 -ScenariosFile tools/scenarios/baseline.json
-  ./tools/anichat-sweep-prod.ps1 -BaseSnapshot E:/tmp/eval-snapshots/eval-snapshot-20260602-170928.db
-  ./tools/anichat-sweep-prod.ps1 -OnlyScenario baseline-day
+
+  # Verification A/B against a prior sweep — point at THAT sweep's snapshot
+  ./tools/anichat-sweep-prod.ps1 -BaseSnapshot C:/dev/eval/snapshots/ani-snapshot-20260603-180719.db
+
+  # Variance band: 3 samples per scenario, same snapshot, for noise vs signal
+  ./tools/anichat-sweep-prod.ps1 -BaseSnapshot C:/dev/eval/snapshots/ani-snapshot-20260603-180719.db -Repetitions 3
 #>
 
 [CmdletBinding()]
@@ -61,8 +82,14 @@ param(
     [string]$OnlyScenario,
     [string]$EvalExe = "tools/AniRuntime.Eval/bin/Release/net8.0/publish/AniRuntime.Eval.exe",
     [string]$OllamaUrl = "http://ani-server:11434",
-    [int]$TurnTimeoutSeconds = 300
+    [int]$TurnTimeoutSeconds = 300,
+    [int]$Repetitions = 1
 )
+
+if ($Repetitions -lt 1) {
+    Write-Error "Repetitions must be >= 1"
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -134,15 +161,24 @@ if ($OnlyScenario) {
 $summary = @()
 
 foreach ($scenario in $scenarios) {
+  for ($repIdx = 1; $repIdx -le $Repetitions; $repIdx++) {
+    # 2026-06-05 — when Repetitions=1 (default) the file naming and output
+    # shape are identical to the prior single-sample behavior, so existing
+    # diff/aggregate tools keep working. When >1, each run gets a .run-N
+    # suffix on its DB + transcripts, and the summary table carries the run
+    # index so downstream variance analysis can group by scenario.
+    $repSuffix = if ($Repetitions -gt 1) { ".run-$repIdx" } else { "" }
+    $repLabel  = if ($Repetitions -gt 1) { " (run $repIdx of $Repetitions)" } else { "" }
+
     Write-Host ""
-    Write-Host "=== $($scenario.name) ===" -ForegroundColor Cyan
-    if ($scenario.description) {
+    Write-Host "=== $($scenario.name)$repLabel ===" -ForegroundColor Cyan
+    if ($scenario.description -and $repIdx -eq 1) {
         Write-Host $scenario.description -ForegroundColor DarkGray
     }
 
-    # Per-scenario DB copy — isolation between scenarios; memory state
-    # persists across turns WITHIN this scenario.
-    $scenarioDb = Join-Path $OutputDir "$($scenario.name).db"
+    # Per-scenario DB copy — isolation between scenarios AND between
+    # repetitions; memory state persists across turns WITHIN this run.
+    $scenarioDb = Join-Path $OutputDir "$($scenario.name)$repSuffix.db"
     Copy-Item $BaseSnapshot $scenarioDb -Force
 
     $transcript = [System.Collections.ArrayList]@()
@@ -343,11 +379,11 @@ foreach ($scenario in $scenarios) {
     }
 
     # ── Save transcripts ────────────────────────────────────────────────
-    $transcriptJson = Join-Path $OutputDir "$($scenario.name).transcript.json"
+    $transcriptJson = Join-Path $OutputDir "$($scenario.name)$repSuffix.transcript.json"
     ConvertTo-Json -InputObject @($transcript) -Depth 10 | Set-Content -Path $transcriptJson -Encoding UTF8
 
-    $transcriptMd = Join-Path $OutputDir "$($scenario.name).transcript.md"
-    $md = "# $($scenario.name) (prod-pipeline)`n`n"
+    $transcriptMd = Join-Path $OutputDir "$($scenario.name)$repSuffix.transcript.md"
+    $md = "# $($scenario.name)$repLabel (prod-pipeline)`n`n"
     if ($scenario.description) { $md += "_$($scenario.description)_`n`n" }
     if ($aborted) { $md += "> **Aborted after $turnsCompleted turn(s).**`n`n" }
     $md += "---`n`n"
@@ -378,16 +414,19 @@ foreach ($scenario in $scenarios) {
     $assertionsTotal = $assertionResults.Count
     $assertionsPassed = ($assertionResults | Where-Object { $_.Pass }).Count
 
-    $summary += [pscustomobject]@{
+    $summaryEntry = [ordered]@{
         Name = $scenario.name
-        TurnsTotal = $scenario.turns.Count
-        TurnsRan = $turnsCompleted
-        Aborted = $aborted
-        CapturedReplies = $totalCapturedReplies
-        SafeAcks = $totalSafeAcks
-        AssertionsTotal = $assertionsTotal
-        AssertionsPassed = $assertionsPassed
     }
+    if ($Repetitions -gt 1) { $summaryEntry.Run = $repIdx }
+    $summaryEntry.TurnsTotal = $scenario.turns.Count
+    $summaryEntry.TurnsRan = $turnsCompleted
+    $summaryEntry.Aborted = $aborted
+    $summaryEntry.CapturedReplies = $totalCapturedReplies
+    $summaryEntry.SafeAcks = $totalSafeAcks
+    $summaryEntry.AssertionsTotal = $assertionsTotal
+    $summaryEntry.AssertionsPassed = $assertionsPassed
+    $summary += [pscustomobject]$summaryEntry
+  }  # end repetitions loop
 }
 
 # ── Sweep summary ─────────────────────────────────────────────────────
