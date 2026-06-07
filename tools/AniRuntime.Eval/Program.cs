@@ -81,6 +81,20 @@ var configBuilder = new ConfigurationBuilder()
         // concatenated onto the user-role current turn. Compared against
         // the 20260603-070619-full sweep as the directive-in-user baseline.
         ["Ani:LeanConversationPromptDirectiveInSystem"] = "true",
+        // 2026-06-06 — production-parity fix surfaced by the tag-coverage
+        // sweep. Production appsettings.json sets ConsciousSubstrateGistEnabled
+        // = true (line 66), but the eval CLI was silently inheriting the
+        // AniOptions default (false), so every prior eval sweep — including
+        // PR #82's A/B that measured self-echo 42% → 8.5% — ran without
+        // the gist composer firing at all. The dashboard-leak class
+        // documented at 6/5 21:14 production never had a chance to surface
+        // in eval because the producer wasn't running. Mark 2026-06-06 22:06:
+        // "i find it improbable that exactly those numbers are what is
+        // causing the issue. it seems to be more related to prompt structure
+        // on _ollama.ChatAsync. I assume the test harness is providing the
+        // same values?" Answer was: no, the test harness was not. Now it is.
+        ["Ani:ConsciousSubstrateGistEnabled"] = "true",
+        ["Ani:ConsciousSubstrateGistMaxTokens"] = "200",
     });
 
 var configuration = configBuilder.Build();
