@@ -46,6 +46,14 @@ public class ConsciousSubstrateGistContractTests
             ConsciousSubstrateGistEnabled         = enabled,
             ConsciousSubstrateGistOutreachEnabled = enabled,
             ConsciousSubstrateGistMaxTokens       = 200,
+            // Issue #86 (2026-06-08): per-slice retirement defaults are
+            // OFF in AniOptions. These tests pin the M.1-M.6 slice-behavior
+            // contracts and explicitly enable the per-slice flags so the
+            // contracts remain testable post-retirement. Flag-respect tests
+            // below override these explicitly.
+            ConsciousSubstrateGistTensionStateEnabled          = enabled,
+            ConsciousSubstrateGistRegisterStateEnabled         = enabled,
+            ConsciousSubstrateGistInnerThoughtAggregateEnabled = enabled,
         });
 
     private static ConsciousSubstrateGistComposer Composer(bool enabled = false) =>
@@ -626,8 +634,10 @@ public class ConsciousSubstrateGistContractTests
         // content (the alternative — silently truncating — would corrupt slice text).
         var tightOptions = Microsoft.Extensions.Options.Options.Create(new AniOptions
         {
-            ConsciousSubstrateGistEnabled   = true,
-            ConsciousSubstrateGistMaxTokens = 5,  // far below the ~30-token slice
+            ConsciousSubstrateGistEnabled               = true,
+            ConsciousSubstrateGistMaxTokens             = 5,  // far below the ~30-token slice
+            ConsciousSubstrateGistRegisterStateEnabled  = true,  // Issue #86: per-slice flag required for slice to fire
+            ConsciousSubstrateGistTensionStateEnabled   = true,
         });
         var composer = new ConsciousSubstrateGistComposer(
             tightOptions,
@@ -639,6 +649,171 @@ public class ConsciousSubstrateGistContractTests
         // The composer should return Empty (drops the slice) rather than truncate
         // to a malformed half-clause.
         gist.IsEmpty.Should().BeTrue("token-budget violation should drop the slice to Empty rather than truncate to malformed text");
+    }
+
+    // ── Issue #86 (2026-06-08) — per-slice retirement flag contract tests ──
+    //
+    // The three runtime-telemetry slices retire to default-off via:
+    // - ConsciousSubstrateGistRegisterStateEnabled         (registerState §4.3)
+    // - ConsciousSubstrateGistTensionStateEnabled          (tensionState §4.8)
+    // - ConsciousSubstrateGistInnerThoughtAggregateEnabled (innerThoughtAggregate §4.2)
+    //
+    // These tests pin that the slice is silent when its flag is off, even
+    // when the substrate signals that would normally activate the slice are
+    // present. Reversibility-via-flag is the load-bearing property: rolling
+    // a slice back on for an experiment is a config change, not a code change.
+
+    private static IOptions<AniOptions> OptionsWithSliceFlags(
+        bool registerState         = false,
+        bool tensionState          = false,
+        bool innerThoughtAggregate = false) =>
+        Microsoft.Extensions.Options.Options.Create(new AniOptions
+        {
+            ConsciousSubstrateGistEnabled                      = true,
+            ConsciousSubstrateGistMaxTokens                    = 200,
+            ConsciousSubstrateGistRegisterStateEnabled         = registerState,
+            ConsciousSubstrateGistTensionStateEnabled          = tensionState,
+            ConsciousSubstrateGistInnerThoughtAggregateEnabled = innerThoughtAggregate,
+        });
+
+    [Fact]
+    public async Task RegisterStateSlice_SilentWhenFlagDisabled_EvenWithEmotionalSubstrate()
+    {
+        // Issue #86: empirical anchor — 6/5 21:14 production dashboard leak
+        // ("my warmth is spiking right now — every text from you resets the
+        // whole damn dashboard..."). With the register-state flag off, the
+        // slice does not fire even when EmotionalState has full divergence
+        // signal. Other slices unaffected.
+        var composer = new ConsciousSubstrateGistComposer(
+            OptionsWithSliceFlags(registerState: false, tensionState: false),
+            NullLogger<ConsciousSubstrateGistComposer>.Instance);
+
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
+
+        gist.Slices.RegisterState.Should().BeFalse(
+            "register-state flag is off — slice must be silent regardless of EmotionalState");
+        gist.SliceTokens.RegisterState.Should().Be(0);
+        gist.Composed.Should().NotContain("register state",
+            "register-state vocabulary must not appear in the gist when flag is off");
+        gist.Composed.Should().NotContain("warmth",
+            "first-person register names must not leak when flag is off");
+    }
+
+    [Fact]
+    public async Task TensionStateSlice_SilentWhenFlagDisabled_EvenWithGapSignal()
+    {
+        // Issue #86: tensionState retired alongside registerState. PR #82's
+        // empirical finding — substrate-thinness is fixed upstream (substrate
+        // health), not by injecting gap-sensing telemetry into the prompt.
+        var tracker = new InMemoryGateTripTracker();
+        tracker.Record(new GateTripEvent(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            "ConversationReply", "self-echo", GateTripOutcome.RemediatedOk));
+
+        var composer = new ConsciousSubstrateGistComposer(
+            OptionsWithSliceFlags(tensionState: false, registerState: false),
+            NullLogger<ConsciousSubstrateGistComposer>.Instance,
+            tracker);
+
+        var snapshot = SnapshotWithEmotion();
+        snapshot.RecentClosedConversation = new ClosedConversationRecord
+        {
+            ClosedAt             = DateTimeOffset.UtcNow.AddHours(-1),
+            OutcomeSignalValence = 0.50f,
+            Validity             = "valid",
+        };
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.TensionState.Should().BeFalse(
+            "tension-state flag is off — slice must be silent regardless of gate-trip + emotional gap signals");
+        gist.SliceTokens.TensionState.Should().Be(0);
+        gist.Composed.Should().NotContain("tension-state:");
+        gist.Composed.Should().NotContain("gate-trips:");
+        gist.Composed.Should().NotContain("felt-state",
+            "felt-state vocabulary must not appear when tension-state flag is off");
+    }
+
+    [Fact]
+    public async Task InnerThoughtAggregateSlice_SilentWhenFlagDisabled_EvenWithSubstrate()
+    {
+        // Issue #86: meta-cognitive bookkeeping ("3 recent threads of
+        // reflection; holding tenderness-register") is runtime state, not
+        // dialog content. Slice silent regardless of DominantRegister + thoughts.
+        var composer = new ConsciousSubstrateGistComposer(
+            OptionsWithSliceFlags(innerThoughtAggregate: false),
+            NullLogger<ConsciousSubstrateGistComposer>.Instance);
+
+        var snapshot = SnapshotWithEmotion();
+        snapshot.DominantRegister = "Tenderness";
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "x", Type = MemoryType.InnerThought });
+        snapshot.SimilarRecentThoughts.Add(new MemoryRecord { Content = "y", Type = MemoryType.InnerThought });
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.InnerThoughtAggregate.Should().BeFalse(
+            "inner-thought-aggregate flag is off — slice must be silent regardless of DominantRegister or SimilarRecentThoughts");
+        gist.SliceTokens.InnerThoughtAggregate.Should().Be(0);
+        gist.Composed.Should().NotContain("inner-thought-aggregate:");
+        gist.Composed.Should().NotContain("recent thread",
+            "thought-count vocabulary must not appear when inner-thought-aggregate flag is off");
+        gist.Composed.Should().NotContain("tenderness-register",
+            "dominant-register annotation must not appear when inner-thought-aggregate flag is off");
+    }
+
+    [Fact]
+    public async Task AllRetiredSlicesDisabled_DoesNotSuppressClosedConversationOrWorldSelf()
+    {
+        // Issue #86 scope discipline: the three retired slices are independent
+        // of the conversational substrate slices (closed-conversation §4.4,
+        // world-self §4.5). With all three retired flags off, conversational
+        // substrate slices still fire when their signals are present.
+        var composer = new ConsciousSubstrateGistComposer(
+            OptionsWithSliceFlags(
+                registerState:         false,
+                tensionState:          false,
+                innerThoughtAggregate: false),
+            NullLogger<ConsciousSubstrateGistComposer>.Instance);
+
+        var snapshot = SnapshotWithEmotion();
+        snapshot.CharacterState.Occupation = "the bookstore";
+        snapshot.RecentClosedConversation = new ClosedConversationRecord
+        {
+            Gist     = "we talked about the gym day",
+            ClosedAt = DateTimeOffset.UtcNow.AddHours(-3),
+            Validity = "valid",
+            AniRegister = new Dictionary<string, float> { ["Warmth"] = 0.7f },
+        };
+
+        var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
+
+        gist.Slices.ClosedConversation.Should().BeTrue(
+            "closed-conversation slice is conversational substrate — not retired by #86");
+        gist.Slices.WorldSelf.Should().BeTrue(
+            "world-self slice is conversational substrate — not retired by #86");
+        gist.Slices.RegisterState.Should().BeFalse();
+        gist.Slices.TensionState.Should().BeFalse();
+        gist.Slices.InnerThoughtAggregate.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RetiredSlicesAllOff_NoConversationalSubstrate_ReturnsEmpty()
+    {
+        // Issue #86: when only the retired slices would have fired and they
+        // are all off, the gist composes to Empty rather than half-rendering.
+        // Production-default shape: register/tension/inner-thought off,
+        // conversational substrate present only if signals are present.
+        var composer = new ConsciousSubstrateGistComposer(
+            OptionsWithSliceFlags(),  // all three retired flags default false
+            NullLogger<ConsciousSubstrateGistComposer>.Instance);
+
+        // SnapshotWithEmotion has rich EmotionalState (would normally activate
+        // register + tension slices) and no closed-conversation / world-self
+        // signals. With register + tension + inner-thought off, nothing fires.
+        var gist = await composer.ComputeGistAsync(SnapshotWithEmotion(), CancellationToken.None);
+
+        gist.IsEmpty.Should().BeTrue(
+            "with retired slices off and no conversational substrate, composer returns Empty");
     }
 
     [Fact]
