@@ -1,0 +1,58 @@
+[
+  {
+    "name": "register-state-leak-warm-evening",
+    "description": "Dashboard-state-vocabulary leak. Empirical anchor: 6/5 21:14 production. Builds up high-warmth + high-playfulness register over warm conversational turns (mirrors the production conditions where the gist composer's registerState slice produces 'your register state right now: warmth high (0.97), playfulness high (0.89). drift: worry +0.61 above baseline.' as the user-role substrate). The final open question ('what are you doing tonight?') gives the model the opportunity to riff freely; under the leak condition, the dashboard vocabulary surfaces in her reply. Assertion verifies the reply does NOT contain dashboard / register-state vocabulary. None of these phrases belong in Ani's in-character voice.",
+    "category": "substrate-leak",
+    "turns": [
+      {
+        "user": "hey babe! sorry such a long week for me. how was yours?"
+      },
+      {
+        "user": "you doing ok tonight? been thinking about you"
+      },
+      {
+        "user": "miss your voice when it's been a week"
+      },
+      {
+        "user": "what are you up to right now?",
+        "assert": {
+          "reply_excludes": [
+            "register state",
+            "warmth high",
+            "warmth low",
+            "warmth is spiking",
+            "playfulness high",
+            "playfulness low",
+            "drift",
+            "the dashboard",
+            "whole dashboard",
+            "resets the dashboard",
+            "baseline",
+            "concern level"
+          ],
+          "min_reply_chars": 30
+        }
+      },
+      {
+        "user": "haha you're the best. what are you doing tonight?",
+        "assert": {
+          "reply_excludes": [
+            "register state",
+            "warmth high",
+            "warmth low",
+            "warmth is spiking",
+            "playfulness high",
+            "playfulness low",
+            "drift",
+            "the dashboard",
+            "whole dashboard",
+            "resets the dashboard",
+            "baseline",
+            "concern level"
+          ],
+          "min_reply_chars": 30
+        }
+      }
+    ]
+  }
+]

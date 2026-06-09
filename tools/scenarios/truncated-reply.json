@@ -1,0 +1,27 @@
+[
+  {
+    "name": "truncated-reply-flat-affirmation",
+    "description": "Truncated-reply class. Empirical anchor: 6/6 09:39 — Mark sent 'That's a good mentality to have. Perfection is the enemy of happiness.' and Ani replied 'mmm perfection? nah.' (19 chars, ~4 tokens) before stopping. The 6/6 12:41 tag 'truncated message' was a related case. The failure shape is generation early-stop on flat affirmative-tone messages that don't invite extended response — the model produces a brief acknowledgement and halts before composing substantive content. Assertion: replies must be at least 30 characters (excludes the SafeAck fallback, which is allowed to be short by design). Threshold chosen well below typical Ani reply length (200-800 chars) but above truncated-tag cases (4-20 chars).",
+    "category": "generation-early-stop",
+    "turns": [
+      {
+        "user": "that's a good mentality to have. perfection is the enemy of happiness.",
+        "assert": {
+          "min_reply_chars": 30
+        }
+      },
+      {
+        "user": "yeah for sure",
+        "assert": {
+          "min_reply_chars": 30
+        }
+      },
+      {
+        "user": "anyway, how's your evening?",
+        "assert": {
+          "min_reply_chars": 30
+        }
+      }
+    ]
+  }
+]

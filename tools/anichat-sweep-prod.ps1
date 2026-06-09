@@ -334,6 +334,29 @@ foreach ($scenario in $scenarios) {
                     })
                 }
 
+                # min_reply_chars — guards against generation early-stop.
+                # SafeAck (no reply dispatched) is N/A by design: the scenario
+                # is testing model-produced text length, not whether dispatch
+                # happened. Use is_safeack separately if you want to assert
+                # dispatch shape.
+                if ($null -ne $turnAssertions.min_reply_chars) {
+                    $expected = [int]$turnAssertions.min_reply_chars
+                    if ($null -eq $reply -or $reply -eq "") {
+                        [void]$turnAssertionResults.Add([pscustomobject]@{
+                            Name = "min_reply_chars >= $expected"
+                            Pass = $true
+                            Actual = "N/A (no reply — SafeAck or suppressed)"
+                        })
+                    } else {
+                        $actualLen = $reply.Length
+                        [void]$turnAssertionResults.Add([pscustomobject]@{
+                            Name = "min_reply_chars >= $expected"
+                            Pass = ($actualLen -ge $expected)
+                            Actual = "$actualLen chars"
+                        })
+                    }
+                }
+
                 # Print per-turn assertion results
                 foreach ($r in $turnAssertionResults) {
                     $tag = if ($r.Pass) { "PASS" } else { "FAIL" }
