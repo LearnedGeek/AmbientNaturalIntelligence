@@ -246,8 +246,11 @@ public class TensionStateSliceContractTests
         var composer = new ConsciousSubstrateGistComposer(
             Microsoft.Extensions.Options.Options.Create(new AniOptions
             {
-                ConsciousSubstrateGistEnabled   = true,
-                ConsciousSubstrateGistMaxTokens = 200,
+                ConsciousSubstrateGistEnabled               = true,
+                ConsciousSubstrateGistMaxTokens             = 200,
+                // Issue #86: per-slice flags required for composition path
+                ConsciousSubstrateGistTensionStateEnabled   = true,
+                ConsciousSubstrateGistRegisterStateEnabled  = true,
             }),
             NullLogger<ConsciousSubstrateGistComposer>.Instance,
             tracker);

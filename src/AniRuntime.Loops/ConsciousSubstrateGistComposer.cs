@@ -80,16 +80,30 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         var maxTokens = _options.Value.ConsciousSubstrateGistMaxTokens;
 
         // §4.8 tension-state slice (FIRST in ordering per §4.6 + Q9).
-        // Load-bearing safety property: gives the model awareness of its
-        // own gap-sensing so the regen has fresh tension-state material
-        // to reach for instead of prior-Ani-turns when substrate is thin.
-        var tensionSlice = ComposeTensionStateSlice(
-            emotional,
-            snapshot.RecentClosedConversation,
-            _gateTripTracker?.GetRecent(GateTripLookback));
+        // Retired 2026-06-08 (Issue #86, default-off via
+        // ConsciousSubstrateGistTensionStateEnabled): the original design
+        // rationale ("gives the model awareness of its own gap-sensing so
+        // the regen has fresh tension-state material to reach for instead
+        // of prior-Ani-turns when substrate is thin") was the same shape
+        // PR #82 rejected — fix substrate-thinness upstream, don't inject
+        // telemetry as compensation. Compose only when the flag is on; flag
+        // defaults off so the slice is silent in production.
+        var tensionSlice = _options.Value.ConsciousSubstrateGistTensionStateEnabled
+            ? ComposeTensionStateSlice(
+                emotional,
+                snapshot.RecentClosedConversation,
+                _gateTripTracker?.GetRecent(GateTripLookback))
+            : string.Empty;
 
         // §4.3 register-state slice (SECOND in ordering).
-        var registerSlice = ComposeRegisterStateSlice(emotional);
+        // Retired 2026-06-08 (Issue #86, default-off via
+        // ConsciousSubstrateGistRegisterStateEnabled): the literal
+        // Friday-night dashboard-vocabulary leak (6/5 21:14 production).
+        // Runtime emotional-state values have no business appearing as
+        // second-person prose in the user-role current turn.
+        var registerSlice = _options.Value.ConsciousSubstrateGistRegisterStateEnabled
+            ? ComposeRegisterStateSlice(emotional)
+            : string.Empty;
 
         // §4.4 contact-state slice (Theme M Phase M.4, May 28, 2026).
         // Reads ContactStatePerceptionSource outputs from snapshot.Perceptions
@@ -104,18 +118,20 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
         var contactStateSlice = ComposeContactStateSlice(snapshot.Perceptions);
 
         // §4.2 inner-thought-aggregate slice (Theme M Phase M.5-lite,
-        // May 28, 2026). The full §4.2 design calls for LLM paraphrase
-        // generation across recent inner thoughts with cosine-distance
-        // anti-verbatim checks — that's M.5-full, deferred. M.5-lite
-        // ships the slice using PRE-AGGREGATED snapshot fields
-        // (DominantRegister + SimilarRecentThoughts count) — zero parrot
-        // risk because the source data is already synthesized aggregate
-        // signal, not raw inner-thought text. Reduced richness vs the
-        // §4.2 spec but immediate substrate-thinness contribution and
-        // safe by construction.
-        var innerThoughtSlice = ComposeInnerThoughtAggregateSlice(
-            snapshot.DominantRegister,
-            snapshot.SimilarRecentThoughts);
+        // May 28, 2026). Retired 2026-06-08 (Issue #86, default-off via
+        // ConsciousSubstrateGistInnerThoughtAggregateEnabled): meta-
+        // cognitive bookkeeping ("3 recent threads of reflection; holding
+        // tenderness-register") is runtime-state-as-content, not dialog.
+        // The "dominant register" portion is also misplaced registerState
+        // content. The richer emotional-arc tracking this slice was reaching
+        // toward belongs in the vibe-loop layer (#43 request/response
+        // register coupling), not as a flattened one-line slice in the
+        // conversation prompt.
+        var innerThoughtSlice = _options.Value.ConsciousSubstrateGistInnerThoughtAggregateEnabled
+            ? ComposeInnerThoughtAggregateSlice(
+                snapshot.DominantRegister,
+                snapshot.SimilarRecentThoughts)
+            : string.Empty;
 
         // §4.4 contact-state slice (Theme M Phase M.4, May 28, 2026).
         // Reads ContextSnapshot.RecentClosedConversation (Vibe Loop V1.4

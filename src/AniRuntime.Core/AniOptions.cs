@@ -646,6 +646,58 @@ public class AniOptions
     public bool   ConsciousSubstrateGistOutreachEnabled { get; set; } = false;
     public int    ConsciousSubstrateGistMaxTokens       { get; set; } = 200;
 
+    // Per-slice retirement flags (Issue #86, 2026-06-08).
+    //
+    // Empirical anchor: 6/5 21:14 production reply where Ani said *"register
+    // state? yeah... my warmth is spiking right now — every text from you
+    // resets the whole damn dashboard. but playfulness high?? huh."* — the
+    // ConsciousSubstrateGistComposer's registerState slice was rendering
+    // runtime emotional-state values as second-person dashboard prose and
+    // injecting them into the user-role current turn of the reply prompt.
+    // The model read the dashboard prose as Mark's current turn content and
+    // surfaced the vocabulary back as in-character speech.
+    //
+    // Architectural framing (Mark 2026-06-08): the runtime maintains state
+    // (register/emotion/vibe/contact/tension) as Element 1 — it shapes
+    // behavior via retrieval bias and training-time conditioning. That state
+    // must NOT cross into the conversation prompt as prose the model reads
+    // as Element 2 (dialog content). Runtime telemetry has no business
+    // appearing in the model's input as content.
+    //
+    // Three slices identified as runtime telemetry rather than conversational
+    // substrate. Retired here while leaving the compose-slice code in place
+    // so retirement is reversible (a flag flip restores the prior shape if
+    // any turn out to be load-bearing for a use case we didn't anticipate).
+    //
+    // - **registerState (§4.3):** the literal Friday-night leak. Numeric
+    //   warmth/energy/worry/playfulness values + drift + baseline rendered
+    //   as second-person prose. Even the simplified "dominant register:
+    //   Tenderness" form is too narrow against the multi-register richness
+    //   of the actual tracking layer.
+    // - **tensionState (§4.8):** gate-trip counts + felt-vs-baseline
+    //   divergence narrated as prose. The design rationale ("gives the
+    //   model awareness of its own gap-sensing so the regen has fresh
+    //   tension-state material to reach for") is the same shape PR #82
+    //   rejected: fix substrate-thinness upstream, don't inject telemetry
+    //   as compensation.
+    // - **innerThoughtAggregate (§4.2):** meta-cognitive bookkeeping
+    //   ("3 recent threads of reflection; holding tenderness-register"). The
+    //   "dominant register" portion is misplaced registerState content. The
+    //   emotional-arc tracking the slice was reaching toward belongs in the
+    //   vibe-loop layer (#43), not as a flattened one-line slice in the
+    //   conversation prompt.
+    //
+    // What stays (closedConversation, worldSelf): actual dialog substrate
+    // and Ani's canonical world layer — content that IS conversational, not
+    // telemetry-as-content.
+    //
+    // contactState retirement is tracked separately under #85 because it
+    // depends on the temporal-awareness audit (3-day-stale "Mark at the gym"
+    // surfacing as current state).
+    public bool   ConsciousSubstrateGistRegisterStateEnabled         { get; set; } = false;
+    public bool   ConsciousSubstrateGistTensionStateEnabled          { get; set; } = false;
+    public bool   ConsciousSubstrateGistInnerThoughtAggregateEnabled { get; set; } = false;
+
     // Theme M follow-on (2026-05-14) — epistemic-asymmetry substrate framing
     // via IEpistemicSubstrateRenderer. Distinct from the IConsciousSubstrateGist
     // axis above: that interface ships first-person internal-state slices
