@@ -379,8 +379,15 @@ public class PromptBuilderTests
     // attribution is structural, not model-side.
 
     [Fact]
-    public void BuildOutreachMessagePrompt_J2_PrefersStructuredSummary_OverProse()
+    public void BuildOutreachMessagePrompt_G3_StructuredSummary_RendersCountLineNotVerbatim()
     {
+        // G.3 (2026-06-11) — supersedes the historic J.2 test that pinned the
+        // verbatim Mark/Ani turn rendering in the no-epistemic-renderer fallback.
+        // The fallback was a leak vector (#92 §E + §G.3): structured summaries
+        // surfaced as raw "Mark: <text> / Ani: <text>" turn content, letting
+        // the model lift phrasings. The fallback now renders a single count
+        // line. The structured summary STILL takes precedence over the prose
+        // form (that's the J.2 invariant) — the prose blob must not appear.
         var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
         var snapshot = MinimalSnapshot();
         snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
@@ -397,20 +404,25 @@ public class PromptBuilderTests
             recentThought: "thinking about pillowy potatoes",
             reasoning: "");
 
-        user.Should().Contain("Mark (");
-        user.Should().Contain("Hey good morning! How is your day looking?");
-        user.Should().Contain("Ani (");
-        user.Should().Contain("your morning looks peaceful");
+        user.Should().Contain("active thread with Mark: 2 recent turn(s)",
+            "G.3: count line surfaces, not verbatim turns");
+        user.Should().NotContain("Hey good morning! How is your day looking?",
+            "G.3 invariant: verbatim Mark turn MUST NOT appear in fallback rendering");
+        user.Should().NotContain("your morning looks peaceful",
+            "G.3 invariant: verbatim Ani turn MUST NOT appear in fallback rendering");
         user.Should().NotContain("prose form should be ignored",
-            "structured form takes precedence — the prose blob must not appear when structured is present");
+            "J.2 invariant preserved: structured form takes precedence; the prose blob does not appear");
     }
 
     [Fact]
-    public void BuildOutreachMessagePrompt_J2_StructuredSummary_FramesAttributionExplicitly()
+    public void BuildOutreachMessagePrompt_G3_StructuredSummary_NoAttributionFramingNeeded()
     {
-        // The framing line must be present so the composition model has an
-        // explicit instruction to keep speaker boundaries intact, not just
-        // tagged data it could still confuse.
+        // G.3 (2026-06-11) — supersedes the historic J.2 "framing line"
+        // test. Previously the fallback included an attribution warning
+        // ("Each line is tagged with who said it; do not lift Mark's
+        // exact words") that paired with the verbatim turn dump. With the
+        // turn dump gone, the framing warning is gone too — the model
+        // can't lift what isn't there.
         var t1 = DateTimeOffset.UtcNow.AddMinutes(-2);
         var snapshot = MinimalSnapshot();
         snapshot.StructuredConversationSummary = new StructuredConversationSummary(
@@ -422,8 +434,12 @@ public class PromptBuilderTests
             recentThought: "wandering",
             reasoning: "");
 
-        user.Should().Contain("Each line is tagged with who said it");
-        user.Should().Contain("do not lift Mark's exact words");
+        user.Should().Contain("active thread with Mark: 1 recent turn(s)",
+            "G.3: count-line direction surfaces the activity without quoting");
+        user.Should().NotContain("any plans?",
+            "G.3 invariant: verbatim turn content MUST NOT appear");
+        user.Should().NotContain("Each line is tagged",
+            "G.3: attribution-warning framing is no longer needed because nothing verbatim is rendered");
     }
 
     [Fact]
@@ -506,8 +522,13 @@ public class PromptBuilderTests
     // ── Theme J Phase J.2 step 5 — outreach decision prompt uses structured ──
 
     [Fact]
-    public void BuildOutreachPrompt_J2_PrefersStructuredSummary_OverProse()
+    public void BuildOutreachPrompt_G3_StructuredSummary_RendersCountLineNotVerbatim()
     {
+        // G.3 (2026-06-11) — supersedes the historic J.2 test for the decision
+        // path. The fallback now renders the active-thread substrate as a count
+        // line instead of verbatim turn content. Issue #92 §E + §G.3. The J.2
+        // invariant that prose form yields to structured is preserved (the
+        // prose blob still doesn't appear).
         var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
         var snapshot = MinimalSnapshot();
         snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
@@ -522,11 +543,14 @@ public class PromptBuilderTests
         var (_, user) = PromptBuilder.BuildOutreachPrompt(
             snapshot, recentThought: "wondering how he's doing");
 
-        user.Should().Contain("Mark (");
-        user.Should().Contain("rough day at work");
-        user.Should().Contain("Ani (");
-        user.Should().Contain("i'm here when you're ready");
-        user.Should().NotContain("prose form should be ignored");
+        user.Should().Contain("active thread with Mark: 2 recent turn(s)",
+            "G.3: count line replaces verbatim turn dump in decision path");
+        user.Should().NotContain("rough day at work",
+            "G.3 invariant: verbatim Mark turn MUST NOT appear in fallback");
+        user.Should().NotContain("i'm here when you're ready",
+            "G.3 invariant: verbatim Ani turn MUST NOT appear in fallback");
+        user.Should().NotContain("prose form should be ignored",
+            "J.2 invariant preserved: structured form takes precedence over prose");
     }
 
     [Fact]
@@ -632,12 +656,14 @@ public class PromptBuilderTests
     }
 
     [Fact]
-    public void BuildOutreachMessagePrompt_V14_FallsBackToStructuredSummary_WhenClosedRecordAbsent()
+    public void BuildOutreachMessagePrompt_G3_FallsBackToStructuredSummary_AsCountLine()
     {
-        // When the most recent thread is still active (or no closed record
-        // exists yet), the StructuredConversationSummary remains the
-        // load-bearing surface. V1.4 only retires the LEGACY prose surface;
-        // J.2's structured surface stays.
+        // G.3 (2026-06-11) — supersedes the V1.4 test. When the most recent
+        // thread is still active and no closed record exists, the structured
+        // summary fallback is invoked. After G.3 it renders a count line, not
+        // verbatim turn content. The surface still exists (J.2 invariant
+        // preserved — the structured form is the load-bearing fallback when
+        // ClosedConversationRecord is absent) but the leak vector is closed.
         var t1 = DateTimeOffset.UtcNow.AddMinutes(-2);
         var snapshot = MinimalSnapshot();
         snapshot.RecentClosedConversation = null;
@@ -648,8 +674,10 @@ public class PromptBuilderTests
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, recentThought: "wandering", reasoning: "");
 
-        user.Should().Contain("Mark (");
-        user.Should().Contain("any plans?");
+        user.Should().Contain("active thread with Mark: 1 recent turn(s)",
+            "G.3: count-line direction surfaces the active thread substrate");
+        user.Should().NotContain("any plans?",
+            "G.3 invariant: verbatim turn content MUST NOT appear in fallback rendering");
     }
 
     [Fact]

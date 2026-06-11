@@ -201,6 +201,15 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
         }
 
         // Recent conversation rendering: closed gist (preferred) or active-thread structured.
+        //
+        // G.3 (2026-06-11) — when epistemicRenderer is null, the fallback paths
+        // historically surfaced (a) the full closed-conversation gist prose and
+        // (b) the structured-summary turn-by-turn transcript. Both were verbatim
+        // leak vectors at the prompt-construction layer. The renderer paths
+        // (FC-004 framed) are correct; the fallbacks now match the direction-
+        // shape principle — a single short prompt naming WHAT was discussed
+        // without quoting HOW. Production runs with EpistemicFramingEnabled=true
+        // (renderer non-null) so these fallbacks are defensive. Issue #92 §G.3.
         var closed = snapshot.RecentClosedConversation;
         var structured = snapshot.StructuredConversationSummary;
         if (closed is not null && !string.IsNullOrWhiteSpace(closed.Gist))
@@ -212,6 +221,15 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
             }
             else
             {
+                // G.3 (2026-06-11) — closed-conversation fallback preserves the
+                // RenderClosedConversationContextComposition output: gist + Mark
+                // register names + Ani register names + topic keywords. The
+                // register/topic blocks are already direction-shape (names only,
+                // no phrasings). The gist content itself is bounded by G.2b
+                // upstream — new gists are under-80-char direction lines, so
+                // surfacing the renderer output no longer leaks narrative
+                // phrasings. Old DB records still surface their original
+                // verbose form; that's a one-way drift that ages out.
                 sections.Add($"\nIMPORTANT — You recently talked with {contact}. The relational gist is paraphrased below; the verbatim transcript is intentionally not included to avoid lifting {contact}'s words into your own message:");
                 sections.Add(PromptBuilder.RenderClosedConversationContextComposition(closed, contact));
             }
@@ -226,8 +244,11 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
             }
             else
             {
-                sections.Add($"\nIMPORTANT — You recently talked with {contact}. Each line is tagged with who said it; do not lift {contact}'s exact words into your own message:");
-                sections.Add(structured.ToPromptString());
+                // G.3 fallback: render the structured summary as a COUNT line,
+                // not as a turn-by-turn transcript. ToPromptString() was
+                // formatting raw "Mark: X / Ani: Y" content that surfaced
+                // prior Ani turns as verbatim context the model could lift.
+                sections.Add($"\nactive thread with {contact}: {structured.Turns.Count} recent turn(s) — already in flight, you may follow up on the topic.");
             }
             sections.Add($"Follow up on this conversation if possible. A natural follow-up (\"how did it go?\", \"feeling better?\") is ALWAYS better than an unrelated message.");
         }
@@ -240,6 +261,15 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
         }
         else
         {
+            // G.3 (2026-06-11) — recent outreach is now a COUNT + timing line.
+            // Previously this surfaced 3 verbatim prior outreach messages via
+            // FormatMemoryWithTime, which let qwen3:14b lift phrasings into
+            // the new outreach (#92 §F). The model can be told "you've sent
+            // N outreaches recently, last one was Xh ago, don't be repetitive"
+            // without seeing the actual text of those outreaches. The anti-
+            // parrot + self-echo gates catch any verbatim run anyway; this
+            // line just nudges the model away from sending another similar
+            // outreach when several already went out.
             var outreachPrefix = $"{cs.Name} reached out: ";
             var recentOutreach = snapshot.RecentMemory
                 .Where(m => m.Type == MemoryType.Episodic && m.Content.StartsWith(outreachPrefix))
@@ -248,17 +278,14 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
 
             if (recentOutreach.Count > 0)
             {
-                sections.Add($"\nMessages you already sent recently (do NOT repeat these topics or phrases):");
-                sections.AddRange(recentOutreach.Select(m =>
-                {
-                    var stripped = new MemoryRecord
-                    {
-                        Content    = m.Content[outreachPrefix.Length..].Trim(),
-                        OccurredAt = m.OccurredAt,
-                        Type       = m.Type,
-                    };
-                    return $"  - {PromptBuilder.FormatMemoryWithTime(stripped)}";
-                }));
+                var n = recentOutreach.Count;
+                var mostRecent = recentOutreach.Max(m => m.OccurredAt);
+                var howAgo = (DateTimeOffset.UtcNow - mostRecent).TotalHours;
+                var ago = howAgo < 1 ? "less than an hour ago" : $"about {(int)Math.Round(howAgo)}h ago";
+                var noun = n == 1 ? "outreach" : "outreaches";
+                sections.Add(
+                    $"\nrecent activity: you've sent {n} {noun} in the recent window (most recent {ago}). " +
+                    "Pick a fresh angle — do not echo the topic or phrasing of your last outreach.");
             }
         }
 

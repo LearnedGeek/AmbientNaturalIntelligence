@@ -56,6 +56,11 @@ public sealed class OutreachPromptCommand : IPromptCommand<OutreachPromptInput>
             $"Your most recent thought: {recentThought}",
         };
 
+        // G.3 (2026-06-11) — when epistemicRenderer is null, fall back to a
+        // direction-shape line rather than rendering the full closed-conversation
+        // prose or the structured-summary turn-by-turn transcript. Issue #92 §G.3.
+        // Production runs with EpistemicFramingEnabled=true (renderer non-null),
+        // so the fallback is defensive against future config drift.
         var decisionClosed = snapshot.RecentClosedConversation;
         var decisionStructured = snapshot.StructuredConversationSummary;
         if (decisionClosed is not null && !string.IsNullOrWhiteSpace(decisionClosed.Gist))
@@ -67,6 +72,11 @@ public sealed class OutreachPromptCommand : IPromptCommand<OutreachPromptInput>
             }
             else
             {
+                // G.3 (2026-06-11) — preserves RenderClosedConversationContextDecision
+                // (gist + register direction-names). The gist text is bounded
+                // upstream by G.2b's direction-shape summarizer. Old verbose
+                // gists in the DB still surface their original form; one-way
+                // drift that ages out.
                 context.Add(PromptBuilder.RenderClosedConversationContextDecision(decisionClosed, contact));
             }
         }
@@ -74,7 +84,7 @@ public sealed class OutreachPromptCommand : IPromptCommand<OutreachPromptInput>
         {
             var threadBlock = epistemicRenderer is not null
                 ? epistemicRenderer.RenderActiveThreadSlice(decisionStructured, contact)
-                : $"You recently talked with {contact} (each line tagged with who said it):\n{decisionStructured.ToPromptString()}";
+                : $"active thread with {contact}: {decisionStructured.Turns.Count} recent turn(s) in flight.";
             context.Add(threadBlock);
         }
 
