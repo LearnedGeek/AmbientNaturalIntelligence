@@ -893,6 +893,25 @@ public class OllamaOptions
     public float MemoryGroundedTemperature { get; set; } = 0.3f;
     public float CreativeTemperature       { get; set; } = 0.8f;
 
+    // Sampling: anti-recycling penalty applied to /api/chat requests.
+    //
+    // Empirical anchor (2026-06-10 21:17): with ChatModel swapped to qwen3:14b
+    // (generic, no Ani fine-tune) Ani regressed to verbatim recycling under an
+    // emotionally-charged inbound — first attempt repeated an 11-token run from
+    // a prior reply, remediation regenerated a 79-token verbatim run from
+    // another prior reply, self-echo failed re-eval, fell through to SafeAck.
+    //
+    // Root cause: the conversation path was sending no `options` block to Ollama,
+    // so qwen3:14b's default `repeat_penalty` (1.1) was governing sampling. That's
+    // too low for a model without anti-repetition fine-tuning. The Ani-fine-tuned
+    // Llama (ani-v7-conversation) had trained anti-repetition habits; the generic
+    // Qwen does not.
+    //
+    // 1.15 starts modest: enough to discourage near-verbatim regeneration without
+    // forcing the model to avoid natural repetition of names, key referents, or
+    // common conversational connectors. Tune up cautiously if recycling persists.
+    public float ChatRepeatPenalty { get; set; } = 1.15f;
+
     public string ResolvedInnerMonologueModel => InnerMonologueModel ?? ChatModel;
 }
 
