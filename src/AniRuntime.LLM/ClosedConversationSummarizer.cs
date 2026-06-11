@@ -510,28 +510,44 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
     /// </summary>
     internal static (string System, string User) BuildGistPrompt(ConversationThread thread)
     {
-        // J.5e (May 1, 2026): the verbatim-7-token rule is now defined ONCE
-        // in AntiParrotPromptFragments and referenced by both V1.2 (here)
-        // and the gate's AntiParrotInvariant. Single source of truth.
+        // G.2 (2026-06-11) — direction-shape gist (Issue #92 §G.2).
+        //
+        // The historic prompt asked for "1–2 sentences" with paraphrase
+        // constraints. Even paraphrased, the LLM produced narrative gists
+        // ("Ani checked in on Mark after Spanish class, hoping he survived
+        // imperfect vs preterite wars") that minted new Ani-shaped phrasings.
+        // Those gists then re-entered as substrate via the closedConversation
+        // slice and the model could lift the new phrasings into outbound text.
+        //
+        // The direction-shape prompt asks for a single short clause naming
+        // the topic + emotional shift, in a constrained format that has no
+        // room for invented prose. Example expected outputs:
+        //   - "Spanish class concern — tender check-in"
+        //   - "bookstore quiet — warm reverie"
+        //   - "evening plans — playful banter"
+        //
+        // The anti-parrot ("paraphrase", "DO NOT quote", "7 or more
+        // consecutive words") + source-attribution constraints stay as
+        // single-source-of-truth references for J.5e/J.5h consistency.
         var noVerbatim  = AntiParrotPromptFragments.NoVerbatimContactTurnsRule("Mark");
-
-        // J.5h (Issue #47, 2026-05-21): class-wide attribution rule.
-        // Same single-source-of-truth pattern as the anti-parrot rule;
-        // the SourceAttributionInvariant on the gate enforces the same
-        // rule post-hoc when the LLM ignores the instruction.
         var attribution = SourceAttributionPromptFragments.AttributionRule("Mark", "Ani");
 
         var system = $$"""
-            You are a paraphrase-only summariser. Produce a 1–2 sentence summary of the conversation between Mark (the contact) and Ani.
+            You are a paraphrase-only summariser. Produce a single SHORT direction line that names the topic of the conversation and the emotional shift between Mark (the contact) and Ani.
+
+            FORMAT (required): "<topic> — <emotional shift>"
+              Examples:
+                Spanish class concern — tender check-in
+                bookstore quiet — warm reverie
+                evening plans — playful banter
 
             HARD CONSTRAINTS:
             - {{noVerbatim}}
             - {{attribution}}
             - DO NOT use direct speech ("she said", "he asked"). Use paraphrase.
-            - Focus on what shifted EMOTIONALLY between them, not what was literally said.
-            - 1 to 2 sentences. No more.
-            - Refer to the participants as "Mark" and "Ani" by name.
-            - Plain prose. No bullet points, no labels, no JSON, no quotation marks.
+            - Under 80 characters total.
+            - One line. No prose. No second sentence. No JSON. No quotation marks.
+            - Plain lowercase preferred. Use specific topic referents (book titles, names) but no phrasings from the conversation.
             """;
 
         var sb = new StringBuilder();
@@ -542,7 +558,7 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
             sb.Append(who).Append(": ").AppendLine(m.Content);
         }
         sb.AppendLine();
-        sb.AppendLine("Write the gist now (1–2 sentences, paraphrased only):");
+        sb.AppendLine("Write the direction line now (under 80 chars, paraphrased only, format above):");
         return (system, sb.ToString());
     }
 

@@ -546,7 +546,10 @@ public class ConsciousSubstrateGistContractTests
     [Fact]
     public async Task WorldSelfSlice_FiresWhenRecentWorldExperiencesPresent()
     {
-        // Slice fires from RecentWorldExperiences alone — occupation absent.
+        // G.2 (2026-06-11) — slice fires when world-experience records exist,
+        // but renders ONLY a count, not verbatim snippets. Issue #92 §G.2:
+        // surfacing snippet content lets the model lift phrasings from her
+        // own inner-narrative MemoryRecords.
         var composer = Composer(enabled: true);
         var snapshot = SnapshotWithEmotionAndWorld(
             occupation: "",
@@ -557,10 +560,14 @@ public class ConsciousSubstrateGistContractTests
 
         gist.Slices.WorldSelf.Should().BeTrue();
         gist.SliceTokens.WorldSelf.Should().BeGreaterThan(0);
-        gist.Composed.Should().Contain("recent:",
-            "world-experience snippets render under 'recent:' label");
-        gist.Composed.Should().Contain("rain",
-            "first world-experience content surfaces in slice");
+        gist.Composed.Should().Contain("recent activity:",
+            "G.2: count-only direction surfaces under 'recent activity:' label");
+        gist.Composed.Should().Contain("2 reflection threads",
+            "G.2: the count is what surfaces, not the snippets");
+        gist.Composed.Should().NotContain("rain",
+            "G.2 invariant: verbatim world-experience content MUST NOT appear in worldSelf slice");
+        gist.Composed.Should().NotContain("Tana French",
+            "G.2 invariant: verbatim world-experience content MUST NOT appear in worldSelf slice");
     }
 
     [Fact]
@@ -581,11 +588,13 @@ public class ConsciousSubstrateGistContractTests
     }
 
     [Fact]
-    public async Task WorldSelfSlice_TakesAtMostTwoExperiences()
+    public async Task WorldSelfSlice_RendersCountOnly_NoVerbatimExperienceContent()
     {
-        // Token-budget hygiene: cap at the two most-recent experiences to
-        // bound slice length. ContextBuilder owns the lookback window;
-        // composer trusts the populated list as ordered most-recent-first.
+        // G.2 (2026-06-11) — supersedes the previous "TakesAtMostTwoExperiences"
+        // test. The composer now renders a count of the recent world-experience
+        // records, never the content. This closes the verbatim-leak vector:
+        // no matter how many experience entries are present, NONE of their
+        // content reaches the prompt as quotable text. Issue #92 §G.2.
         var composer = Composer(enabled: true);
         var snapshot = SnapshotWithEmotionAndWorld(
             occupation: "the bookstore",
@@ -596,11 +605,15 @@ public class ConsciousSubstrateGistContractTests
 
         var gist = await composer.ComputeGistAsync(snapshot, CancellationToken.None);
 
-        gist.Composed.Should().Contain("EXPERIENCE-ONE");
-        gist.Composed.Should().Contain("EXPERIENCE-TWO");
-        gist.Composed.Should().NotContain("EXPERIENCE-THREE",
-            "only the two most-recent world experiences should appear");
+        gist.Composed.Should().Contain("4 reflection threads",
+            "G.2: count surfaces; the four experience records produce '4 reflection threads'");
+        gist.Composed.Should().NotContain("EXPERIENCE-ONE",
+            "G.2 invariant: verbatim experience content MUST NOT appear in worldSelf");
+        gist.Composed.Should().NotContain("EXPERIENCE-TWO");
+        gist.Composed.Should().NotContain("EXPERIENCE-THREE");
         gist.Composed.Should().NotContain("EXPERIENCE-FOUR");
+        gist.Composed.Should().Contain("the bookstore",
+            "occupation grounding is preserved (named referent only, not a phrasing)");
     }
 
     [Fact]

@@ -585,18 +585,21 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
             parts.Add($"I work at: {characterState.Occupation.Trim()}");
         }
 
-        // Recent World Layer experience snippets — up to 2 most recent,
-        // each truncated. Trust ContextBuilder's lookback-window filtering;
-        // we don't re-filter here.
+        // G.2 (2026-06-11) — recent World Layer experiences surface as a
+        // COUNT, not as verbatim snippets. Issue #92 §G.2.
+        //
+        // The historic snippet surfacing (up to 2 entries, 60 chars each
+        // via TruncateForSlice) was a verbatim-content leak vector — these
+        // are Ani's own inner-narrative MemoryRecords from reflection
+        // cycles, and the model could lift their phrasings into outbound
+        // text. The count-only form preserves the "I've had recent
+        // world-experience activity" signal without surfacing any of the
+        // phrasings the model could regenerate.
         if (recentWorldExperiences is not null && recentWorldExperiences.Count > 0)
         {
-            var snippets = recentWorldExperiences
-                .Take(2)
-                .Select(m => TruncateForSlice(m.Content, 60))
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .ToList();
-            if (snippets.Count > 0)
-                parts.Add("recent: " + string.Join("; ", snippets));
+            var n = Math.Min(recentWorldExperiences.Count, 99);
+            var noun = n == 1 ? "reflection thread" : "reflection threads";
+            parts.Add($"recent activity: {n} {noun} this week");
         }
 
         if (parts.Count == 0) return string.Empty;
