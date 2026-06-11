@@ -369,13 +369,24 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // Best-effort: never propagates exceptions; on failure the original
         // user prompt is used unchanged. Dispatch must not be affected by
         // gist-side failures.
-        var replyUserPromptWithGist = await ConsciousSubstrateGistObservation
+        // G.1 (2026-06-11) — ComposeAndInjectAsync now routes the gist to
+        // SYSTEM when the directive is system-side (preventing the second-
+        // user-role-turn cascade) or to USER when it's user-side (legacy).
+        // See ConsciousSubstrateGistObservation.cs for the empirical anchor.
+        var promptWithGist = await ConsciousSubstrateGistObservation
             .ComposeAndInjectAsync(
-                _consciousGist, snapshot, _aniOptions, replyPrompt.User, _log, ct)
+                _consciousGist,
+                snapshot,
+                _aniOptions,
+                replyPrompt.System,
+                replyPrompt.User,
+                directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem,
+                _log,
+                ct)
             .ConfigureAwait(false);
 
         var reply = await _ollama.ChatAsync(
-            replyPrompt.System, snapshot.RecentHistory, replyUserPromptWithGist, ct, replyTemperature)
+            promptWithGist.System, snapshot.RecentHistory, promptWithGist.User, ct, replyTemperature)
             .ConfigureAwait(false);
 
         reply = CleanOutreachMessage(reply);

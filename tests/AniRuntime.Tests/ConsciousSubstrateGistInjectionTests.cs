@@ -9,24 +9,25 @@ using Moq;
 namespace AniRuntime.Tests;
 
 /// <summary>
-/// Theme M Phase M.1 (May 5, 2026 evening) — spec tests for the gist
-/// injection consumer (<see cref="ConsciousSubstrateGistObservation.ComposeAndInjectAsync"/>).
+/// Spec tests for the gist injection consumer
+/// (<see cref="ConsciousSubstrateGistObservation.ComposeAndInjectAsync"/>).
 ///
-/// **Behavior matrix under test:**
-/// - Composer null → original prompt unchanged.
-/// - Flag off → original prompt unchanged (defensive — even if composer
-///   produces content, injection is gated on the consumer's flag check).
-/// - Flag on + composer returns Empty → original prompt unchanged.
-/// - Flag on + composer returns content → gist prepended as substrate
-///   block followed by blank line + original prompt.
-/// - Composer throws → original prompt unchanged (best-effort semantics).
+/// **G.1 contract (2026-06-11):** the method takes BOTH the system and
+/// user prompt text plus a <c>directiveInSystem</c> flag, and returns a
+/// <see cref="PromptPair"/>. When the gist has content:
+/// - <c>directiveInSystem=true</c>  → gist appends to SYSTEM, user unchanged
+/// - <c>directiveInSystem=false</c> → gist prepends to USER (legacy), system unchanged
 ///
-/// Strict-mock <see cref="IConsciousSubstrateGist"/> with explicit setups
-/// for each test path.
+/// Empirical anchor: 2026-06-10 22:17 production self-echo cascade.
+/// Previously, when LeanConversationPromptDirectiveInSystem=true, the
+/// gist alone became a non-empty user-role turn AFTER Mark's actual
+/// current turn from RecentHistory — the model lifted phrasings from
+/// the gist as if it were a fresh inbound. Issue #92 §G.1.
 /// </summary>
 public class ConsciousSubstrateGistInjectionTests
 {
-    private const string OriginalPrompt = "Mark just texted: \"how was your day?\"";
+    private const string OriginalSystem = "You are Ani. Be kind. Be honest.";
+    private const string OriginalUser   = "Mark just texted: \"how was your day?\"";
 
     private static AniOptions Options(bool enabled) => new()
     {
@@ -37,17 +38,20 @@ public class ConsciousSubstrateGistInjectionTests
     private static ContextSnapshot Snapshot() => new();
 
     [Fact]
-    public async Task ComposeAndInjectAsync_NullComposer_ReturnsOriginalPrompt()
+    public async Task ComposeAndInjectAsync_NullComposer_ReturnsBothPromptsUnchanged()
     {
         var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
-            composer:       null,
-            snapshot:       Snapshot(),
-            aniOptions:     Options(enabled: true),
-            promptUserText: OriginalPrompt,
-            log:            NullLogger.Instance,
-            ct:             CancellationToken.None);
+            composer:           null,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: true),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     OriginalUser,
+            directiveInSystem:  true,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
 
-        result.Should().Be(OriginalPrompt);
+        result.System.Should().Be(OriginalSystem);
+        result.User.Should().Be(OriginalUser);
     }
 
     [Fact]
@@ -60,84 +64,168 @@ public class ConsciousSubstrateGistInjectionTests
         mockComposer.Setup(c => c.ComputeGistAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ConsciousSubstrateGist
             {
-                Composed   = "your register state right now: warmth high (0.78)",
-                Slices     = new GistSliceFlags { RegisterState = true },
+                Composed   = "recent-thread: bookstore chatter; warm tone.",
+                Slices     = new GistSliceFlags { ClosedConversation = true },
                 TokenCount = 12,
             });
 
         var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
-            composer:       mockComposer.Object,
-            snapshot:       Snapshot(),
-            aniOptions:     Options(enabled: false),
-            promptUserText: OriginalPrompt,
-            log:            NullLogger.Instance,
-            ct:             CancellationToken.None);
+            composer:           mockComposer.Object,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: false),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     OriginalUser,
+            directiveInSystem:  true,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
 
-        result.Should().Be(OriginalPrompt, "flag-off path must not inject even when composer produces content");
+        result.System.Should().Be(OriginalSystem, "flag-off path must not inject into system");
+        result.User.Should().Be(OriginalUser,     "flag-off path must not inject into user");
     }
 
     [Fact]
-    public async Task ComposeAndInjectAsync_FlagOnEmptyGist_ReturnsOriginalPrompt()
+    public async Task ComposeAndInjectAsync_FlagOnEmptyGist_ReturnsBothPromptsUnchanged()
     {
         var mockComposer = new Mock<IConsciousSubstrateGist>(MockBehavior.Strict);
         mockComposer.Setup(c => c.ComputeGistAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ConsciousSubstrateGist.Empty);
 
         var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
-            composer:       mockComposer.Object,
-            snapshot:       Snapshot(),
-            aniOptions:     Options(enabled: true),
-            promptUserText: OriginalPrompt,
-            log:            NullLogger.Instance,
-            ct:             CancellationToken.None);
+            composer:           mockComposer.Object,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: true),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     OriginalUser,
+            directiveInSystem:  true,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
 
-        result.Should().Be(OriginalPrompt);
+        result.System.Should().Be(OriginalSystem);
+        result.User.Should().Be(OriginalUser);
     }
 
     [Fact]
-    public async Task ComposeAndInjectAsync_FlagOnWithContent_PrependsGistAsSubstrateBlock()
+    public async Task ComposeAndInjectAsync_DirectiveInSystem_AppendsGistToSystem_UserUnchanged()
     {
-        const string gistText = "your register state right now: warmth high (0.78), energy mid (0.55).";
+        // G.1 LOAD-BEARING TEST: this is the regression check for the
+        // 2026-06-10 22:17 self-echo cascade. With LeanConversationPromptDirectiveInSystem=true,
+        // the gist MUST attach to the system prompt, not become a separate
+        // user-role turn. The user prompt must remain unchanged so that
+        // Mark's actual current turn from RecentHistory stays the only
+        // user-role content the model sees.
+        const string gistText = "recent-thread: bookstore chatter; warm tone. world-self: clerk in town.";
         var mockComposer = new Mock<IConsciousSubstrateGist>(MockBehavior.Strict);
         mockComposer.Setup(c => c.ComputeGistAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ConsciousSubstrateGist
             {
                 Composed   = gistText,
-                Slices     = new GistSliceFlags { RegisterState = true },
+                Slices     = new GistSliceFlags { ClosedConversation = true, WorldSelf = true },
                 TokenCount = 18,
             });
 
         var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
-            composer:       mockComposer.Object,
-            snapshot:       Snapshot(),
-            aniOptions:     Options(enabled: true),
-            promptUserText: OriginalPrompt,
-            log:            NullLogger.Instance,
-            ct:             CancellationToken.None);
+            composer:           mockComposer.Object,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: true),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     OriginalUser,
+            directiveInSystem:  true,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
 
-        result.Should().StartWith(gistText, "gist must be prepended at the top of the prompt");
-        result.Should().Contain(OriginalPrompt, "original prompt content must be preserved verbatim");
-        result.Should().Be(gistText + "\n\n" + OriginalPrompt,
-            "format is: gist + blank line + original prompt");
+        result.System.Should().Be(OriginalSystem + "\n\n" + gistText,
+            "gist appends to system when directive is system-side");
+        result.User.Should().Be(OriginalUser,
+            "user prompt must remain unchanged so Mark's actual turn from RecentHistory stays the only user-role content");
     }
 
     [Fact]
-    public async Task ComposeAndInjectAsync_ComposerThrows_ReturnsOriginalPromptUnchanged()
+    public async Task ComposeAndInjectAsync_DirectiveInSystem_EmptyUserPrompt_GistDoesNotBecomeUserTurn()
+    {
+        // The empirical anchor case. LeanConversationPromptDirectiveInSystem=true
+        // makes the user prompt empty. Pre-G.1, the gist became a non-empty
+        // user-role message that landed after Mark's actual turn in RecentHistory.
+        // Post-G.1, the gist routes to system and the user remains empty.
+        const string gistText = "recent-thread: bookstore chatter; warm tone.";
+        var mockComposer = new Mock<IConsciousSubstrateGist>(MockBehavior.Strict);
+        mockComposer.Setup(c => c.ComputeGistAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConsciousSubstrateGist
+            {
+                Composed   = gistText,
+                Slices     = new GistSliceFlags { ClosedConversation = true },
+                TokenCount = 12,
+            });
+
+        var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
+            composer:           mockComposer.Object,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: true),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     string.Empty,  // Lean directive folded into system → user is empty
+            directiveInSystem:  true,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
+
+        result.System.Should().Be(OriginalSystem + "\n\n" + gistText,
+            "gist appends to system");
+        result.User.Should().BeEmpty(
+            "G.1 invariant: gist MUST NOT populate the user prompt when directive is system-side — that's the second-user-role-turn cascade root cause");
+    }
+
+    [Fact]
+    public async Task ComposeAndInjectAsync_DirectiveInUser_PrependsGistToUser_SystemUnchanged()
+    {
+        // Legacy path: when the directive is user-side (the original May-18
+        // structural-role-flip OFF case), the gist prepends the user prompt
+        // and the system stays untouched. This shape is documented but no
+        // longer exercised in production (LeanConversationPromptDirectiveInSystem=true
+        // is the default since PR #82).
+        const string gistText = "recent-thread: bookstore chatter; warm tone.";
+        var mockComposer = new Mock<IConsciousSubstrateGist>(MockBehavior.Strict);
+        mockComposer.Setup(c => c.ComputeGistAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConsciousSubstrateGist
+            {
+                Composed   = gistText,
+                Slices     = new GistSliceFlags { ClosedConversation = true },
+                TokenCount = 12,
+            });
+
+        var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
+            composer:           mockComposer.Object,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: true),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     OriginalUser,
+            directiveInSystem:  false,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
+
+        result.System.Should().Be(OriginalSystem,
+            "system unchanged when directive is user-side");
+        result.User.Should().Be(gistText + "\n\n" + OriginalUser,
+            "gist prepends user prompt — legacy May-18 shape");
+    }
+
+    [Fact]
+    public async Task ComposeAndInjectAsync_ComposerThrows_ReturnsBothPromptsUnchanged()
     {
         // Best-effort semantics: a composer failure must not break dispatch.
-        // The original prompt is used as a fallback; the failure logs at Warning.
+        // Both prompts are used as fallback; the failure logs at Warning.
         var mockComposer = new Mock<IConsciousSubstrateGist>(MockBehavior.Strict);
         mockComposer.Setup(c => c.ComputeGistAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("simulated composer failure"));
 
         var result = await ConsciousSubstrateGistObservation.ComposeAndInjectAsync(
-            composer:       mockComposer.Object,
-            snapshot:       Snapshot(),
-            aniOptions:     Options(enabled: true),
-            promptUserText: OriginalPrompt,
-            log:            NullLogger.Instance,
-            ct:             CancellationToken.None);
+            composer:           mockComposer.Object,
+            snapshot:           Snapshot(),
+            aniOptions:         Options(enabled: true),
+            promptSystemText:   OriginalSystem,
+            promptUserText:     OriginalUser,
+            directiveInSystem:  true,
+            log:                NullLogger.Instance,
+            ct:                 CancellationToken.None);
 
-        result.Should().Be(OriginalPrompt, "composer failures must not propagate; original prompt is the fallback");
+        result.System.Should().Be(OriginalSystem, "composer failures must not propagate");
+        result.User.Should().Be(OriginalUser,     "composer failures must not propagate");
     }
 }

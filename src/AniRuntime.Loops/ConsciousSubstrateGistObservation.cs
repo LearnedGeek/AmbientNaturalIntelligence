@@ -5,6 +5,11 @@ using Microsoft.Extensions.Logging;
 
 namespace AniRuntime.Loops;
 
+// G.1 (2026-06-11) — gist injection no longer creates a second user-role
+// message after Mark's actual current turn. When LeanConversationPromptDirectiveInSystem=true
+// the gist folds into the system prompt; when false it prepends the user
+// prompt (legacy behavior). See Issue #92 §G.1.
+
 /// <summary>
 /// Theme M Phase M.0 (May 5, 2026) — observational telemetry helper for the
 /// conscious-substrate gist composer. Wraps
@@ -59,15 +64,17 @@ internal static class ConsciousSubstrateGistObservation
     /// **Best-effort:** never throws. On any failure, returns the original
     /// prompt unchanged and logs at Warning level.
     /// </summary>
-    public static async Task<string> ComposeAndInjectAsync(
+    public static async Task<PromptPair> ComposeAndInjectAsync(
         IConsciousSubstrateGist?  composer,
         ContextSnapshot           snapshot,
         AniOptions                aniOptions,
+        string                    promptSystemText,
         string                    promptUserText,
+        bool                      directiveInSystem,
         ILogger                   log,
         CancellationToken         ct)
     {
-        if (composer is null) return promptUserText;
+        if (composer is null) return new PromptPair(promptSystemText, promptUserText);
 
         try
         {
@@ -79,13 +86,36 @@ internal static class ConsciousSubstrateGistObservation
             // Defensive flag-check so a future composer that ignores the flag
             // can't accidentally inject gist content into a flag-off deployment.
             if (!aniOptions.ConsciousSubstrateGistEnabled || gist.IsEmpty)
-                return promptUserText;
+                return new PromptPair(promptSystemText, promptUserText);
 
-            // Single-paragraph substrate block at the top, separated by a
-            // blank line from the existing prompt body. §4.6 composition rule:
-            // "merged into prose, not enumerated" — for M.1's single slice,
-            // this is a one-line substrate clause.
-            return gist.Composed + "\n\n" + promptUserText;
+            // G.1 (2026-06-11) — the gist routes to SYSTEM when the directive
+            // is system-side, USER when it's user-side.
+            //
+            // Empirical anchor: 2026-06-10 22:17 production self-echo cascade.
+            // Previously this method unconditionally prepended the gist to the
+            // user prompt. When LeanConversationPromptDirectiveInSystem=true,
+            // `promptUserText` is empty (the directive moved to system), so the
+            // gist alone became a non-empty user-role turn — landing AFTER
+            // Mark's actual current turn from RecentHistory. The model saw the
+            // gist content (closedConversation + worldSelf — derived from her
+            // own past outputs) as a fresh user message and lifted phrasings.
+            //
+            // Folding the gist into the system message when the directive is
+            // system-side keeps it as framing (out-of-band substrate) rather
+            // than turn-adjacent content. Mark's actual current turn from
+            // RecentHistory remains the only user-role content the model sees.
+            //
+            // §4.6 composition rule: "merged into prose, not enumerated."
+            if (directiveInSystem)
+            {
+                var mergedSystem = string.IsNullOrEmpty(promptSystemText)
+                    ? gist.Composed
+                    : promptSystemText + "\n\n" + gist.Composed;
+                return new PromptPair(mergedSystem, promptUserText);
+            }
+
+            // Legacy path (directive in user) — gist prepends user prompt.
+            return new PromptPair(promptSystemText, gist.Composed + "\n\n" + promptUserText);
         }
         catch (Exception ex)
         {
@@ -94,7 +124,7 @@ internal static class ConsciousSubstrateGistObservation
             log.LogWarning(
                 ex,
                 "M1_GIST_FAILURE — composition / injection failed; using original prompt unchanged.");
-            return promptUserText;
+            return new PromptPair(promptSystemText, promptUserText);
         }
     }
 
