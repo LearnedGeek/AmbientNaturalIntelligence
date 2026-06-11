@@ -138,15 +138,22 @@ public class OllamaClient : IOllamaClient
         // "0" unloads immediately (used by intent extraction to free VRAM for conversation model).
         // "5m" keeps warm between cognitive cycles without squatting on VRAM forever.
         // AC4: Temperature splitting — when provided, override Ollama's default (0.8).
+        //
+        // 2026-06-10: include `repeat_penalty` in every chat request. Ollama
+        // applies model defaults when no `options` block is sent — qwen3:14b's
+        // default (1.1) was too low and led to verbatim-recycling under emotional
+        // inbounds (self-echo cascade 21:17 production). ChatRepeatPenalty in
+        // AniOptions is the configurable surface; default 1.15.
+        var penalty = _options.ChatRepeatPenalty;
         object request;
         if (format is not null && temperature.HasValue)
-            request = new { model, messages, stream = false, format, keep_alive = alive, options = new { temperature = temperature.Value } };
+            request = new { model, messages, stream = false, format, keep_alive = alive, options = new { temperature = temperature.Value, repeat_penalty = penalty } };
         else if (format is not null)
-            request = new { model, messages, stream = false, format, keep_alive = alive };
+            request = new { model, messages, stream = false, format, keep_alive = alive, options = new { repeat_penalty = penalty } };
         else if (temperature.HasValue)
-            request = new { model, messages, stream = false, keep_alive = alive, options = new { temperature = temperature.Value } };
+            request = new { model, messages, stream = false, keep_alive = alive, options = new { temperature = temperature.Value, repeat_penalty = penalty } };
         else
-            request = new { model, messages, stream = false, keep_alive = alive };
+            request = new { model, messages, stream = false, keep_alive = alive, options = new { repeat_penalty = penalty } };
 
         // Retry with backoff for transient Ollama failures (500s during model swaps, VRAM eviction).
         // Two retries with 3-second backoff handles most model reload scenarios.
