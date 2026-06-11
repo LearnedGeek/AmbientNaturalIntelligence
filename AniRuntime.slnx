@@ -17,5 +17,6 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/AniRuntime.Eval/AniRuntime.Eval.csproj" />
+    <Project Path="tools/AniRuntime.Friend/AniRuntime.Friend.csproj" />
   </Folder>
 </Solution>
