@@ -120,6 +120,54 @@ public static class PromptBuilder
     }
 
     /// <summary>
+    /// G.2 (2026-06-11) — direction-shape line summarizing Ani's interior
+    /// state without surfacing raw inner-thought memory content. Replaces
+    /// the historic [INTERIOR] block (5 verbatim MemoryRecord entries)
+    /// that was the empirical anchor for verbatim phrase recycling (#92).
+    ///
+    /// Returns a short line like:
+    ///   "interior: warmth elevated; dominant register: tenderness"
+    /// or an empty string when state is near baseline.
+    ///
+    /// Tracks Issue #92 §G.2.
+    /// </summary>
+    public static string ComposeInteriorDirection(
+        EmotionalState? state,
+        string?         dominantRegister)
+    {
+        if (state is null) return string.Empty;
+
+        const float threshold = 0.10f;
+        var parts = new List<string>();
+
+        var warmthDiff = state.Warmth      - state.WarmthBaseline;
+        var energyDiff = state.Energy      - state.EnergyBaseline;
+        var worryDiff  = state.Worry       - state.WorryBaseline;
+        var playDiff   = state.Playfulness - state.PlayfulnessBaseline;
+
+        if (Math.Abs(warmthDiff) >= threshold)
+            parts.Add(warmthDiff > 0 ? "warmth elevated" : "warmth muted");
+        if (Math.Abs(energyDiff) >= threshold)
+            parts.Add(energyDiff > 0 ? "energy elevated" : "energy low");
+        if (Math.Abs(worryDiff) >= threshold)
+            parts.Add(worryDiff > 0 ? "worry above baseline" : "worry quieter than baseline");
+        if (Math.Abs(playDiff) >= threshold)
+            parts.Add(playDiff > 0 ? "playful undercurrent" : "more serious than usual");
+
+        if (state.ContactGapTension > 0.15f)
+            parts.Add("low-grade ache from the silence");
+
+        var register = !string.IsNullOrWhiteSpace(dominantRegister)
+            ? $"; dominant register: {dominantRegister.ToLowerInvariant()}"
+            : string.Empty;
+
+        if (parts.Count == 0 && string.IsNullOrEmpty(register)) return string.Empty;
+
+        var body = parts.Count > 0 ? string.Join(", ", parts) : "near baseline";
+        return $"[INTERIOR] interior right now: {body}{register}";
+    }
+
+    /// <summary>
     /// Converts a 0–1 desire score into qualitative language suitable for a prompt.
     /// Returns empty string at low desire so the model isn't nudged toward connection.
     /// </summary>

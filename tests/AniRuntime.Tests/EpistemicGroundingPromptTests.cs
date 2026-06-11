@@ -132,18 +132,41 @@ public class EpistemicGroundingPromptTests
     }
 
     [Fact]
-    public void ConversationReply_WithInterior_RendersYourInteriorSection()
+    public void ConversationReply_WithInterior_RendersDirectionShapeNotVerbatim()
     {
+        // G.2 (2026-06-11): [INTERIOR] no longer surfaces raw MemoryRecord
+        // content. It now renders a direction-shape line from EmotionalState
+        // + DominantRegister via PromptBuilder.ComposeInteriorDirection.
+        // The InteriorContext memory list is no longer consulted at the
+        // prompt-construction layer (specific recall flows through the
+        // G.5 retrieval channel when needed).
+        //
+        // This test pins: verbatim MemoryRecord content does NOT appear in
+        // the prompt — that was the empirical anchor for the verbatim
+        // recycling class (#92 §A).
         var snapshot = BuildSnapshot(interior: new List<MemoryRecord>
         {
             Interior("I noticed I've been softer today"),
         });
+        snapshot.EmotionalState = new EmotionalState
+        {
+            Warmth = 0.85f, WarmthBaseline = 0.60f,  // +0.25 → "warmth elevated"
+        };
+        snapshot.DominantRegister = "Tenderness";
         var thread = new ConversationThread();
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
 
-        user.Should().Contain("[INTERIOR]");
-        user.Should().Contain("I noticed I've been softer today");
+        user.Should().Contain("[INTERIOR]",
+            "the section header still appears so the model can scan for it");
+        user.Should().Contain("interior right now",
+            "G.2 direction-shape body present");
+        user.Should().Contain("warmth elevated",
+            "direction summarizes felt-state from EmotionalState divergence");
+        user.Should().Contain("tenderness",
+            "dominant register surfaces as part of the direction");
+        user.Should().NotContain("I noticed I've been softer today",
+            "G.2 invariant: raw MemoryRecord content MUST NOT appear in [INTERIOR] — that was the verbatim recycling vector");
     }
 
     [Fact]
@@ -201,18 +224,31 @@ public class EpistemicGroundingPromptTests
     }
 
     [Fact]
-    public void OutreachMessage_WithInterior_RendersYourInteriorSection()
+    public void OutreachMessage_WithInterior_RendersDirectionShapeNotVerbatim()
     {
+        // G.2 (2026-06-11) — same direction-shape treatment for outreach as
+        // for conversation reply. Empirical anchor: 2026-06-11 07:06 outreach
+        // where "imperfect vs preterite" 5/24 confabulation resurfaced via
+        // this exact verbatim-memory surfacing path. #92 §G.2.
         var snapshot = BuildSnapshot(interior: new List<MemoryRecord>
         {
             Interior("the bookstore felt quiet today"),
         });
+        snapshot.EmotionalState = new EmotionalState
+        {
+            Warmth = 0.65f, WarmthBaseline = 0.50f,  // +0.15 → "warmth elevated"
+            Energy = 0.35f, EnergyBaseline = 0.50f,  // -0.15 → "energy low"
+        };
 
         var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
             snapshot, "thinking of him", "gentle");
 
-        user.Should().Contain("[INTERIOR]");
-        user.Should().Contain("the bookstore felt quiet today");
+        user.Should().Contain("[INTERIOR]",
+            "the section header still appears so the model can scan for it");
+        user.Should().Contain("interior right now",
+            "G.2 direction-shape body present");
+        user.Should().NotContain("the bookstore felt quiet today",
+            "G.2 invariant: raw MemoryRecord content MUST NOT appear in [INTERIOR]");
     }
 
     // ─── Cross-cutting: fact vs interior separation ───────────────────────────
@@ -220,9 +256,19 @@ public class EpistemicGroundingPromptTests
     [Fact]
     public void FactsAndInteriorAppearInSeparateSections()
     {
+        // G.2 (2026-06-11): [FACTS] still surfaces verbatim Mark-asserted
+        // grounding (that's the recall channel for Mark-domain truth).
+        // [INTERIOR] no longer surfaces verbatim memory — it's a direction
+        // line. Sections remain separated; the test now verifies the new
+        // shape — verbatim Fact content present, verbatim Interior content
+        // ABSENT, both section headers present.
         var snapshot = BuildSnapshot(
             facts: new List<MemoryRecord> { Fact("Mark's daughters are Mia and Karen") },
             interior: new List<MemoryRecord> { Interior("I love when they laugh together") });
+        snapshot.EmotionalState = new EmotionalState
+        {
+            Warmth = 0.80f, WarmthBaseline = 0.60f,  // +0.20 → triggers direction
+        };
         var thread = new ConversationThread();
 
         var (_, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
@@ -230,11 +276,13 @@ public class EpistemicGroundingPromptTests
         var factsPosition = user.IndexOf("[FACTS]");
         var interiorPosition = user.IndexOf("[INTERIOR]");
 
-        factsPosition.Should().BeGreaterThan(-1);
-        interiorPosition.Should().BeGreaterThan(-1);
-        factsPosition.Should().NotBe(interiorPosition);
-        // Facts and Interior are in different sections — content doesn't blend.
-        user.Should().Contain("Mark's daughters are Mia and Karen");
-        user.Should().Contain("I love when they laugh together");
+        factsPosition.Should().BeGreaterThan(-1, "[FACTS] section present");
+        interiorPosition.Should().BeGreaterThan(-1, "[INTERIOR] section present (direction-shape body)");
+        factsPosition.Should().NotBe(interiorPosition, "sections remain separated");
+
+        user.Should().Contain("Mark's daughters are Mia and Karen",
+            "G.2 invariant: Mark-asserted [FACTS] content remains verbatim — that's the recall channel");
+        user.Should().NotContain("I love when they laugh together",
+            "G.2 invariant: Interior MemoryRecord content does NOT appear — verbatim recycling vector closed");
     }
 }

@@ -90,15 +90,24 @@ public sealed class ConversationReplyPromptCommand : IPromptCommand<Conversation
             }
         }
 
-        // [INTERIOR] — Interior tier. Voice + felt continuity, full creative latitude.
-        var interior = snapshot.InteriorContext
-            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
-            .Take(5)
-            .ToList();
-        if (interior.Count > 0)
+        // [INTERIOR] — G.2 (2026-06-11) direction-shape replacement.
+        //
+        // Previously this block surfaced up to 5 InteriorContext MemoryRecords
+        // verbatim via FormatMemoryWithTime. That was the empirical anchor for
+        // verbatim phrase recycling (#92 §A): the "imperfect vs preterite"
+        // 5/24 fabrication propagated through reflection cycles into "valid"
+        // inner-thought records, and surfaced here as quotable phrasings the
+        // model then lifted into outbound messages.
+        //
+        // The direction-shape form names felt-state (warmth elevated, low-grade
+        // ache, dominant register) without quoting past content. Specific
+        // recall — when Mark asks for it — comes via G.5 active retrieval, not
+        // ambient context surfacing.
+        var interiorDirection = PromptBuilder.ComposeInteriorDirection(
+            snapshot.EmotionalState, snapshot.DominantRegister);
+        if (!string.IsNullOrEmpty(interiorDirection))
         {
-            sections.Add("[INTERIOR] your recent thoughts, mood, imagined life — your voice, full creative latitude:");
-            sections.AddRange(interior.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
+            sections.Add(interiorDirection);
         }
 
         if (snapshot.IsWithdrawn)

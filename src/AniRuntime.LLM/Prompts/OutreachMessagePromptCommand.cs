@@ -172,15 +172,16 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
             }
         }
 
-        // [INTERIOR]
-        var interior = snapshot.InteriorContext
-            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
-            .Take(3)
-            .ToList();
-        if (interior.Count > 0)
+        // [INTERIOR] — G.2 (2026-06-11) direction-shape replacement.
+        // See ConversationReplyPromptCommand for full rationale; same fix
+        // applied here to the outreach path. Empirical anchor: 2026-06-11
+        // 07:06 outreach where "imperfect vs preterite" 5/24 confabulation
+        // resurfaced via this exact verbatim-memory surfacing path. #92 §G.2.
+        var interiorDirection = PromptBuilder.ComposeInteriorDirection(
+            snapshot.EmotionalState, snapshot.DominantRegister);
+        if (!string.IsNullOrEmpty(interiorDirection))
         {
-            sections.Add($"\n[INTERIOR] your recent thoughts and mood — your voice, full creative latitude:");
-            sections.AddRange(interior.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
+            sections.Add("\n" + interiorDirection);
         }
 
         // Theme R.5 (#64) — STRUCTURAL open-loop consumption. Generalizes
