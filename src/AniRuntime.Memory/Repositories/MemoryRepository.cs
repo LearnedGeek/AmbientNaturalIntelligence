@@ -60,9 +60,18 @@ public sealed class MemoryRepository : IMemoryRepository
     {
         // Mirrors the existing GetRecentAsync exclusion of reflection-source
         // records (prevents synthesis loops) AND v1.2 Compressed exclusion.
+        //
+        // G.0 (2026-06-11): Validity='valid' filter added so quarantined
+        // fabrication records (Issue #62) cannot resurface through the
+        // recent-memory retrieval path. Previously this method skipped the
+        // filter that GetForSemanticSearchAsync already enforced, leaving
+        // the empirical "imperfect vs preterite" Spanish-class phrase (5/24
+        // quarantine) able to re-enter prompts via [INTERIOR] / RecentMemory
+        // surfacing. See Issue #92 §G.0.
         return await _db.Memories
             .Where(m => (m.SourceName == null || m.SourceName != "reflection")
-                     && m.Tier != DecayTier.Compressed)
+                     && m.Tier != DecayTier.Compressed
+                     && m.Validity == "valid")
             .OrderByDescending(m => m.OccurredAt)
             .Take(limit)
             .ToListAsync(ct);
@@ -84,16 +93,22 @@ public sealed class MemoryRepository : IMemoryRepository
     public async Task<IReadOnlyList<MemoryEntity>> GetForSemanticSearchByTypeAsync(
         MemoryType type, CancellationToken ct = default)
     {
+        // G.0 (2026-06-11): Validity='valid' filter added; see GetRecentAsync.
         return await _db.Memories
-            .Where(m => m.Embedding != null && m.Type == type && m.Tier != DecayTier.Compressed)
+            .Where(m => m.Embedding != null && m.Type == type
+                     && m.Tier != DecayTier.Compressed
+                     && m.Validity == "valid")
             .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<MemoryEntity>> GetForTierScopedSearchAsync(
         EpistemicTier provenance, CancellationToken ct = default)
     {
+        // G.0 (2026-06-11): Validity='valid' filter added; see GetRecentAsync.
         return await _db.Memories
-            .Where(m => m.Embedding != null && m.Provenance == provenance && m.Tier != DecayTier.Compressed)
+            .Where(m => m.Embedding != null && m.Provenance == provenance
+                     && m.Tier != DecayTier.Compressed
+                     && m.Validity == "valid")
             .ToListAsync(ct);
     }
 
