@@ -171,6 +171,33 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
             user.AppendLine();
         }
 
+        // G.5 (2026-06-11) — SELF-WORLD recall channel (#92 §G.5).
+        //
+        // The lean conversation prompt had no path for Ani to draw on her own
+        // recent world experiences when {contact} asks about her day, her
+        // reading, her work. Without this, "what did you read today?" produces
+        // either confabulation (free generation) or "I don't know" — neither
+        // is what Mark named when he said *"we do need her to be able to
+        // build her world and share what she's thinking about"*. The
+        // [YOUR WORLD] block surfaces recent SELF-WORLD substrate (her
+        // bookstore day, her customers, what she's read) so she has material
+        // to draw on when {contact} asks or when topical relevance lands.
+        //
+        // Framing tells the model these are reference material for relevant
+        // moments — not text to lift. Self-echo + verifier still catch
+        // verbatim runs at the gate layer.
+        var yourWorld = snapshot.RecentWorldExperiences
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Take(3)
+            .ToList();
+        if (yourWorld.Count > 0)
+        {
+            user.AppendLine($"[YOUR WORLD] recent things in your bookstore day / your interior life — draw on these naturally if {contact} asks or if topically relevant. Do NOT quote phrases verbatim:");
+            foreach (var m in yourWorld)
+                user.AppendLine($"  - {PromptBuilder.FormatMemoryWithTime(m)}");
+            user.AppendLine();
+        }
+
         user.Append($"Reply to {contact}'s message.");
 
         // 2026-05-18 — role-flip structural fix. When DirectiveInSystem is

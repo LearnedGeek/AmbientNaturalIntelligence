@@ -101,6 +101,69 @@ public class EpistemicGroundingPromptTests
     }
 
     [Fact]
+    public void LeanConversation_G5_YourWorldBlock_SurfacesRecentWorldExperiences()
+    {
+        // G.5 (2026-06-11) — the lean conversation prompt now includes a
+        // [YOUR WORLD] block sourced from snapshot.RecentWorldExperiences.
+        // This is the SELF-WORLD recall channel: when Mark asks about her day
+        // or her reading, she has substrate to draw on rather than confabulating.
+        // Issue #92 §G.5.
+        var snapshot = BuildSnapshot();
+        snapshot.RecentWorldExperiences = new List<MemoryRecord>
+        {
+            new() { Content = "shelved a stack of Tana French novels this afternoon", Type = MemoryType.Semantic },
+            new() { Content = "the regular with the grey coat came in for her Nora Roberts fix", Type = MemoryType.Semantic },
+        };
+        var thread = new ConversationThread();
+
+        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        user.Should().Contain("[YOUR WORLD]",
+            "G.5: the SELF-WORLD recall block surfaces in the lean conversation prompt");
+        user.Should().Contain("Tana French",
+            "the recent world experience content surfaces in the block");
+        user.Should().Contain("Do NOT quote phrases verbatim",
+            "non-quote framing tells the model these are reference material, not text to lift");
+    }
+
+    [Fact]
+    public void LeanConversation_G5_YourWorldBlock_AbsentWhenNoWorldExperiences()
+    {
+        // G.5 (2026-06-11) — block stays silent when there's no world substrate.
+        var snapshot = BuildSnapshot();  // RecentWorldExperiences default-empty
+        var thread = new ConversationThread();
+
+        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        user.Should().NotContain("[YOUR WORLD]",
+            "block is silent when no recent world experiences are populated");
+    }
+
+    [Fact]
+    public void LeanConversation_G5_YourWorldBlock_CapsAtThree()
+    {
+        // G.5 (2026-06-11) — only the three most-recent world experiences
+        // surface to bound prompt size.
+        var manyExperiences = Enumerable.Range(1, 10)
+            .Select(i => new MemoryRecord
+            {
+                Content = $"world-experience-{i}",
+                Type    = MemoryType.Semantic,
+            })
+            .ToList();
+        var snapshot = BuildSnapshot();
+        snapshot.RecentWorldExperiences = manyExperiences;
+        var thread = new ConversationThread();
+
+        var (_, user) = PromptBuilder.BuildLeanConversationPrompt(snapshot, thread);
+
+        user.Should().Contain("world-experience-1");
+        user.Should().Contain("world-experience-3");
+        user.Should().NotContain("world-experience-4",
+            "G.5: cap at 3 to bound prompt size");
+    }
+
+    [Fact]
     public void LeanConversation_CapsFactsAtSix()
     {
         var manyFacts = Enumerable.Range(1, 20).Select(i => Fact($"fact {i}")).ToList();
