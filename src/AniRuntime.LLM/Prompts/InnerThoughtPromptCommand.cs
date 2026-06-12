@@ -127,24 +127,29 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             sections.Add($"(Background: {perceptionSummary})");
         }
 
+        // G.4 (2026-06-11) — same fallback hardening as G.3 for the outreach
+        // path. When epistemicRenderer is null, surface a direction-shape
+        // count line rather than the verbatim turn dump (StructuredConversationSummary)
+        // or the prose blob (RecentConversationSummary). Production runs with
+        // EpistemicFramingEnabled=true so the renderer is non-null and these
+        // fallbacks are defensive. Issue #92 §G.4.
         var ittStructured = snapshot.StructuredConversationSummary;
+        var contactName = cs.PrimaryContactName ?? "the contact";
         if (ittStructured is { Turns.Count: > 0 })
         {
             if (epistemicRenderer is not null)
             {
-                var threadSlice = epistemicRenderer.RenderActiveThreadSlice(ittStructured, cs.PrimaryContactName ?? "the contact");
+                var threadSlice = epistemicRenderer.RenderActiveThreadSlice(ittStructured, contactName);
                 if (!string.IsNullOrEmpty(threadSlice)) sections.Add(threadSlice);
             }
             else
             {
-                sections.Add("Something that just happened (each line tagged with who said it — this should color your thoughts naturally, but stay in your own voice):");
-                sections.Add(ittStructured.ToPromptString());
+                sections.Add($"active thread with {contactName}: {ittStructured.Turns.Count} recent turn(s) — let it color your thoughts naturally, but do not quote.");
             }
         }
         else if (!string.IsNullOrEmpty(snapshot.RecentConversationSummary))
         {
-            sections.Add($"Something that just happened (this should color your thoughts naturally):");
-            sections.Add($"  {snapshot.RecentConversationSummary}");
+            sections.Add($"recent conversation with {contactName} just happened — let it color your thoughts naturally, but do not quote.");
         }
 
         if (snapshot.OpenLoops.Count > 0)
@@ -165,6 +170,14 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             sections.Add($"(You notice a slow shift in yourself lately: {driftDesc}. You don't need to analyze it — just notice it, the way you'd notice a change in the weather.)");
         }
 
+        // G.4 (2026-06-11) — RecentMemory and RelevantMemory are surfaced as
+        // substrate for thought generation but with explicit "do not quote"
+        // framing. Inner thoughts need access to memory content to reflect ON
+        // it, but verbatim phrase lift from these MemoryRecords feeds the
+        // substrate-laundering cycle: inner thoughts get persisted, then
+        // retrieved here, then lifted into new inner thoughts. The framing
+        // tells the model these are memory references for reflection, not
+        // text to reproduce. Issue #92 §G.4.
         var externalMemories = snapshot.RecentMemory
             .Where(m => m.Type != MemoryType.InnerThought)
             .Take(3)
@@ -172,7 +185,7 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         if (externalMemories.Count > 0)
         {
-            sections.Add("Recent things that happened:");
+            sections.Add("Recent things that happened (reflect on what's there — do not quote phrases verbatim):");
             sections.AddRange(externalMemories.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
         }
 
@@ -183,7 +196,7 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         if (relevantMemories.Count > 0)
         {
-            sections.Add("Memories that feel connected to right now:");
+            sections.Add("Memories that feel connected to right now (reflect on the substance — do not quote phrases verbatim):");
             sections.AddRange(relevantMemories.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
         }
 
@@ -192,6 +205,15 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             sections.Add(desireHint);
 
         // World Layer Phase 1c — recent world experiences.
+        //
+        // G.4 (2026-06-11) — these are SELF-WORLD substrate (her bookstore,
+        // her reading, her world). She legitimately needs to reflect on them
+        // to build her interior. The framing tells the model to use these
+        // as inspiration and grounding, but not to lift phrasings into the
+        // new thought verbatim (that's the laundering cycle the rest of G
+        // closes). Issue #92 §G.4 + Mark's 2026-06-11 reminder: she needs
+        // to build her world and share what she's thinking about; this is
+        // the substrate that lets her do that.
         if (snapshot.RecentWorldExperiences.Count > 0)
         {
             if (epistemicRenderer is not null)
@@ -204,7 +226,7 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             }
             else
             {
-                sections.Add("Recent things that happened in your world (build on these, don't contradict them):");
+                sections.Add("Recent things that happened in your world (build on these — fresh observations, not the same phrasings):");
                 sections.AddRange(snapshot.RecentWorldExperiences.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
             }
         }

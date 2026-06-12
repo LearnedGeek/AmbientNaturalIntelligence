@@ -484,8 +484,12 @@ public class PromptBuilderTests
     // ── Theme J Phase J.2 step 4 — inner-thought prompt uses structured ──
 
     [Fact]
-    public void BuildInnerThoughtPrompt_J2_PrefersStructuredSummary_OverProse()
+    public void BuildInnerThoughtPrompt_G4_StructuredSummary_RendersCountLineNotVerbatim()
     {
+        // G.4 (2026-06-11) — supersedes the historic J.2 inner-thought test.
+        // The fallback when epistemicRenderer is null now renders a count
+        // line instead of verbatim turns. Issue #92 §G.4. The structured
+        // form still takes precedence over the prose form (J.2 invariant).
         var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
         var snapshot = MinimalSnapshot();
         snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
@@ -499,24 +503,34 @@ public class PromptBuilderTests
 
         var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
 
-        user.Should().Contain("Mark (");
-        user.Should().Contain("any plans for the weekend?");
-        user.Should().Contain("Ani (");
-        user.Should().Contain("thinking about the bookstore");
-        user.Should().NotContain("prose form should be ignored");
+        user.Should().Contain("active thread with Mark: 2 recent turn(s)",
+            "G.4: count line replaces verbatim turn dump");
+        user.Should().NotContain("any plans for the weekend?",
+            "G.4 invariant: verbatim Mark turn MUST NOT appear in inner-thought substrate");
+        user.Should().NotContain("thinking about the bookstore",
+            "G.4 invariant: verbatim Ani turn MUST NOT appear in inner-thought substrate");
+        user.Should().NotContain("prose form should be ignored",
+            "J.2 invariant preserved: structured form takes precedence over prose");
     }
 
     [Fact]
-    public void BuildInnerThoughtPrompt_J2_FallsBackToProse_WhenStructuredAbsent()
+    public void BuildInnerThoughtPrompt_G4_FallsBackToCountLine_WhenOnlyProsePresent()
     {
+        // G.4 (2026-06-11) — when only the prose form is available (no
+        // structured summary), surface a count line, not the verbatim
+        // prose blob. Issue #92 §G.4.
         var snapshot = MinimalSnapshot();
         snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
         snapshot.StructuredConversationSummary = null;
 
         var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
 
-        user.Should().Contain("Conversation (1 messages)");
-        user.Should().Contain("Mark: hi");
+        user.Should().Contain("recent conversation with Mark just happened",
+            "G.4: count-line direction surfaces the recency without quoting");
+        user.Should().NotContain("Conversation (1 messages)",
+            "G.4 invariant: verbatim prose blob MUST NOT appear");
+        user.Should().NotContain("Mark: hi",
+            "G.4 invariant: verbatim turn content MUST NOT appear");
     }
 
     // ── Theme J Phase J.2 step 5 — outreach decision prompt uses structured ──
