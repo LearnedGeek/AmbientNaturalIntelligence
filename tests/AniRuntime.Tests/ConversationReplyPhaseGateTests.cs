@@ -167,8 +167,12 @@ public class ConversationReplyPhaseGateTests : AniTestBase
     [Fact]
     public async Task EvaluateAndRemediate_GateRemediate_RegenPassesReEval_ReturnsRegenerated()
     {
-        // Happy path under the May 3 re-evaluation contract: original fails,
-        // regen passes the gate on re-eval, dispatch the regen.
+        // H phase remediation routing (2026-06-14): when the gate Remediates,
+        // we route to the safe-path composer (not the main composer with a
+        // remediation hint). When the safe-path reply passes re-evaluation,
+        // dispatch the safe-path reply. The system prompt is the safe-path's
+        // honest-uncertainty framing — NOT the original prompt + remediation
+        // hint.
         _mockGate.SetupSequence(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
                  .ReturnsAsync(new OutputGateResult
                  {
@@ -178,12 +182,12 @@ public class ConversationReplyPhaseGateTests : AniTestBase
                  })
                  .ReturnsAsync(OutputGateResult.Pass());
 
-        string? capturedUser = null;
+        string? capturedSystem = null;
         MockOllama.Setup(o => o.ChatAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
                 It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<float?>()))
             .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken, float?>(
-                (_, _, user, _, _) => capturedUser = user)
+                (sys, _, _, _, _) => capturedSystem = sys)
             .ReturnsAsync(Regenerated);
 
         var phase = BuildPhase(gate: _mockGate.Object);
@@ -191,19 +195,20 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
             Prompt(), 0.7f, CancellationToken.None);
 
-        result.Should().Be(Regenerated);
-        capturedUser.Should().Contain("anti-parrot",
-            "remediation prompt must surface the failed invariant name to the regen LLM");
-        capturedUser.Should().Contain("verbatim lift",
-            "remediation prompt must surface the gate's hint");
-        capturedUser.Should().Contain("Original prompt",
-            "remediation prompt must include the original prompt context");
-        capturedUser.Should().Contain("Do NOT acknowledge",
-            "remediation prompt instructs the model not to surface the gate to Mark");
+        result.Should().Be(Regenerated,
+            "the safe-path reply passes re-eval and is dispatched");
+        capturedSystem.Should().Contain("very little relevant context right now",
+            "H phase: remediation routes through the safe-path composer, not the main composer with a hint");
+        capturedSystem.Should().Contain("Never invent memories or details",
+            "H phase: safe-path composer's anti-invention instruction is present in the remediation system prompt");
+        capturedSystem.Should().NotContain("anti-parrot",
+            "H phase: the verifier hint is intentionally NOT included — we're not asking the model to fix anything");
+        capturedSystem.Should().NotContain("Original prompt",
+            "H phase: original (already-bad) prompt context is NOT carried into the safe-path remediation");
         _mockGate.Verify(
             g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2),
-            "May 3 J.5a re-eval contract: gate evaluated once on original + once on regen");
+            "H phase preserves the defense-in-depth re-eval pattern: gate evaluated once on original + once on safe-path reply");
     }
 
     [Fact]
@@ -275,10 +280,15 @@ public class ConversationReplyPhaseGateTests : AniTestBase
     }
 
     [Fact]
-    public async Task EvaluateAndRemediate_GateRemediate_RegenerationEmpty_FallsBackToOriginal()
+    public async Task EvaluateAndRemediate_GateRemediate_SafePathReplyEmpty_FallsBackToSafeAcknowledgement()
     {
-        // If the regenerated reply is empty/whitespace, the gate's hint
-        // is treated as a "could be better" signal, not a hard block.
+        // H phase remediation routing (2026-06-14): when the safe-path
+        // composer produces empty/whitespace, fall back to SafeAcknowledgement
+        // rather than dispatching the original. The original was already
+        // flagged by the gate as bad — dispatching it would defeat the
+        // purpose of the remediation in the first place. This is STRICTER
+        // than the prior behavior (which fell back to OriginalReply); the
+        // H phase prioritizes accuracy over "always say something."
         _mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
                  .ReturnsAsync(new OutputGateResult
                  {
@@ -296,12 +306,19 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
             Prompt(), 0.7f, CancellationToken.None);
 
-        result.Should().Be(OriginalReply);
+        result.Should().Be(ConversationReplyPipeline.SafeAcknowledgement,
+            "H phase: empty safe-path falls to SafeAcknowledgement, not the already-flagged-bad OriginalReply");
+        result.Should().NotBe(OriginalReply,
+            "H phase invariant: the original-flagged-bad reply MUST NOT be dispatched as a fallback");
     }
 
     [Fact]
-    public async Task EvaluateAndRemediate_GateRemediate_RegenerationThrows_FallsBackToOriginal()
+    public async Task EvaluateAndRemediate_GateRemediate_SafePathThrows_FallsBackToSafeAcknowledgement()
     {
+        // H phase remediation routing (2026-06-14): same invariant as the
+        // empty-reply case. Safe-path LLM failure must NOT result in the
+        // original (known-bad) reply being dispatched. Fall back to
+        // SafeAcknowledgement instead. Stricter than the prior behavior.
         _mockGate.Setup(g => g.EvaluateAsync(It.IsAny<CognitiveArtifact>(), It.IsAny<CancellationToken>()))
                  .ReturnsAsync(new OutputGateResult
                  {
@@ -319,8 +336,10 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             OriginalReply, BuildThread(), BuildSnapshot(), NewReplyMessage(),
             Prompt(), 0.7f, CancellationToken.None);
 
-        result.Should().Be(OriginalReply,
-            "regen LLM failure must NOT block the conversation — original dispatches uncovered.");
+        result.Should().Be(ConversationReplyPipeline.SafeAcknowledgement,
+            "H phase: safe-path LLM failure falls to SafeAcknowledgement, not the already-flagged-bad OriginalReply");
+        result.Should().NotBe(OriginalReply,
+            "H phase invariant: the original-flagged-bad reply MUST NOT be dispatched as a fallback");
     }
 
     [Fact]
