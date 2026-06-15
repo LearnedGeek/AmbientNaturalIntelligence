@@ -60,14 +60,19 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     // epistemic framing for FC-002 / FC-004 / FC-005 / FC-006. Gated by
     // AniOptions.EpistemicFramingEnabled.
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
-    // H phase (2026-06-12) — substrate-thinness routing. When supplied, the
-    // pre-composition relevance filter routes thin-substrate turns to the
-    // safe-path composer instead of the normal lean composer. Optional —
-    // null means today's behavior (always normal path). See IRelevanceFilter
-    // for the architectural framing; empirical anchor: 2026-06-11 puzzle-turn.
-    private readonly IRelevanceFilter? _relevanceFilter;
+    // H phase (2026-06-12 / H.9 expansion 2026-06-14) — tri-state routing
+    // classifier for the dual+ composition architecture. When supplied,
+    // routes each turn to Normal / SafePath / VirtualIntimacy composer.
+    // Optional — null means today's behavior (always normal path).
+    // See IRoutingClassifier for the architectural framing; empirical
+    // anchors: 2026-06-11 puzzle-turn (SafePath class), 2026-06-14 22:16
+    // "drop the Books and come over here and give me a kiss" SafeAck
+    // (VirtualIntimacy class).
+    private readonly IRoutingClassifier? _routingClassifier;
     private readonly AniRuntime.LLM.Prompts.SafePathConversationPromptCommand _safePathPrompt =
         new AniRuntime.LLM.Prompts.SafePathConversationPromptCommand();
+    private readonly AniRuntime.LLM.Prompts.VirtualIntimacyConversationPromptCommand _virtualIntimacyPrompt =
+        new AniRuntime.LLM.Prompts.VirtualIntimacyConversationPromptCommand();
     private readonly ILogger<ConversationReplyPipeline> _log;
 
     // Feature 18: Reactive withdrawal state. Owned by IWithdrawalStateTracker
@@ -104,7 +109,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IConsciousSubstrateGist? consciousGist = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
         IVibeBiasObservationStore? vibeBiasObservations = null,
-        IRelevanceFilter? relevanceFilter = null)
+        IRoutingClassifier? routingClassifier = null)
     {
         _state = state;
         _persist = persist;
@@ -131,7 +136,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _consciousGist = consciousGist;
         _epistemicRenderer = epistemicRenderer;
         _vibeBiasObservations = vibeBiasObservations;
-        _relevanceFilter = relevanceFilter;
+        _routingClassifier = routingClassifier;
         _log = log;
     }
 
@@ -350,57 +355,74 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // after tier separation is validated in deployment.
         _log.LogDebug("Reply user prompt:\n{UserPrompt}", replyPrompt.User);
 
-        // H phase (2026-06-12) — substrate-thinness routing.
+        // H phase (2026-06-12 / H.9 expansion 2026-06-14) — tri-state routing
+        // classifier for the dual+ composition architecture.
         //
-        // Empirical anchor: 2026-06-11 puzzle-turn ("Your puzzle is a lock
-        // shaped like a heart?"). Retrieval surfaced 5 Facts at high cosine
-        // (0.779), the existing composer invented "your students would love
-        // that one" to fill the substrate gap, the verifier caught it,
-        // remediation parroted the user, fell to SafeAck. 3-arm test showed
-        // the safe-path composer reliably produces honest-uncertainty +
-        // ask-back when substrate is thin; the existing composer + emptied
-        // FACTS just shifted the confab class.
+        // Empirical anchors:
+        // - 2026-06-11 puzzle-turn → SafePath class
+        // - 2026-06-14 22:16 "drop the Books and come over here and give me a
+        //   kiss" SafeAck → VirtualIntimacy class
         //
         // Routing:
-        //   IRelevanceFilter.JudgeAsync(userMessage, GroundedFacts)
-        //     → Yes      → existing lean composer (replyPrompt unchanged) + gist injection
-        //     → No       → safe-path composer + SKIP gist injection
-        //     → Unknown  → fail-open to lean composer + gist injection, WARN log
+        //   IRoutingClassifier.ClassifyAsync(userMessage, GroundedFacts)
+        //     → Normal           → existing lean composer (replyPrompt unchanged) + gist injection
+        //     → SafePath         → safe-path composer + SKIP gist injection
+        //     → VirtualIntimacy  → virtual-intimacy composer + SKIP gist injection
+        //     → Unknown          → fail-open to lean composer + gist injection, WARN log
         //
-        // The filter is OPTIONAL (DI-injected) and isReconsideration paths
+        // The classifier is OPTIONAL (DI-injected) and isReconsideration paths
         // bypass routing entirely — desire-driven reconsideration follows
         // its own substrate-rich composer flow.
-        var useSafePath = false;
-        if (_relevanceFilter is not null && !isReconsideration)
+        //
+        // Gist injection is SKIPPED on both SafePath and VirtualIntimacy
+        // because the structural framing of those composers should not be
+        // diluted by ambient substrate (mood gist, world-self gist, etc.).
+        // The composer prompts themselves carry all the framing needed.
+        var skipGistInjection = false;
+        if (_routingClassifier is not null && !isReconsideration)
         {
             var lastUserMessage = snapshot.RecentHistory
                 .LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))
                 ?.Content ?? lastMessage;
 
-            var verdict = await _relevanceFilter
-                .JudgeAsync(lastUserMessage, snapshot.GroundedFacts, ct)
+            var verdict = await _routingClassifier
+                .ClassifyAsync(lastUserMessage, snapshot.GroundedFacts, ct)
                 .ConfigureAwait(false);
 
-            if (verdict == RelevanceVerdict.No)
+            switch (verdict)
             {
-                useSafePath = true;
-                replyPrompt = _safePathPrompt.Build(
-                    new AniRuntime.LLM.Prompts.SafePathConversationPromptInput(
-                        Snapshot:    snapshot,
-                        UserMessage: lastUserMessage));
-                _log.LogInformation(
-                    "H_ROUTE_SAFE_PATH verdict=No factsCount={FactsCount} — routed to safe-path composer (no gist injection)",
-                    snapshot.GroundedFacts.Count);
-            }
-            else if (verdict == RelevanceVerdict.Unknown)
-            {
-                _log.LogWarning(
-                    "H_ROUTE_FAIL_OPEN verdict=Unknown — relevance filter call failed; routing to normal composer");
-            }
-            else
-            {
-                _log.LogDebug("H_ROUTE_NORMAL verdict=Yes factsCount={FactsCount}",
-                    snapshot.GroundedFacts.Count);
+                case RoutingVerdict.SafePath:
+                    skipGistInjection = true;
+                    replyPrompt = _safePathPrompt.Build(
+                        new AniRuntime.LLM.Prompts.SafePathConversationPromptInput(
+                            Snapshot:    snapshot,
+                            UserMessage: lastUserMessage));
+                    _log.LogInformation(
+                        "H_ROUTE_SAFE_PATH factsCount={FactsCount} — routed to safe-path composer (no gist injection)",
+                        snapshot.GroundedFacts.Count);
+                    break;
+
+                case RoutingVerdict.VirtualIntimacy:
+                    skipGistInjection = true;
+                    replyPrompt = _virtualIntimacyPrompt.Build(
+                        new AniRuntime.LLM.Prompts.VirtualIntimacyConversationPromptInput(
+                            Snapshot:    snapshot,
+                            UserMessage: lastUserMessage));
+                    _log.LogInformation(
+                        "H_ROUTE_VIRTUAL_INTIMACY factsCount={FactsCount} — routed to modal-framing composer (no gist injection)",
+                        snapshot.GroundedFacts.Count);
+                    break;
+
+                case RoutingVerdict.Unknown:
+                    _log.LogWarning(
+                        "H_ROUTE_FAIL_OPEN verdict=Unknown — routing classifier call failed; routing to normal composer");
+                    break;
+
+                case RoutingVerdict.Normal:
+                default:
+                    _log.LogDebug("H_ROUTE_NORMAL factsCount={FactsCount}",
+                        snapshot.GroundedFacts.Count);
+                    break;
             }
         }
 
@@ -438,13 +460,12 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // user-role-turn cascade) or to USER when it's user-side (legacy).
         // See ConsciousSubstrateGistObservation.cs for the empirical anchor.
         //
-        // H phase (2026-06-12) — when the relevance filter routed to the
-        // safe-path composer (useSafePath=true), SKIP gist injection entirely.
-        // The safe-path purpose is honest-uncertainty; even direction-shape
-        // gist content (closedConversation, worldSelf) would carry implication
-        // of "things you know" that fights against the honest-uncertainty
-        // framing. The safe-path prompt itself IS the constraint set.
-        var promptWithGist = useSafePath
+        // H phase (2026-06-12 / H.9 expansion 2026-06-14) — when the routing
+        // classifier routed to either safe-path OR virtual-intimacy composer
+        // (skipGistInjection=true), SKIP gist injection entirely. Both
+        // composers have their own structural framing that should not be
+        // diluted by ambient substrate (closedConversation, worldSelf, etc.).
+        var promptWithGist = skipGistInjection
             ? new PromptPair(replyPrompt.System, replyPrompt.User)
             : await ConsciousSubstrateGistObservation
                 .ComposeAndInjectAsync(
