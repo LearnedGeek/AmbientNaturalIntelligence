@@ -141,6 +141,19 @@ public static class AniRuntimeServiceContainer
         // is true. Stateless; singleton.
         services.AddSingleton<IEpistemicSubstrateRenderer, EpistemicSubstrateRenderer>();
 
+        // H phase (2026-06-12) — substrate-thinness routing. Pre-composition
+        // relevance filter that judges whether retrieved substrate is
+        // sufficient to ground a high-quality response. When verdict is No,
+        // ConversationReplyPipeline routes to SafePathConversationPromptCommand
+        // (honest-uncertainty + ask-back) instead of the normal lean composer,
+        // and skips gist injection. Empirical anchor: 2026-06-11 puzzle-turn
+        // 3-arm test where the existing composer + emptied FACTS still
+        // confabulated, but the safe-path composer produced honest-uncertainty
+        // across all 3 runs. Uses the configured ChatModel (qwen3:14b in
+        // production) for a single binary judgment per turn. See
+        // IRelevanceFilter and OllamaRelevanceFilter for design rationale.
+        services.AddSingleton<IRelevanceFilter, OllamaRelevanceFilter>();
+
         // Theme O Phase O.2 (May 10, 2026) — Theme J invariants migrated onto
         // the cognitive pipeline as Post-stage handlers via
         // InvariantToHandlerAdapter (registered through .UsePostInvariant<T>()

@@ -60,6 +60,14 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     // epistemic framing for FC-002 / FC-004 / FC-005 / FC-006. Gated by
     // AniOptions.EpistemicFramingEnabled.
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
+    // H phase (2026-06-12) — substrate-thinness routing. When supplied, the
+    // pre-composition relevance filter routes thin-substrate turns to the
+    // safe-path composer instead of the normal lean composer. Optional —
+    // null means today's behavior (always normal path). See IRelevanceFilter
+    // for the architectural framing; empirical anchor: 2026-06-11 puzzle-turn.
+    private readonly IRelevanceFilter? _relevanceFilter;
+    private readonly AniRuntime.LLM.Prompts.SafePathConversationPromptCommand _safePathPrompt =
+        new AniRuntime.LLM.Prompts.SafePathConversationPromptCommand();
     private readonly ILogger<ConversationReplyPipeline> _log;
 
     // Feature 18: Reactive withdrawal state. Owned by IWithdrawalStateTracker
@@ -95,7 +103,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IVibeBiasService? vibeBias = null,
         IConsciousSubstrateGist? consciousGist = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
-        IVibeBiasObservationStore? vibeBiasObservations = null)
+        IVibeBiasObservationStore? vibeBiasObservations = null,
+        IRelevanceFilter? relevanceFilter = null)
     {
         _state = state;
         _persist = persist;
@@ -122,6 +131,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _consciousGist = consciousGist;
         _epistemicRenderer = epistemicRenderer;
         _vibeBiasObservations = vibeBiasObservations;
+        _relevanceFilter = relevanceFilter;
         _log = log;
     }
 
@@ -340,6 +350,60 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // after tier separation is validated in deployment.
         _log.LogDebug("Reply user prompt:\n{UserPrompt}", replyPrompt.User);
 
+        // H phase (2026-06-12) — substrate-thinness routing.
+        //
+        // Empirical anchor: 2026-06-11 puzzle-turn ("Your puzzle is a lock
+        // shaped like a heart?"). Retrieval surfaced 5 Facts at high cosine
+        // (0.779), the existing composer invented "your students would love
+        // that one" to fill the substrate gap, the verifier caught it,
+        // remediation parroted the user, fell to SafeAck. 3-arm test showed
+        // the safe-path composer reliably produces honest-uncertainty +
+        // ask-back when substrate is thin; the existing composer + emptied
+        // FACTS just shifted the confab class.
+        //
+        // Routing:
+        //   IRelevanceFilter.JudgeAsync(userMessage, GroundedFacts)
+        //     → Yes      → existing lean composer (replyPrompt unchanged) + gist injection
+        //     → No       → safe-path composer + SKIP gist injection
+        //     → Unknown  → fail-open to lean composer + gist injection, WARN log
+        //
+        // The filter is OPTIONAL (DI-injected) and isReconsideration paths
+        // bypass routing entirely — desire-driven reconsideration follows
+        // its own substrate-rich composer flow.
+        var useSafePath = false;
+        if (_relevanceFilter is not null && !isReconsideration)
+        {
+            var lastUserMessage = snapshot.RecentHistory
+                .LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))
+                ?.Content ?? lastMessage;
+
+            var verdict = await _relevanceFilter
+                .JudgeAsync(lastUserMessage, snapshot.GroundedFacts, ct)
+                .ConfigureAwait(false);
+
+            if (verdict == RelevanceVerdict.No)
+            {
+                useSafePath = true;
+                replyPrompt = _safePathPrompt.Build(
+                    new AniRuntime.LLM.Prompts.SafePathConversationPromptInput(
+                        Snapshot:    snapshot,
+                        UserMessage: lastUserMessage));
+                _log.LogInformation(
+                    "H_ROUTE_SAFE_PATH verdict=No factsCount={FactsCount} — routed to safe-path composer (no gist injection)",
+                    snapshot.GroundedFacts.Count);
+            }
+            else if (verdict == RelevanceVerdict.Unknown)
+            {
+                _log.LogWarning(
+                    "H_ROUTE_FAIL_OPEN verdict=Unknown — relevance filter call failed; routing to normal composer");
+            }
+            else
+            {
+                _log.LogDebug("H_ROUTE_NORMAL verdict=Yes factsCount={FactsCount}",
+                    snapshot.GroundedFacts.Count);
+            }
+        }
+
         // Vibe Loop V1.5a (May 2, 2026) — observational-only telemetry pass.
         // Logs V15_BIAS_* lines describing what V1.5b WOULD surface from the
         // closed-conversation-record substrate; the prompt above is unchanged.
@@ -373,17 +437,26 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // SYSTEM when the directive is system-side (preventing the second-
         // user-role-turn cascade) or to USER when it's user-side (legacy).
         // See ConsciousSubstrateGistObservation.cs for the empirical anchor.
-        var promptWithGist = await ConsciousSubstrateGistObservation
-            .ComposeAndInjectAsync(
-                _consciousGist,
-                snapshot,
-                _aniOptions,
-                replyPrompt.System,
-                replyPrompt.User,
-                directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem,
-                _log,
-                ct)
-            .ConfigureAwait(false);
+        //
+        // H phase (2026-06-12) — when the relevance filter routed to the
+        // safe-path composer (useSafePath=true), SKIP gist injection entirely.
+        // The safe-path purpose is honest-uncertainty; even direction-shape
+        // gist content (closedConversation, worldSelf) would carry implication
+        // of "things you know" that fights against the honest-uncertainty
+        // framing. The safe-path prompt itself IS the constraint set.
+        var promptWithGist = useSafePath
+            ? new PromptPair(replyPrompt.System, replyPrompt.User)
+            : await ConsciousSubstrateGistObservation
+                .ComposeAndInjectAsync(
+                    _consciousGist,
+                    snapshot,
+                    _aniOptions,
+                    replyPrompt.System,
+                    replyPrompt.User,
+                    directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem,
+                    _log,
+                    ct)
+                .ConfigureAwait(false);
 
         var reply = await _ollama.ChatAsync(
             promptWithGist.System, snapshot.RecentHistory, promptWithGist.User, ct, replyTemperature)
