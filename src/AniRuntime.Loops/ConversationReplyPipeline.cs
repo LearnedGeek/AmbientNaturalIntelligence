@@ -420,8 +420,40 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
 
                 case RoutingVerdict.Normal:
                 default:
-                    _log.LogDebug("H_ROUTE_NORMAL factsCount={FactsCount}",
-                        snapshot.GroundedFacts.Count);
+                    // Phase K.1 (2026-07-02) — lean composer bypass for the
+                    // Normal-verdict path. When LeanConversationComposerEnabled
+                    // is on, we throw away the substrate-injected replyPrompt
+                    // built above and replace it with an empty PromptPair: no
+                    // system-message override (letting the ani-v7-conversation
+                    // Modelfile SYSTEM carry the character), no [FACTS] /
+                    // [INTERIOR] / [YOUR WORLD] / gist injection. Recent
+                    // history still flows via snapshot.RecentHistory at the
+                    // ChatAsync call site, so the model sees the last N turns
+                    // of texting as its only context.
+                    //
+                    // Empirical anchor: 2026-07-02 K.0 harness against
+                    // ani-v7-conversation with Modelfile SYSTEM only + zero
+                    // substrate produced Mark's Ani voice on all four
+                    // canonical failure scenarios (see
+                    // docs/spec/ANI-Phase-K-Lean-Composer-Plan.md §5 K.1).
+                    //
+                    // Gist injection is skipped on this path for the same
+                    // reason SafePath / VirtualIntimacy skip it: the frame
+                    // is structurally light on purpose and should not be
+                    // diluted by ambient substrate.
+                    if (_aniOptions.LeanConversationComposerEnabled)
+                    {
+                        skipGistInjection = true;
+                        replyPrompt       = new PromptPair(System: string.Empty, User: string.Empty);
+                        _log.LogInformation(
+                            "K_ROUTE_LEAN_CONVERSATION factsCount={FactsCount} — bypassing substrate injection, Modelfile SYSTEM in effect",
+                            snapshot.GroundedFacts.Count);
+                    }
+                    else
+                    {
+                        _log.LogDebug("H_ROUTE_NORMAL factsCount={FactsCount}",
+                            snapshot.GroundedFacts.Count);
+                    }
                     break;
             }
         }

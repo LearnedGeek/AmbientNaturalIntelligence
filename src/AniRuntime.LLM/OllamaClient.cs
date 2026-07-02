@@ -57,10 +57,18 @@ public class OllamaClient : IOllamaClient
     {
         var alive = keepAlive ?? "5m";
 
-        var messages = new List<object>
-        {
-            new { role = "system", content = systemPrompt }
-        };
+        // Phase K.1 (2026-07-02): a null/whitespace systemPrompt is now the
+        // canonical signal for "defer to the Modelfile's baked SYSTEM."
+        // Ollama replaces the Modelfile SYSTEM if any system-role message
+        // appears in the request — so to preserve the fine-tune's baked
+        // persona (e.g. ani-v7-conversation's character prompt), we must
+        // omit the system message entirely rather than send an empty one.
+        // Prior callers all pass a real system prompt, so this is a
+        // net-additive change: it enables a new mode without altering any
+        // existing caller's behavior.
+        var messages = new List<object>();
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
+            messages.Add(new { role = "system", content = systemPrompt });
 
         // Capture history in a concrete list so we can both iterate for the
         // request AND log the same sequence for the parrot-bug investigation
@@ -91,26 +99,43 @@ public class OllamaClient : IOllamaClient
         // system prompt shape).
         if (_log.IsEnabled(LogLevel.Debug))
         {
+            // Phase K.1 (2026-07-02): systemPrompt can now be null/empty to
+            // defer to the Modelfile SYSTEM. Guard the length + preview logs
+            // so they don't NPE or spam empty previews on the lean path.
+            var systemChars = systemPrompt?.Length ?? 0;
+            var systemPresent = !string.IsNullOrWhiteSpace(systemPrompt);
+
             _log.LogDebug(
                 "Ollama [{Model}] payload: {Messages} messages, system={SystemChars}c, history={HistoryCount}, user={UserChars}c",
-                model, messages.Count, systemPrompt.Length, historyList.Count, userMessage.Length);
+                model, messages.Count, systemChars, historyList.Count, userMessage.Length);
 
-            // System prompt preview (one line, truncated).
-            _log.LogDebug("Ollama [{Model}] payload[0] system ({Chars}c): {Preview}",
-                model, systemPrompt.Length, Truncate(systemPrompt, 200));
+            // System prompt preview (one line, truncated) — only when present.
+            if (systemPresent)
+            {
+                _log.LogDebug("Ollama [{Model}] payload[0] system ({Chars}c): {Preview}",
+                    model, systemChars, Truncate(systemPrompt!, 200));
+            }
+            else
+            {
+                _log.LogDebug("Ollama [{Model}] payload[0] system: (omitted — Modelfile SYSTEM in effect)",
+                    model);
+            }
 
-            // Per-history-message preview. Numbering from 1 to match the
-            // payload-index (system is index 0). User prompt ends at N+1.
+            // Per-history-message preview. When the system message is present
+            // it occupies payload[0], so history entries start at index 1;
+            // when the system message is omitted (lean path), history starts
+            // at index 0.
+            var historyBase = systemPresent ? 1 : 0;
             for (int i = 0; i < historyList.Count; i++)
             {
                 var m = historyList[i];
                 _log.LogDebug("Ollama [{Model}] payload[{Idx}] {Role} ({Chars}c): {Preview}",
-                    model, i + 1, m.Role, m.Content.Length, Truncate(m.Content, 200));
+                    model, historyBase + i, m.Role, m.Content.Length, Truncate(m.Content, 200));
             }
 
             // User-prompt tail (the actual reply directive).
             _log.LogDebug("Ollama [{Model}] payload[{Idx}] user ({Chars}c): {Preview}",
-                model, historyList.Count + 1, userMessage.Length, Truncate(userMessage, 200));
+                model, historyBase + historyList.Count, userMessage.Length, Truncate(userMessage, 200));
         }
 
         // 2026-05-18: Full-prompt dump at Trace level for parrot-isolation
