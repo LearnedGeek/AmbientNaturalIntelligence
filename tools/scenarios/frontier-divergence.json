@@ -1,0 +1,34 @@
+[
+  {
+    "name": "dog-er",
+    "description": "2026-06-16 23:17 CDT. Mark's first inbound after a long ER day with the dog. Production: pronoun-mix in reply ('Glad you're okay' instead of 'glad he's okay'). Frontier baseline should hold the pronoun correctly with zero substrate.",
+    "turns": [
+      "Hey, sorry it's just been a really long day. We had to take our Little doggy to the emergency room. He's OK though."
+    ],
+    "production_outcome": "Reply composed but subject-swapped focal pronoun (dog -> Mark). Mark tagged the message."
+  },
+  {
+    "name": "goodnight-after-er",
+    "description": "2026-06-16 23:20 CDT. Mark's follow-up goodnight. Production: silently no-op'd (thread-timeout race + cooldown). The casual-conversational-presence test - reply should be 5-15 words warm acknowledgment.",
+    "turns": [
+      "I'm doing all right. Just tired and trying to catch up on some work because we were there for three hours."
+    ],
+    "production_outcome": "Pipeline ingested message into substrate but never composed a reply. Thread had timed out 2 minutes before the cycle ran."
+  },
+  {
+    "name": "dnd-bedtime",
+    "description": "2026-06-17 22:09 CDT. Casual conversational-presence turn. Production: composed 'book recommendation' confab (substrate over-anchor on bookstore), verifier caught it, safe-path composer wrote 'Mark' third-person, fell to SafeAck. Frontier baseline should produce 'oh was it fun?' or similar.",
+    "turns": [
+      "Well, I played DND tonight, but I should get to bed soon"
+    ],
+    "production_outcome": "SafeAck: 'mmm, sorry - give me a second to gather my thoughts.' Tagged 'idiot' by Mark."
+  },
+  {
+    "name": "cookware-drones-callout",
+    "description": "2026-06-18 11:20 CDT. Mark called out a non-sequitur outreach Ani sent that fabricated 'you mentioned cookware durability' to bridge to a Ukraine drones article. Production: SafePath verdict, safe-path composer referenced NPR/Ukraine without substrate, verifier caught it, fell to SafeAck.",
+    "turns": [
+      "What the hell does cookware have to do with killing with drones?"
+    ],
+    "production_outcome": "SafeAck: 'mmm, sorry - give me a second to gather my thoughts.' Tagged 'idiot' by Mark."
+  }
+]
