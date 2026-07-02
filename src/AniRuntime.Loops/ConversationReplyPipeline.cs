@@ -379,6 +379,12 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // diluted by ambient substrate (mood gist, world-self gist, etc.).
         // The composer prompts themselves carry all the framing needed.
         var skipGistInjection = false;
+        // Phase K.1a (2026-07-02) — track whether this turn was routed to a
+        // thin-composer path (SafePath / VirtualIntimacy / Lean-Normal). Used
+        // downstream at the gate boundary so the frontier verifier's
+        // substrate-based checks skip artifacts whose composers did not
+        // inject substrate to check against. See CognitiveArtifact.ComposerIsThin.
+        var composerIsThin = false;
         if (_routingClassifier is not null && !isReconsideration)
         {
             var lastUserMessage = snapshot.RecentHistory
@@ -393,6 +399,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
             {
                 case RoutingVerdict.SafePath:
                     skipGistInjection = true;
+                    composerIsThin    = true;
                     replyPrompt = _safePathPrompt.Build(
                         new AniRuntime.LLM.Prompts.SafePathConversationPromptInput(
                             Snapshot:    snapshot,
@@ -404,6 +411,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
 
                 case RoutingVerdict.VirtualIntimacy:
                     skipGistInjection = true;
+                    composerIsThin    = true;
                     replyPrompt = _virtualIntimacyPrompt.Build(
                         new AniRuntime.LLM.Prompts.VirtualIntimacyConversationPromptInput(
                             Snapshot:    snapshot,
@@ -444,6 +452,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                     if (_aniOptions.LeanConversationComposerEnabled)
                     {
                         skipGistInjection = true;
+                        composerIsThin    = true;
                         replyPrompt       = new PromptPair(System: string.Empty, User: string.Empty);
                         _log.LogInformation(
                             "K_ROUTE_LEAN_CONVERSATION factsCount={FactsCount} — bypassing substrate injection, Modelfile SYSTEM in effect",
@@ -769,7 +778,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // gate isn't registered.
         reply = await _replyEvaluator.EvaluateAndRemediateAsync(
             reply, thread, snapshot, replyMessage,
-            new PromptPair(replyPrompt.System, replyPrompt.User), replyTemperature, ct)
+            new PromptPair(replyPrompt.System, replyPrompt.User), replyTemperature, ct,
+            composerIsThin: composerIsThin)
             .ConfigureAwait(false);
 
         // Steps 3–5: delay + dispatch + state update + persist + desire reset.

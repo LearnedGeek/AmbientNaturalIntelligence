@@ -122,6 +122,21 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
         // sinks have their own (non-cloud) coverage paths.
         if (artifact.IntendedSink != CognitiveOutputSink.Dispatch) return false;
 
+        // Phase K.1a (2026-07-02) — thin-composer paths are structurally
+        // designed to run without substrate injection (SafePath /
+        // VirtualIntimacy / Lean-Normal). The verifier's q1-q5 checks
+        // compare composed claims against substrate — a comparison that
+        // structurally produces false positives when no substrate was
+        // injected in the first place. Empirical anchor: 2026-07-02 K.1
+        // weather-question trace, where an in-character reply was blocked
+        // by three simultaneous verifier violations that were all category
+        // errors under thin-composer semantics (modal framing flagged as
+        // unsupported shared-events, questions flagged as unsupported
+        // present-tense assertions, "baby" flagged as third-party
+        // reference to Ani). Skip verifier on thin-composer output; local
+        // judgment invariants continue to run.
+        if (artifact.ComposerIsThin) return false;
+
         return artifact.ProducerKind is
             CognitiveProducerKind.ConversationReply
          or CognitiveProducerKind.Outreach

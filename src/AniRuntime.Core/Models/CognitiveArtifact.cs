@@ -117,6 +117,33 @@ public sealed class CognitiveArtifact
     /// null and runtime behavior is identical to pre-FC-010.
     /// </summary>
     public ReplyContinuationMode? ContinuationMode { get; init; }
+
+    /// <summary>
+    /// Phase K.1a (2026-07-02) — flag set to true by the ConversationReply
+    /// pipeline when the composer that produced this artifact was a "thin"
+    /// composer (SafePath, VirtualIntimacy, or Lean-Normal): one that runs
+    /// without substrate injection.
+    ///
+    /// <para>Consumed by <c>FrontierVerifierHandler.AppliesTo</c>: when
+    /// true, the frontier verifier is skipped for this artifact. Rationale:
+    /// the verifier's q1-q5 checks compare composed claims against
+    /// injected substrate to detect fabrication. On thin-composer paths
+    /// there is <em>no substrate injection by design</em>, so those checks
+    /// structurally produce false positives — modal framing gets flagged
+    /// as unsupported shared-events (q1), rhetorical questions as
+    /// unsupported present-tense assertions (q2), terms of endearment as
+    /// third-party references (q3). Empirical anchor: 2026-07-02 K.1
+    /// weather-question trace, where an in-character reply was blocked by
+    /// three simultaneous verifier violations that were all category
+    /// errors under thin-composer semantics.</para>
+    ///
+    /// <para>Local judgment invariants (anti-parrot, addressee-name,
+    /// direct-address, temporal-substrate, confabulation, prompt-template-
+    /// leak) still fire — they operate on composed-text properties, not on
+    /// substrate correspondence, so their applicability doesn't depend on
+    /// whether substrate was injected.</para>
+    /// </summary>
+    public bool ComposerIsThin { get; init; } = false;
 }
 
 /// <summary>

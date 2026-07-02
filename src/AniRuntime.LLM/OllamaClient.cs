@@ -147,8 +147,10 @@ public class OllamaClient : IOllamaClient
         // Disabled in production by default (Trace is opt-in per category).
         if (_log.IsEnabled(LogLevel.Trace))
         {
+            // Phase K.1 (2026-07-02): systemPrompt can be null on the lean
+            // path — dump a "(omitted)" marker rather than NPE.
             _log.LogTrace("Ollama [{Model}] FULL system ({Chars}c):\n{Content}",
-                model, systemPrompt.Length, systemPrompt);
+                model, systemPrompt?.Length ?? 0, systemPrompt ?? "(omitted — Modelfile SYSTEM in effect)");
             for (int i = 0; i < historyList.Count; i++)
             {
                 var m = historyList[i];

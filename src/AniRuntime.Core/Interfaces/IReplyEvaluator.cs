@@ -35,5 +35,6 @@ public interface IReplyEvaluator
         ConversationMessage replyMessage,
         PromptPair replyPrompt,
         float replyTemperature,
-        CancellationToken ct);
+        CancellationToken ct,
+        bool composerIsThin = false);
 }

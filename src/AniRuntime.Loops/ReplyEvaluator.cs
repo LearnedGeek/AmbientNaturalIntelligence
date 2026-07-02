@@ -49,7 +49,8 @@ public sealed class ReplyEvaluator : IReplyEvaluator
         ConversationMessage replyMessage,
         PromptPair replyPrompt,
         float replyTemperature,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool composerIsThin = false)
     {
         if (_outputGate is null || !_aniOptions.ConversationReplyOutputGateEnabled)
             return reply;
@@ -81,6 +82,11 @@ public sealed class ReplyEvaluator : IReplyEvaluator
             GeneratedAt             = DateTimeOffset.Now,
             ContactRecentMessages   = contactRecent,
             PriorAniMessages        = priorAni,
+            // Phase K.1a (2026-07-02): flag thin-composer output so
+            // FrontierVerifierHandler skips its substrate-based checks
+            // (which structurally false-positive on non-substrate-injected
+            // composer output). Local judgment invariants still fire.
+            ComposerIsThin          = composerIsThin,
         };
 
         OutputGateResult gateResult;
@@ -189,6 +195,11 @@ public sealed class ReplyEvaluator : IReplyEvaluator
                         PriorAniMessages        = artifact.PriorAniMessages,
                         SystemPromptText        = artifact.SystemPromptText,
                         WriterInnerThought      = artifact.WriterInnerThought,
+                        // Phase K.1a: safe-path is by definition a thin
+                        // composer — no substrate injection, structural
+                        // framing only. Frontier verifier is skipped for
+                        // the same reasons as the primary thin routes.
+                        ComposerIsThin          = true,
                     };
 
                     OutputGateResult safePathResult;
