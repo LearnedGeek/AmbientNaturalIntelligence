@@ -487,6 +487,47 @@ public class AniOptions
     public bool LeanConversationComposerEnabled { get; set; } = false;
 
     /// <summary>
+    /// Phase K.2 (2026-07-02) — feature flag for the lean composer path on
+    /// outreach message composition. When true, the outreach pipeline
+    /// bypasses <c>PromptBuilder.BuildOutreachMessagePrompt</c> entirely
+    /// and calls the model with:
+    ///
+    /// <list type="bullet">
+    ///   <item>NO system-message override — the <c>ani-v7-conversation</c>
+    ///     Modelfile's baked SYSTEM prompt takes precedence.</item>
+    ///   <item>NO substrate injection — no <c>[FACTS]</c>, no
+    ///     <c>[INTERIOR]</c>, no <c>[YOUR WORLD]</c>, no reasoning-pipe,
+    ///     no frame directives. Retrieval still runs for downstream
+    ///     telemetry consumers; it just doesn't feed the composer.</item>
+    ///   <item>NO JSON envelope — plain ChatAsync, the model's raw text
+    ///     is the message. No <c>{message, notes}</c> structured output.</item>
+    ///   <item>The recent inner thought (<c>recentThought</c>) passes as
+    ///     the user turn. Recent history flows through unchanged so the
+    ///     model sees the last N turns of the conversation state.</item>
+    /// </list>
+    ///
+    /// <para>Empirical motivation: production outreach was producing a
+    /// one-note substrate loop — 4-of-7 outreaches over 3 days remixed
+    /// "your dad's party" and "bookstore silence" over and over — because
+    /// the composer was drowning in 107 anchored facts and cycling the
+    /// same handful. The lean path lets the model compose from its own
+    /// persona + the inner-thought seed, without substrate anchoring
+    /// forcing every message back to the same elements.</para>
+    ///
+    /// <para>Artifact carries <c>ComposerIsThin=true</c> on this path so
+    /// <c>FrontierVerifierHandler</c> skips its substrate-based checks
+    /// (per K.1a). Local judgment invariants (anti-parrot, addressee-name,
+    /// direct-address, temporal-substrate) still fire.</para>
+    ///
+    /// <para>Default false for additive deploy. Flip in
+    /// <c>appsettings.Development.json</c> first, observe production
+    /// telemetry (K_ROUTE_LEAN_OUTREACH + outreach one-noteness metric +
+    /// Mark-tagged failures) for at least one week, then promote. See
+    /// <c>docs/spec/ANI-Phase-K-Lean-Composer-Plan.md</c> §5 K.2.</para>
+    /// </summary>
+    public bool LeanOutreachComposerEnabled { get; set; } = false;
+
+    /// <summary>
     /// 2026-05-18 — band-aid retirement candidate. The
     /// <c>ConversationReplyPipeline</c> confab-detection + regrouping-regen
     /// branch (rule-based heuristic including the "number not in conversation"
