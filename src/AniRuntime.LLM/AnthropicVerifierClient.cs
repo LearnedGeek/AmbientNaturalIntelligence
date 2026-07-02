@@ -86,15 +86,32 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
             "AnthropicVerifierClient: dispatching verification (model={Model}, composed_chars={Chars})",
             _options.Model, request.ComposedMessage?.Length ?? 0);
 
-        var system = BuildSystemPrompt();
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
-        var user   = BuildUserPrompt(request, rendererForPrompt);
+        var system = BuildSystemPrompt(rendererForPrompt, request.AddresseeCanonicalName);
+        var user   = BuildUserPrompt(request);
 
+        // Anthropic prompt caching (2026-07-01): the system prompt now carries
+        // ALL stable content (general instructions + three-axis rule slice +
+        // QUESTIONS + reply schema) and is marked cacheable via a `cache_control`
+        // ephemeral breakpoint. Variable per-call content (composed message +
+        // substrate + current context) lives in the user message and is NOT
+        // cached. Sonnet 4.5+ caches system prefixes ≥1024 tokens; with the
+        // three-axis rule slice enabled this comfortably exceeds the floor,
+        // producing ~90% cost reduction on cached prefix tokens after the first
+        // call in each 5-minute window.
         var payload = new
         {
             model      = _options.Model,
             max_tokens = _options.MaxTokens,
-            system,
+            system     = new object[]
+            {
+                new
+                {
+                    type          = "text",
+                    text          = system,
+                    cache_control = new { type = "ephemeral" }
+                }
+            },
             messages   = new[]
             {
                 new { role = "user", content = user }
@@ -136,56 +153,53 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
         return ParseVerdict(rawText);
     }
 
-    // ─── Prompt construction (verbatim from plan-doc §3) ─────────────────
+    // ─── Prompt construction ─────────────────────────────────────────────
+    //
+    // Structure (post 2026-07-01 prompt-caching restructure):
+    //
+    // System prompt (STABLE across calls — cached by Anthropic's ephemeral
+    // prompt cache, ~90% cost reduction on prefix tokens after first hit):
+    //   * general instructions + empty-substrate rule
+    //   * three-axis rule slice (when epistemic framing enabled) — stable
+    //     per-addressee; in production addressee is always Mark so this
+    //     effectively caches
+    //   * [QUESTIONS] block + reply schema
+    //
+    // User prompt (VARIABLE per call — never cached):
+    //   * [COMPOSED MESSAGE]
+    //   * [USER-ASSERTED SUBSTRATE]
+    //   * [CANONICAL FACTS]
+    //   * [CURRENT CONTEXT]
+    //
+    // Semantic contract with Sonnet is unchanged — same instructions, same
+    // rule, same questions, same schema, same substrate — only the message-
+    // role boundary shifted. Sonnet is robust to this positioning.
 
-    internal static string BuildSystemPrompt() =>
-        "You are an independent verifier for an AI companion's output before " +
-        "dispatch. You evaluate whether the composed message contains fabrications, " +
-        "unsupported claims, or temporal/factual errors. Reply ONLY with structured " +
-        "JSON. Be strict: if a claim cannot be verified from the provided substrate, " +
-        "mark it unsupported.\n\n" +
-        "If both substrate blocks are empty, this means retrieval did not find " +
-        "sufficiently-similar substrate for any claim. In that case, return " +
-        "verdict='pass' with all q1–q5 violation=false and reason='no substrate " +
-        "retrieved above similarity threshold — claims cannot be evaluated from " +
-        "available evidence' — do NOT treat empty substrate as confirmation of " +
-        "fabrication.";
-
-    internal static string BuildUserPrompt(FrontierVerifierRequest request,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+    internal static string BuildSystemPrompt(
+        IEpistemicSubstrateRenderer? epistemicRenderer      = null,
+        string?                      addresseeCanonicalName = null)
     {
-        // Renders the plan-doc §3 user prompt VERBATIM. Field labels and
-        // bracketed section headers are preserved exactly; only the
-        // substrate / context placeholders are interpolated.
         var sb = new StringBuilder();
-        sb.Append("[COMPOSED MESSAGE]\n");
-        sb.Append(request.ComposedMessage);
-        sb.Append("\n\n");
 
-        sb.Append("[USER-ASSERTED SUBSTRATE — recent messages from Mark, last 7 days]\n");
-        sb.Append(request.MarkAssertedSubstrate);
-        sb.Append("\n\n");
+        sb.Append("You are an independent verifier for an AI companion's output before ");
+        sb.Append("dispatch. You evaluate whether the composed message contains fabrications, ");
+        sb.Append("unsupported claims, or temporal/factual errors. Reply ONLY with structured ");
+        sb.Append("JSON. Be strict: if a claim cannot be verified from the provided substrate, ");
+        sb.Append("mark it unsupported.\n\n");
+        sb.Append("If both substrate blocks are empty, this means retrieval did not find ");
+        sb.Append("sufficiently-similar substrate for any claim. In that case, return ");
+        sb.Append("verdict='pass' with all q1–q5 violation=false and reason='no substrate ");
+        sb.Append("retrieved above similarity threshold — claims cannot be evaluated from ");
+        sb.Append("available evidence' — do NOT treat empty substrate as confirmation of ");
+        sb.Append("fabrication.\n\n");
 
-        sb.Append("[CANONICAL FACTS — character seeds, world layer]\n");
-        sb.Append(request.CanonicalSubstrate);
-        sb.Append("\n\n");
-
-        sb.Append("[CURRENT CONTEXT]\n");
-        sb.Append("- Current time: ").Append(request.CurrentTime.ToString("O")).Append('\n');
-        sb.Append("- Day of week: ").Append(request.CurrentDayOfWeek).Append('\n');
-        sb.Append("- Addressee canonical name: ").Append(request.AddresseeCanonicalName).Append('\n');
-        sb.Append("- Known contacts: ").Append(request.KnownContacts).Append("\n\n");
-
-        // Theme M slice migration (FC-006): when supplied, prepend the
-        // three-axis-rule slice as a structural classifier the verifier
-        // applies to every claim. The slice encodes Subject × Modality ×
-        // Substrate axes + worked verdicts — language q1–q5 structurally
-        // cannot ask. Adding this primes the verifier with the rule before
-        // the narrow questions.
-        if (epistemicRenderer is not null)
+        // Theme M slice migration (FC-006): three-axis-rule slice is stable
+        // per-addressee. In production addressee is always Mark; embedding it
+        // in the (cached) system prompt is a strict optimisation over the
+        // earlier user-prompt embedding.
+        if (epistemicRenderer is not null && !string.IsNullOrWhiteSpace(addresseeCanonicalName))
         {
-            var ruleSlice = epistemicRenderer.RenderThreeAxisRuleSlice(request.AddresseeCanonicalName);
-            sb.Append(ruleSlice);
+            sb.Append(epistemicRenderer.RenderThreeAxisRuleSlice(addresseeCanonicalName));
             sb.Append("\n\n");
         }
 
@@ -213,6 +227,34 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
         sb.Append("  \"q5\": {\"violation\": true|false, \"quote\": string|null, \"reason\": string|null},\n");
         sb.Append("  \"summary_verdict\": \"pass\" | \"remediate\" | \"fail\"\n");
         sb.Append('}');
+
+        return sb.ToString();
+    }
+
+    internal static string BuildUserPrompt(FrontierVerifierRequest request)
+    {
+        // Only per-call variable content lives here. See BuildSystemPrompt
+        // header for the full structural rationale.
+        var sb = new StringBuilder();
+
+        sb.Append("[COMPOSED MESSAGE]\n");
+        sb.Append(request.ComposedMessage);
+        sb.Append("\n\n");
+
+        sb.Append("[USER-ASSERTED SUBSTRATE — recent messages from Mark, last 7 days]\n");
+        sb.Append(request.MarkAssertedSubstrate);
+        sb.Append("\n\n");
+
+        sb.Append("[CANONICAL FACTS — character seeds, world layer]\n");
+        sb.Append(request.CanonicalSubstrate);
+        sb.Append("\n\n");
+
+        sb.Append("[CURRENT CONTEXT]\n");
+        sb.Append("- Current time: ").Append(request.CurrentTime.ToString("O")).Append('\n');
+        sb.Append("- Day of week: ").Append(request.CurrentDayOfWeek).Append('\n');
+        sb.Append("- Addressee canonical name: ").Append(request.AddresseeCanonicalName).Append('\n');
+        sb.Append("- Known contacts: ").Append(request.KnownContacts).Append('\n');
+
         return sb.ToString();
     }
 

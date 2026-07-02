@@ -111,9 +111,14 @@ public sealed class OllamaVerifierClient : IFrontierVerifierClient
             "OllamaVerifierClient: canonical_substrate_preview={CanonicalPreview}",
             Truncate(request.CanonicalSubstrate ?? "(null)", 300));
 
-        var system = AnthropicVerifierClient.BuildSystemPrompt();
+        // Prompt-caching restructure (2026-07-01): three-axis rule slice +
+        // [QUESTIONS] + reply schema moved from user prompt to system prompt.
+        // Ollama has no prompt-cache equivalent, so this is a semantic parity
+        // move — same tokens sent, just under different role labels. Behavior
+        // unchanged.
         var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
-        var user   = AnthropicVerifierClient.BuildUserPrompt(request, rendererForPrompt);
+        var system = AnthropicVerifierClient.BuildSystemPrompt(rendererForPrompt, request.AddresseeCanonicalName);
+        var user   = AnthropicVerifierClient.BuildUserPrompt(request);
 
         // Ollama /api/chat payload — format=json forces structured output
         // matching the verdict schema; stream=false returns the full

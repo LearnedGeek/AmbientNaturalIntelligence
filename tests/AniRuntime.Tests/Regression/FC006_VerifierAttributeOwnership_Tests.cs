@@ -53,13 +53,15 @@ public class FC006_VerifierAttributeOwnership_Tests
 
         // Theme M slice migration (2026-05-14): the FC-006 architectural fix
         // is the three-axis-rule slice injected by IEpistemicSubstrateRenderer.
-        // When the runtime flag (AniOptions.EpistemicFramingEnabled) is on,
-        // AnthropicVerifierClient passes the renderer to BuildUserPrompt and
-        // the slice content lands in the prompt. The harness verifies this
-        // surface directly by passing the renderer here.
+        // Prompt-caching restructure (2026-07-01): stable content — including
+        // the three-axis rule slice, the [QUESTIONS] block, and the reply
+        // schema — moved from user prompt into system prompt so Anthropic's
+        // ephemeral prompt cache can capture the ≥1024-token stable prefix.
+        // Semantic surface is unchanged; the SPEC's combined check reflects
+        // this correctly.
         var renderer = new EpistemicSubstrateRenderer();
-        var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request, renderer).ToLowerInvariant();
-        var systemPrompt = AnthropicVerifierClient.BuildSystemPrompt().ToLowerInvariant();
+        var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request).ToLowerInvariant();
+        var systemPrompt = AnthropicVerifierClient.BuildSystemPrompt(renderer, request.AddresseeCanonicalName).ToLowerInvariant();
         var combined = userPrompt + "\n" + systemPrompt;
 
         // The four conceptual groups the three-axis rule needs to surface.
@@ -129,20 +131,22 @@ public class FC006_VerifierAttributeOwnership_Tests
     /// state for drift detection).
     /// </summary>
     [Fact]
-    public void FC006_VerifierUserPrompt_HardCodesFiveQuestions_Pin()
+    public void FC006_VerifierPrompt_HardCodesFiveQuestions_Pin()
     {
         var request = SyntheticSharedFactualNovel();
-        var userPrompt = AnthropicVerifierClient.BuildUserPrompt(request);
 
-        // The pin is structural — current prompt builds q1, q2, q3, q4, q5 in
-        // the JSON response schema. When that changes (q-set restructured),
-        // this pin will catch the architectural change.
-        userPrompt.Should().Contain("\"q1\":");
-        userPrompt.Should().Contain("\"q2\":");
-        userPrompt.Should().Contain("\"q3\":");
-        userPrompt.Should().Contain("\"q4\":");
-        userPrompt.Should().Contain("\"q5\":");
-        userPrompt.Should().NotContain("\"q6\":",
+        // Prompt-caching restructure (2026-07-01): the JSON schema moved from
+        // the user prompt to the system prompt so it becomes part of the
+        // cacheable stable prefix. The pin still catches architectural drift;
+        // it just checks the system prompt now.
+        var systemPrompt = AnthropicVerifierClient.BuildSystemPrompt();
+
+        systemPrompt.Should().Contain("\"q1\":");
+        systemPrompt.Should().Contain("\"q2\":");
+        systemPrompt.Should().Contain("\"q3\":");
+        systemPrompt.Should().Contain("\"q4\":");
+        systemPrompt.Should().Contain("\"q5\":");
+        systemPrompt.Should().NotContain("\"q6\":",
             "PIN: today the prompt has exactly five questions. If a fix to " +
             "FC-006 restructures the q-set around the three-axis rule, this " +
             "pin will fail intentionally — that failure means the fix " +
