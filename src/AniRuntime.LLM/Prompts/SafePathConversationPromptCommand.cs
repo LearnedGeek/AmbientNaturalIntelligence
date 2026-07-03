@@ -74,12 +74,15 @@ public sealed class SafePathConversationPromptCommand : IPromptCommand<SafePathC
             $"- Never invent memories or details\n\n" +
             $"Just be real with {contact}.";
 
-        // The user prompt is the inbound message. Kept tiny — no FACTS block,
-        // no CRITICAL constraint, no [YOUR WORLD] recall. The safe-path
-        // surface is intentionally minimal so the model has nothing to lift
-        // from beyond the system framing and the inbound itself.
-        var user = $"{contact} just said: \"{input.UserMessage}\"\n\nReply to {contact}'s message.";
-
-        return new PromptPair(system, user);
+        // K.1b (2026-07-02) — user prompt is intentionally EMPTY. Same
+        // rationale as VirtualIntimacyConversationPromptCommand: the
+        // pipeline already passes Mark's inbound as a role=user entry
+        // in snapshot.RecentHistory at the ChatAsync call site. Wrapping
+        // it here as a second "Mark just said: X" user turn produced
+        // near-verbatim reply self-echo on 2026-07-02 18:55 CDT (see
+        // VirtualIntimacy file for the full anchor). OllamaClient omits
+        // empty user-role messages entirely; RecentHistory carries the
+        // inbound instead.
+        return new PromptPair(system, string.Empty);
     }
 }

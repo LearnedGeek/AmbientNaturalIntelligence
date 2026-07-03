@@ -312,16 +312,56 @@ public class RoutingClassifierAndComposerTests
         combined.Should().NotContain("CRITICAL");
     }
 
+    /// <summary>
+    /// K.1b (2026-07-02) — REPLACES the prior "EmbedsUserMessage" pin.
+    ///
+    /// The old pin asserted that the composer's User output included the
+    /// inbound message verbatim. That structure caused a self-echo
+    /// cascade on 2026-07-02 18:55 CDT: the pipeline was feeding the
+    /// inbound both as a role=user entry in RecentHistory AND as a
+    /// wrapped "Mark just said: X" user turn from this composer. The
+    /// model reproduced her prior assistant reply byte-for-byte (342-char
+    /// output identical to prior 342-char output). Self-echo caught it,
+    /// safe-path cascaded to SafeAck.
+    ///
+    /// The K.1b fix: composer emits EMPTY User. RecentHistory is the
+    /// single source of the inbound at the ChatAsync call site.
+    /// OllamaClient omits empty user-role messages from the payload.
+    /// </summary>
     [Fact]
-    public void VirtualIntimacyCommand_Build_EmbedsUserMessage()
+    public void VirtualIntimacyCommand_Build_DoesNotDuplicateUserMessage()
     {
         var cmd = new VirtualIntimacyConversationPromptCommand();
+        const string sentinel = "SENTINEL_USER_MSG_XYZQ_DO_NOT_REPEAT";
 
         var pair = cmd.Build(new VirtualIntimacyConversationPromptInput(
             Snapshot:    StructuralLeakSnapshot(),
-            UserMessage: "drop the Books and come over here and give me a kiss"));
+            UserMessage: sentinel));
 
-        pair.User.Should().Contain("drop the Books and come over here and give me a kiss",
-            "the user prompt embeds the actual inbound message");
+        pair.User.Should().NotContain(sentinel,
+            "K.1b: composer must NOT duplicate the inbound in its User output — " +
+            "RecentHistory carries the inbound as role=user at the call site. " +
+            "Duplication produced the 2026-07-02 18:55 self-echo cascade.");
+        pair.User.Should().BeEmpty(
+            "K.1b: composer emits empty User; the model receives the inbound " +
+            "solely via RecentHistory.");
+    }
+
+    [Fact]
+    public void SafePathCommand_Build_DoesNotDuplicateUserMessage()
+    {
+        var cmd = new SafePathConversationPromptCommand();
+        const string sentinel = "SENTINEL_USER_MSG_ABC_DO_NOT_REPEAT";
+
+        var pair = cmd.Build(new SafePathConversationPromptInput(
+            Snapshot:    StructuralLeakSnapshot(),
+            UserMessage: sentinel));
+
+        pair.User.Should().NotContain(sentinel,
+            "K.1b: composer must NOT duplicate the inbound in its User output — " +
+            "RecentHistory carries the inbound as role=user at the call site.");
+        pair.User.Should().BeEmpty(
+            "K.1b: composer emits empty User; the model receives the inbound " +
+            "solely via RecentHistory.");
     }
 }

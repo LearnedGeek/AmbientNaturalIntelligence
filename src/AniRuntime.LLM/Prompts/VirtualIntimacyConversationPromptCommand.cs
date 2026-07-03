@@ -109,10 +109,30 @@ public sealed class VirtualIntimacyConversationPromptCommand : IPromptCommand<Vi
             $"Stay in {name}'s voice. Be warm, present, and intimate through fantasy framing. " +
             $"Make {contact} feel wanted.";
 
-        // User prompt is the inbound. Kept tiny — the few-shot examples in the
-        // system prompt do the heavy structural work.
-        var user = $"{contact} just said: \"{input.UserMessage}\"\n\nReply to {contact}.";
-
-        return new PromptPair(system, user);
+        // K.1b (2026-07-02) — user prompt is intentionally EMPTY.
+        //
+        // Empirical anchor: 2026-07-02 18:55 CDT self-echo cascade. The
+        // model was fed BOTH a role=user entry in RecentHistory (Mark's
+        // real inbound) AND a wrapped "Mark just said: X" user prompt at
+        // the current turn. Seeing the user message twice combined with
+        // her prior assistant reply in history caused the model to emit
+        // her prior reply verbatim (342-char reproduction of the prior
+        // turn's 342-char output — byte-identical). Self-echo caught it,
+        // safe-path used third-person "Mark", direct-address caught that,
+        // cascaded to SafeAck.
+        //
+        // Root cause was the user-message duplication in this template,
+        // not a model weakness — Qwen and Mistral do not self-echo when
+        // fed a clean, non-duplicated payload. The fix is structural:
+        // stop duplicating. RecentHistory (passed by ConversationReply
+        // pipeline at the ChatAsync call site) already carries the
+        // inbound in role=user position. This method's User output must
+        // not repeat it. OllamaClient omits empty user-role messages
+        // from the payload entirely (K.1 semantics).
+        //
+        // Same shape applies to SafePathConversationPromptCommand — both
+        // thin composers now emit empty User by design; RecentHistory
+        // carries the inbound in both cases.
+        return new PromptPair(system, string.Empty);
     }
 }
