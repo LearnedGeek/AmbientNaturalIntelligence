@@ -339,21 +339,28 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // No memory grounding check — the conversation provides all context.
         var replyTemperature = _ollamaOptions.CreativeTemperature;
 
-        var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
-        // 2026-05-18 — structural role-flip. When LeanConversationPromptDirectiveInSystem
-        // is true, the directive block (slice + [FACTS] + CRITICAL + imperative)
-        // folds into the system message and the returned User is empty.
-        // OllamaClient skips empty user-role messages so the model sees Mark's
-        // actual text from RecentHistory as the only user content.
+        // Phase K.3 (2026-07-06) — substrate-injecting composer path retired.
+        //
+        // The non-reconsideration reply now defaults to the empty-PromptPair
+        // lean shape (Modelfile SYSTEM + RecentHistory), and the routing
+        // switch below optionally replaces that empty pair with a thin
+        // composer's PromptPair when the classifier picks SafePath or
+        // VirtualIntimacy. Reconsideration continues to use the substrate-
+        // heavy BuildReconsiderationReplyPrompt path because it's a desire-
+        // driven regen with its own composer flow, out of K.3's scope.
+        //
+        // What was deleted here:
+        //   - PromptBuilder.BuildLeanConversationPrompt call for non-
+        //     reconsideration (the K.1 lean path replaced it wholesale on
+        //     Normal-verdict; K.3 makes that permanent)
+        //   - LeanConversationPromptDirectiveInSystem flag consumption
+        //     (the role-flip work was subsumed by the empty-PromptPair
+        //     shape)
+        //   - "Reply user prompt" debug log line (nothing to log — the
+        //     User side is empty by design on the lean path)
         var replyPrompt = isReconsideration
             ? PromptBuilder.BuildReconsiderationReplyPrompt(snapshot, thread)
-            : PromptBuilder.BuildLeanConversationPrompt(snapshot, thread, rendererForPrompt,
-                directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem);
-
-        // Epistemic Grounding debug (Apr 10): log the full user prompt so we can
-        // verify the WHAT IS TRUE section is populated with useful facts. Remove
-        // after tier separation is validated in deployment.
-        _log.LogDebug("Reply user prompt:\n{UserPrompt}", replyPrompt.User);
+            : new PromptPair(System: string.Empty, User: string.Empty);
 
         // H phase (2026-06-12 / H.9 expansion 2026-06-14) — tri-state routing
         // classifier for the dual+ composition architecture.
@@ -423,47 +430,37 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
 
                 case RoutingVerdict.Unknown:
                     _log.LogWarning(
-                        "H_ROUTE_FAIL_OPEN verdict=Unknown — routing classifier call failed; routing to normal composer");
-                    break;
+                        "K_ROUTE_FAIL_OPEN verdict=Unknown — routing classifier call failed; treating as Normal (lean)");
+                    goto case RoutingVerdict.Normal;
 
                 case RoutingVerdict.Normal:
                 default:
-                    // Phase K.1 (2026-07-02) — lean composer bypass for the
-                    // Normal-verdict path. When LeanConversationComposerEnabled
-                    // is on, we throw away the substrate-injected replyPrompt
-                    // built above and replace it with an empty PromptPair: no
-                    // system-message override (letting the ani-v7-conversation
-                    // Modelfile SYSTEM carry the character), no [FACTS] /
-                    // [INTERIOR] / [YOUR WORLD] / gist injection. Recent
-                    // history still flows via snapshot.RecentHistory at the
-                    // ChatAsync call site, so the model sees the last N turns
-                    // of texting as its only context.
-                    //
-                    // Empirical anchor: 2026-07-02 K.0 harness against
-                    // ani-v7-conversation with Modelfile SYSTEM only + zero
-                    // substrate produced Mark's Ani voice on all four
-                    // canonical failure scenarios (see
-                    // docs/spec/ANI-Phase-K-Lean-Composer-Plan.md §5 K.1).
-                    //
-                    // Gist injection is skipped on this path for the same
-                    // reason SafePath / VirtualIntimacy skip it: the frame
-                    // is structurally light on purpose and should not be
-                    // diluted by ambient substrate.
-                    if (_aniOptions.LeanConversationComposerEnabled)
-                    {
-                        skipGistInjection = true;
-                        composerIsThin    = true;
-                        replyPrompt       = new PromptPair(System: string.Empty, User: string.Empty);
-                        _log.LogInformation(
-                            "K_ROUTE_LEAN_CONVERSATION factsCount={FactsCount} — bypassing substrate injection, Modelfile SYSTEM in effect",
-                            snapshot.GroundedFacts.Count);
-                    }
-                    else
-                    {
-                        _log.LogDebug("H_ROUTE_NORMAL factsCount={FactsCount}",
-                            snapshot.GroundedFacts.Count);
-                    }
+                    // Phase K.3 (2026-07-06) — the K.1 feature flag is
+                    // retired and lean is the only path. replyPrompt was
+                    // seeded above as an empty PromptPair for the non-
+                    // reconsideration case, so no reassignment is needed
+                    // here. Modelfile SYSTEM + RecentHistory + no substrate
+                    // injection is the full shape.
+                    skipGistInjection = true;
+                    composerIsThin    = true;
+                    _log.LogInformation(
+                        "K_ROUTE_LEAN_CONVERSATION factsCount={FactsCount}",
+                        snapshot.GroundedFacts.Count);
                     break;
+            }
+        }
+        else
+        {
+            // No routing classifier registered, or this is a reconsideration
+            // regen: no route logged, no composer replacement, no thin flag.
+            // Reconsideration keeps the substrate-heavy BuildReconsideration
+            // ReplyPrompt output built above. The classifier-absent case
+            // uses the empty PromptPair seeded above (same shape as lean
+            // Normal without the telemetry).
+            if (!isReconsideration)
+            {
+                skipGistInjection = true;
+                composerIsThin    = true;
             }
         }
 

@@ -177,55 +177,34 @@ public sealed class OutreachPipeline : IOutreachPipeline
 
         // Step 2b: Compose.
         //
-        // Phase K.2 (2026-07-02) — when LeanOutreachComposerEnabled is on,
-        // bypass the substrate-injected BuildOutreachMessagePrompt and
-        // JSON envelope entirely. The lean path calls ChatAsync with:
-        //   * empty system prompt (Modelfile SYSTEM takes precedence)
-        //   * snapshot.RecentHistory unchanged
-        //   * recentThought as the user turn (the inner-thought seed the
-        //     model reflects on and composes an outreach from)
+        // Phase K.3 (2026-07-06) — LeanOutreachComposerEnabled flag retired.
+        // The lean path is the only path. Substrate-injecting
+        // BuildOutreachMessagePrompt call, JSON envelope parse, and the
+        // composedNotes debug-log surface are all deleted here.
         //
-        // Plain text output — no {message, notes} JSON parse. The whole
-        // response becomes the outreach message. The artifact downstream
-        // is marked ComposerIsThin=true so the frontier verifier skips
-        // its substrate-based checks (K.1a semantics).
+        // Shape: ChatAsync with an empty system prompt (Modelfile SYSTEM
+        // in effect), snapshot.RecentHistory unchanged, recentThought as
+        // the user turn (the inner-thought seed the model reflects on).
+        // Plain text output — the whole response becomes the outreach
+        // message. The artifact downstream is marked ComposerIsThin=true
+        // so the frontier verifier skips its substrate-based checks
+        // (K.1a semantics).
         //
         // Empirical anchor: 2026-06-29 to 2026-07-01 production log —
         // "your dad's party" appeared in 4/7 outreaches over 3 days,
         // "bookstore silence" in 5/7. Substrate injection was cycling
         // the same handful of anchored facts. Removing the injection
         // lets the fine-tune compose from its own persona instead.
-        bool leanOutreach = _aniOptions.LeanOutreachComposerEnabled;
-        string composedMessage;
-        string composedNotes = string.Empty;
+        var leanRaw = await _ollama.ChatAsync(
+            systemPrompt: string.Empty,
+            history:      snapshot.RecentHistory,
+            userMessage:  recentThought,
+            ct:           ct).ConfigureAwait(false);
+        _log.LogInformation(
+            "K_ROUTE_LEAN_OUTREACH factsCount={FactsCount}",
+            snapshot.GroundedFacts.Count);
 
-        if (leanOutreach)
-        {
-            var leanRaw = await _ollama.ChatAsync(
-                systemPrompt: string.Empty,
-                history:      snapshot.RecentHistory,
-                userMessage:  recentThought,
-                ct:           ct).ConfigureAwait(false);
-            composedMessage = leanRaw ?? string.Empty;
-            _log.LogInformation(
-                "K_ROUTE_LEAN_OUTREACH factsCount={FactsCount} — bypassing substrate injection, Modelfile SYSTEM in effect",
-                snapshot.GroundedFacts.Count);
-        }
-        else
-        {
-            var rendererForComposition = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
-            var msgPrompt = PromptBuilder.BuildOutreachMessagePrompt(
-                snapshot, recentThought, decisionReasoning, reasoningInComposition,
-                selectedFrame, rendererForComposition);
-            var rawJson = await _ollama.ChatJsonAsync(
-                msgPrompt.System, snapshot.RecentHistory, msgPrompt.User, ct).ConfigureAwait(false);
-
-            (composedMessage, composedNotes) = ParseOutreachComposition(rawJson);
-            if (!string.IsNullOrWhiteSpace(composedNotes))
-                _log.LogDebug("Outreach composition notes (not dispatched): {Notes}", composedNotes);
-        }
-
-        var message = CleanOutreachMessage(composedMessage);
+        var message = CleanOutreachMessage(leanRaw ?? string.Empty);
         _log.LogInformation("Outreach message composed: {Message}", message);
 
         // Step 2c: ML confabulation check.
@@ -326,11 +305,10 @@ public sealed class OutreachPipeline : IOutreachPipeline
                     WriterInnerThought      = recentThought,
                     ContactRecentMessages   = ExtractRecentContactMessages(snapshot, contact),
                     PriorAniMessages        = ExtractRecentAniMessages(snapshot),
-                    // K.2 (2026-07-02) — when the lean outreach composer
-                    // ran, the artifact was produced without substrate
-                    // injection. Flag it thin so the frontier verifier
-                    // skips (per K.1a). Local invariants still fire.
-                    ComposerIsThin          = leanOutreach,
+                    // K.3 (2026-07-06) — lean outreach is the only path now,
+                    // so the artifact is always thin. Frontier verifier skips
+                    // (per K.1a); local invariants still fire.
+                    ComposerIsThin          = true,
                 };
 
                 var verdict = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);

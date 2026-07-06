@@ -275,13 +275,24 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
             "the selector must receive the same ContextSnapshot the cycle is operating on");
 
         // Composition WAS reached (selector returned a real frame, so
-        // suppression branch was skipped). ChatJsonAsync must have been
-        // called twice — once for the outreach decision, once for the
-        // structured composition.
+        // suppression branch was skipped).
+        //
+        // K.3 (2026-07-06) — lean outreach is the only path now. The
+        // JSON-envelope composition call was retired; composition uses
+        // plain ChatAsync with the inner-thought seed as the user turn.
+        // So ChatJsonAsync runs exactly ONCE (the decision call) and
+        // ChatAsync runs exactly ONCE (the lean composition call) when
+        // the selector returns a real frame.
         MockOllama.Verify(o => o.ChatJsonAsync(
             It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
             It.IsAny<CancellationToken>()),
-            Times.Exactly(2),
-            "ChatJsonAsync runs twice — decision + composition — on the real-frame path");
+            Times.Once,
+            "K.3: ChatJsonAsync runs exactly once — for the outreach decision.");
+
+        MockOllama.Verify(o => o.ChatAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>(), It.IsAny<float?>()),
+            Times.Once,
+            "K.3: ChatAsync runs exactly once — for lean composition.");
     }
 }

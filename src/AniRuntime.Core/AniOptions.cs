@@ -444,88 +444,14 @@ public class AniOptions
     /// </summary>
     public bool LeanConversationPromptDirectiveInSystem { get; set; } = false;
 
-    /// <summary>
-    /// Phase K.1 (2026-07-02) — feature flag for the lean composer path on
-    /// conversation reply. When true and the routing verdict is Normal, the
-    /// pipeline bypasses <c>PromptBuilder.BuildLeanConversationPrompt</c>
-    /// entirely and calls the model with:
-    ///
-    /// <list type="bullet">
-    ///   <item>NO system-message override — the <c>ani-v7-conversation</c>
-    ///     Modelfile's baked SYSTEM prompt takes precedence and carries the
-    ///     character (Sharp / playful / warmth-underneath-edge / "you don't
-    ///     pretend to know things you don't" / holds ground when pushed).</item>
-    ///   <item>NO substrate injection — no <c>[FACTS]</c>, no
-    ///     <c>[INTERIOR]</c>, no <c>[YOUR WORLD]</c>, no gist. Retrieval still
-    ///     runs for downstream telemetry consumers; it just doesn't feed the
-    ///     composer.</item>
-    ///   <item>Recent conversation history (<c>snapshot.RecentHistory</c>)
-    ///     passes through unchanged — the model sees the last N turns of
-    ///     texting as its only context.</item>
-    /// </list>
-    ///
-    /// <para><b>Empirical anchor.</b> 2026-07-02 K.0 harness against
-    /// <c>ani-v7-conversation</c> with Modelfile SYSTEM only + zero substrate
-    /// produced Mark's Ani voice on all four canonical scenarios (bratty,
-    /// warm-with-edge, playful, no "deeply affectionate" saccharine
-    /// escalation). Remaining known class = temporal misattribution
-    /// (fine-tune corpus surfacing as present-tense claims); accepted as
-    /// in-flight, not blocking K.1.</para>
-    ///
-    /// <para>Non-Normal routing verdicts (SafePath, VirtualIntimacy,
-    /// Unknown) are UNAFFECTED by this flag — those routes have their own
-    /// thin composers (H.9). Reconsideration path also unaffected — desire-
-    /// driven reconsideration follows its own substrate-rich flow.</para>
-    ///
-    /// <para>Default false for additive deploy. Flip in
-    /// <c>appsettings.Development.json</c> first, observe production
-    /// telemetry (K_ROUTE_LEAN_CONVERSATION + verifier remediate rate +
-    /// dispatch rate + Mark-tagged failures) for at least one week, then
-    /// promote to <c>appsettings.json</c>. See
-    /// <c>docs/spec/ANI-Phase-K-Lean-Composer-Plan.md</c> §5 K.1.</para>
-    /// </summary>
-    public bool LeanConversationComposerEnabled { get; set; } = false;
-
-    /// <summary>
-    /// Phase K.2 (2026-07-02) — feature flag for the lean composer path on
-    /// outreach message composition. When true, the outreach pipeline
-    /// bypasses <c>PromptBuilder.BuildOutreachMessagePrompt</c> entirely
-    /// and calls the model with:
-    ///
-    /// <list type="bullet">
-    ///   <item>NO system-message override — the <c>ani-v7-conversation</c>
-    ///     Modelfile's baked SYSTEM prompt takes precedence.</item>
-    ///   <item>NO substrate injection — no <c>[FACTS]</c>, no
-    ///     <c>[INTERIOR]</c>, no <c>[YOUR WORLD]</c>, no reasoning-pipe,
-    ///     no frame directives. Retrieval still runs for downstream
-    ///     telemetry consumers; it just doesn't feed the composer.</item>
-    ///   <item>NO JSON envelope — plain ChatAsync, the model's raw text
-    ///     is the message. No <c>{message, notes}</c> structured output.</item>
-    ///   <item>The recent inner thought (<c>recentThought</c>) passes as
-    ///     the user turn. Recent history flows through unchanged so the
-    ///     model sees the last N turns of the conversation state.</item>
-    /// </list>
-    ///
-    /// <para>Empirical motivation: production outreach was producing a
-    /// one-note substrate loop — 4-of-7 outreaches over 3 days remixed
-    /// "your dad's party" and "bookstore silence" over and over — because
-    /// the composer was drowning in 107 anchored facts and cycling the
-    /// same handful. The lean path lets the model compose from its own
-    /// persona + the inner-thought seed, without substrate anchoring
-    /// forcing every message back to the same elements.</para>
-    ///
-    /// <para>Artifact carries <c>ComposerIsThin=true</c> on this path so
-    /// <c>FrontierVerifierHandler</c> skips its substrate-based checks
-    /// (per K.1a). Local judgment invariants (anti-parrot, addressee-name,
-    /// direct-address, temporal-substrate) still fire.</para>
-    ///
-    /// <para>Default false for additive deploy. Flip in
-    /// <c>appsettings.Development.json</c> first, observe production
-    /// telemetry (K_ROUTE_LEAN_OUTREACH + outreach one-noteness metric +
-    /// Mark-tagged failures) for at least one week, then promote. See
-    /// <c>docs/spec/ANI-Phase-K-Lean-Composer-Plan.md</c> §5 K.2.</para>
-    /// </summary>
-    public bool LeanOutreachComposerEnabled { get; set; } = false;
+    // Phase K.3 (2026-07-06) — LeanConversationComposerEnabled and
+    // LeanOutreachComposerEnabled properties retired. The K.1/K.2 lean
+    // paths were validated in production 2026-07-02, ran clean across the
+    // 2026-07-02 → 2026-07-06 observation window (0 SafeAcks, 0 tagged
+    // gate failures, first-fire outreach broke the "your dad's party"
+    // substrate loop), and are now the only paths. Flag branches removed
+    // in ConversationReplyPipeline and OutreachPipeline this commit.
+    // See docs/spec/ANI-Phase-K-Lean-Composer-Plan.md §5 K.3.
 
     /// <summary>
     /// 2026-05-18 — band-aid retirement candidate. The
