@@ -49,6 +49,30 @@ public sealed class AntiParrotInvariant : ICognitiveOutputInvariant
                                        or CognitiveOutputSink.PersistedSummary))
             return false;
 
+        // Phase K.4 (2026-07-06) — thin composers get a pass on this
+        // invariant. Empirical anchor: 2026-07-06 11:33 CDT SafeAck.
+        // Mark wrote "I'm really glad you chose to not let it bother you";
+        // Ani's composed reply thanked him back by quoting the exact
+        // phrase inside a longer thought ("...when someone comes back with
+        // words like 'you chose to not let it bother you' ... that's
+        // everything"). anti-parrot's N-gram detector caught the 8-token
+        // verbatim run and remediated. Under substrate-heavy composition
+        // (the original design target for this invariant) that pattern
+        // was often mindless echoing — the model had no way to distinguish
+        // "engage with contact's phrasing" from "reproduce it as filler."
+        // On the thin composer path the model is composing from persona
+        // + history (not from injected substrate), and quotation of prior
+        // turns is a normal engagement pattern in Ani's fine-tune corpus.
+        // The 5-day log audit (2026-07-02 → 2026-07-06) showed exactly
+        // one meaningful anti-parrot fire on thin-composer output and it
+        // was this false positive.
+        //
+        // Non-thin paths (reconsideration, ClosedThreadSummary, Voice)
+        // continue to run the invariant — those still emit substrate-
+        // heavy composition where mindless echoing is the failure mode
+        // this invariant catches.
+        if (artifact.ComposerIsThin) return false;
+
         // Producer kinds that emit contact-facing or gist-surface output.
         return artifact.ProducerKind is
             CognitiveProducerKind.ConversationReply
