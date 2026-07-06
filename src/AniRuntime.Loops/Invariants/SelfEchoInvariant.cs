@@ -2,6 +2,7 @@ using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
+using Microsoft.Extensions.Logging;
 
 namespace AniRuntime.Loops.Invariants;
 
@@ -56,6 +57,18 @@ namespace AniRuntime.Loops.Invariants;
 /// </summary>
 public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
 {
+    // Optional logger — when present, K.4b-diagnostic (2026-07-06) dumps
+    // full comparison context on any fire so the mystery false-positive
+    // class (12:10:40 CDT cherry-3000 reply that claimed a 58-token match
+    // with an unrelated "trying not to cry" prior) can be diagnosed at
+    // its next occurrence rather than speculated about after the fact.
+    // Null when DI hasn't wired one; the invariant runs identically
+    // either way.
+    private readonly ILogger<SelfEchoInvariant>? _log;
+
+    public SelfEchoInvariant() { _log = null; }
+    public SelfEchoInvariant(ILogger<SelfEchoInvariant> log) { _log = log; }
+
     public string Name => "self-echo";
 
     /// <summary>
@@ -142,6 +155,25 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
                 // mid-message verbatim runs still fail.
                 if (IsHabitualOpenerRepetition(artifact.Content, prior, sharedPhrase, sharedLen))
                     continue;
+
+                // K.4b-diagnostic (2026-07-06) — dump the full comparison
+                // context so we can see what artifact.Content vs prior
+                // actually looked like at the moment of the fire. Anchor:
+                // 2026-07-06 12:10:40 CDT SafeAck where the "58-token
+                // verbatim run" hint text didn't visibly overlap with the
+                // composed reply, and no one could diagnose the false
+                // positive from the log. This log line makes the next fire
+                // diagnosable.
+                if (_log is not null && _log.IsEnabled(LogLevel.Warning))
+                {
+                    _log.LogWarning(
+                        "SELF_ECHO_DIAGNOSTIC sharedLen={SharedLen} sharedPhrase={SharedPhrase} " +
+                        "artifactContentLen={ArtLen} priorLen={PriorLen} " +
+                        "artifactContent={ArtContent} priorContent={PriorContent}",
+                        sharedLen, sharedPhrase,
+                        artifact.Content.Length, prior.Length,
+                        artifact.Content, prior);
+                }
 
                 var hint =
                     $"output duplicates prior Ani message ({sharedLen}-token verbatim run: \"{sharedPhrase}\"). " +
