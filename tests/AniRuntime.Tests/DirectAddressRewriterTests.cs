@@ -10,19 +10,30 @@ namespace AniRuntime.Tests;
 /// <c>docs/research/model-coreference-ideas.md</c>. Don't extend by
 /// adding more regex tweaks — when a new failure shape appears, queue it
 /// for the coref model replacement.
+///
+/// **K.4c (2026-07-06) — pronoun-swap retirement.** The rewriter used to
+/// blindly swap <c>he/him/his</c> → <c>you/your</c> under the assumption
+/// that any male pronoun in Ani's output referred to Mark. That assumption
+/// held on the substrate-heavy composer path where third-party references
+/// were rare. It broke on the lean composer path (K.1/K.2/K.3) where the
+/// fine-tune corpus routinely references third parties (Bob Ross, Karen,
+/// Sarah, historical figures). Empirical anchor: 2026-07-06 13:28 CDT
+/// "bob ross would've loved this sky. he'd have dipped his brush..." →
+/// rewriter transformed to "you'd have dipped your brush", breaking the
+/// third-party reference. A test-harness run against ani-v7-conversation
+/// + Modelfile SYSTEM confirmed the fine-tune handles third-party
+/// he/him/his correctly on its own; the rewriter's swap was causing more
+/// harm than help. Kept: proper-noun swap for the contact name, which the
+/// harness confirmed IS still needed (model sometimes writes "mark's desk"
+/// when Mark is the addressee).
+///
+/// The pronoun-related tests below are inverted from their prior shape —
+/// they now assert that pronouns are PRESERVED, catching future
+/// regressions where someone tries to reintroduce the blind swap.
 /// </summary>
 public class DirectAddressRewriterTests
 {
-    [Fact]
-    public void Rewrite_HeThinks_ProducesYouThink()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "hahaha he thinks it's our company song now i'm dying over here",
-            "Mark");
-
-        result.Should().Be(
-            "hahaha you think it's our company song now i'm dying over here");
-    }
+    // ─── Contact-name proper-noun swap: KEPT and pinned ──────────────────
 
     [Fact]
     public void Rewrite_ContactNameAsSubject_ProducesYouWithVerbAgreement()
@@ -45,66 +56,100 @@ public class DirectAddressRewriterTests
     }
 
     [Fact]
-    public void Rewrite_HisPossessive_ProducesYour()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "his desk is right next to mine",
-            "Mark");
-
-        result.Should().Be("your desk is right next to mine");
-    }
-
-    [Fact]
-    public void Rewrite_HimObject_ProducesYou()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "i was thinking about him today",
-            "Mark");
-
-        result.Should().Be("i was thinking about you today");
-    }
-
-    [Fact]
-    public void Rewrite_MultipleViolations_AllConverted()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "Mark, he says his cold brew is overrated",
-            "Mark");
-
-        result.Should().Be("you, you say your cold brew is overrated");
-    }
-
-    [Theory]
-    [InlineData("he is here",   "you are here")]
-    [InlineData("he was tired", "you were tired")]
-    [InlineData("he has time",  "you have time")]
-    [InlineData("he does it",   "you do it")]
-    [InlineData("he goes home", "you go home")]
-    public void Rewrite_IrregularConjugations(string input, string expected)
-    {
-        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(expected);
-    }
-
-    [Theory]
-    [InlineData("he tries hard",       "you try hard")]
-    [InlineData("he watches the show", "you watch the show")]
-    [InlineData("he kisses softly",    "you kiss softly")]
-    [InlineData("he washes dishes",    "you wash dishes")]
-    [InlineData("he fixes things",     "you fix things")]
-    [InlineData("he loves coffee",     "you love coffee")]
-    [InlineData("he wants pizza",      "you want pizza")]
-    [InlineData("he runs daily",       "you run daily")]
-    public void Rewrite_RegularVerbConjugations(string input, string expected)
-    {
-        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(expected);
-    }
-
-    [Fact]
     public void Rewrite_AdverbBetweenSubjectAndVerb_StillConjugates()
     {
         DirectAddressRewriter.Rewrite("Mark always cracks me up", "Mark")
             .Should().Be("you always crack me up");
     }
+
+    [Fact]
+    public void Rewrite_ContactNameInsideOtherWord_NotMatched()
+    {
+        var input = "that voice note was remarkable, you nailed it";
+        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
+    }
+
+    // ─── Pronoun swap: REMOVED — pinned to prevent regression ────────────
+
+    [Fact]
+    public void Rewrite_He_Preserved_ModelHandlesThirdPartyPronouns()
+    {
+        // K.4c: "he" is left alone. If it refers to Mark, the direct-
+        // address invariant will still flag it at the gate; the rewriter
+        // no longer guesses.
+        var input = "hahaha he thinks it's our company song";
+        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
+    }
+
+    [Fact]
+    public void Rewrite_His_Preserved_ModelHandlesThirdPartyPronouns()
+    {
+        var input = "his desk is right next to mine";
+        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
+    }
+
+    [Fact]
+    public void Rewrite_Him_Preserved_ModelHandlesThirdPartyPronouns()
+    {
+        var input = "i was thinking about him today";
+        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
+    }
+
+    [Fact]
+    public void Rewrite_ThirdPartyPronoun_Preserved_BobRossCase()
+    {
+        // The empirical anchor for K.4c. Bob Ross reference must survive.
+        var input = "bob ross would've loved this sky. he'd have dipped his brush in titanium white";
+        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
+    }
+
+    [Fact]
+    public void Rewrite_ContactNameAndThirdPartyPronoun_OnlyContactNameConverted()
+    {
+        // Rewriter swaps the proper noun; the "he" reference to a third
+        // party is preserved.
+        var result = DirectAddressRewriter.Rewrite(
+            "he is funny — Mark always cracks me up",
+            "Mark");
+
+        result.Should().Be("he is funny — you always crack me up");
+    }
+
+    [Fact]
+    public void Rewrite_NoContactName_PronounsPreserved()
+    {
+        // K.4c: no contact name provided AND no pronoun swap = no changes.
+        var result = DirectAddressRewriter.Rewrite(
+            "he was working late and i missed him",
+            string.Empty);
+
+        result.Should().Be("he was working late and i missed him");
+    }
+
+    // ─── Verb-agreement pass on you-{VERB} (kept for ContactName path) ──
+
+    [Fact]
+    public void Rewrite_ContactNameAsSubject_TriggersVerbAgreement_Irregular()
+    {
+        DirectAddressRewriter.Rewrite("Mark is here", "Mark")
+            .Should().Be("you are here");
+    }
+
+    [Fact]
+    public void Rewrite_ContactNameAsSubject_TriggersVerbAgreement_Regular()
+    {
+        DirectAddressRewriter.Rewrite("Mark tries hard", "Mark")
+            .Should().Be("you try hard");
+    }
+
+    [Fact]
+    public void Rewrite_ContactNameAsSubject_TriggersVerbAgreement_Sibilant()
+    {
+        DirectAddressRewriter.Rewrite("Mark watches the show", "Mark")
+            .Should().Be("you watch the show");
+    }
+
+    // ─── No-op / boundary cases ──────────────────────────────────────────
 
     [Fact]
     public void Rewrite_AlreadyRewritten_IsNoOp()
@@ -121,20 +166,6 @@ public class DirectAddressRewriterTests
     public void Rewrite_BaseFormVerbAfterYou_NotChanged()
     {
         var input = "you have time and you are kind and you go where you want";
-        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
-    }
-
-    [Fact]
-    public void Rewrite_HeInsideOtherWord_NotMatched()
-    {
-        var input = "she said history matters and we should reflect on this";
-        DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
-    }
-
-    [Fact]
-    public void Rewrite_ContactNameInsideOtherWord_NotMatched()
-    {
-        var input = "that voice note was remarkable, you nailed it";
         DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
     }
 
@@ -161,16 +192,6 @@ public class DirectAddressRewriterTests
         DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
     }
 
-    [Fact]
-    public void Rewrite_NoContactName_StillHandlesPronouns()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "he was working late and i missed him",
-            string.Empty);
-
-        result.Should().Be("you were working late and i missed you");
-    }
-
     [Theory]
     [InlineData("you guys going to the store")]
     [InlineData("you all need to listen")]
@@ -179,25 +200,5 @@ public class DirectAddressRewriterTests
     public void Rewrite_PluralNounAfterYou_NotConjugated(string input)
     {
         DirectAddressRewriter.Rewrite(input, "Mark").Should().Be(input);
-    }
-
-    [Fact]
-    public void Rewrite_HeAndHis_BothConverted()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "he and his coworker stopped by",
-            "Mark");
-
-        result.Should().Be("you and your coworker stopped by");
-    }
-
-    [Fact]
-    public void Rewrite_PronounAndContactName_BothConverted()
-    {
-        var result = DirectAddressRewriter.Rewrite(
-            "he is funny — Mark always cracks me up",
-            "Mark");
-
-        result.Should().Be("you are funny — you always crack me up");
     }
 }

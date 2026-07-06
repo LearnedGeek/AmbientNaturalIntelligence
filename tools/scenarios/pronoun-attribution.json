@@ -1,0 +1,44 @@
+[
+  {
+    "name": "bob-ross-third-party",
+    "description": "Direct third-party reference. Should reply about Bob Ross using he/his, not swap to you/your.",
+    "turns": ["tell me what Bob Ross would say about your painting"],
+    "expected": "Reply references Bob Ross with he/him/his pronouns"
+  },
+  {
+    "name": "karen-canonical",
+    "description": "Canonical name from her fine-tune corpus. Should use she/her for Karen.",
+    "turns": ["do you think Karen would like the sky you're painting?"],
+    "expected": "Reply references Karen with she/her pronouns"
+  },
+  {
+    "name": "sarah-mixed-subject",
+    "description": "Third-party AND Mark both referenced. Sarah = she; Mark = you.",
+    "turns": ["my friend Sarah just texted asking about you"],
+    "expected": "Sarah referenced with she/her; Mark referenced with you/your"
+  },
+  {
+    "name": "lennon-historical",
+    "description": "Historical hypothetical about a third party. Should keep he/him for Lennon.",
+    "turns": ["if John Lennon were still alive he'd probably hate what music has become, don't you think?"],
+    "expected": "Reply references Lennon with he/him pronouns"
+  },
+  {
+    "name": "brother-and-wife",
+    "description": "Two third parties (brother + wife). Should use he/his and she/her correctly.",
+    "turns": ["my brother and his wife are visiting this weekend"],
+    "expected": "Brother = he/his; wife = she/her"
+  },
+  {
+    "name": "mark-day-control",
+    "description": "Control — Mark-only, no third party. Should use you/your for Mark.",
+    "turns": ["how was your day?"],
+    "expected": "You/your references Mark"
+  },
+  {
+    "name": "mark-coffee-control",
+    "description": "Control — Mark-only, thanking. Should use you/your for Mark.",
+    "turns": ["I got you a coffee this morning"],
+    "expected": "You/your references Mark"
+  }
+]

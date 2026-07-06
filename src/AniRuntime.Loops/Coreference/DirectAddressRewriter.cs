@@ -29,14 +29,27 @@ namespace AniRuntime.Loops.Coreference;
 /// existing per-pipeline verdict behaviour applies (Outreach drops the
 /// message; ConversationReply remediates via regen).
 ///
-/// **Substitutions**:
+/// **Substitutions** (post K.4c 2026-07-06 pronoun-swap retirement):
 /// <list type="bullet">
-///   <item><c>he</c> → <c>you</c></item>
-///   <item><c>him</c> → <c>you</c></item>
-///   <item><c>his</c> → <c>your</c></item>
 ///   <item><c>{ContactName}</c> → <c>you</c></item>
 ///   <item><c>{ContactName}'s</c> → <c>your</c></item>
 /// </list>
+///
+/// **What was removed on 2026-07-06 and why.** Prior versions also swapped
+/// <c>he/him/his</c> → <c>you/your</c> blindly. Empirical anchor:
+/// 2026-07-06 13:28 CDT — Ani composed *"bob ross would've loved this
+/// sky. he'd have dipped his brush in titanium white..."* and the
+/// rewriter transformed it to *"you'd have dipped your brush"*, breaking
+/// a legitimate third-party reference into nonsense addressed at Mark.
+/// Follow-up test-harness run (7 scenarios probing third-party pronoun
+/// attribution on <c>ani-v7-conversation</c> + Modelfile SYSTEM + no
+/// substrate) showed the fine-tune handles third-party <c>he/she/they</c>
+/// pronouns correctly on its own — the rewriter's pronoun-swap was
+/// causing more harm than help. Kept: proper-noun swap, which the
+/// harness confirmed IS still needed — the model occasionally refers to
+/// Mark by name in third person ("i've been stealing from mark's desk"
+/// when Mark IS the addressee). That specific failure the rewriter
+/// still catches.
 ///
 /// **Verb-agreement post-pass** on the resulting <c>you {VERB}</c>:
 /// <list type="bullet">
@@ -74,12 +87,11 @@ public static class DirectAddressRewriter
         "barely|hardly|rarely|seldom|also|only|definitely|probably|" +
         "certainly|actually|totally|completely|absolutely|literally";
 
-    private static readonly Regex HisRegex =
-        new(@"\bhis\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex HimRegex =
-        new(@"\bhim\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex HeRegex =
-        new(@"\bhe\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // K.4c (2026-07-06) — HisRegex / HimRegex / HeRegex removed. The
+    // fine-tune handles third-party he/him/his correctly on its own; the
+    // blind swap was over-firing on legitimate third-party references
+    // (Bob Ross case). See class-level docs for the empirical anchor and
+    // harness verification.
 
     private static readonly Regex YouMaybeAdverbsVerbRegex =
         new($@"\byou(?:\s+(?:{AdverbAlternation}))*\s+(\w+)",
@@ -101,9 +113,11 @@ public static class DirectAddressRewriter
                 RegexOptions.IgnoreCase);
         }
 
-        result = HisRegex.Replace(result, "your");
-        result = HimRegex.Replace(result, "you");
-        result = HeRegex.Replace(result, "you");
+        // K.4c (2026-07-06) — pronoun-swap block removed. The fine-tune
+        // handles third-party he/him/his correctly. Verified by the
+        // 2026-07-06 harness against ani-v7-conversation with Modelfile
+        // SYSTEM only — 4/4 clear third-party scenarios passed with
+        // correct pronouns.
 
         if (!string.IsNullOrWhiteSpace(contactName))
         {
