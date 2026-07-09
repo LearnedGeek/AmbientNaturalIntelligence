@@ -414,6 +414,32 @@ try
         }
     }
 
+    // ── Issue #93 Phase 1 (2026-07-09 rescue) — inline schema migration ───────
+    // MUST run BEFORE anything else queries the memories table. Production
+    // DBs pre-dating the 2026-07-06 SQL migration lack confirmed_at /
+    // confirmed_by columns; EF startup queries would otherwise crash the
+    // service on first-touch. Fast (metadata-only ALTER TABLE + canonical
+    // backfill UPDATE). Sub-second on 25k-row DB.
+    await using (var schemaScope = app.Services.CreateAsyncScope())
+    {
+        var ctxFactory = schemaScope.ServiceProvider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+        await using var ctx = await ctxFactory.CreateDbContextAsync();
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await ctx.EnsureIssue93SchemaAsync();
+            sw.Stop();
+            Log.Information("Issue #93 schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            // Fatal: without the schema, EF queries on memories will crash.
+            // Better to die loudly here than during first cognitive cycle.
+            Log.Fatal(ex, "Issue #93 schema migration failed — cannot continue");
+            throw;
+        }
+    }
+
     // ── Issue #93 Phase 4 (2026-07-09) — FTS5 hybrid retrieval index ──────────
     // Backgrounded (same rationale as WarmModelAsync below): the FTS5
     // backfill on a populated production DB (~25k rows) takes 15-40s

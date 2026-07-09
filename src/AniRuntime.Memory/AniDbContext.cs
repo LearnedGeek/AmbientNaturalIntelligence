@@ -217,6 +217,60 @@ public class AniDbContext : DbContext
     /// The backfill runs only when the FTS5 table is empty (fresh init or
     /// after external DROP).</para>
     /// </summary>
+    /// <summary>
+    /// Issue #93 Phase 1 (2026-07-09 rescue) — idempotent ALTER TABLE for
+    /// the confirmed_at + confirmed_by columns. Production DBs that
+    /// pre-date the 2026-07-06 SQL migration would otherwise crash EF at
+    /// first-touch on memories with "no such column: m.confirmed_at".
+    /// Fast (metadata-only ALTER on SQLite), safe inline at startup.
+    ///
+    /// <para>Also runs the Phase 1 canonical backfill (Facts+Episodic gets
+    /// ConfirmedAt=CreatedAt, ConfirmedBy='canonical') on records that are
+    /// still NULL. Single UPDATE statement, sub-second on a 25k-row DB.
+    /// Idempotent: subsequent runs are no-ops once every eligible record
+    /// is backfilled.</para>
+    /// </summary>
+    public async Task EnsureIssue93SchemaAsync(CancellationToken ct = default)
+    {
+        var conn = Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        // Detect whether the columns already exist.
+        await using var check = conn.CreateCommand();
+        check.CommandText = "SELECT name FROM pragma_table_info('memories') WHERE name IN ('confirmed_at','confirmed_by')";
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var reader = await check.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                existing.Add(reader.GetString(0));
+        }
+
+        await using var cmd = conn.CreateCommand();
+        if (!existing.Contains("confirmed_at"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN confirmed_at TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("confirmed_by"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN confirmed_by TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS ix_memories_confirmed_at ON memories (confirmed_at)";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Canonical backfill: Facts + Episodic get birth-stamp confirmation.
+        cmd.CommandText = @"
+            UPDATE memories
+            SET confirmed_at = created_at,
+                confirmed_by = 'canonical'
+            WHERE provenance IN ('Facts', 'Episodic')
+              AND confirmed_at IS NULL";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)
     {
         await using var cmd = Database.GetDbConnection().CreateCommand();

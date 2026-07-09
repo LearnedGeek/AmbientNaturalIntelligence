@@ -209,6 +209,11 @@ await using var provider = services.BuildServiceProvider();
     var ctxFactory = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
     await using var ctx = await ctxFactory.CreateDbContextAsync();
     await ctx.Database.EnsureCreatedAsync();
+    // Issue #93 Phase 1 rescue (2026-07-09) — idempotent ALTER TABLE for
+    // confirmed_at/confirmed_by columns + canonical backfill. Must run
+    // before FTS5 init because eval DB may pre-date the 2026-07-06 SQL
+    // migration.
+    await ctx.EnsureIssue93SchemaAsync();
     // Issue #93 Phase 4 (2026-07-09) — FTS5 index for hybrid retrieval.
     // Idempotent; backfills once on fresh DBs, no-op afterwards.
     await ctx.EnsureFtsIndexAsync();
