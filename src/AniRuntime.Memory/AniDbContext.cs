@@ -253,12 +253,29 @@ public class AniDbContext : DbContext
             END;";
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
-        // Backfill if empty. On a populated production DB this seeds every
-        // existing memory into the FTS5 index once; subsequent runs skip it.
+        // Backfill only if the FTS5 index is empty OR partially populated
+        // relative to the memories table. Detect partial state (e.g. a
+        // previous startup was killed mid-backfill by Windows SCM's 30s
+        // deadline) by comparing row counts; if they differ by more than
+        // a small tolerance, clear and rebuild.
         cmd.CommandText = "SELECT COUNT(*) FROM memories_fts";
         var ftsCount = Convert.ToInt64(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
-        if (ftsCount == 0)
+        cmd.CommandText = "SELECT COUNT(*) FROM memories WHERE content IS NOT NULL AND content <> ''";
+        var memoriesCount = Convert.ToInt64(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+
+        // Tolerance: allow a small skew (triggers may have queued rows just
+        // arriving during startup). If FTS is empty or noticeably short of
+        // memories, do a full rebuild.
+        var needsRebuild = ftsCount == 0
+                         || memoriesCount - ftsCount > 100
+                         || ftsCount > memoriesCount + 100;
+        if (needsRebuild)
         {
+            if (ftsCount > 0)
+            {
+                cmd.CommandText = "DELETE FROM memories_fts";
+                await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
             cmd.CommandText = @"
                 INSERT INTO memories_fts(memory_id, content)
                 SELECT id, content FROM memories WHERE content IS NOT NULL AND content <> '';";

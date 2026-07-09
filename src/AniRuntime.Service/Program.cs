@@ -415,25 +415,31 @@ try
     }
 
     // ── Issue #93 Phase 4 (2026-07-09) — FTS5 hybrid retrieval index ──────────
-    // Ensures memories_fts virtual table + sync triggers exist. Idempotent;
-    // backfills once on fresh production DBs, no-op afterwards.
-    await using (var scope = app.Services.CreateAsyncScope())
+    // Backgrounded (same rationale as WarmModelAsync below): the FTS5
+    // backfill on a populated production DB (~25k rows) takes 15-40s
+    // depending on I/O — inline it would push startup past Windows SCM's
+    // ~30s "service did not respond" deadline (error 1053). The composer's
+    // FetchBm25RanksAsync fails-open when FTS5 doesn't exist yet, so
+    // retrieval degrades cleanly to composite-only during the backfill
+    // window. Log lines will show bm25_rescues=0 until it completes; then
+    // hybrid takes effect on the next cycle.
+    _ = Task.Run(async () =>
     {
-        var ctxFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AniDbContext>>();
-        await using var ctx = await ctxFactory.CreateDbContextAsync();
         try
         {
+            await using var scope = app.Services.CreateAsyncScope();
+            var ctxFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+            await using var ctx = await ctxFactory.CreateDbContextAsync();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             await ctx.EnsureFtsIndexAsync();
-            Log.Information("FTS5 hybrid-retrieval index ready");
+            sw.Stop();
+            Log.Information("FTS5 hybrid-retrieval index ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
-            // Non-fatal: hybrid retrieval degrades to composite-only when
-            // FTS5 init fails. Composer's FetchBm25RanksAsync also swallows
-            // its own errors — defense in depth so retrieval always works.
             Log.Warning(ex, "FTS5 hybrid-retrieval index init failed — falling back to composite-only");
         }
-    }
+    });
 
     // ── Seed character state on first run (idempotent) ────────────────────────
     await using (var scope = app.Services.CreateAsyncScope())
