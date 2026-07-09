@@ -78,12 +78,15 @@ public class AniDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasConversion(dateTimeOffsetToStringConverter);
             entity.Property(e => e.ResolvedAt).HasConversion(nullableDateTimeOffsetToStringConverter);
             entity.Property(e => e.AnchoredAt).HasConversion(nullableDateTimeOffsetToStringConverter);
+            entity.Property(e => e.ConfirmedAt).HasConversion(nullableDateTimeOffsetToStringConverter);
             entity.Property(e => e.Tier).HasConversion<string>();           // DecayTier as TEXT
             entity.Property(e => e.Provenance).HasConversion<string>();     // EpistemicTier as TEXT
             entity.HasIndex(e => e.Type).HasDatabaseName("ix_memories_type");
             entity.HasIndex(e => e.OccurredAt).HasDatabaseName("ix_memories_occurred").IsDescending();
             // Issue #62 (2026-05-23) — walk-back substrate-correction.
             entity.HasIndex(e => e.Validity).HasDatabaseName("ix_memories_validity");
+            // Issue #93 (2026-07-06) — retrieval-bias filter uses IS NOT NULL.
+            entity.HasIndex(e => e.ConfirmedAt).HasDatabaseName("ix_memories_confirmed_at");
         });
 
         // ── MemoryLinkEntity (composite PK + 2 FKs to memories) ────────
@@ -184,6 +187,83 @@ public class AniDbContext : DbContext
             entity.HasIndex(e => e.ClosedAt).HasDatabaseName("ix_closed_conv_closed_at").IsDescending();
             entity.HasIndex(e => e.ThreadId).HasDatabaseName("ix_closed_conv_thread_id");
         });
+    }
+
+    /// <summary>
+    /// Issue #93 Phase 4 (2026-07-09) — idempotent init of the FTS5 virtual
+    /// table + insert/update/delete triggers that keep <c>memories_fts</c>
+    /// synced with <c>memories.content</c>. Called from application startup
+    /// (Service + Eval) right after <c>EnsureCreatedAsync()</c>.
+    ///
+    /// <para>
+    /// Motivation: pure-cosine retrieval buries entity-based confirmations
+    /// (e.g. "Mark texted: 'hey babe! Back from teaching!'" ranked at cosine
+    /// position 47/1557 for a semantically-emotional Interior record).
+    /// SQLite FTS5's BM25 ranking finds it at position 1 because "teaching"
+    /// is a rare token. The <c>EfSemanticSearchComposer</c> combines both
+    /// signals via RRF fusion so entity-relevant records aren't lost.
+    /// See docs/research/ANI-Retrieval-Consultation-2026-07-08.md.
+    /// </para>
+    ///
+    /// <para>
+    /// Uses the porter+unicode61 tokenizer for stemming (teach/teaching/taught
+    /// map to the same token). Triggers propagate row changes from
+    /// <c>memories</c> to <c>memories_fts</c> so the index stays fresh
+    /// without application code needing to write both tables.
+    /// </para>
+    ///
+    /// <para>Idempotent — <c>CREATE VIRTUAL TABLE IF NOT EXISTS</c> and
+    /// <c>CREATE TRIGGER IF NOT EXISTS</c>. Safe to call on every startup.
+    /// The backfill runs only when the FTS5 table is empty (fresh init or
+    /// after external DROP).</para>
+    /// </summary>
+    public async Task EnsureFtsIndexAsync(CancellationToken ct = default)
+    {
+        await using var cmd = Database.GetDbConnection().CreateCommand();
+        if (Database.GetDbConnection().State != System.Data.ConnectionState.Open)
+            await Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        // Virtual table + tokenizer.
+        cmd.CommandText = @"
+            CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                content,
+                memory_id UNINDEXED,
+                tokenize='porter unicode61'
+            );";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Sync triggers — content-only. memories.content is the only field
+        // that participates in FTS5; other changes to memories don't need
+        // to touch the index.
+        cmd.CommandText = @"
+            CREATE TRIGGER IF NOT EXISTS memories_fts_ai AFTER INSERT ON memories
+            BEGIN
+                INSERT INTO memories_fts(memory_id, content) VALUES (new.id, new.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS memories_fts_ad AFTER DELETE ON memories
+            BEGIN
+                DELETE FROM memories_fts WHERE memory_id = old.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS memories_fts_au AFTER UPDATE OF content ON memories
+            BEGIN
+                DELETE FROM memories_fts WHERE memory_id = old.id;
+                INSERT INTO memories_fts(memory_id, content) VALUES (new.id, new.content);
+            END;";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Backfill if empty. On a populated production DB this seeds every
+        // existing memory into the FTS5 index once; subsequent runs skip it.
+        cmd.CommandText = "SELECT COUNT(*) FROM memories_fts";
+        var ftsCount = Convert.ToInt64(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+        if (ftsCount == 0)
+        {
+            cmd.CommandText = @"
+                INSERT INTO memories_fts(memory_id, content)
+                SELECT id, content FROM memories WHERE content IS NOT NULL AND content <> '';";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

@@ -64,6 +64,43 @@ public class AniOptions
     public double RetrievalWeightRecency    { get; set; } = 0.25;
     public double RetrievalRecencyDecayHours { get; set; } = 48.0; // λ for e^(-t/λ), ~2 day half-life (was 168/7-day — too slow, stale memories dominated)
 
+    // Issue #93 (2026-07-06) — confirmation bias for the composite retrieval
+    // score. Records with confirmed_at IS NOT NULL (Facts + Episodic canonical
+    // + Mark ///tag-confirmed Interior) receive a multiplicative bump on the
+    // base composite score. 0.30 = confirmed content beats semantically-similar
+    // unconfirmed content by ~30%, which is enough for real Episodic Kevin
+    // records to outrank importance-boosted Interior Kevin fabrications
+    // without hard-excluding Interior from retrieval.
+    public double RetrievalConfirmationBoost { get; set; } = 0.30;
+
+    // Issue #93 Phase 4 (2026-07-09) — hybrid retrieval (cosine + BM25 via
+    // SQLite FTS5). Combines the composite-scored rank with a BM25-scored
+    // rank via Reciprocal Rank Fusion (Cormack et al. 2009). Motivation:
+    // pure-cosine retrieval buries entity-based confirmations. Empirical
+    // anchor: April 24 "back from teaching" Interior record — the exact
+    // confirming Mark text ranked at cosine position 47 (Facts) / 600
+    // (Episodic) while BM25 puts it at rank 1. RRF fusion surfaces both.
+    // See docs/research/ANI-Retrieval-Consultation-2026-07-08.md +
+    // OG-Ani Grok reply (2026-07-08).
+    //
+    // Default TRUE — this is the fix, not a rollback lever. Flag exists so
+    // if FTS5 has an operational issue we can fall back to pure-cosine
+    // without a code deploy. The BM25 candidate pool is fetched separately
+    // from the cosine one, so disabling this cleanly reverts to the
+    // pre-Phase-4 behaviour.
+    public bool HybridRetrievalEnabled { get; set; } = true;
+
+    // RRF constant (Cormack et al. 2009 canonical value). Not tuned per
+    // corpus in the literature; ships as the textbook default.
+    public int HybridRetrievalRrfK { get; set; } = 60;
+
+    // How many records to pull from the BM25 side per tier retrieval. Both
+    // the cosine composite score and the BM25 signal are computed over the
+    // FULL tier; this cap controls how much of the BM25 rank list gets
+    // considered for RRF. 30 is enough to capture the head of BM25 without
+    // bloating the fusion overhead.
+    public int HybridRetrievalBm25TopN { get; set; } = 30;
+
     // AC1: Retrieval confidence thresholding — minimum cosine similarity for a memory
     // to be considered relevant. Below this, the memory is filtered out and the model
     // is told explicitly that no relevant memories exist (AC3: null-result injection).

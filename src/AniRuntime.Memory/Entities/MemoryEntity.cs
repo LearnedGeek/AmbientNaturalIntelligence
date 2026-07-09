@@ -72,4 +72,31 @@ public class MemoryEntity
     /// </summary>
     [Column("validity")]
     public string Validity { get; set; } = "valid";
+
+    /// <summary>
+    /// Issue #93 (2026-07-06) — confirmation timestamp for the positive half of
+    /// the substrate-correction loop. <c>NULL</c> = unconfirmed (Interior /
+    /// world-experience / reflection). Non-null = a real-world event confirmed
+    /// this record's content. Facts + Episodic backfill on 2026-07-06 sets
+    /// this to <see cref="CreatedAt"/> with <see cref="ConfirmedBy"/>=<c>"canonical"</c>.
+    /// Retrieval bias in <c>EfSemanticSearchComposer.ComputeRetrievalScore</c>
+    /// multiplies the composite by <c>(1 + AniOptions.RetrievalConfirmationBoost)</c>
+    /// when this is set, so confirmed content beats semantically-similar-but-
+    /// unconfirmed Interior content on the same query.
+    /// </summary>
+    [Column("confirmed_at")]
+    public DateTimeOffset? ConfirmedAt { get; set; }
+
+    /// <summary>
+    /// Companion to <see cref="ConfirmedAt"/>. Canonical values:
+    /// <list type="bullet">
+    ///   <item><c>"canonical"</c> — backfilled from provenance (Facts + Episodic
+    ///     get birth-stamp confirmation).</item>
+    ///   <item><c>"mark-tag"</c> — LLM-classified Mark <c>///tag</c> confirmation
+    ///     (Issue #93 Phase 2).</item>
+    /// </list>
+    /// NULL when <see cref="ConfirmedAt"/> is NULL.
+    /// </summary>
+    [Column("confirmed_by")]
+    public string? ConfirmedBy { get; set; }
 }

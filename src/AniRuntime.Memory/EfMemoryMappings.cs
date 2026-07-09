@@ -35,6 +35,8 @@ internal static class EfMemoryMappings
         AnchorReason      = e.AnchorReason,
         AnchoredAt        = e.AnchoredAt,
         Provenance        = e.Provenance,
+        ConfirmedAt       = e.ConfirmedAt,
+        ConfirmedBy       = e.ConfirmedBy,
     };
 
     /// <summary>

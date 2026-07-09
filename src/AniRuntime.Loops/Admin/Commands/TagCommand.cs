@@ -21,23 +21,50 @@ namespace AniRuntime.Loops.Admin.Commands;
 /// <see cref="StaleTagLookbackHours"/> window, and picks the first thread
 /// that contains at least one Ani message.
 /// </para>
+///
+/// <para>
+/// **Issue #93 Phase 2 (2026-07-06)** — the pre-Issue-93 regex intent
+/// sniff (matching <c>confab / fabricat / walk back / made up /
+/// hallucination</c>) is replaced by <see cref="ITagIntentClassifier"/>,
+/// which handles BOTH directions of the substrate-correction loop:
+/// negative (invalidate — pre-existing) AND positive (confirm — new,
+/// promotes an Interior record into the retrieval-biased pool). The
+/// regex vocabulary was inert against Mark's actual tag idiom ("broken
+/// output" / "weather confusion" / "json response?"). Below the
+/// <see cref="MinConfidenceForSubstrateMutation"/> threshold the flag is
+/// still saved for audit but no substrate mutation happens.
+/// </para>
 /// </summary>
 public sealed class TagCommand : IAdminCommand
 {
     private const int StaleTagLookbackHours = 12;
     private const int StaleTagSearchLimit   = 5;
 
-    private readonly IConversationService _conversations;
-    private readonly IMemoryPersistence _persist;
-    private readonly ILogger<TagCommand> _log;
+    /// <summary>
+    /// Issue #93 Phase 2 — floor under which a classifier verdict does NOT
+    /// trigger a substrate mutation. Applies to both confirm and invalidate:
+    /// low-confidence "invalidate" doesn't touch Validity; low-confidence
+    /// "confirm" doesn't touch ConfirmedAt. The flag is still saved either
+    /// way so the tag is captured for audit / eval. 0.60 matches the
+    /// classifier prompt's own confidence-range guidance ("plausible-but-
+    /// ambiguous 0.60–0.85").
+    /// </summary>
+    internal const float MinConfidenceForSubstrateMutation = 0.60f;
+
+    private readonly IConversationService  _conversations;
+    private readonly IMemoryPersistence    _persist;
+    private readonly ITagIntentClassifier  _classifier;
+    private readonly ILogger<TagCommand>   _log;
 
     public TagCommand(
-        IConversationService conversations,
-        IMemoryPersistence persist,
-        ILogger<TagCommand> log)
+        IConversationService  conversations,
+        IMemoryPersistence    persist,
+        ITagIntentClassifier  classifier,
+        ILogger<TagCommand>   log)
     {
         _conversations = conversations ?? throw new ArgumentNullException(nameof(conversations));
         _persist       = persist       ?? throw new ArgumentNullException(nameof(persist));
+        _classifier    = classifier    ?? throw new ArgumentNullException(nameof(classifier));
         _log           = log           ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -101,39 +128,75 @@ public sealed class TagCommand : IAdminCommand
         await _persist.SaveConfabulationFlagAsync(
             markMessage, aniReply, topicCategory: note, notes: null, ct: ct).ConfigureAwait(false);
 
-        // Issue #62 (2026-05-23) — substrate-correction propagation. When the tag
-        // label indicates the Ani reply was a confabulation Mark is calling out,
-        // mark the source Episodic conversation record as invalid so retrieval
-        // surfaces stop laundering it as canonical substrate (Lucy case 5/21→5/23).
-        var noteLower = note.ToLowerInvariant();
-        var isInvalidationTag =
-            noteLower.Contains("confab") ||
-            noteLower.Contains("fabricat") ||
-            noteLower.Contains("walk back") ||
-            noteLower.Contains("walkback") ||
-            noteLower.Contains("made up") ||
-            noteLower.Contains("hallucination");
+        // Issue #93 Phase 2 (2026-07-06) — LLM-classified intent replaces the
+        // regex sniff. The classifier handles both directions of the substrate-
+        // correction loop: invalidate (Validity='invalid_confabulation') AND
+        // confirm (ConfirmedAt=<now>, ConfirmedBy='mark-tag'). Below the
+        // confidence floor the flag is saved for audit but no substrate
+        // mutation happens — matches the classifier fail-open contract.
+        var verdict = await _classifier.ClassifyAsync(note, aniReply, markMessage, ct)
+            .ConfigureAwait(false);
 
-        var invalidatedSuffix = string.Empty;
-        if (isInvalidationTag)
+        _log.LogInformation(
+            "TAG_INTENT_APPLIED intent={Intent} confidence={Confidence:F2} " +
+            "note={Note} reason={Reason}",
+            verdict.Intent, verdict.Confidence, note, verdict.Reason);
+
+        var substrateSuffix = string.Empty;
+
+        if (verdict.Confidence >= MinConfidenceForSubstrateMutation)
         {
-            try
+            substrateSuffix = verdict.Intent switch
             {
-                var updated = await _persist.MarkConversationTurnInvalidAsync(aniReply, ct)
-                    .ConfigureAwait(false);
-                invalidatedSuffix = updated > 0
-                    ? $"\nSubstrate-invalidated {updated} record(s)."
-                    : "\nNo matching substrate record to invalidate.";
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex,
-                    "Walk-back substrate-invalidation failed — flag was still saved");
-                invalidatedSuffix = "\nFlag saved, but substrate invalidation failed (see logs).";
-            }
+                TagIntent.Invalidate => await TryInvalidateAsync(aniReply, ct).ConfigureAwait(false),
+                TagIntent.Confirm    => await TryConfirmAsync(aniReply, ct).ConfigureAwait(false),
+                _                    => string.Empty,
+            };
+        }
+        else if (verdict.Intent is TagIntent.Confirm or TagIntent.Invalidate)
+        {
+            substrateSuffix =
+                $"\nIntent classified as {verdict.Intent.ToString().ToLowerInvariant()} " +
+                $"but confidence {verdict.Confidence:F2} < {MinConfidenceForSubstrateMutation:F2} — flag saved, no substrate change.";
         }
 
-        return $"Tagged [{note}]:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"{invalidatedSuffix}";
+        return $"Tagged [{note}]:\n→ \"{markMessage[..Math.Min(60, markMessage.Length)]}\"\n← \"{aniReply[..Math.Min(60, aniReply.Length)]}\"{substrateSuffix}";
+    }
+
+    private async Task<string> TryInvalidateAsync(string aniReply, CancellationToken ct)
+    {
+        try
+        {
+            var updated = await _persist.MarkConversationTurnInvalidAsync(aniReply, ct)
+                .ConfigureAwait(false);
+            return updated > 0
+                ? $"\nSubstrate-invalidated {updated} record(s)."
+                : "\nNo matching substrate record to invalidate.";
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "Walk-back substrate-invalidation failed — flag was still saved");
+            return "\nFlag saved, but substrate invalidation failed (see logs).";
+        }
+    }
+
+    private async Task<string> TryConfirmAsync(string aniReply, CancellationToken ct)
+    {
+        try
+        {
+            var updated = await _persist.MarkConversationTurnConfirmedAsync(
+                aniReply, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
+            return updated > 0
+                ? $"\nSubstrate-confirmed {updated} record(s)."
+                : "\nNo matching substrate record to confirm.";
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "Confirm-tag substrate-confirmation failed — flag was still saved");
+            return "\nFlag saved, but substrate confirmation failed (see logs).";
+        }
     }
 
     internal static bool IsValidTagAnchor(ConversationThread? thread) =>

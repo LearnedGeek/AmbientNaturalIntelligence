@@ -84,6 +84,15 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
 
         var scoredAll = ScoreCandidates(candidates, queryEmbedding, includeRecency: true);
 
+        // Issue #93 Phase 4 (2026-07-09) — hybrid RRF fusion (tier-agnostic).
+        int bm25RescueCount = 0;
+        if (_options.HybridRetrievalEnabled && scoredAll.Count > 0)
+        {
+            var bm25RankById = await FetchBm25RanksAsync(
+                db, query, tier: null, _options.HybridRetrievalBm25TopN, ct).ConfigureAwait(false);
+            scoredAll = FuseByRrf(scoredAll, bm25RankById, scoredAll.Count, _options.HybridRetrievalRrfK, out bm25RescueCount);
+        }
+
         var ranked = _options.RetrievalDiversityEnabled && scoredAll.Count > 0
             ? ApplyMmrRerank(scoredAll, topK, (float)_options.RetrievalDiversityLambda)
             : scoredAll.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
@@ -108,9 +117,10 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
                 _options.RetrievalDiversityEnabled, protectedSlotsActive,
+                _options.HybridRetrievalEnabled, bm25RescueCount,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -149,6 +159,20 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
 
         var scoredAll = ScoreCandidates(candidates, queryEmbedding, includeRecency: true);
 
+        // Issue #93 Phase 4 (2026-07-09) — hybrid RRF fusion (tier-agnostic
+        // since this method operates across the full pool). MMR diversity
+        // rerank still runs after fusion when enabled, so diversity + hybrid
+        // compose cleanly.
+        int bm25RescueCount = 0;
+        if (_options.HybridRetrievalEnabled && scoredAll.Count > 0)
+        {
+            var bm25RankById = await FetchBm25RanksAsync(
+                db, query, tier: null, _options.HybridRetrievalBm25TopN, ct).ConfigureAwait(false);
+            // Fuse over the ENTIRE scoredAll (not just top-K) so MMR can
+            // pick from the fused ordering.
+            scoredAll = FuseByRrf(scoredAll, bm25RankById, scoredAll.Count, _options.HybridRetrievalRrfK, out bm25RescueCount);
+        }
+
         var ranked = _options.RetrievalDiversityEnabled && scoredAll.Count > 0
             ? ApplyMmrRerank(scoredAll, topK, (float)_options.RetrievalDiversityLambda)
             : scoredAll.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
@@ -157,9 +181,9 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}, origin={Origin}, mmr={Mmr}): {Content}",
+                "Scored search: {Candidates} candidates, top composite={Composite:F3} cosine={Cosine:F3} (type={Type}, origin={Origin}, mmr={Mmr}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Type, top.OriginTier,
-                _options.RetrievalDiversityEnabled,
+                _options.RetrievalDiversityEnabled, _options.HybridRetrievalEnabled, bm25RescueCount,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -309,7 +333,23 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         var (passingFloor, droppedByFloor, anchoredBypassed) =
             ApplyCosineFloorWithAnchoredBypass(scored, minCosine);
 
-        var ranked = passingFloor.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
+        // Issue #93 Phase 4 (2026-07-09) — hybrid RRF fusion. Fetch BM25
+        // ranks for this tier and fuse with composite ranks. See the
+        // ANI-Retrieval-Consultation-2026-07-08 empirical anchor: the
+        // WCTC teaching-confirmation records sit at composite rank 47/600
+        // by cosine but at BM25 rank 1 — fusion surfaces them into top-K.
+        List<ScoredMemory> ranked;
+        int bm25RescueCount = 0;
+        if (_options.HybridRetrievalEnabled)
+        {
+            var bm25RankById = await FetchBm25RanksAsync(
+                db, query, tier, _options.HybridRetrievalBm25TopN, ct).ConfigureAwait(false);
+            ranked = FuseByRrf(passingFloor, bm25RankById, topK, _options.HybridRetrievalRrfK, out bm25RescueCount);
+        }
+        else
+        {
+            ranked = passingFloor.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
+        }
 
         // Pre-filter top cosine: the best cosine in the candidate pool
         // BEFORE the floor was applied. Distinct from the post-filter
@@ -321,12 +361,13 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         var preFilterTopCosine = scored.Count > 0 ? scored.Max(s => s.CosineSimilarity) : 0f;
 
         _log.LogDebug(
-            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, pre_filter_top_cosine={PreFilterTopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}, anchored_bypassed_floor={AnchoredBypassed}",
+            "Tier search ({Tier}): {Candidates} candidates, {Results} results, top composite={TopScore:F3}, top cosine={TopCosine:F3}, pre_filter_top_cosine={PreFilterTopCosine:F3}, includeRecency={IncludeRecency}, min_cosine={MinCosine:F2}, dropped_below_threshold={Dropped}, anchored_bypassed_floor={AnchoredBypassed}, hybrid_enabled={HybridEnabled}, bm25_rescues={Bm25Rescues}",
             tier, candidates.Count, ranked.Count,
             ranked.Count > 0 ? ranked[0].CompositeScore   : 0f,
             ranked.Count > 0 ? ranked[0].CosineSimilarity : 0f,
             preFilterTopCosine,
-            includeRecency, minCosine, droppedByFloor, anchoredBypassed);
+            includeRecency, minCosine, droppedByFloor, anchoredBypassed,
+            _options.HybridRetrievalEnabled, bm25RescueCount);
 
         return ranked;
     }
@@ -423,38 +464,249 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
     /// <paramref name="includeRecency"/> is false (Facts tier), the γ
     /// weight is redistributed proportionally onto α and β so the
     /// magnitude stays comparable.
+    ///
+    /// **Issue #93 (2026-07-06) — confirmation bias.** After the base
+    /// composite is computed, records with <see cref="MemoryRecord.ConfirmedAt"/>
+    /// set (Facts + Episodic canonical + Mark ///tag-confirmed Interior)
+    /// receive a multiplicative bump: <c>score *= (1 + boost)</c>. Applied
+    /// AFTER the recency-off branch normalisation so both branches see the
+    /// same boost factor. The goal is that real (Episodic) Kevin content
+    /// outranks importance-inflated (Interior) Kevin fabrications on
+    /// Kevin-thread queries without hard-excluding Interior from the pool.
     /// </summary>
     internal float ComputeRetrievalScore(float[] queryEmbedding, MemoryRecord record, bool includeRecency)
     {
         var cosine = VectorMath.CosineSimilarity(queryEmbedding, record.Embedding!);
         var importance = record.Importance;
 
+        float baseScore;
         if (!includeRecency)
         {
             var totalWithoutRecency = _options.RetrievalWeightCosine + _options.RetrievalWeightImportance;
             if (totalWithoutRecency <= 0.0) return 0f;
-            return (float)(
+            baseScore = (float)(
                 _options.RetrievalWeightCosine     / totalWithoutRecency * cosine +
                 _options.RetrievalWeightImportance / totalWithoutRecency * importance);
         }
-
-        float recency;
-        if (record.DecayTier == DecayTier.Anchored)
-        {
-            recency = 1.0f;
-        }
         else
         {
-            var hoursSinceCreation = (DateTimeOffset.UtcNow - record.OccurredAt).TotalHours;
-            var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(record);
-            recency = (float)Math.Exp(-hoursSinceCreation / lambda);
+            float recency;
+            if (record.DecayTier == DecayTier.Anchored)
+            {
+                recency = 1.0f;
+            }
+            else
+            {
+                var hoursSinceCreation = (DateTimeOffset.UtcNow - record.OccurredAt).TotalHours;
+                var lambda = _options.RetrievalRecencyDecayHours * GetDecayMultiplier(record);
+                recency = (float)Math.Exp(-hoursSinceCreation / lambda);
+            }
+
+            baseScore = (float)(
+                _options.RetrievalWeightCosine     * cosine +
+                _options.RetrievalWeightImportance * importance +
+                _options.RetrievalWeightRecency    * recency);
         }
 
-        return (float)(
-            _options.RetrievalWeightCosine     * cosine +
-            _options.RetrievalWeightImportance * importance +
-            _options.RetrievalWeightRecency    * recency);
+        // Issue #93 confirmation bias — multiplicative bump for confirmed records.
+        if (record.ConfirmedAt.HasValue && _options.RetrievalConfirmationBoost > 0.0)
+            baseScore *= (float)(1.0 + _options.RetrievalConfirmationBoost);
+
+        return baseScore;
     }
+
+    /// <summary>
+    /// Issue #93 Phase 4 (2026-07-09) — fetch BM25 ranks for the top-N
+    /// records in the given tier for the given query, via SQLite FTS5.
+    /// Returns a map of memory-id → BM25 rank (1-based, lower = better).
+    /// Records outside the top-N are not present in the map — the RRF
+    /// fusion treats absence as "worst rank" so BM25-invisible records
+    /// still rank via composite alone.
+    ///
+    /// <para>Uses <c>memories_fts.MATCH</c> with the raw query text —
+    /// FTS5's porter+unicode61 tokenizer handles stemming (teach/teaching)
+    /// and stopword-agnostic ranking via BM25. See
+    /// <see cref="AniDbContext.EnsureFtsIndexAsync"/> for the index shape.</para>
+    ///
+    /// <para>Empirical anchor: for the April 24 "back from teaching"
+    /// Interior record, this returns the exact confirming Mark text
+    /// (twilio-inbound "hey babe! Back from teaching!") at BM25 rank 1
+    /// even though pure cosine ranked it at position 47/1557.</para>
+    /// </summary>
+    private async Task<Dictionary<Guid, int>> FetchBm25RanksAsync(
+        AniDbContext db, string query, EpistemicTier? tier, int topN, CancellationToken ct)
+    {
+        var result = new Dictionary<Guid, int>();
+        if (string.IsNullOrWhiteSpace(query) || topN <= 0) return result;
+
+        // Simple defensive escape: strip FTS5 syntax characters that could
+        // otherwise be interpreted as query operators. FTS5 supports NEAR,
+        // AND, OR, NOT, +, - and column filters — for our purposes we want
+        // pure token match.
+        var safeQuery = SanitizeFtsQuery(query);
+        if (string.IsNullOrWhiteSpace(safeQuery)) return result;
+
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                await db.Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+            await using var cmd = conn.CreateCommand();
+            var tierClause = tier.HasValue ? "AND m.provenance = $tier" : string.Empty;
+            cmd.CommandText = $@"
+                SELECT m.id
+                FROM memories_fts
+                JOIN memories m ON m.id = memories_fts.memory_id
+                WHERE memories_fts MATCH $q
+                  {tierClause}
+                  AND m.validity = 'valid'
+                ORDER BY bm25(memories_fts)
+                LIMIT $topN;";
+            var pQuery = cmd.CreateParameter(); pQuery.ParameterName = "$q";    pQuery.Value = safeQuery; cmd.Parameters.Add(pQuery);
+            var pN     = cmd.CreateParameter(); pN.ParameterName     = "$topN"; pN.Value     = topN;      cmd.Parameters.Add(pN);
+            if (tier.HasValue)
+            {
+                var pTier = cmd.CreateParameter(); pTier.ParameterName = "$tier"; pTier.Value = tier.Value.ToString(); cmd.Parameters.Add(pTier);
+            }
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            var rank = 1;
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                var idStr = reader.GetString(0);
+                if (Guid.TryParse(idStr, out var id))
+                    result[id] = rank++;
+            }
+        }
+        catch (Exception ex)
+        {
+            // FTS5 not initialized, malformed query, or transport failure:
+            // return empty map. FuseByRrf will degrade cleanly to composite-
+            // only ranking (all records get identical BM25 rank contribution).
+            _log.LogDebug(ex, "BM25 fetch failed for tier={Tier}; falling back to composite-only", tier);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Issue #93 Phase 4 (2026-07-09) — Reciprocal Rank Fusion (Cormack et
+    /// al. 2009) over composite rank and BM25 rank. Records receive
+    /// <c>1/(k + composite_rank) + 1/(k + bm25_rank)</c>. Records missing
+    /// from the BM25 rank map are treated as rank = <see cref="int.MaxValue"/>
+    /// (contribution ≈ 0 from the BM25 side, but still competitive via
+    /// composite alone).
+    ///
+    /// <para>The returned <see cref="ScoredMemory.CompositeScore"/> is
+    /// REPLACED with the RRF score so downstream MMR / protected-slots /
+    /// own-output ceiling paths continue to see a single ranking score.
+    /// The original composite is preserved elsewhere on the object via
+    /// the record's own fields.</para>
+    /// </summary>
+    internal static List<ScoredMemory> FuseByRrf(
+        List<ScoredMemory>       scored,
+        Dictionary<Guid, int>    bm25RankById,
+        int                      topK,
+        int                      k,
+        out int                  bm25RescueCount)
+    {
+        bm25RescueCount = 0;
+        if (scored.Count == 0) return scored;
+
+        // Compute composite ranks (1-based) by descending composite score.
+        var compositeRanked = scored
+            .Select((s, i) => (s, index: i))
+            .OrderByDescending(x => x.s.CompositeScore)
+            .Select((x, rank) => (x.s, x.index, compositeRank: rank + 1))
+            .ToList();
+
+        // If BM25 is empty (index not built / query failed), fall back to
+        // composite-only ordering unchanged.
+        if (bm25RankById.Count == 0)
+        {
+            return compositeRanked
+                .OrderBy(x => x.compositeRank)
+                .Take(topK)
+                .Select(x => x.s)
+                .ToList();
+        }
+
+        // Fuse. RRF replaces CompositeScore with the fused score so
+        // downstream rerank steps see it as the sort key.
+        var fused = compositeRanked.Select(x =>
+        {
+            var bm25Rank = bm25RankById.TryGetValue(x.s.Record.Id, out var br) ? br : int.MaxValue;
+            var compositeContribution = 1.0 / (k + x.compositeRank);
+            var bm25Contribution      = bm25Rank == int.MaxValue ? 0.0 : 1.0 / (k + bm25Rank);
+            var rrfScore = (float)(compositeContribution + bm25Contribution);
+            return (fused: x.s with { CompositeScore = rrfScore }, x.compositeRank, bm25Rank);
+        }).ToList();
+
+        var final = fused.OrderByDescending(x => x.fused.CompositeScore).Take(topK).ToList();
+
+        // Instrumentation — count how many records in the final top-K
+        // would NOT have been in the composite-only top-K. These are
+        // "BM25 rescues" — the entity-based confirmations we came for.
+        var compositeTopKIds = new HashSet<Guid>(
+            compositeRanked.OrderBy(x => x.compositeRank).Take(topK).Select(x => x.s.Record.Id));
+        foreach (var (fusedRec, _, bm25Rank) in final)
+        {
+            if (!compositeTopKIds.Contains(fusedRec.Record.Id) && bm25Rank != int.MaxValue)
+                bm25RescueCount++;
+        }
+
+        return final.Select(x => x.fused).ToList();
+    }
+
+    /// <summary>
+    /// Strip FTS5 syntax characters from a natural-language query and
+    /// rewrite it as an explicit OR expression so the underlying MATCH
+    /// behaves as "any of these terms" rather than the default implicit
+    /// AND ("all of these terms"). For long natural-language queries
+    /// (e.g. a full Interior record), implicit AND matches near-zero
+    /// records because no confirmation record contains every token.
+    /// Explicit OR gets us classic BM25 semantics — records containing
+    /// ANY query token are candidates, ranked by BM25 which weights
+    /// rare tokens (like "WCTC") higher than common ones.
+    ///
+    /// <para>Also drops single-letter tokens and a small stopword list so
+    /// the OR list isn't dominated by pronouns / articles / conjunctions
+    /// that match everything. FTS5's porter+unicode61 tokenizer handles
+    /// stemming (teach/teaching → same token) so we don't need to.</para>
+    /// </summary>
+    internal static string SanitizeFtsQuery(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return string.Empty;
+
+        var tokens = System.Text.RegularExpressions.Regex
+            .Matches(query.ToLowerInvariant(), @"[a-z0-9]+")
+            .Select(m => m.Value)
+            .Where(t => t.Length > 1 && !FtsStopwords.Contains(t))
+            .Distinct()
+            .Take(40)
+            .ToList();
+
+        if (tokens.Count == 0) return string.Empty;
+        return string.Join(" OR ", tokens);
+    }
+
+    /// <summary>
+    /// Small English stopword list used only by FTS5 query construction.
+    /// Not a stemming / register decision — just a filter to keep the
+    /// OR-expression from being dominated by tokens that match every
+    /// record and add zero discrimination.
+    /// </summary>
+    private static readonly HashSet<string> FtsStopwords = new(StringComparer.Ordinal)
+    {
+        "a","an","the","is","are","was","were","be","been","being","and","or","but",
+        "i","you","he","she","it","we","they","me","him","her","us","them",
+        "my","your","his","their","our","this","that","these","those",
+        "to","of","in","on","at","for","with","from","by","as","so",
+        "if","then","not","no","yes","can","could","would","should","will","shall","may","might",
+        "do","does","did","done","have","has","had","get","got","goes","went","make","made",
+        "like","just","still","one","some","any","all","more","less","also","only",
+        "about","out","up","down","over","under","into","through","because","while","when","where","how","what","why","who","whose",
+    };
 
     /// <summary>
     /// Feature 24 — type-aware decay multiplier. High-significance memory

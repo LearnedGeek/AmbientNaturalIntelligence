@@ -229,6 +229,8 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
             existing.AnchorReason      = record.AnchorReason;
             existing.AnchoredAt        = record.AnchoredAt;
             existing.Provenance        = record.Provenance;
+            existing.ConfirmedAt       = record.ConfirmedAt;
+            existing.ConfirmedBy       = record.ConfirmedBy;
         }
         else
         {
@@ -250,6 +252,8 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
                 AnchorReason      = record.AnchorReason,
                 AnchoredAt        = record.AnchoredAt,
                 Provenance        = record.Provenance,
+                ConfirmedAt       = record.ConfirmedAt,
+                ConfirmedBy       = record.ConfirmedBy,
             });
         }
 
@@ -587,6 +591,62 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
 
         _log.LogInformation(
             "Walk-back tag: invalidated {Count} conversation record(s) for ani reply (first 60 chars): {Preview}",
+            updated, aniReplyContent[..Math.Min(60, aniReplyContent.Length)]);
+
+        return updated;
+    }
+
+    public async Task<int> MarkConversationTurnConfirmedAsync(
+        string aniReplyContent, DateTimeOffset confirmedAt, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(aniReplyContent)) return 0;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        // Symmetric to MarkConversationTurnInvalidAsync — same match rule, same
+        // OrderByDescending(OccurredAt).Take(5) shape. Restrict to Episodic +
+        // conversation source so we don't over-confirm a Semantic backstory
+        // record that happens to share text.
+        var candidates = await db.Memories
+            .Where(m => m.Type == MemoryType.Episodic
+                     && m.SourceName == "conversation"
+                     && m.Content.Contains(aniReplyContent))
+            .OrderByDescending(m => m.OccurredAt)
+            .Take(5)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        if (candidates.Count == 0)
+        {
+            _log.LogInformation(
+                "Confirm tag: no matching Episodic conversation record found for ani reply (first 60 chars): {Preview}",
+                aniReplyContent[..Math.Min(60, aniReplyContent.Length)]);
+            return 0;
+        }
+
+        var updated = 0;
+        foreach (var entity in candidates)
+        {
+            entity.ConfirmedAt = confirmedAt;
+            entity.ConfirmedBy = "mark-tag";
+            updated++;
+
+            await _audit.WriteAsync(
+                memoryId:         entity.Id,
+                action:           "confirm-mark-tag",
+                source:           "TagCommand",
+                contentBefore:    entity.Content,
+                contentAfter:     entity.Content,
+                typeBefore:       (int)entity.Type,
+                typeAfter:        (int)entity.Type,
+                importanceBefore: entity.Importance,
+                importanceAfter:  entity.Importance,
+                ct: ct).ConfigureAwait(false);
+        }
+
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        _log.LogInformation(
+            "Confirm tag: confirmed {Count} conversation record(s) for ani reply (first 60 chars): {Preview}",
             updated, aniReplyContent[..Math.Min(60, aniReplyContent.Length)]);
 
         return updated;

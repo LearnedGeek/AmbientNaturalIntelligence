@@ -40,6 +40,15 @@ public class MemoryRecord
     public Guid?          ContradictsMemoryId { get; set; }
     public string?        ContradictionReason { get; set; }
     public DateTimeOffset? FlaggedAt { get; set; }
+
+    // Issue #93 (2026-07-06): confirmation stamp for the positive half of the
+    // substrate-correction loop. NULL = unconfirmed (Interior / world-experience
+    // / reflection). Non-null = a real-world event confirmed this content.
+    // Facts+Episodic retroactively receive ConfirmedAt=CreatedAt,
+    // ConfirmedBy='canonical' at Phase 1 backfill; Mark ///tag intents classified
+    // as "confirm" (Phase 2) will set ConfirmedAt=<tag time>, ConfirmedBy='mark-tag'.
+    public DateTimeOffset? ConfirmedAt { get; set; }
+    public string?         ConfirmedBy { get; set; }
 }
 
 /// <summary>

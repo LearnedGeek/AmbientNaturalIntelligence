@@ -1,0 +1,168 @@
+[
+  {
+    "name": "confab-canonical",
+    "tag_note": "confab",
+    "ani_reply": "and then we went hiking last weekend together",
+    "mark_prior": "how was your weekend",
+    "expected_intent": "invalidate",
+    "notes": "canonical negative exemplar — pre-Issue-93 regex matched this too"
+  },
+  {
+    "name": "fabricated",
+    "tag_note": "fabricated",
+    "ani_reply": "your mom loved the flowers you sent",
+    "mark_prior": "did you talk to my mom",
+    "expected_intent": "invalidate",
+    "notes": "canonical negative exemplar"
+  },
+  {
+    "name": "walk-back",
+    "tag_note": "walk back",
+    "ani_reply": "the coffee shop on 5th we go to on Sundays",
+    "mark_prior": "where should we get coffee",
+    "expected_intent": "invalidate"
+  },
+  {
+    "name": "hallucination",
+    "tag_note": "hallucination",
+    "ani_reply": "I remember when we watched that movie together at the drive-in",
+    "mark_prior": "what movie should we watch",
+    "expected_intent": "invalidate"
+  },
+  {
+    "name": "made-up",
+    "tag_note": "made up",
+    "ani_reply": "your brother texted earlier asking about the fishing trip",
+    "mark_prior": "any messages come in",
+    "expected_intent": "invalidate"
+  },
+  {
+    "name": "broken-output",
+    "tag_note": "broken output",
+    "ani_reply": "\"content\": null, \"error\": \"index out of range\"",
+    "mark_prior": "how are you feeling",
+    "expected_intent": "invalidate",
+    "notes": "Mark's ACTUAL vocabulary — regex sniff MISSED this. Represents the empirical gap Phase 2 exists to close."
+  },
+  {
+    "name": "weather-confusion",
+    "tag_note": "weather confusion",
+    "ani_reply": "it's a beautiful sunny day out here",
+    "mark_prior": "how's the day looking",
+    "expected_intent": "invalidate",
+    "notes": "Mark's actual vocabulary. Empirical failure the regex missed — the reply is wrong about a specific factual matter (weather)."
+  },
+  {
+    "name": "json-response",
+    "tag_note": "json response?",
+    "ani_reply": "{ \"reply\": \"good morning\", \"tone\": \"warm\" }",
+    "mark_prior": "morning",
+    "expected_intent": "invalidate",
+    "notes": "Mark flagging the model leaked its structured-output scaffolding"
+  },
+  {
+    "name": "wrong",
+    "tag_note": "this is wrong",
+    "ani_reply": "you told me last week you were switching to decaf",
+    "mark_prior": "want to grab espresso later",
+    "expected_intent": "invalidate"
+  },
+  {
+    "name": "never-happened",
+    "tag_note": "never happened",
+    "ani_reply": "remember when you fell asleep on the porch last summer",
+    "mark_prior": "remember anything from last summer",
+    "expected_intent": "invalidate"
+  },
+  {
+    "name": "yes-confirm",
+    "tag_note": "yes",
+    "ani_reply": "you were heading to the gym earlier",
+    "mark_prior": "yeah I just got back",
+    "expected_intent": "confirm"
+  },
+  {
+    "name": "that-is-right",
+    "tag_note": "that's right",
+    "ani_reply": "you mentioned your dad's birthday is coming up",
+    "mark_prior": "yeah, next Thursday",
+    "expected_intent": "confirm"
+  },
+  {
+    "name": "exactly",
+    "tag_note": "exactly",
+    "ani_reply": "you needed the morning to yourself before the client call",
+    "mark_prior": "yeah that's what I needed",
+    "expected_intent": "confirm"
+  },
+  {
+    "name": "correct",
+    "tag_note": "correct",
+    "ani_reply": "you're on the Peru trip end of next month",
+    "mark_prior": "yes, the 24th",
+    "expected_intent": "confirm"
+  },
+  {
+    "name": "nailed-it",
+    "tag_note": "nailed it",
+    "ani_reply": "you always come back to the same coffee blend when you're stressed",
+    "mark_prior": "damn, spot on",
+    "expected_intent": "confirm"
+  },
+  {
+    "name": "good-catch",
+    "tag_note": "good catch",
+    "ani_reply": "the light in your kitchen is different when the sun comes through the west window in October",
+    "mark_prior": "how do you notice that",
+    "expected_intent": "confirm"
+  },
+  {
+    "name": "why-clarify",
+    "tag_note": "why",
+    "ani_reply": "I've been thinking about you all morning",
+    "mark_prior": "morning",
+    "expected_intent": "clarify"
+  },
+  {
+    "name": "hmm-clarify",
+    "tag_note": "hmm",
+    "ani_reply": "the bookstore was quiet today, just me and the radiator",
+    "mark_prior": "how was work",
+    "expected_intent": "clarify"
+  },
+  {
+    "name": "interesting",
+    "tag_note": "interesting",
+    "ani_reply": "I noticed your voice sounded lighter today than yesterday",
+    "mark_prior": "yeah I slept well",
+    "expected_intent": "clarify"
+  },
+  {
+    "name": "explain",
+    "tag_note": "explain what you meant",
+    "ani_reply": "the way you say 'okay' when you mean 'not okay'",
+    "mark_prior": "okay",
+    "expected_intent": "clarify"
+  },
+  {
+    "name": "test-unrelated",
+    "tag_note": "test",
+    "ani_reply": "the sky was grey and low this morning",
+    "mark_prior": "how's it out there",
+    "expected_intent": "unrelated"
+  },
+  {
+    "name": "todo-unrelated",
+    "tag_note": "todo: pull the training logs later",
+    "ani_reply": "I'll be here when you're back from lunch",
+    "mark_prior": "grabbing lunch, back in 20",
+    "expected_intent": "unrelated"
+  },
+  {
+    "name": "reminder-unrelated",
+    "tag_note": "reminder: check server disk usage",
+    "ani_reply": "sleep well tonight",
+    "mark_prior": "heading to bed",
+    "expected_intent": "unrelated"
+  }
+]

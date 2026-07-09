@@ -59,6 +59,28 @@ public interface IMemoryPersistence
         string aniReplyContent, CancellationToken ct = default);
 
     /// <summary>
+    /// Issue #93 Phase 2 (2026-07-06) — the positive counterpart to
+    /// <see cref="MarkConversationTurnInvalidAsync"/>. Finds the most recent
+    /// Episodic conversation record whose content contains
+    /// <paramref name="aniReplyContent"/> (same match rule as the invalidate
+    /// path) and sets its <see cref="MemoryRecord.ConfirmedAt"/> to
+    /// <paramref name="confirmedAt"/>, <see cref="MemoryRecord.ConfirmedBy"/>
+    /// to <c>"mark-tag"</c>. Retrieval bias in
+    /// <c>EfSemanticSearchComposer.ComputeRetrievalScore</c> multiplies the
+    /// composite score by <c>(1 + AniOptions.RetrievalConfirmationBoost)</c>
+    /// on any record with <see cref="MemoryRecord.ConfirmedAt"/> set.
+    ///
+    /// <para>Returns the number of records updated (typically 1; 0 if no
+    /// matching Episodic record exists — same shape as the invalidate path).</para>
+    ///
+    /// <para>Idempotent: reconfirming a record with a later timestamp
+    /// overwrites the earlier stamp. Not treated as a bug — the more recent
+    /// confirmation is the more informative one.</para>
+    /// </summary>
+    Task<int> MarkConversationTurnConfirmedAsync(
+        string aniReplyContent, DateTimeOffset confirmedAt, CancellationToken ct = default);
+
+    /// <summary>
     /// Feature 32: Returns the N most recent memories across all types.
     /// Excludes reflection-sourced memories to prevent synthesis loops.
     /// </summary>

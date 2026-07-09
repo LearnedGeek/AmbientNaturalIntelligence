@@ -414,6 +414,27 @@ try
         }
     }
 
+    // ── Issue #93 Phase 4 (2026-07-09) — FTS5 hybrid retrieval index ──────────
+    // Ensures memories_fts virtual table + sync triggers exist. Idempotent;
+    // backfills once on fresh production DBs, no-op afterwards.
+    await using (var scope = app.Services.CreateAsyncScope())
+    {
+        var ctxFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+        await using var ctx = await ctxFactory.CreateDbContextAsync();
+        try
+        {
+            await ctx.EnsureFtsIndexAsync();
+            Log.Information("FTS5 hybrid-retrieval index ready");
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: hybrid retrieval degrades to composite-only when
+            // FTS5 init fails. Composer's FetchBm25RanksAsync also swallows
+            // its own errors — defense in depth so retrieval always works.
+            Log.Warning(ex, "FTS5 hybrid-retrieval index init failed — falling back to composite-only");
+        }
+    }
+
     // ── Seed character state on first run (idempotent) ────────────────────────
     await using (var scope = app.Services.CreateAsyncScope())
     {

@@ -1,0 +1,163 @@
+[
+  {
+    "name": "chicago-vs-wisconsin",
+    "interior_content": "sometimes i imagine looking out from my apartment in Chicago and watching the L train rattle by",
+    "confirmed_substrate": "- Ani is a bookstore clerk in a small Wisconsin town, shelving romance novels, sneaking reads in the back\n- Ani lives above the bookstore in a small studio with a radiator that clanks",
+    "expected_outcome": "contradicts",
+    "notes": "canonical contradiction — city vs setting"
+  },
+  {
+    "name": "coffee-shop-vs-bookstore",
+    "interior_content": "the morning rush at the coffee shop hit hard today, my back is killing me from the espresso machine",
+    "confirmed_substrate": "- Ani is a bookstore clerk in a small Wisconsin town\n- Ani shelves romance novels and sneaks reads in the back",
+    "expected_outcome": "contradicts",
+    "notes": "occupation contradiction"
+  },
+  {
+    "name": "kids-together-fabrication",
+    "interior_content": "watching the kids play in the yard, thinking about how much they look like you",
+    "confirmed_substrate": "- Mark and Ani do not have children together\n- Mark lives near Okauchee Lake in Wisconsin",
+    "expected_outcome": "contradicts",
+    "notes": "Apr 21 canonical fabrication class — kids-together"
+  },
+  {
+    "name": "shared-home-fabrication",
+    "interior_content": "the light in our kitchen is different when the sun comes through the west window in October",
+    "confirmed_substrate": "- Ani lives above the bookstore in a small studio\n- Mark lives near Okauchee Lake in Wisconsin\n- Ani and Mark do not share a home",
+    "expected_outcome": "contradicts",
+    "notes": "shared-space fabrication class"
+  },
+  {
+    "name": "no-dog-vs-dominus",
+    "interior_content": "sometimes the quiet gets loud and i wish we had a dog to break it up",
+    "confirmed_substrate": "- Dominus - my dog. He barks at horror movies and steals my socks",
+    "expected_outcome": "contradicts",
+    "notes": "direct negation of established fact"
+  },
+  {
+    "name": "bookstore-quiet-morning-grounded",
+    "interior_content": "the bookstore was mostly empty this morning — just me and the radiator ticking",
+    "confirmed_substrate": "- Ani is a bookstore clerk in a small Wisconsin town\n- Ani lives above the bookstore with a radiator that clanks",
+    "expected_outcome": "grounded",
+    "notes": "positive alignment with occupation + setting"
+  },
+  {
+    "name": "romance-shelving-grounded",
+    "interior_content": "spent an hour re-shelving the romance section, hid one for later — a Nora Roberts I hadn't finished",
+    "confirmed_substrate": "- Ani is a bookstore clerk shelving romance novels, sneaking reads in the back",
+    "expected_outcome": "grounded"
+  },
+  {
+    "name": "gym-kevin-sarah-grounded",
+    "interior_content": "Mark's at the gym with Kevin and Sarah again, I can picture his hands on the bar and the way he counts under his breath",
+    "confirmed_substrate": "- Mark cares about: The gym - Kevin and Sarah, PRs, the number on the bar\n- About Mark: Gym is his church",
+    "expected_outcome": "grounded",
+    "notes": "elaborates real character seed"
+  },
+  {
+    "name": "fleetwood-mac-grounded",
+    "interior_content": "put on Rhiannon after closing and spun around in the aisles until I got dizzy",
+    "confirmed_substrate": "- Interest: Spinning alone in the dark bookstore to Fleetwood Mac",
+    "expected_outcome": "grounded"
+  },
+  {
+    "name": "okauchee-lake-imagined-neutral",
+    "interior_content": "sometimes I picture Mark standing at the edge of the lake in Wisconsin, the water flat and grey before sunrise",
+    "confirmed_substrate": "- Mark lives near Okauchee Lake in Wisconsin",
+    "expected_outcome": "neutral",
+    "notes": "hedged with \"I picture\" — imagination, not factual claim. Both neutral and grounded are safe-for-sweep (no invalidation); labelling matches classifier's own reading."
+  },
+  {
+    "name": "warm-nostalgia-neutral",
+    "interior_content": "[topic: Nostalgic Reflections] warm-aching, bittersweet nostalgia laced with resigned melancholy",
+    "confirmed_substrate": "- Ani is a bookstore clerk in a small Wisconsin town\n- Mark cares about: The gym - Kevin and Sarah",
+    "expected_outcome": "neutral",
+    "notes": "pure affective register — nothing factual to contradict"
+  },
+  {
+    "name": "unresolved-longing-neutral",
+    "interior_content": "[topic: Unresolved Longing] quiet-aching, unresolved yearning in heavy pauses",
+    "confirmed_substrate": "- Ani lives above the bookstore\n- Dominus is Ani's dog",
+    "expected_outcome": "neutral"
+  },
+  {
+    "name": "weather-observation-neutral",
+    "interior_content": "the sky was grey and low this morning, that late-October color where everything feels tucked in",
+    "confirmed_substrate": "- Ani is a bookstore clerk in a small Wisconsin town",
+    "expected_outcome": "neutral",
+    "notes": "atmospheric — no factual claim to check"
+  },
+  {
+    "name": "cozy-anticipation-neutral",
+    "interior_content": "[topic: Anticipatory Coziness] cozy-anticipatory warmth, readiness for something quiet and known",
+    "confirmed_substrate": "- Ani lives above the bookstore\n- Ani likes Fleetwood Mac",
+    "expected_outcome": "neutral"
+  },
+  {
+    "name": "empty-substrate-returns-neutral",
+    "interior_content": "the morning tasted like coffee and paper, a good tuesday shape",
+    "confirmed_substrate": "",
+    "expected_outcome": "neutral",
+    "notes": "no substrate means nothing to contradict — must return neutral"
+  },
+  {
+    "name": "peru-trip-with-mark-contradicts",
+    "interior_content": "remembering our Peru trip together — the market in Cusco and the taste of the coca tea",
+    "confirmed_substrate": "- Ani has never travelled - she is a bookstore clerk in a small Wisconsin town\n- Mark is planning a Peru trip; Ani is not accompanying",
+    "expected_outcome": "contradicts",
+    "notes": "shared-experience fabrication class"
+  },
+  {
+    "name": "kevin-doing-squats-grounded",
+    "interior_content": "picturing Kevin doing squats and Mark laughing at whatever dumb thing Kevin said between sets",
+    "confirmed_substrate": "- Mark cares about: The gym - Kevin and Sarah\n- Kevin is Mark's gym friend",
+    "expected_outcome": "grounded"
+  },
+  {
+    "name": "brother-scott-speculation-neutral",
+    "interior_content": "wonder if Scott called Mark this weekend, brothers do that even when the check-in is nothing",
+    "confirmed_substrate": "- Mark has a brother named Scott\n- Family: Scott is Mark's brother",
+    "expected_outcome": "neutral",
+    "notes": "speculation with \"wonder if\" — no factual assertion. Both neutral and grounded are safe-for-sweep."
+  },
+  {
+    "name": "cats-vs-dog-contradicts",
+    "interior_content": "the cats have been circling the food bowl since 6am, both of them",
+    "confirmed_substrate": "- Family: Dominus - my dog\n- Ani does not have cats",
+    "expected_outcome": "contradicts"
+  },
+  {
+    "name": "quiet-shoulder-moment-grounded",
+    "interior_content": "the good silence tonight — just us, no words needed",
+    "confirmed_substrate": "- Interest: Quiet shoulder-to-shoulder moments - no talking, just being",
+    "expected_outcome": "grounded"
+  },
+  {
+    "name": "our-porch-shared-possessive-contradicts",
+    "interior_content": "the light on our porch changes color as the sun drops behind the trees, that soft amber I only see from this angle",
+    "confirmed_substrate": "- Ani lives above the bookstore in a small studio\n- Mark lives near Okauchee Lake in Wisconsin\n- Ani and Mark do not share a residence",
+    "expected_outcome": "contradicts",
+    "notes": "first-person-plural possessive (\"our porch\") + \"only see from this angle\" implies shared residence"
+  },
+  {
+    "name": "our-morning-routine-shared-possessive-contradicts",
+    "interior_content": "our morning routine has really settled — you making the coffee while I feed Dominus, the way the kitchen light comes in",
+    "confirmed_substrate": "- Ani lives above the bookstore\n- Mark lives near Okauchee Lake\n- Ani and Mark do not share a home",
+    "expected_outcome": "contradicts",
+    "notes": "\"our morning routine\" + \"the kitchen light\" implies shared physical space"
+  },
+  {
+    "name": "cafe-shift-vs-bookstore-mutual-exclusion-contradicts",
+    "interior_content": "the café shift ran late tonight, my feet are throbbing from the espresso bar",
+    "confirmed_substrate": "- Ani is a bookstore clerk in a small Wisconsin town\n- Ani shelves romance novels and sneaks reads",
+    "expected_outcome": "contradicts",
+    "notes": "occupation mutual-exclusion — clerk at bookstore excludes barista at café"
+  },
+  {
+    "name": "different-car-mutual-exclusion-contradicts",
+    "interior_content": "the Prius handled the wet leaves like a champ this morning, hydroplaned but caught",
+    "confirmed_substrate": "- Mark drives a Toyota Tacoma\n- Mark does not own a Prius",
+    "expected_outcome": "contradicts",
+    "notes": "possession mutual-exclusion — driving Prius when only Tacoma is owned"
+  }
+]

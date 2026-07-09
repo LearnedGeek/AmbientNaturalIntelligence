@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniRuntime.Core.Interfaces;
+using AniRuntime.Core.Models;
 using AniRuntime.Eval;
 using AniRuntime.Loops;
 using AniRuntime.Memory;
@@ -36,6 +37,62 @@ if (string.IsNullOrWhiteSpace(dbPath))
 }
 
 var userMessage = ParseArg(args, "--message");
+
+// K.5-probe (2026-07-06) — retrieval-only mode. When --probe-query is
+// provided, run the same IMemorySearch.SearchWithScoresAsync production
+// uses and dump top-K ScoredMemory results as JSON. Skip full cycle
+// invocation. Used to empirically verify what semantic search surfaces
+// before wiring anything to the composer.
+var probeQuery = ParseArg(args, "--probe-query");
+var probeTopKRaw = ParseArg(args, "--probe-top-k") ?? "10";
+var probeTopK   = int.TryParse(probeTopKRaw, out var pk) ? pk : 10;
+
+// Issue #93 Phase 2 (2026-07-06) — classifier harness mode. When
+// --classify-tag <fixture-path> is provided, load the fixture (array of
+// { name, tag_note, ani_reply, mark_prior, expected_intent }), call the
+// production ITagIntentClassifier for each entry, and dump per-entry
+// verdicts + a summary accuracy table. Skips DB / cycle / dispatch —
+// this is a pure classifier probe against a running Ollama.
+var classifyTagFixture = ParseArg(args, "--classify-tag");
+
+// Issue #93 Phase 3 (2026-07-06) — self-audit classifier harness. When
+// --classify-contradiction <fixture-path> is provided, load the fixture
+// (array of { name, interior_content, confirmed_substrate,
+// expected_outcome }), call the production IContentContradictionClassifier
+// for each entry, and dump per-entry verdicts + a summary accuracy table.
+// Same shape as --classify-tag.
+var classifyContradictionFixture = ParseArg(args, "--classify-contradiction");
+
+// Issue #93 Phase 3 (2026-07-07) — batch-size for the contradiction
+// harness. 1 = single-item mode (baseline accuracy per Phase 3 first
+// draft). >1 = batched mode via ClassifyBatchAsync (throughput knob for
+// the retroactive sweep). Default 1 to preserve baseline behavior when
+// unspecified.
+var batchSizeRaw = ParseArg(args, "--batch-size") ?? "1";
+var batchSize = int.TryParse(batchSizeRaw, out var bs) && bs > 0 ? bs : 1;
+
+// Issue #93 Phase 3 (2026-07-07) — retroactive sweep mode. Runs the
+// contradiction classifier over all Interior records with Validity='valid',
+// invalidating those the LLM flags as contradicting confirmed substrate.
+// --audit-interior             = commit mutations (writes to the DB)
+// --audit-interior-dry-run     = count matches, log verdicts, no UPDATE
+// --audit-limit N              = stop after N records (for sampling)
+// --audit-topk-facts N         = neighbors from Facts tier (default 5)
+// --audit-topk-episodic N      = neighbors from Episodic tier (default 3)
+// --audit-min-confidence F     = confidence floor for invalidation
+//                                (default 0.60, matches TagCommand)
+var auditInterior       = args.Contains("--audit-interior");
+var auditInteriorDryRun = args.Contains("--audit-interior-dry-run");
+var auditLimitRaw       = ParseArg(args, "--audit-limit") ?? "0";
+var auditLimit          = int.TryParse(auditLimitRaw, out var al) && al > 0 ? al : 0;
+var auditTopKFacts      = int.TryParse(ParseArg(args, "--audit-topk-facts")    ?? "5", out var af) ? af : 5;
+var auditTopKEpisodic   = int.TryParse(ParseArg(args, "--audit-topk-episodic") ?? "3", out var ae) ? ae : 3;
+var auditMinConfidence  = float.TryParse(ParseArg(args, "--audit-min-confidence") ?? "0.60", out var am) ? am : 0.60f;
+// "oldest" (default) iterates in OrderBy(OccurredAt); "newest" flips to
+// OrderByDescending. Used to sample different time-bands of Interior
+// records — e.g. checking whether the Apr 21 fabrication class is
+// concentrated near the top of the DB rather than uniformly distributed.
+var auditOrder          = (ParseArg(args, "--audit-order") ?? "oldest").ToLowerInvariant();
 
 // Ollama endpoint — defaults to ani-server where the trained models live.
 // Override for laptop testing via --ollama-url or Ollama__BaseUrl env var.
@@ -152,6 +209,432 @@ await using var provider = services.BuildServiceProvider();
     var ctxFactory = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
     await using var ctx = await ctxFactory.CreateDbContextAsync();
     await ctx.Database.EnsureCreatedAsync();
+    // Issue #93 Phase 4 (2026-07-09) — FTS5 index for hybrid retrieval.
+    // Idempotent; backfills once on fresh DBs, no-op afterwards.
+    await ctx.EnsureFtsIndexAsync();
+}
+
+// Issue #93 Phase 2 (2026-07-06) — classifier harness branch. Runs the
+// production ITagIntentClassifier against the fixture and dumps per-entry
+// verdicts + a summary. Symmetric to --probe-query: exits before touching
+// the cycle / dispatch path.
+if (!string.IsNullOrWhiteSpace(classifyTagFixture))
+{
+    if (!File.Exists(classifyTagFixture))
+    {
+        Console.Error.WriteLine($"AniRuntime.Eval: classify-tag fixture not found at {classifyTagFixture}");
+        return 2;
+    }
+
+    var fixtureJson = await File.ReadAllTextAsync(classifyTagFixture);
+    var fixtureItems = JsonSerializer.Deserialize<List<TagIntentFixtureItem>>(
+        fixtureJson,
+        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+
+    if (fixtureItems is null || fixtureItems.Count == 0)
+    {
+        Console.Error.WriteLine("AniRuntime.Eval: fixture parsed to empty list — check schema");
+        return 2;
+    }
+
+    var classifier = provider.GetRequiredService<ITagIntentClassifier>();
+    var runResults = new List<object>();
+    var perExpected = new Dictionary<string, (int Correct, int Total)>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var item in fixtureItems)
+    {
+        var verdict = await classifier.ClassifyAsync(
+            tagNote:          item.TagNote          ?? string.Empty,
+            aniReply:         item.AniReply         ?? string.Empty,
+            markPriorMessage: item.MarkPrior        ?? string.Empty,
+            ct:               CancellationToken.None);
+
+        var actual = verdict.Intent.ToString().ToLowerInvariant();
+        var expected = (item.ExpectedIntent ?? string.Empty).ToLowerInvariant();
+        var correct = string.Equals(actual, expected, StringComparison.Ordinal);
+
+        runResults.Add(new
+        {
+            name             = item.Name,
+            tag_note         = item.TagNote,
+            expected_intent  = expected,
+            actual_intent    = actual,
+            confidence       = verdict.Confidence,
+            reason           = verdict.Reason,
+            correct,
+        });
+
+        var bucket = perExpected.TryGetValue(expected, out var v) ? v : (Correct: 0, Total: 0);
+        perExpected[expected] = (bucket.Correct + (correct ? 1 : 0), bucket.Total + 1);
+    }
+
+    var totalCorrect = perExpected.Values.Sum(v => v.Correct);
+    var totalCount   = perExpected.Values.Sum(v => v.Total);
+
+    var classifyPayload = new
+    {
+        fixturePath = classifyTagFixture,
+        model = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.AniOptions>>()
+                .Value.LocalVerifierModelTag,
+        summary = new
+        {
+            totalCorrect,
+            totalCount,
+            accuracy = totalCount > 0 ? (double)totalCorrect / totalCount : 0.0,
+            perExpected = perExpected.ToDictionary(
+                kv => kv.Key,
+                kv => new { correct = kv.Value.Correct, total = kv.Value.Total,
+                            accuracy = kv.Value.Total > 0 ? (double)kv.Value.Correct / kv.Value.Total : 0.0 }),
+        },
+        results = runResults,
+    };
+
+    Console.WriteLine(JsonSerializer.Serialize(classifyPayload,
+        new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// Issue #93 Phase 3 (2026-07-07) — retroactive Interior audit sweep.
+// Runs the contradiction classifier over Interior records with
+// Validity='valid', invalidating those flagged as contradicting confirmed
+// substrate above the confidence floor. Symmetric to the write-side
+// invariant that will fire on new inner thoughts.
+if (auditInterior || auditInteriorDryRun)
+{
+    var isDryRun = auditInteriorDryRun && !auditInterior;
+    Console.Error.WriteLine(
+        $"AUDIT_INTERIOR mode={(isDryRun ? "dry-run" : "commit")} " +
+        $"order={auditOrder} " +
+        $"limit={(auditLimit == 0 ? "all" : auditLimit.ToString())} " +
+        $"topK_facts={auditTopKFacts} topK_episodic={auditTopKEpisodic} " +
+        $"min_confidence={auditMinConfidence:F2} db={dbPath}");
+
+    var classifier = provider.GetRequiredService<IContentContradictionClassifier>();
+    var search     = provider.GetRequiredService<IMemorySearch>();
+    var ctxFactory = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+
+    // Fetch the target set once. Interior + Validity='valid' + has embedding.
+    List<AniRuntime.Memory.Entities.MemoryEntity> targets;
+    await using (var loadCtx = await ctxFactory.CreateDbContextAsync())
+    {
+        var baseQ = loadCtx.Memories
+            .Where(m => m.Provenance == EpistemicTier.Interior
+                     && m.Validity   == "valid"
+                     && m.Embedding  != null);
+        var ordered = auditOrder == "newest"
+            ? (IQueryable<AniRuntime.Memory.Entities.MemoryEntity>)baseQ.OrderByDescending(m => m.OccurredAt)
+            : baseQ.OrderBy(m => m.OccurredAt);
+        targets = auditLimit > 0
+            ? await ordered.Take(auditLimit).ToListAsync()
+            : await ordered.ToListAsync();
+    }
+
+    Console.Error.WriteLine($"AUDIT_INTERIOR loaded {targets.Count} candidate records");
+
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var contradictsCount = 0;
+    var groundedCount    = 0;
+    var neutralCount     = 0;
+    var unknownCount     = 0;
+    var invalidatedCount = 0;
+    var perOutcomeSamples = new Dictionary<string, List<object>>
+    {
+        ["contradicts"] = new(),
+        ["grounded"]    = new(),
+        ["neutral"]     = new(),
+        ["unknown"]     = new(),
+    };
+
+    var processed = 0;
+    foreach (var entity in targets)
+    {
+        processed++;
+        if (processed % 50 == 0)
+        {
+            var pct = 100.0 * processed / targets.Count;
+            var elapsed = sw.Elapsed.TotalSeconds;
+            var eta = elapsed / processed * (targets.Count - processed);
+            Console.Error.WriteLine(
+                $"AUDIT_INTERIOR progress {processed}/{targets.Count} ({pct:F1}%) " +
+                $"elapsed={elapsed:F0}s eta={eta:F0}s " +
+                $"contradicts={contradictsCount} grounded={groundedCount} " +
+                $"neutral={neutralCount} unknown={unknownCount} " +
+                $"invalidated={invalidatedCount}");
+        }
+
+        // Retrieve top-K confirmed neighbors — Facts + Episodic — by cosine
+        // against this Interior record's content. Skip retrieval if the record
+        // has no content (defensive).
+        if (string.IsNullOrWhiteSpace(entity.Content)) continue;
+
+        IEnumerable<ScoredMemory> factsNeighbors;
+        IEnumerable<ScoredMemory> episodicNeighbors;
+        try
+        {
+            factsNeighbors    = await search.SearchByTierAsync(
+                entity.Content, EpistemicTier.Facts,    auditTopKFacts,    CancellationToken.None);
+            episodicNeighbors = await search.SearchByTierAsync(
+                entity.Content, EpistemicTier.Episodic, auditTopKEpisodic, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"AUDIT_INTERIOR retrieval failed id={entity.Id}: {ex.Message}");
+            unknownCount++;
+            continue;
+        }
+
+        var substrateLines = factsNeighbors
+            .Concat(episodicNeighbors)
+            .Select(s => $"- {s.Record.Content}")
+            .ToList();
+        var substrate = string.Join("\n", substrateLines);
+
+        ContentContradictionVerdict verdict;
+        try
+        {
+            verdict = await classifier.ClassifyAsync(
+                interiorContent:    entity.Content,
+                confirmedSubstrate: substrate,
+                ct:                 CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"AUDIT_INTERIOR classify failed id={entity.Id}: {ex.Message}");
+            unknownCount++;
+            continue;
+        }
+
+        var bucket = verdict.Outcome switch
+        {
+            ContradictionOutcome.Contradicts => "contradicts",
+            ContradictionOutcome.Grounded    => "grounded",
+            ContradictionOutcome.Neutral     => "neutral",
+            _                                 => "unknown",
+        };
+        switch (verdict.Outcome)
+        {
+            case ContradictionOutcome.Contradicts: contradictsCount++; break;
+            case ContradictionOutcome.Grounded:    groundedCount++;    break;
+            case ContradictionOutcome.Neutral:     neutralCount++;     break;
+            default:                                unknownCount++;    break;
+        }
+
+        // Keep up to 20 verbatim samples per bucket for the final report —
+        // enough to eyeball what the classifier is deciding on real records
+        // without ballooning output.
+        if (perOutcomeSamples[bucket].Count < 20)
+        {
+            perOutcomeSamples[bucket].Add(new
+            {
+                id           = entity.Id,
+                sourceName   = entity.SourceName,
+                confidence   = verdict.Confidence,
+                quote        = verdict.Quote,
+                reason       = verdict.Reason,
+                contentPreview = entity.Content.Length > 200
+                                 ? entity.Content.Substring(0, 200) + "…"
+                                 : entity.Content,
+            });
+        }
+
+        // Commit path — only mutate when Contradicts AND confidence ≥ floor
+        // AND not dry-run. Log every commit for audit reconstruction.
+        if (verdict.Outcome == ContradictionOutcome.Contradicts
+            && verdict.Confidence >= auditMinConfidence
+            && !isDryRun)
+        {
+            try
+            {
+                await using var writeCtx = await ctxFactory.CreateDbContextAsync();
+                var tracked = await writeCtx.Memories.FirstOrDefaultAsync(m => m.Id == entity.Id);
+                if (tracked is not null && tracked.Validity == "valid")
+                {
+                    tracked.Validity = "invalid_contradiction";
+                    await writeCtx.SaveChangesAsync();
+                    invalidatedCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"AUDIT_INTERIOR update failed id={entity.Id}: {ex.Message}");
+            }
+        }
+        else if (verdict.Outcome == ContradictionOutcome.Contradicts
+                 && verdict.Confidence >= auditMinConfidence
+                 && isDryRun)
+        {
+            invalidatedCount++;  // "would-invalidate" count in dry-run mode
+        }
+    }
+
+    sw.Stop();
+
+    var summary = new
+    {
+        mode           = isDryRun ? "dry-run" : "commit",
+        order          = auditOrder,
+        dbPath,
+        limit          = auditLimit,
+        topKFacts      = auditTopKFacts,
+        topKEpisodic   = auditTopKEpisodic,
+        minConfidence  = auditMinConfidence,
+        totalProcessed = processed,
+        contradicts    = contradictsCount,
+        grounded       = groundedCount,
+        neutral        = neutralCount,
+        unknown        = unknownCount,
+        invalidated    = invalidatedCount,
+        elapsedSeconds = sw.Elapsed.TotalSeconds,
+        secondsPerRecord = processed > 0 ? sw.Elapsed.TotalSeconds / processed : 0.0,
+        projectedFullSweepHours = processed > 0
+            ? (sw.Elapsed.TotalSeconds / processed) * 20626 / 3600.0
+            : 0.0,
+        projectedFullSweepInvalidations = processed > 0
+            ? (long)((double)invalidatedCount / processed * 20626)
+            : 0L,
+        samplesByOutcome = perOutcomeSamples,
+    };
+
+    Console.WriteLine(JsonSerializer.Serialize(summary,
+        new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// Issue #93 Phase 3 (2026-07-06) — self-audit classifier harness branch.
+// Symmetric to --classify-tag but runs the IContentContradictionClassifier
+// against interior/substrate pairs.
+if (!string.IsNullOrWhiteSpace(classifyContradictionFixture))
+{
+    if (!File.Exists(classifyContradictionFixture))
+    {
+        Console.Error.WriteLine(
+            $"AniRuntime.Eval: classify-contradiction fixture not found at {classifyContradictionFixture}");
+        return 2;
+    }
+
+    var fixtureJson = await File.ReadAllTextAsync(classifyContradictionFixture);
+    var fixtureItems = JsonSerializer.Deserialize<List<ContentContradictionFixtureItem>>(
+        fixtureJson,
+        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+
+    if (fixtureItems is null || fixtureItems.Count == 0)
+    {
+        Console.Error.WriteLine("AniRuntime.Eval: fixture parsed to empty list — check schema");
+        return 2;
+    }
+
+    var classifier = provider.GetRequiredService<IContentContradictionClassifier>();
+    var runResults = new List<object>();
+    var perExpected = new Dictionary<string, (int Correct, int Total)>(StringComparer.OrdinalIgnoreCase);
+
+    // Materialize expected outcomes in fixture order so batched verdicts
+    // can be zipped back to their fixture rows without recomputing.
+    var expectedList = fixtureItems.Select(f => (f.ExpectedOutcome ?? string.Empty).ToLowerInvariant()).ToList();
+
+    // Chunk into batches of `batchSize` (defaults to 1 = single-item mode).
+    for (var start = 0; start < fixtureItems.Count; start += batchSize)
+    {
+        var chunk = fixtureItems.Skip(start).Take(batchSize).ToList();
+
+        IReadOnlyList<ContentContradictionVerdict> verdicts;
+        if (chunk.Count == 1)
+        {
+            var v = await classifier.ClassifyAsync(
+                interiorContent:     chunk[0].InteriorContent    ?? string.Empty,
+                confirmedSubstrate:  chunk[0].ConfirmedSubstrate ?? string.Empty,
+                ct:                  CancellationToken.None);
+            verdicts = new[] { v };
+        }
+        else
+        {
+            var pairs = chunk.Select(f => (
+                f.InteriorContent    ?? string.Empty,
+                f.ConfirmedSubstrate ?? string.Empty)).ToList();
+            verdicts = await classifier.ClassifyBatchAsync(pairs, CancellationToken.None);
+        }
+
+        for (var k = 0; k < chunk.Count; k++)
+        {
+            var item     = chunk[k];
+            var verdict  = verdicts[k];
+            var actual   = verdict.Outcome.ToString().ToLowerInvariant();
+            var expected = expectedList[start + k];
+            var correct  = string.Equals(actual, expected, StringComparison.Ordinal);
+
+            runResults.Add(new
+            {
+                name              = item.Name,
+                expected_outcome  = expected,
+                actual_outcome    = actual,
+                confidence        = verdict.Confidence,
+                quote             = verdict.Quote,
+                reason            = verdict.Reason,
+                correct,
+            });
+
+            var bucket = perExpected.TryGetValue(expected, out var v) ? v : (Correct: 0, Total: 0);
+            perExpected[expected] = (bucket.Correct + (correct ? 1 : 0), bucket.Total + 1);
+        }
+    }
+
+    var totalCorrect = perExpected.Values.Sum(v => v.Correct);
+    var totalCount   = perExpected.Values.Sum(v => v.Total);
+
+    var payload = new
+    {
+        fixturePath = classifyContradictionFixture,
+        model = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.AniOptions>>()
+                .Value.LocalVerifierModelTag,
+        batchSize,
+        summary = new
+        {
+            totalCorrect,
+            totalCount,
+            accuracy = totalCount > 0 ? (double)totalCorrect / totalCount : 0.0,
+            perExpected = perExpected.ToDictionary(
+                kv => kv.Key,
+                kv => new { correct = kv.Value.Correct, total = kv.Value.Total,
+                            accuracy = kv.Value.Total > 0 ? (double)kv.Value.Correct / kv.Value.Total : 0.0 }),
+        },
+        results = runResults,
+    };
+
+    Console.WriteLine(JsonSerializer.Serialize(payload,
+        new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// K.5-probe (2026-07-06) — retrieval-only branch. Calls IMemorySearch
+// directly and dumps the top-K ScoredMemory list as JSON so we can see
+// what the runtime WOULD surface for a given query without touching the
+// composer, cycle, or dispatch.
+if (!string.IsNullOrWhiteSpace(probeQuery))
+{
+    var memSearch = provider.GetRequiredService<IMemorySearch>();
+    var results = await memSearch.SearchWithScoresAsync(probeQuery, probeTopK, CancellationToken.None);
+    var payload = new
+    {
+        query = probeQuery,
+        topK  = probeTopK,
+        dbPath,
+        results = results.Select(r => new
+        {
+            id             = r.Record.Id,
+            provenance     = r.Record.Provenance.ToString(),
+            decayTier      = r.Record.DecayTier.ToString(),
+            sourceName     = r.Record.SourceName,
+            importance     = r.Record.Importance,
+            createdAt      = r.Record.CreatedAt,
+            compositeScore = r.CompositeScore,
+            cosineSim      = r.CosineSimilarity,
+            originTier     = r.OriginTier.ToString(),
+            content        = r.Record.Content.Length > 300
+                             ? r.Record.Content.Substring(0, 300) + "…"
+                             : r.Record.Content,
+        }).ToList(),
+    };
+    Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
 }
 
 if (string.IsNullOrWhiteSpace(userMessage))
@@ -456,3 +939,32 @@ internal sealed record MemoryRecordSummary(
     string ContentPreview,
     bool IsResolved,
     DateTimeOffset CreatedAt);
+
+/// <summary>
+/// Issue #93 Phase 2 — fixture-item DTO for the --classify-tag harness.
+/// Field names use snake_case to match the JSON fixture at
+/// <c>tools/scenarios/tag-intent-classification.json</c>.
+/// </summary>
+internal sealed class TagIntentFixtureItem
+{
+    public string? Name           { get; set; }
+    public string? TagNote        { get; set; }
+    public string? AniReply       { get; set; }
+    public string? MarkPrior      { get; set; }
+    public string? ExpectedIntent { get; set; }
+    public string? Notes          { get; set; }
+}
+
+/// <summary>
+/// Issue #93 Phase 3 — fixture-item DTO for the --classify-contradiction
+/// harness. Field names use snake_case to match the JSON fixture at
+/// <c>tools/scenarios/content-contradiction.json</c>.
+/// </summary>
+internal sealed class ContentContradictionFixtureItem
+{
+    public string? Name                { get; set; }
+    public string? InteriorContent     { get; set; }
+    public string? ConfirmedSubstrate  { get; set; }
+    public string? ExpectedOutcome     { get; set; }
+    public string? Notes               { get; set; }
+}

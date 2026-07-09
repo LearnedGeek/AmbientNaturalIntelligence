@@ -85,6 +85,9 @@ public sealed class EfMemoryServiceFacade : IMemoryService
     public Task<int> MarkConversationTurnInvalidAsync(string aniReplyContent, CancellationToken ct = default)
         => _persistence.MarkConversationTurnInvalidAsync(aniReplyContent, ct);
 
+    public Task<int> MarkConversationTurnConfirmedAsync(string aniReplyContent, DateTimeOffset confirmedAt, CancellationToken ct = default)
+        => _persistence.MarkConversationTurnConfirmedAsync(aniReplyContent, confirmedAt, ct);
+
     public Task<IEnumerable<MemoryRecord>> GetRecentAsync(int limit = 10, CancellationToken ct = default)
         => _persistence.GetRecentAsync(limit, ct);
 

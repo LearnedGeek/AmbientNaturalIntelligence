@@ -153,6 +153,22 @@ public static class AniRuntimeServiceContainer
         // OllamaRoutingClassifier for design rationale.
         services.AddSingleton<IRoutingClassifier, OllamaRoutingClassifier>();
 
+        // Issue #93 Phase 2 (2026-07-06) — LLM-classified tag intent replaces
+        // the regex sniff at TagCommand.cs:109. Handles both directions of the
+        // substrate-correction loop (confirm / invalidate) with confidence-
+        // gated substrate mutation. See ITagIntentClassifier and
+        // OllamaTagIntentClassifier for design rationale.
+        services.AddSingleton<ITagIntentClassifier, OllamaTagIntentClassifier>();
+
+        // Issue #93 Phase 3 (2026-07-06) — Ani's self-audit classifier. Reads
+        // one Interior record's content against confirmed substrate and
+        // returns contradicts / grounded / neutral / unknown. Consumed by:
+        // (a) the future SubstrateConsistencyInvariant on CognitiveOutputGate
+        // for InnerThought/Reflection/WorldExperience artifacts, and (b) the
+        // AniRuntime.Eval --classify-contradiction sweep for retroactive
+        // invalidation of the 20,626 pre-existing Interior records.
+        services.AddSingleton<IContentContradictionClassifier, OllamaContentContradictionClassifier>();
+
         // Theme O Phase O.2 (May 10, 2026) — Theme J invariants migrated onto
         // the cognitive pipeline as Post-stage handlers via
         // InvariantToHandlerAdapter (registered through .UsePostInvariant<T>()
