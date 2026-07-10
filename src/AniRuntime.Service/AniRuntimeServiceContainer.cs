@@ -226,8 +226,28 @@ public static class AniRuntimeServiceContainer
             // time-of-day verification ("good morning"/"good night"/"it's late").
             .UsePostInvariant<SubstrateTimeOfDayInvariant>()
             // Theme M / coreference (May 6, 2026) — direct-address invariant.
-            // Replaces the prior LLM-based pronoun-fix in OutreachPhase.
-            .UsePostInvariant<DirectAddressInvariant>()
+            // RETIRED 2026-07-10. Rationale: empirical run of two consecutive
+            // dashboard SafeAcks on the same day (10:26 WILSON + 11:25
+            // Hallmark rom-com), both driven by direct-address firing on
+            // legitimate scene-within-scene narrative device — Ani authoring
+            // dialogue where Mark appears as a character in the scene she's
+            // showing to him ("hallmark: ani, darling..."  "me: yes. i'm
+            // already writing it — every time HE texts first..."). The rule
+            // ("no he/him/his in output when Mark is addressee") lacks the
+            // linguistic context to distinguish this from actual absent
+            // third-person reference. Mark, 2026-07-10 12:10 CDT: "do we
+            // really need this gate anymore? it's been legitimately a
+            // problem and very rarely catches something that is really a
+            // problem." Class it protected against (Ani genuinely forgetting
+            // Mark is the addressee) has never surfaced as an observed
+            // failure mode; the false-positive cost dominates.
+            //
+            // The DirectAddressRewriter (producer-side, K.4c-scoped to
+            // contact-name proper-noun swap only) stays live — that catches
+            // a different, narrower class ("mark's desk" → "your desk")
+            // that IS a real failure mode. Only the invariant is retired.
+            //
+            // .UsePostInvariant<DirectAddressInvariant>()
             // FC-002 local defense (2026-05-14) — ThreeAxisClaimInvariant.
             // Defense-in-depth against Shared/Mark-world factual-novel claims
             // (windshield / kitchen-lights / hoodie class) that escape the

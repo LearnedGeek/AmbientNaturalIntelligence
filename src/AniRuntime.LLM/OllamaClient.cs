@@ -136,6 +136,33 @@ public class OllamaClient : IOllamaClient
             // User-prompt tail (the actual reply directive).
             _log.LogDebug("Ollama [{Model}] payload[{Idx}] user ({Chars}c): {Preview}",
                 model, historyBase + historyList.Count, userMessage.Length, Truncate(userMessage, 200));
+
+            // 2026-07-10 — full user-prompt dump per generation (Debug).
+            // Rationale: 200-char previews above are load-bearing for readable
+            // log-scanning ("what did the composer send this cycle?"), but they
+            // hide the full content that matters when a SafeAck / verifier fire
+            // needs diagnosis after the fact. Mark, 2026-07-10 12:14 CDT:
+            // *"we need to dump it all, at least upon generation so we can see
+            // it. it doesn't need to show in full every time but it needs to
+            // be there at least one time."* Emitted as a SEPARATE line so log
+            // scanners looking for the 200-char preview aren't disrupted, and
+            // multiline log parsers can still find the full block via the
+            // FULL_USER_PROMPT tag.
+            _log.LogDebug(
+                "Ollama [{Model}] FULL_USER_PROMPT ({Chars}c):\n{Content}",
+                model, userMessage.Length, userMessage);
+
+            // Also dump the full history payload once per generation. History
+            // messages contain the composer scaffolding + summary + prior
+            // turns that feed the model's context — needed to reconstruct
+            // exactly what the model saw at reply time.
+            for (int i = 0; i < historyList.Count; i++)
+            {
+                var m = historyList[i];
+                _log.LogDebug(
+                    "Ollama [{Model}] FULL_HISTORY[{Idx}] {Role} ({Chars}c):\n{Content}",
+                    model, historyBase + i, m.Role, m.Content.Length, m.Content);
+            }
         }
 
         // 2026-05-18: Full-prompt dump at Trace level for parrot-isolation

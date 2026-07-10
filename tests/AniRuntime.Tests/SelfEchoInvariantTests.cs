@@ -32,12 +32,18 @@ public class SelfEchoInvariantTests
 
     // ── AppliesTo ────────────────────────────────────────────────────────
 
+    // 2026-07-10 — self-echo scope reduced to Outreach only. See
+    // SelfEchoInvariant.AppliesTo for full rationale. Previously applied
+    // to ConversationReply / Voice / InnerThought / Reflection; empirical
+    // false-positive cost dominated. Kept for Outreach because May 3
+    // byte-identical outreach parroting is the anchor class this invariant
+    // was calibrated against and still needs to catch.
     [Theory]
-    [InlineData(CognitiveProducerKind.ConversationReply,    true)]
     [InlineData(CognitiveProducerKind.Outreach,             true)]
-    [InlineData(CognitiveProducerKind.Voice,                true)]
-    [InlineData(CognitiveProducerKind.InnerThought,         true)]
-    [InlineData(CognitiveProducerKind.Reflection,           true)]
+    [InlineData(CognitiveProducerKind.ConversationReply,    false)]
+    [InlineData(CognitiveProducerKind.Voice,                false)]
+    [InlineData(CognitiveProducerKind.InnerThought,         false)]
+    [InlineData(CognitiveProducerKind.Reflection,           false)]
     [InlineData(CognitiveProducerKind.WorldExperience,      false)]
     [InlineData(CognitiveProducerKind.MemoryMerge,          false)]
     [InlineData(CognitiveProducerKind.ClosedThreadSummary,  false)]

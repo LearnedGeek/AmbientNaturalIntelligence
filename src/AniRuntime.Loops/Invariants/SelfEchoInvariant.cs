@@ -108,12 +108,30 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
         if (artifact.PriorAniMessages is null || artifact.PriorAniMessages.Count == 0)
             return false;
 
-        return artifact.ProducerKind is
-            CognitiveProducerKind.ConversationReply
-         or CognitiveProducerKind.Outreach
-         or CognitiveProducerKind.Voice
-         or CognitiveProducerKind.InnerThought
-         or CognitiveProducerKind.Reflection;
+        // 2026-07-10 scope reduction — retire self-echo from
+        // ConversationReply / Voice / InnerThought / Reflection. Kept for
+        // Outreach because the anchor failure this invariant was calibrated
+        // against IS an outreach class: 2026-05-03 06:56 J.5a regen
+        // dispatched a byte-identical copy of the prior outreach ~57s
+        // later. That template-collapse pattern is real, distinct from
+        // conversation continuity, and worth guarding.
+        //
+        // For ConversationReply within a live active thread, N-token
+        // overlap between adjacent turns is often legitimate continuity
+        // — coffee-mug thread, WILSON callback, "last sip" recurrence.
+        // The invariant produced two consecutive SafeAcks on 2026-07-10
+        // during real Mark chatting; empirical cost dominates. Mark's
+        // observation: "it's been legitimately a problem and very rarely
+        // catches something that is really a problem."
+        //
+        // For InnerThought / Reflection: universal-invariant Theme J
+        // rationale (duck-norris / vanilla-cream-soda self-templating in
+        // substrate) sounds compelling in principle, but empirically that
+        // failure mode was addressed by the substrate-purge + gate-stack-
+        // reduction work; there is no live empirical anchor of substrate
+        // template-collapse still surfacing. Scoping out for now; can
+        // re-add if we observe a specific regression.
+        return artifact.ProducerKind is CognitiveProducerKind.Outreach;
     }
 
     public Task<InvariantResult> EvaluateAsync(
