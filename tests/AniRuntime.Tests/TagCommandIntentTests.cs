@@ -9,14 +9,26 @@ using Moq;
 namespace AniRuntime.Tests;
 
 /// <summary>
-/// Issue #93 Phase 2 (2026-07-06) — spec tests for <see cref="TagCommand"/>'s
-/// integration with <see cref="ITagIntentClassifier"/>. Pins the substrate-
-/// mutation routing based on classifier verdict + confidence.
+/// Issue #93 Phase 2.1 (2026-07-09) — spec tests for <see cref="TagCommand"/>
+/// under the CLASSIFIER-AS-SIGNAL discipline.
 ///
 /// <para>
-/// Strict-mock discipline (Theme K): every collaborator is mocked with
-/// <c>MockBehavior.Strict</c>. Any accidental call surfaces as a test
-/// failure rather than a silent stub-return.
+/// **Design change from Phase 2 (2026-07-06):** the auto-mutation path
+/// (verdict → MarkConversationTurnInvalid/Confirmed) has been retired.
+/// Mark's 2026-07-09 21:12 CDT observation after two real-world
+/// misclassifications and a substrate-invalidation-on-misread: *"using
+/// regex for something like this is hurting us. We can[not] apply an
+/// imprecise determination like regex to a deterministic rating."*
+/// The classifier stays (as observational signal), but no imprecise LLM
+/// verdict now drives a deterministic substrate mutation. Mutations move
+/// to explicit surfaces (future UI review, `///invalidate` / `///confirm`
+/// admin commands).
+/// </para>
+///
+/// <para>
+/// Strict-mock discipline: every collaborator is mocked with
+/// <c>MockBehavior.Strict</c>. Any accidental call to a persistence
+/// mutation method surfaces as a test failure.
 /// </para>
 /// </summary>
 public class TagCommandIntentTests
@@ -51,6 +63,8 @@ public class TagCommandIntentTests
             Conv.Setup(c => c.GetActiveThreadAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(activeThread);
 
+            // The observation-save path — every tag saves regardless of
+            // classifier verdict. This is the ONLY persistence call now.
             Persist.Setup(p => p.SaveConfabulationFlagAsync(
                 It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(),
@@ -62,132 +76,76 @@ public class TagCommandIntentTests
         }
     }
 
-    // ── Invalidate path: high-confidence invalidate calls the invalid API ─
+    // ── The core discipline: no verdict shape triggers a substrate mutation ─
+    //
+    // Under the classifier-as-signal design, MarkConversationTurnInvalidAsync
+    // and MarkConversationTurnConfirmedAsync must never be called by
+    // TagCommand — regardless of what the classifier returns. Strict-mock
+    // discipline makes any accidental call a test failure.
 
-    [Fact]
-    public async Task HighConfidenceInvalidate_MutatesValidity()
+    [Theory]
+    [InlineData(TagIntent.Invalidate, 0.95f)]  // canonical invalidate — must NOT mutate
+    [InlineData(TagIntent.Confirm,    0.95f)]  // canonical confirm — must NOT mutate
+    [InlineData(TagIntent.Clarify,    0.90f)]
+    [InlineData(TagIntent.Unrelated,  0.90f)]
+    [InlineData(TagIntent.Unknown,    0.00f)]
+    [InlineData(TagIntent.Invalidate, 0.45f)]  // low-confidence — also must NOT mutate
+    [InlineData(TagIntent.Confirm,    0.55f)]
+    public async Task ClassifierVerdict_NeverTriggersSubstrateMutation(
+        TagIntent intent, float confidence)
     {
-        var thread = MakeThread(aniReply: "and we went to Peru together",
-                                markMessage: "how was your weekend");
+        var thread = MakeThread(
+            aniReply: "some reply content",
+            markMessage: "some message content");
         var rig = new Rig(thread);
 
         rig.Class.Setup(c => c.ClassifyAsync(
-            "broken output", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TagIntentVerdict(TagIntent.Invalidate, 0.92f, "confab"));
+            .ReturnsAsync(new TagIntentVerdict(intent, confidence, "test verdict"));
 
-        rig.Persist.Setup(p => p.MarkConversationTurnInvalidAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
+        var result = await rig.Cmd.ExecuteAsync("tag some note", CancellationToken.None);
 
-        var result = await rig.Cmd.ExecuteAsync("tag broken output", CancellationToken.None);
+        // Result carries the classifier verdict as observational metadata
+        result.Should().Contain(intent.ToString().ToLowerInvariant());
+        result.Should().Contain("no substrate change");
 
-        result.Should().Contain("Substrate-invalidated 1 record");
-        rig.Persist.Verify(p => p.MarkConversationTurnInvalidAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
-        rig.Persist.Verify(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        // Zero mutation calls — strict-mock guarantees this via
+        // MockBehavior.Strict raising on any unmocked invocation.
+        rig.Persist.Verify(p => p.SaveConfabulationFlagAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once,
+            "every tag saves to the observations table");
     }
 
-    // ── Confirm path: high-confidence confirm calls the confirmed API ─────
+    // ── Classifier still gets called ──────────────────────────────────────
+    //
+    // We retired the mutation, not the classification. The verdict is still
+    // captured as observational metadata via the log line + return message.
 
     [Fact]
-    public async Task HighConfidenceConfirm_SetsConfirmedAt()
+    public async Task Classifier_IsAlwaysCalled_EvenThoughNoMutationFollows()
     {
-        var thread = MakeThread(aniReply: "you were headed to the gym earlier",
-                                markMessage: "yeah I just got back");
+        var thread = MakeThread("reply", "message");
         var rig = new Rig(thread);
 
         rig.Class.Setup(c => c.ClassifyAsync(
-            "yes", It.IsAny<string>(), It.IsAny<string>(),
+            "test note", It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TagIntentVerdict(TagIntent.Confirm, 0.95f, "endorsement"));
 
-        rig.Persist.Setup(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
+        await rig.Cmd.ExecuteAsync("tag test note", CancellationToken.None);
 
-        var result = await rig.Cmd.ExecuteAsync("tag yes", CancellationToken.None);
-
-        result.Should().Contain("Substrate-confirmed 1 record");
-        rig.Persist.Verify(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
-        rig.Persist.Verify(p => p.MarkConversationTurnInvalidAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Class.Verify(c => c.ClassifyAsync(
+            "test note", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ── Confidence floor: low confidence skips substrate mutation ─────────
+    // ── The observation record is always saved ────────────────────────────
 
     [Fact]
-    public async Task LowConfidenceInvalidate_DoesNotMutate()
-    {
-        var thread = MakeThread("some reply", "some message");
-        var rig = new Rig(thread);
-
-        rig.Class.Setup(c => c.ClassifyAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TagIntentVerdict(TagIntent.Invalidate, 0.45f, "unclear"));
-
-        var result = await rig.Cmd.ExecuteAsync("tag hmm", CancellationToken.None);
-
-        result.Should().Contain("confidence 0.45");
-        result.Should().Contain("no substrate change");
-        rig.Persist.Verify(p => p.MarkConversationTurnInvalidAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        rig.Persist.Verify(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task LowConfidenceConfirm_DoesNotMutate()
-    {
-        var thread = MakeThread("some reply", "some message");
-        var rig = new Rig(thread);
-
-        rig.Class.Setup(c => c.ClassifyAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TagIntentVerdict(TagIntent.Confirm, 0.55f, "maybe"));
-
-        var result = await rig.Cmd.ExecuteAsync("tag maybe", CancellationToken.None);
-
-        result.Should().Contain("no substrate change");
-        rig.Persist.Verify(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    // ── Clarify / Unrelated / Unknown: no substrate mutation, no low-conf note ─
-
-    [Theory]
-    [InlineData(TagIntent.Clarify)]
-    [InlineData(TagIntent.Unrelated)]
-    [InlineData(TagIntent.Unknown)]
-    public async Task NonVerdictIntents_DoNotMutateAndDoNotWarn(TagIntent intent)
-    {
-        var thread = MakeThread("some reply", "some message");
-        var rig = new Rig(thread);
-
-        rig.Class.Setup(c => c.ClassifyAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TagIntentVerdict(intent, 0.90f, "not a verdict"));
-
-        var result = await rig.Cmd.ExecuteAsync("tag hmm", CancellationToken.None);
-
-        result.Should().NotContain("Substrate-invalidated");
-        result.Should().NotContain("Substrate-confirmed");
-        result.Should().NotContain("no substrate change");
-        rig.Persist.Verify(p => p.MarkConversationTurnInvalidAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        rig.Persist.Verify(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    // ── Persist throws: classifier verdict still applied, but user sees error ─
-
-    [Fact]
-    public async Task ConfirmPersistFails_ReturnsErrorSuffix_FlagSavedFirst()
+    public async Task EveryTag_SavesToObservationsTable()
     {
         var thread = MakeThread("reply", "message");
         var rig = new Rig(thread);
@@ -195,17 +153,36 @@ public class TagCommandIntentTests
         rig.Class.Setup(c => c.ClassifyAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TagIntentVerdict(TagIntent.Confirm, 0.9f, "yes"));
+            .ReturnsAsync(new TagIntentVerdict(TagIntent.Clarify, 0.80f, "reflective note"));
 
-        rig.Persist.Setup(p => p.MarkConversationTurnConfirmedAsync(
-            It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("db locked"));
+        await rig.Cmd.ExecuteAsync("tag hmm interesting", CancellationToken.None);
 
-        var result = await rig.Cmd.ExecuteAsync("tag yes", CancellationToken.None);
-
-        result.Should().Contain("substrate confirmation failed");
         rig.Persist.Verify(p => p.SaveConfabulationFlagAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(),
-            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<string>(), It.IsAny<string>(),
+            "hmm interesting",              // topicCategory = Mark's raw note
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ── Result carries observational metadata for downstream review ──────
+
+    [Fact]
+    public async Task Result_IncludesClassifierVerdictAndConfidence()
+    {
+        var thread = MakeThread("some reply", "some message");
+        var rig = new Rig(thread);
+
+        rig.Class.Setup(c => c.ClassifyAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TagIntentVerdict(TagIntent.Invalidate, 0.85f, "fabricated"));
+
+        var result = await rig.Cmd.ExecuteAsync("tag confab", CancellationToken.None);
+
+        result.Should().Contain("invalidate");
+        result.Should().Contain("0.85");
+        result.Should().Contain("no substrate change");
     }
 }
