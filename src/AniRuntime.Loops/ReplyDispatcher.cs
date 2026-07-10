@@ -62,6 +62,32 @@ public sealed class ReplyDispatcher : IReplyDispatcher
         await _conversations.AddMessageAsync(thread.Id, replyMessage, ct).ConfigureAwait(false);
 
         // Update desire — conversation reply doesn't count toward daily outreach limit.
-        await _desire.ResetAfterConversationReplyAsync(ct).ConfigureAwait(false);
+        //
+        // 2026-07-10 — skip desire reset + cooldown activation when the dispatched
+        // reply is the canonical SafeAcknowledgement fallback. Rationale: a
+        // SafeAck is a fail-fallback dispatched when the composer + remediation
+        // cascade couldn't produce a real reply. Ani didn't actually engage;
+        // treating it as a "reply" means dropping her outreach desire to 0 and
+        // blocking outreach for MinOutreachGapMinutes after a false negative,
+        // amplifying the harm of the gate misfire. Parallel to the existing
+        // "Skipping Episodic persist for J.5a SafeAcknowledgement fall-through"
+        // discipline (see WellKnown.SafeAcknowledgement comment + GateTripEvent
+        // notes) — same reasoning, different subsystem.
+        if (!IsSafeAcknowledgement(reply))
+        {
+            await _desire.ResetAfterConversationReplyAsync(ct).ConfigureAwait(false);
+        }
+        else
+        {
+            _log.LogInformation(
+                "Skipping desire reset + cooldown for SafeAcknowledgement fall-through — " +
+                "gate misfire shouldn't amplify by silencing outreach.");
+        }
     }
+
+    private static bool IsSafeAcknowledgement(string reply) =>
+        !string.IsNullOrWhiteSpace(reply)
+        && reply.Trim().Equals(
+            GateFallbacks.SafeAcknowledgement.Trim(),
+            StringComparison.OrdinalIgnoreCase);
 }

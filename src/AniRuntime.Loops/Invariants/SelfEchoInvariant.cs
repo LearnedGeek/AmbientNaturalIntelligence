@@ -156,6 +156,21 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
                 if (IsHabitualOpenerRepetition(artifact.Content, prior, sharedPhrase, sharedLen))
                     continue;
 
+                // 2026-07-10 low-information exemption — a shared verbatim run
+                // that is nothing but common English scaffolding ("we spend
+                // the rest of the", "then we can go", "so I was thinking") is
+                // register-continuity between two topically-adjacent replies,
+                // not template collapse. The May 3 "hey perez..." class this
+                // invariant was calibrated against had rich content tokens in
+                // the shared run — the shared phrase there carried meaning.
+                // Empirical anchor: 2026-07-10 10:26 dashboard SafeAck where
+                // Ani's second regen was a genuinely novel scene (crowded bar
+                // + "she's my muse, don't touch") but shared 6 tokens
+                // ("we spend the rest of the") with her prior sandcastle
+                // reply — every token a stop-word or common English scaffold.
+                if (IsLowInformationSharedRun(sharedPhrase))
+                    continue;
+
                 // K.4b-diagnostic (2026-07-06) — dump the full comparison
                 // context so we can see what artifact.Content vs prior
                 // actually looked like at the moment of the fire. Anchor:
@@ -197,6 +212,88 @@ public sealed class SelfEchoInvariant : ICognitiveOutputInvariant
             GateFallbacks.SafeAcknowledgement.Trim(),
             StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// 2026-07-10 low-information exemption — returns true when the shared
+    /// verbatim run is dominated by common English scaffolding tokens
+    /// (pronouns, articles, prepositions, forms of "be" and "do", and a
+    /// small list of very common function verbs / nouns like "spend",
+    /// "rest", "time", "day", "night").
+    ///
+    /// <para>A shared run passes this filter (i.e. counts as low-info) when
+    /// at least <see cref="LowInfoRatioThreshold"/> of its tokens are in
+    /// the scaffold vocabulary. This targets English continuity phrasing
+    /// between two topically-adjacent replies without exempting genuine
+    /// content repetition (which would carry rare tokens the model
+    /// specifically decided to reuse).</para>
+    ///
+    /// <para>Empirical anchor: 2026-07-10 10:26 shared run
+    /// <c>"we spend the rest of the"</c> = 6 tokens, all scaffold →
+    /// low-info → exempt. Contrast the May 3 case
+    /// <c>"hey perez, sitting here thinking about"</c> where "perez",
+    /// "sitting", "thinking" are content tokens → not exempt.</para>
+    /// </summary>
+    internal static bool IsLowInformationSharedRun(string? sharedPhrase)
+    {
+        if (string.IsNullOrWhiteSpace(sharedPhrase)) return false;
+
+        var tokens = sharedPhrase
+            .ToLowerInvariant()
+            .Split(new[] { ' ', '\t', '\n', '\r', '.', ',', '!', '?', ';', ':' },
+                   StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0) return false;
+
+        var scaffoldCount = tokens.Count(t => LowInfoScaffoldTokens.Contains(t));
+        var ratio = (double)scaffoldCount / tokens.Length;
+        return ratio >= LowInfoRatioThreshold;
+    }
+
+    /// <summary>
+    /// Threshold for the low-information exemption. A shared run whose
+    /// scaffold-token fraction is at or above this ratio is treated as
+    /// English continuity phrasing rather than parroting. Set to 1.0 to
+    /// require ALL tokens to be scaffold (strictest — matches the empirical
+    /// anchor and rules out any content-token-carrying phrase from being
+    /// exempted). Tuning knob for future observation-soak calibration.
+    /// </summary>
+    internal const double LowInfoRatioThreshold = 1.0;
+
+    /// <summary>
+    /// Common English function-word + very-common-scaffold vocabulary used
+    /// by <see cref="IsLowInformationSharedRun"/>. Kept short and
+    /// conservative — anything with genuine content signal
+    /// (proper nouns, distinctive verbs, unusual nouns) must NOT appear
+    /// here. If you're adding a token, first check that its appearance in
+    /// a 5-8-token verbatim run would still be normal continuity rather
+    /// than meaningful reuse.
+    /// </summary>
+    private static readonly HashSet<string> LowInfoScaffoldTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Articles + demonstratives + quantifiers
+        "a","an","the","this","that","these","those","some","any","all","every","no","none",
+        // Pronouns
+        "i","you","he","she","it","we","they","me","him","her","us","them",
+        "my","your","his","its","our","their",
+        "mine","yours","hers","ours","theirs",
+        "myself","yourself","himself","herself","itself","ourselves","yourselves","themselves",
+        // Prepositions + conjunctions
+        "of","in","on","at","to","for","with","from","by","as","into","onto","upon",
+        "about","over","under","between","through","during","before","after","since","until",
+        "and","or","but","nor","so","yet","because","if","then","than","though","although",
+        // Auxiliaries + copulas + forms of common verbs
+        "am","is","are","was","were","be","been","being",
+        "do","does","did","done","doing",
+        "have","has","had","having",
+        "will","would","shall","should","can","could","may","might","must","ought",
+        // Very common time / continuity scaffold nouns + verbs
+        "time","day","night","morning","evening","week","month","year",
+        "way","rest","end","start","part","bit","thing","things","stuff",
+        "spend","take","make","get","got","go","goes","went","come","came",
+        // Common connective adverbs
+        "just","also","only","still","already","again","together","alone",
+        "here","there","now","then","today","tomorrow","yesterday",
+        "very","really","quite","almost","maybe","perhaps",
+    };
 
     /// <summary>
     /// FC-003 position-aware check: returns true when the shared verbatim

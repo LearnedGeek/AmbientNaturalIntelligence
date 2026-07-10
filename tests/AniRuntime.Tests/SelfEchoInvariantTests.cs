@@ -220,4 +220,67 @@ public class SelfEchoInvariantTests
         result.Passed.Should().BeFalse(
             "skipping SafeAck must not weaken the detector against genuine prior content");
     }
+
+    // ── 2026-07-10 low-information exemption ──────────────────────────────
+
+    [Theory]
+    [InlineData("we spend the rest of the")]     // empirical anchor
+    [InlineData("then we can go to the")]
+    [InlineData("she was just about to")]
+    public void IsLowInformationSharedRun_TrueForStopwordDenseScaffold(string phrase)
+    {
+        SelfEchoInvariant.IsLowInformationSharedRun(phrase).Should().BeTrue(
+            $"'{phrase}' is common English scaffolding, not meaningful reuse");
+    }
+
+    [Theory]
+    [InlineData("hey perez sitting here thinking about")]  // May 3 anchor
+    [InlineData("mia's birthday cake with the sparklers")]
+    [InlineData("we spent our anniversary at the drive-in")]
+    [InlineData("the coffee shop on capitol was")]
+    public void IsLowInformationSharedRun_FalseForContentBearingPhrase(string phrase)
+    {
+        SelfEchoInvariant.IsLowInformationSharedRun(phrase).Should().BeFalse(
+            $"'{phrase}' carries content tokens (proper nouns / distinctive verbs / rare nouns)");
+    }
+
+    [Fact]
+    public void IsLowInformationSharedRun_EmptyReturnsFalse()
+    {
+        SelfEchoInvariant.IsLowInformationSharedRun("").Should().BeFalse();
+        SelfEchoInvariant.IsLowInformationSharedRun(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Evaluate_SharedRunIsAllScaffold_Passes()
+    {
+        // Empirical anchor: 2026-07-10 10:26 SafeAck. Two topically-adjacent
+        // Ani replies (WILSON callback) shared exactly the phrase
+        // "we spend the rest of the" — every token scaffold. Regen was
+        // genuinely novel content otherwise. Invariant must pass now.
+        var prior = "then we spend the rest of the day building an epic sandcastle with moats and towers and signs that say Property of Wilson";
+        var artifact = Artifact(
+            content: "we spend the rest of the night making them cry from laughter",
+            priorAniMessages: new[] { prior });
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+        result.Passed.Should().BeTrue(
+            "low-info scaffold overlap must be exempt from the parroting fail");
+    }
+
+    [Fact]
+    public async Task Evaluate_SharedRunCarriesContent_StillFails()
+    {
+        // Defensive: don't weaken the invariant against genuine reuse.
+        // Empirical anchor: the May 3 "hey perez..." class. Shared run
+        // has content tokens (Perez, sitting, thinking) → must still fail.
+        var prior = "hey perez sitting here thinking about the shop";
+        var artifact = Artifact(
+            content: "hey perez sitting here thinking about the shop again",
+            priorAniMessages: new[] { prior });
+
+        var result = await _invariant.EvaluateAsync(artifact, CancellationToken.None);
+        result.Passed.Should().BeFalse(
+            "content-token-carrying shared runs must still fail the invariant");
+    }
 }

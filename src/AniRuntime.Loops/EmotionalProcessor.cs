@@ -366,7 +366,15 @@ public class EmotionalProcessor
     {
         try
         {
-            var doc = JsonDocument.Parse(raw.Trim());
+            // 2026-07-10 — the 8B model (ani-v7-conversation) sometimes emits
+            // valid JSON followed by an Analysis: paragraph, e.g.
+            //   { "register": "Playfulness", ... }  Analysis: Register: ...
+            // Strict JsonDocument.Parse fails on the trailing prose. Extract
+            // the JSON prefix (first balanced { ... } block) before parsing so
+            // the well-formed JSON prefix still delivers a usable shift instead
+            // of falling back to zero-delta Unclassified.
+            var jsonPrefix = ExtractJsonPrefix(raw.Trim());
+            var doc = JsonDocument.Parse(jsonPrefix);
             var root = doc.RootElement;
 
             var rawRegister = root.TryGetProperty("register", out var regVal)
@@ -411,5 +419,48 @@ public class EmotionalProcessor
                 return (float)Math.Clamp(val.GetDouble(), -maxDelta, maxDelta);
             return 0f;
         }
+    }
+
+    /// <summary>
+    /// Return the first balanced <c>{ ... }</c> block from <paramref name="raw"/>
+    /// (tracks brace depth, respects string literals + escapes). Enables the
+    /// emotional-shift parser to survive LLM output that appends narrative
+    /// after the JSON. Falls back to the whole string if no balanced block
+    /// is found — the caller's <c>JsonDocument.Parse</c> will surface the
+    /// original error in that case. Also strips a common leading ```json
+    /// fence if present.
+    /// </summary>
+    internal static string ExtractJsonPrefix(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+
+        var s = raw;
+        if (s.StartsWith("```"))
+        {
+            var nl = s.IndexOf('\n');
+            if (nl > 0) s = s[(nl + 1)..];
+        }
+
+        var start = s.IndexOf('{');
+        if (start < 0) return raw;
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var i = start; i < s.Length; i++)
+        {
+            var ch = s[i];
+            if (escaped) { escaped = false; continue; }
+            if (ch == '\\' && inString) { escaped = true; continue; }
+            if (ch == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (ch == '{') depth++;
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0) return s.Substring(start, i - start + 1);
+            }
+        }
+        return raw;
     }
 }
