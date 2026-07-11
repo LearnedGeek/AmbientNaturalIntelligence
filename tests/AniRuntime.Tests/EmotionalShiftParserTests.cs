@@ -60,12 +60,54 @@ public class EmotionalShiftParserTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("no json at all just text")]
-    public void ExtractJsonPrefix_NoObject_ReturnsInput(string input)
+    public void ExtractJsonPrefix_EmptyReturnsInput(string input)
     {
-        // Falls back to the whole string when no balanced object is found;
-        // the caller's JsonDocument.Parse will surface the same error it
-        // would have hit anyway.
         EmotionalProcessor.ExtractJsonPrefix(input).Should().Be(input);
+    }
+
+    // ── 2026-07-11 tolerant handling ─────────────────────────────────────
+
+    [Fact]
+    public void ExtractJsonPrefix_UnquotedEnumValue_QuotesIt()
+    {
+        // Empirical anchor: 2026-07-10 07:02 log line — the 8B model emitted
+        // { "register": Delight, ... } with the bareword unquoted, breaking
+        // strict JSON parse.
+        var raw = "{ \"register\": Delight, \"warmth\": 0.95, \"energy\": 0.85 }";
+        var extracted = EmotionalProcessor.ExtractJsonPrefix(raw);
+        extracted.Should().Be("{ \"register\": \"Delight\", \"warmth\": 0.95, \"energy\": 0.85 }");
+    }
+
+    [Fact]
+    public void ExtractJsonPrefix_BareKeyValueShape_WrapsAndQuotes()
+    {
+        // Empirical anchor: 2026-07-10 03:33 log line — the model emitted
+        // "register: Tenderness" with no wrapping braces at all.
+        var raw = "register: Tenderness";
+        var extracted = EmotionalProcessor.ExtractJsonPrefix(raw);
+        extracted.Should().Contain("\"register\": \"Tenderness\"");
+        extracted.Should().StartWith("{").And.EndWith("}");
+    }
+
+    [Fact]
+    public void ExtractJsonPrefix_AlreadyValidJson_NoOp()
+    {
+        var raw = "{ \"register\": \"Warmth\", \"warmth\": 0.5 }";
+        var extracted = EmotionalProcessor.ExtractJsonPrefix(raw);
+        // Value already quoted — regex must not touch it.
+        extracted.Should().Contain("\"register\": \"Warmth\"");
+        extracted.Should().NotContain("\"\"Warmth\"\"");
+    }
+
+    [Fact]
+    public void ExtractJsonPrefix_NumericFieldsUntouched()
+    {
+        // Only register-family keys get bareword-value quoting. Numeric
+        // fields (warmth, severity, etc.) must be left as bare numbers.
+        var raw = "{ \"register\": Delight, \"warmth\": 0.95, \"severity\": 1.0 }";
+        var extracted = EmotionalProcessor.ExtractJsonPrefix(raw);
+        extracted.Should().Contain("\"warmth\": 0.95");
+        extracted.Should().Contain("\"severity\": 1.0");
+        extracted.Should().NotContain("\"warmth\": \"0.95\"");
     }
 }

@@ -429,6 +429,17 @@ public class EmotionalProcessor
     /// is found — the caller's <c>JsonDocument.Parse</c> will surface the
     /// original error in that case. Also strips a common leading ```json
     /// fence if present.
+    ///
+    /// <para>2026-07-11 — additional tolerant handling for two shapes the
+    /// 8B model has been observed producing:
+    /// <list type="bullet">
+    ///   <item><c>register: Tenderness</c> (no braces at all) —
+    ///     wrap in braces + quote the bareword value</item>
+    ///   <item><c>{ "register": Delight, ... }</c> (unquoted enum-shaped
+    ///     value) — quote the bareword after any known key</item>
+    /// </list>
+    /// Applied after the balanced-block extract, so log-parseable JSON is
+    /// still the primary path.</para>
     /// </summary>
     internal static string ExtractJsonPrefix(string raw)
     {
@@ -442,7 +453,13 @@ public class EmotionalProcessor
         }
 
         var start = s.IndexOf('{');
-        if (start < 0) return raw;
+        if (start < 0)
+        {
+            // Bare "register: Tenderness" / "register: Longing" shape —
+            // wrap as an object and let the enum-quoting pass handle
+            // the unquoted value.
+            return QuoteUnquotedEnumValues("{ " + s.Trim() + " }");
+        }
 
         var depth = 0;
         var inString = false;
@@ -458,9 +475,35 @@ public class EmotionalProcessor
             else if (ch == '}')
             {
                 depth--;
-                if (depth == 0) return s.Substring(start, i - start + 1);
+                if (depth == 0) return QuoteUnquotedEnumValues(s.Substring(start, i - start + 1));
             }
         }
         return raw;
+    }
+
+    /// <summary>
+    /// Add quotes around bareword string values that follow known
+    /// enum-carrying keys. Empirical anchor: 2026-07-10 07:02 log line
+    /// <c>{ "register": Delight, "warmth": 0.95, ... }</c> where the
+    /// model emitted <c>Delight</c> without quotes. Only touches values
+    /// after the small set of known-string keys; numeric fields
+    /// (warmth, energy, worry, playfulness, severity) are left alone.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex UnquotedEnumValueRegex =
+        new(@"""?(register|primaryRegister|secondaryRegister)""?\s*:\s*([A-Za-z][A-Za-z_-]*)",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static string QuoteUnquotedEnumValues(string json)
+    {
+        // Handles four shapes:
+        //   "register": Delight       →  "register": "Delight"
+        //   register: Delight         →  "register": "Delight"
+        //   "register": "Delight"     →  "register": "Delight"  (no-op)
+        //   register: "Delight"       →  "register": "Delight"
+        return UnquotedEnumValueRegex.Replace(json, m =>
+        {
+            var value = m.Groups[2].Value;
+            return $"\"{m.Groups[1].Value}\": \"{value}\"";
+        });
     }
 }
