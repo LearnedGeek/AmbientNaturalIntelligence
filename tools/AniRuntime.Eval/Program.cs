@@ -47,6 +47,22 @@ var probeQuery = ParseArg(args, "--probe-query");
 var probeTopKRaw = ParseArg(args, "--probe-top-k") ?? "10";
 var probeTopK   = int.TryParse(probeTopKRaw, out var pk) ? pk : 10;
 
+// Issue #97 (2026-07-15) — raw content scan for grounding retrieval fixtures.
+// Bypasses embedding + composite scoring; runs a case-insensitive LIKE on
+// memories.content. Used to discover what real substrate exists for a given
+// token before writing fixture "expected_content_substrings" assertions.
+// Read-only via EF DbContext; no writes.
+var contentScanToken = ParseArg(args, "--content-scan");
+
+// Issue #97 (2026-07-15) — retrieval fixture harness. Reads a JSON fixture
+// of { name, query, top_k, expected_content_substrings } entries, runs
+// SearchWithScoresAsync (the same seam RecallMemoryAction uses) for each
+// query, and asserts that at least one of the expected substrings appears
+// (case-insensitive) somewhere in the top-K result contents. Empirical
+// vehicle for iterating on the composite/fusion mechanism per Issue #97's
+// architectural discussion. Read-only.
+var retrieveEvalFixture = ParseArg(args, "--retrieve-eval");
+
 // Issue #93 Phase 2 (2026-07-06) — classifier harness mode. When
 // --classify-tag <fixture-path> is provided, load the fixture (array of
 // { name, tag_note, ani_reply, mark_prior, expected_intent }), call the
@@ -737,6 +753,120 @@ if (!string.IsNullOrWhiteSpace(toolCallFixture))
     return 0;
 }
 
+// Issue #97 (2026-07-15) — retrieval fixture harness branch. For each
+// fixture entry: run production SearchWithScoresAsync at the entry's
+// top_k, then check whether any expected_content_substrings appear in
+// any result's content (case-insensitive). Report per-entry pass/fail
+// plus, for failures, the actual top-K contents so the diagnostic is
+// self-contained.
+if (!string.IsNullOrWhiteSpace(retrieveEvalFixture))
+{
+    if (!File.Exists(retrieveEvalFixture))
+    {
+        Console.Error.WriteLine($"AniRuntime.Eval: retrieve-eval fixture not found at {retrieveEvalFixture}");
+        return 2;
+    }
+
+    var fixtureJson = await File.ReadAllTextAsync(retrieveEvalFixture);
+    var fixtureItems = JsonSerializer.Deserialize<List<RetrieveEvalFixtureItem>>(
+        fixtureJson,
+        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+
+    if (fixtureItems is null || fixtureItems.Count == 0)
+    {
+        Console.Error.WriteLine("AniRuntime.Eval: retrieve-eval fixture parsed to empty list — check schema");
+        return 2;
+    }
+
+    var search = provider.GetRequiredService<IMemorySearch>();
+    var runResults = new List<object>();
+    var totalPass = 0;
+
+    foreach (var item in fixtureItems)
+    {
+        var topK = item.TopK ?? 5;
+        var query = item.Query ?? string.Empty;
+        var expected = item.ExpectedContentSubstrings ?? new List<string>();
+        var hits = (await search.SearchWithScoresAsync(query, topK, CancellationToken.None)).ToList();
+
+        var joined = string.Join("\n", hits.Select(h => h.Record.Content ?? string.Empty)).ToLowerInvariant();
+        var matchedSubstring = expected.FirstOrDefault(s =>
+            !string.IsNullOrWhiteSpace(s) && joined.Contains(s.ToLowerInvariant()));
+        var pass = matchedSubstring is not null;
+        if (pass) totalPass++;
+
+        runResults.Add(new
+        {
+            name          = item.Name,
+            query         = query,
+            top_k         = topK,
+            expected      = expected,
+            matched       = matchedSubstring,
+            pass,
+            top_hits = hits.Select((h, i) => new
+            {
+                rank         = i + 1,
+                provenance   = h.Record.Provenance.ToString(),
+                sourceName   = h.Record.SourceName,
+                composite    = h.CompositeScore,
+                cosine       = h.CosineSimilarity,
+                content      = (h.Record.Content ?? string.Empty).Length > 200
+                                ? h.Record.Content!.Substring(0, 200) + "…"
+                                : h.Record.Content,
+            }).ToList(),
+        });
+    }
+
+    var payload = new
+    {
+        fixturePath = retrieveEvalFixture,
+        summary = new
+        {
+            total  = fixtureItems.Count,
+            passed = totalPass,
+            failed = fixtureItems.Count - totalPass,
+        },
+        results = runResults,
+    };
+    Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// Issue #97 (2026-07-15) — raw content scan branch. Emits a JSON list of
+// every memory whose content contains the token (case-insensitive), with
+// tier / source / importance / occurred_at / content preview. Used to
+// discover what real substrate exists for retrieval fixtures.
+if (!string.IsNullOrWhiteSpace(contentScanToken))
+{
+    var ctxFactoryScan = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+    await using var scanCtx = await ctxFactoryScan.CreateDbContextAsync();
+    var pattern = "%" + contentScanToken.ToLowerInvariant() + "%";
+    var rows = await scanCtx.Memories
+        .Where(m => EF.Functions.Like(m.Content.ToLower(), pattern))
+        .OrderByDescending(m => m.OccurredAt)
+        .Take(50)
+        .Select(m => new
+        {
+            id           = m.Id,
+            provenance   = m.Provenance.ToString(),
+            sourceName   = m.SourceName ?? "-",
+            importance   = m.Importance,
+            occurredAt   = m.OccurredAt,
+            contentPreview = m.Content.Length > 250
+                             ? m.Content.Substring(0, 250) + "…"
+                             : m.Content,
+        })
+        .ToListAsync();
+    var payload = new
+    {
+        token = contentScanToken,
+        matchCount = rows.Count,
+        results = rows,
+    };
+    Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
 // K.5-probe (2026-07-06) — retrieval-only branch. Calls IMemorySearch
 // directly and dumps the top-K ScoredMemory list as JSON so we can see
 // what the runtime WOULD surface for a given query without touching the
@@ -1125,6 +1255,19 @@ internal sealed class ToolCallFixtureItem
 /// Issue #96 — nested descriptor DTO inside <see cref="ToolCallFixtureItem"/>.
 /// Maps to <see cref="AniRuntime.Core.Models.ToolDescriptor"/> at load time.
 /// </summary>
+/// <summary>
+/// Issue #97 — fixture-item DTO for the --retrieve-eval harness. Snake-case
+/// field names to match <c>tools/scenarios/retrieval-anchors.json</c>.
+/// </summary>
+internal sealed class RetrieveEvalFixtureItem
+{
+    public string?        Name                     { get; set; }
+    public string?        Query                    { get; set; }
+    public int?           TopK                     { get; set; }
+    public List<string>?  ExpectedContentSubstrings { get; set; }
+    public string?        Notes                    { get; set; }
+}
+
 internal sealed class ToolCallFixtureToolItem
 {
     public string?                     Name        { get; set; }

@@ -1,0 +1,36 @@
+[
+  {
+    "name": "wctc-canonical-teaching",
+    "query": "WCTC",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "Waukesha County Technical College",
+      "teaching tonight at WCTC",
+      "The school is WCTC"
+    ],
+    "notes": "Empirical anchor from 2026-07-15 tool-call test. Mark's canonical WCTC teaching substrate has ~10 hits including a Facts twilio-inbound record (importance=1.0) from 2026-03-25. Substrings are chosen to discriminate the PRIOR canonical/Episodic records from the current-turn echo (which just contains 'teach at WCTC' verbatim). Baseline pre-fix: test is expected to FAIL because recency-decay sinks the Mar 25 canonical Facts record beneath high-recency Interior mood memories."
+  },
+  {
+    "name": "mia-canonical-daughter",
+    "query": "Mia",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "15-year-old daughter",
+      "his daughter",
+      "Mia — his",
+      "dinner with Mia",
+      "Mia and Karen",
+      "Mia & Karen"
+    ],
+    "notes": "50 hits in content-scan. Canonical Facts record: 'Mark cares about: Mia — his 15-year-old daughter, the center of his world'. Multiple Interior reflections reference her. Test asserts at least one canonical or contextual daughter-reference makes top-5."
+  },
+  {
+    "name": "camping-thin-substrate",
+    "query": "camping",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "camping"
+    ],
+    "notes": "1-hit substrate — Interior reflection 2026-07-14 that mentions camping in its body (importance=0.3, no canonical Facts). Regression case: if the one record that literally contains 'camping' can't surface for query 'camping', the retrieval mechanism has a serious problem. Weakest assertion: any content containing the literal token."
+  }
+]
