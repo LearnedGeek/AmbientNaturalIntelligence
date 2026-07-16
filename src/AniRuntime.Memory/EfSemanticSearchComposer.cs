@@ -159,10 +159,77 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
 
         var scoredAll = ScoreCandidates(candidates, queryEmbedding, includeRecency: true);
 
+        // Feature 31 link-enhancement — PRE-fusion pass.
+        //
+        // Issue #98 (2026-07-16) refactor. Previously ran AFTER RRF fusion,
+        // computing raw-composite scores for linked candidates and jamming
+        // them into the ranked list; the raw scores (0.3–0.9) massively
+        // out-ranked the RRF-fused originals (0.03 max) because they were on
+        // completely different scales. Empirical anchor: 2026-07-15 tool-call
+        // test where Ani's own reply from tonight ranked #1 for query "WCTC"
+        // at composite 0.626, burying the canonical Facts substrate.
+        //
+        // Fix: identify linked candidates from a PRE-fusion top-K preview,
+        // add them to `scoredAll` with raw composite (no +0.05 bonus), and
+        // let RRF fusion score them alongside everything else. Linked
+        // candidates now compete on the same axis as fusion-scored originals.
+        //
+        // Kill switch: RetrievalLinkEnhancementEnabled=false skips the block
+        // entirely — pre-fix behavior can be restored on the empirical anchor
+        // via a single config flip.
+        if (_options.RetrievalLinkEnhancementEnabled && scoredAll.Count > 0)
+        {
+            try
+            {
+                var previewIds = new HashSet<Guid>(
+                    scoredAll.OrderByDescending(x => x.CompositeScore).Take(topK)
+                        .Select(x => x.Record.Id));
+                var linkedIds = await GetLinkedMemoryIdsAsync(previewIds, db, ct).ConfigureAwait(false);
+
+                if (linkedIds.Count > 0)
+                {
+                    const float LinkRelevanceThreshold = 0.40f;
+                    var alreadyScored = new HashSet<Guid>(scoredAll.Select(x => x.Record.Id));
+                    var idsToFetch = linkedIds.Except(alreadyScored).ToList();
+
+                    if (idsToFetch.Count > 0)
+                    {
+                        var linkedEntities = await db.Memories
+                            .Where(m => idsToFetch.Contains(m.Id))
+                            .ToListAsync(ct)
+                            .ConfigureAwait(false);
+                        var addedCount = 0;
+                        foreach (var linked in linkedEntities)
+                        {
+                            if (linked.Embedding is null || linked.Embedding.Length != queryEmbedding.Length) continue;
+                            var cosine = VectorMath.CosineSimilarity(queryEmbedding, linked.Embedding);
+                            if (cosine < LinkRelevanceThreshold) continue;
+
+                            var record = EfMemoryMappings.MapToRecord(linked);
+                            var composite = ComputeRetrievalScore(queryEmbedding, record, includeRecency: true);
+                            scoredAll.Add(new ScoredMemory(record, composite, cosine)
+                            {
+                                OriginTier = RetrievalOriginClassifier.Classify(record),
+                            });
+                            addedCount++;
+                        }
+                        if (addedCount > 0)
+                            _log.LogDebug("Link-enhancement pre-fusion: added {Count} linked candidates to scored pool", addedCount);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Link-enhancement (pre-fusion) failed — proceeding without");
+            }
+        }
+
         // Issue #93 Phase 4 (2026-07-09) — hybrid RRF fusion (tier-agnostic
         // since this method operates across the full pool). MMR diversity
         // rerank still runs after fusion when enabled, so diversity + hybrid
-        // compose cleanly.
+        // compose cleanly. Post-Issue-#98 refactor: linked candidates from
+        // Feature 31 are now already in `scoredAll` at this point, so RRF
+        // scores them consistently with fusion-scored originals.
         int bm25RescueCount = 0;
         if (_options.HybridRetrievalEnabled && scoredAll.Count > 0)
         {
@@ -185,59 +252,6 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Type, top.OriginTier,
                 _options.RetrievalDiversityEnabled, _options.HybridRetrievalEnabled, bm25RescueCount,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
-        }
-
-        // Feature 31 link-enhancement.
-        try
-        {
-            var resultIds = new HashSet<Guid>(ranked.Select(r => r.Record.Id));
-            var linkedIds = await GetLinkedMemoryIdsAsync(resultIds, db, ct).ConfigureAwait(false);
-
-            if (linkedIds.Count > 0)
-            {
-                const float LinkRelevanceThreshold = 0.40f;
-                var linkedCandidates = new List<ScoredMemory>();
-
-                var idsToFetch = linkedIds.Except(resultIds).ToList();
-                if (idsToFetch.Count > 0)
-                {
-                    var linkedEntities = await db.Memories
-                        .Where(m => idsToFetch.Contains(m.Id))
-                        .ToListAsync(ct)
-                        .ConfigureAwait(false);
-
-                    foreach (var linked in linkedEntities)
-                    {
-                        if (linked.Embedding is null || linked.Embedding.Length != queryEmbedding.Length) continue;
-                        var cosine = VectorMath.CosineSimilarity(queryEmbedding, linked.Embedding);
-                        if (cosine < LinkRelevanceThreshold) continue;
-
-                        var record = EfMemoryMappings.MapToRecord(linked);
-                        var composite = ComputeRetrievalScore(queryEmbedding, record, includeRecency: true);
-                        linkedCandidates.Add(new ScoredMemory(record, composite + 0.05f, cosine)
-                        {
-                            OriginTier = RetrievalOriginClassifier.Classify(record),
-                        });
-                    }
-                }
-
-                if (linkedCandidates.Count > 0)
-                {
-                    var topLinked = linkedCandidates
-                        .OrderByDescending(x => x.CosineSimilarity)
-                        .Take(3)
-                        .ToList();
-
-                    ranked.AddRange(topLinked);
-                    ranked = ranked.OrderByDescending(x => x.CompositeScore).Take(topK).ToList();
-                    _log.LogDebug("Link-enhanced retrieval: {Candidates} candidates above threshold, added top {Count}",
-                        linkedCandidates.Count, topLinked.Count);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.LogDebug(ex, "Link-enhanced retrieval failed — returning standard results");
         }
 
         return ranked;

@@ -63,6 +63,18 @@ var contentScanToken = ParseArg(args, "--content-scan");
 // architectural discussion. Read-only.
 var retrieveEvalFixture = ParseArg(args, "--retrieve-eval");
 
+// Issue #97 (2026-07-15) — CLI overrides for the composite-score weights.
+// Lets us iterate on the recency / cosine / importance balance in the
+// harness WITHOUT touching production appsettings. When any of these
+// three are provided, they REPLACE the corresponding AniOptions default
+// via the in-process config builder. Null / unparseable = use appsettings.
+var overrideWeightRecency    = ParseArg(args, "--recency-weight");
+var overrideWeightCosine     = ParseArg(args, "--cosine-weight");
+var overrideWeightImportance = ParseArg(args, "--importance-weight");
+// Issue #98 (2026-07-15) — override Feature 31 link-enhancement.
+// Values "true" / "false" (case-insensitive). Null = use appsettings default.
+var overrideLinkEnhancement  = ParseArg(args, "--link-enhancement");
+
 // Issue #93 Phase 2 (2026-07-06) — classifier harness mode. When
 // --classify-tag <fixture-path> is provided, load the fixture (array of
 // { name, tag_note, ani_reply, mark_prior, expected_intent }), call the
@@ -180,6 +192,19 @@ var configBuilder = new ConfigurationBuilder()
         ["Ani:ConsciousSubstrateGistEnabled"] = "true",
         ["Ani:ConsciousSubstrateGistMaxTokens"] = "200",
     });
+
+// Issue #97 (2026-07-15) — apply composite-weight overrides on top of the
+// base config. Adding to the collection AFTER the base builder ensures
+// these take precedence. Only applied when the CLI arg parses to a valid
+// double.
+if (double.TryParse(overrideWeightRecency, System.Globalization.CultureInfo.InvariantCulture, out var recencyW))
+    configBuilder.AddInMemoryCollection(new Dictionary<string, string?> { ["Ani:RetrievalWeightRecency"] = recencyW.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+if (double.TryParse(overrideWeightCosine, System.Globalization.CultureInfo.InvariantCulture, out var cosineW))
+    configBuilder.AddInMemoryCollection(new Dictionary<string, string?> { ["Ani:RetrievalWeightCosine"] = cosineW.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+if (double.TryParse(overrideWeightImportance, System.Globalization.CultureInfo.InvariantCulture, out var importanceW))
+    configBuilder.AddInMemoryCollection(new Dictionary<string, string?> { ["Ani:RetrievalWeightImportance"] = importanceW.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+if (bool.TryParse(overrideLinkEnhancement, out var linkEnhBool))
+    configBuilder.AddInMemoryCollection(new Dictionary<string, string?> { ["Ani:RetrievalLinkEnhancementEnabled"] = linkEnhBool ? "true" : "false" });
 
 var configuration = configBuilder.Build();
 

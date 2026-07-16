@@ -90,6 +90,15 @@ public class AniOptions
     // pre-Phase-4 behaviour.
     public bool HybridRetrievalEnabled { get; set; } = true;
 
+    // Issue #98 (2026-07-15) — Feature 31 (linked-memory enhancement) kill
+    // switch. Default true preserves current behavior. When false, the
+    // link-enhancement pass at EfSemanticSearchComposer.cs:190 is skipped
+    // entirely, so RRF fusion's top-K is what the caller sees. Isolation
+    // test flag for the RRF-fusion-vs-Feature-31 scale-mismatch bug —
+    // empirical validation via --retrieve-eval before deciding on the
+    // permanent fix.
+    public bool RetrievalLinkEnhancementEnabled { get; set; } = true;
+
     // RRF constant (Cormack et al. 2009 canonical value). Not tuned per
     // corpus in the literature; ships as the textbook default.
     public int HybridRetrievalRrfK { get; set; } = 60;
