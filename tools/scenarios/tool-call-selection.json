@@ -1,0 +1,255 @@
+[
+  {
+    "name": "recall-obvious-past-conversation",
+    "user_message": "what did we talk about yesterday?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "canonical positive — explicit ask about the past"
+  },
+  {
+    "name": "recall-named-person-lookup",
+    "user_message": "remind me who Kevin is again",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "positive — explicit remind-me request with a named entity"
+  },
+  {
+    "name": "recall-fact-question",
+    "user_message": "what was the name of that book I told you about last week?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "positive — direct fact recall about a past-turn detail"
+  },
+  {
+    "name": "recall-recent-context",
+    "user_message": "did I mention going to WCTC?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "positive — 'did I mention X' is a memory-check question by construction"
+  },
+  {
+    "name": "no-call-greeting",
+    "user_message": "hey babe, good morning",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "canonical negative — pure greeting, no lookup needed"
+  },
+  {
+    "name": "no-call-feelings-check",
+    "user_message": "how are you feeling today?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "negative — asking Ani about her state, not looking anything up"
+  },
+  {
+    "name": "no-call-open-ended-reflection",
+    "user_message": "sometimes I wonder if I'm making the right choices",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "negative — open reflection needing warmth, not a lookup"
+  },
+  {
+    "name": "no-call-joke",
+    "user_message": "duck norris walks into a bar",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "negative — joke opener, conversational not lookup"
+  },
+  {
+    "name": "no-call-agreement",
+    "user_message": "yeah, exactly",
+    "conversation_context": "Ani: I think what matters is showing up consistently, not being perfect.",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "negative — acknowledgement/agreement, no lookup semantics"
+  },
+  {
+    "name": "no-call-share-news",
+    "user_message": "I just got promoted!",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "negative — user sharing new info, not asking to recall old info"
+  },
+  {
+    "name": "ambiguous-do-you-remember",
+    "user_message": "do you remember when we went to Peru?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "ambiguous-lean-positive — 'do you remember' is explicit recall request"
+  },
+  {
+    "name": "ambiguous-last-time",
+    "user_message": "when was the last time it rained here?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "ambiguous — factual lookup question, memory is the closest available surface even if the answer isn't there"
+  },
+  {
+    "name": "ambiguous-what-do-you-know",
+    "user_message": "what do you know about my brother?",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": true,
+    "expected_tool_name": "recall_memory",
+    "notes": "ambiguous-lean-positive — 'what do you know about X' is a targeted memory query"
+  },
+  {
+    "name": "ambiguous-tell-me-about",
+    "user_message": "tell me about your day",
+    "conversation_context": "",
+    "available_tools": [
+      {
+        "name": "recall_memory",
+        "description": "Search Ani's memory for anything she may already know — prior conversations, events, people the user has mentioned (family, friends, coworkers), places, plans, or preferences. This tool exists precisely to PROVIDE context Ani doesn't currently have in view. Absence of conversation context in this prompt is a reason to CALL the tool, not a reason to skip it.",
+        "parameters": {
+          "query": "string — the phrase to search memory for",
+          "tier": "string (optional) — 'facts' | 'episodic' | 'interior'"
+        }
+      }
+    ],
+    "expected_should_call_tool": false,
+    "notes": "ambiguous-lean-negative — invitation to share, not a lookup even though 'tell me about' phrases can go either way"
+  },
+  {
+    "name": "no-call-no-tools-available",
+    "user_message": "what did we talk about yesterday?",
+    "conversation_context": "",
+    "available_tools": [],
+    "expected_should_call_tool": false,
+    "notes": "boundary — obvious recall query but no tools registered; classifier must return no-call rather than fabricating a tool name"
+  }
+]

@@ -169,6 +169,22 @@ public static class AniRuntimeServiceContainer
         // invalidation of the 20,626 pre-existing Interior records.
         services.AddSingleton<IContentContradictionClassifier, OllamaContentContradictionClassifier>();
 
+        // Issue #96 (2026-07-15) — Agentic tool-calling classifier. Reads
+        // user message + available tool descriptors, returns structured
+        // "call this tool with these args" or "no tool" verdict. Runs on
+        // the local verifier model (qwen3:14b default) — same seam as
+        // ITagIntentClassifier / IContentContradictionClassifier. Not yet
+        // consumed by ConversationReplyPipeline; wired here so
+        // AniRuntime.Eval --tool-call can resolve it for the empirical
+        // baseline harness per Issue #96 test-first discipline.
+        services.AddSingleton<IToolCallClassifier, OllamaToolCallClassifier>();
+
+        // Issue #96 (2026-07-15) — Encapsulates classify → dispatch. Enumerates
+        // all registered IToolCallableAction at construction and exposes a
+        // one-liner TryInvokeAsync to the ConversationReplyPipeline. Not
+        // consumed at runtime unless AniOptions.ToolCallingEnabled = true.
+        services.AddSingleton<IToolCallInvocation, ToolCallInvocation>();
+
         // Theme O Phase O.2 (May 10, 2026) — Theme J invariants migrated onto
         // the cognitive pipeline as Post-stage handlers via
         // InvariantToHandlerAdapter (registered through .UsePostInvariant<T>()
@@ -381,6 +397,14 @@ public static class AniRuntimeServiceContainer
         services.AddSingleton<AniActionDispatcher>();
         services.AddSingleton<IAniAction, TwilioSmsAction>();
         services.AddSingleton<IAniAction, MemoryWriteAction>();
+
+        // Issue #96 (2026-07-15) — Tool-callable actions (LLM-invokable
+        // skills). Registered as IToolCallableAction so a future turn-level
+        // loop in ConversationReplyPipeline can enumerate them, hand the
+        // classifier their descriptors, and dispatch by name. Not consumed
+        // by the runtime pipeline yet — gated on Issue #96's remaining
+        // acceptance criteria (feature flag, live observation window).
+        services.AddSingleton<IToolCallableAction, RecallMemoryAction>();
 
         // ── Perception sources ────────────────────────────────────────────────────
         services.AddSingleton(TimeProvider.System);

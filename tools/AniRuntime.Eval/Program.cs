@@ -63,6 +63,17 @@ var classifyTagFixture = ParseArg(args, "--classify-tag");
 // Same shape as --classify-tag.
 var classifyContradictionFixture = ParseArg(args, "--classify-contradiction");
 
+// Issue #96 (2026-07-15) — Tool-call selection harness. When --tool-call
+// <fixture-path> is provided, load the fixture (array of { name,
+// user_message, conversation_context, available_tools,
+// expected_should_call_tool, expected_tool_name, expected_arguments }),
+// call the production IToolCallClassifier for each entry, and dump per-
+// entry verdicts + a summary accuracy table. Symmetric to --classify-tag
+// and --classify-contradiction: pure classifier probe, skips DB / cycle
+// / dispatch. Empirical baseline for tool-selection accuracy BEFORE
+// ConversationReplyPipeline integration per #96 test-first discipline.
+var toolCallFixture = ParseArg(args, "--tool-call");
+
 // Issue #93 Phase 3 (2026-07-07) — batch-size for the contradiction
 // harness. 1 = single-item mode (baseline accuracy per Phase 3 first
 // draft). >1 = batched mode via ClassifyBatchAsync (throughput knob for
@@ -609,6 +620,123 @@ if (!string.IsNullOrWhiteSpace(classifyContradictionFixture))
     return 0;
 }
 
+// Issue #96 (2026-07-15) — Tool-call selection harness. Runs the production
+// IToolCallClassifier against the fixture. Each fixture row supplies its own
+// available_tools descriptor set so the harness can exercise different
+// tool-catalogues without recompilation.
+if (!string.IsNullOrWhiteSpace(toolCallFixture))
+{
+    if (!File.Exists(toolCallFixture))
+    {
+        Console.Error.WriteLine($"AniRuntime.Eval: tool-call fixture not found at {toolCallFixture}");
+        return 2;
+    }
+
+    var fixtureJson = await File.ReadAllTextAsync(toolCallFixture);
+    var fixtureItems = JsonSerializer.Deserialize<List<ToolCallFixtureItem>>(
+        fixtureJson,
+        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+
+    if (fixtureItems is null || fixtureItems.Count == 0)
+    {
+        Console.Error.WriteLine("AniRuntime.Eval: tool-call fixture parsed to empty list — check schema");
+        return 2;
+    }
+
+    var classifier = provider.GetRequiredService<IToolCallClassifier>();
+    var runResults = new List<object>();
+    var perExpected = new Dictionary<string, (int Correct, int Total)>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var item in fixtureItems)
+    {
+        var tools = (item.AvailableTools ?? new List<ToolCallFixtureToolItem>())
+            .Select(t => new ToolDescriptor(
+                Name:            t.Name        ?? string.Empty,
+                Description:     t.Description ?? string.Empty,
+                ParameterSchema: (IReadOnlyDictionary<string, string>)(t.Parameters ?? new Dictionary<string, string>())))
+            .ToList();
+
+        var verdict = await classifier.ClassifyAsync(
+            userMessage:         item.UserMessage         ?? string.Empty,
+            availableTools:      tools,
+            conversationContext: item.ConversationContext ?? string.Empty,
+            ct:                  CancellationToken.None);
+
+        // Bucket the verdict for the summary. We record two orthogonal
+        // "correct" flags: (a) should-call decision correct, (b) if a tool
+        // was called, name matches. Argument-shape check is optional per
+        // fixture — if expected_arguments is present, require exact match.
+        var expectedShouldCall = item.ExpectedShouldCallTool ?? false;
+        var shouldCallCorrect  = verdict.ShouldCallTool == expectedShouldCall;
+
+        var expectedToolName = (item.ExpectedToolName ?? string.Empty).Trim();
+        var actualToolName   = verdict.ToolName ?? string.Empty;
+        var toolNameCorrect  = expectedShouldCall
+            ? string.Equals(expectedToolName, actualToolName, StringComparison.Ordinal)
+            : true; // no-call cases: tool-name check is n/a
+
+        var argumentsCorrect = true;
+        if (expectedShouldCall && item.ExpectedArguments is { Count: > 0 })
+        {
+            argumentsCorrect = verdict.Arguments is not null
+                && item.ExpectedArguments.All(kv =>
+                    verdict.Arguments.TryGetValue(kv.Key, out var v)
+                    && string.Equals(v, kv.Value, StringComparison.Ordinal));
+        }
+
+        var overallCorrect = shouldCallCorrect && toolNameCorrect && argumentsCorrect;
+        var bucketKey = expectedShouldCall
+            ? $"call:{expectedToolName}"
+            : "no_call";
+
+        runResults.Add(new
+        {
+            name                     = item.Name,
+            user_message             = item.UserMessage,
+            expected_should_call     = expectedShouldCall,
+            actual_should_call       = verdict.ShouldCallTool,
+            expected_tool_name       = expectedShouldCall ? expectedToolName : null,
+            actual_tool_name         = verdict.ToolName,
+            expected_arguments       = item.ExpectedArguments,
+            actual_arguments         = verdict.Arguments,
+            confidence               = verdict.Confidence,
+            reason                   = verdict.Reason,
+            should_call_correct      = shouldCallCorrect,
+            tool_name_correct        = toolNameCorrect,
+            arguments_correct        = argumentsCorrect,
+            correct                  = overallCorrect,
+        });
+
+        var bucket = perExpected.TryGetValue(bucketKey, out var v2) ? v2 : (Correct: 0, Total: 0);
+        perExpected[bucketKey] = (bucket.Correct + (overallCorrect ? 1 : 0), bucket.Total + 1);
+    }
+
+    var totalCorrect = perExpected.Values.Sum(v => v.Correct);
+    var totalCount   = perExpected.Values.Sum(v => v.Total);
+
+    var toolCallPayload = new
+    {
+        fixturePath = toolCallFixture,
+        model = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.AniOptions>>()
+                .Value.LocalVerifierModelTag,
+        summary = new
+        {
+            totalCorrect,
+            totalCount,
+            accuracy = totalCount > 0 ? (double)totalCorrect / totalCount : 0.0,
+            perExpected = perExpected.ToDictionary(
+                kv => kv.Key,
+                kv => new { correct = kv.Value.Correct, total = kv.Value.Total,
+                            accuracy = kv.Value.Total > 0 ? (double)kv.Value.Correct / kv.Value.Total : 0.0 }),
+        },
+        results = runResults,
+    };
+
+    Console.WriteLine(JsonSerializer.Serialize(toolCallPayload,
+        new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
 // K.5-probe (2026-07-06) — retrieval-only branch. Calls IMemorySearch
 // directly and dumps the top-K ScoredMemory list as JSON so we can see
 // what the runtime WOULD surface for a given query without touching the
@@ -972,4 +1100,34 @@ internal sealed class ContentContradictionFixtureItem
     public string? ConfirmedSubstrate  { get; set; }
     public string? ExpectedOutcome     { get; set; }
     public string? Notes               { get; set; }
+}
+
+/// <summary>
+/// Issue #96 — fixture-item DTO for the --tool-call harness. Field names
+/// use snake_case to match the JSON fixture at
+/// <c>tools/scenarios/tool-call-selection.json</c>. Each fixture row
+/// carries its own tool catalogue so different scenarios can exercise
+/// different available tools.
+/// </summary>
+internal sealed class ToolCallFixtureItem
+{
+    public string?                        Name                    { get; set; }
+    public string?                        UserMessage             { get; set; }
+    public string?                        ConversationContext     { get; set; }
+    public List<ToolCallFixtureToolItem>? AvailableTools          { get; set; }
+    public bool?                          ExpectedShouldCallTool  { get; set; }
+    public string?                        ExpectedToolName        { get; set; }
+    public Dictionary<string, string>?    ExpectedArguments       { get; set; }
+    public string?                        Notes                   { get; set; }
+}
+
+/// <summary>
+/// Issue #96 — nested descriptor DTO inside <see cref="ToolCallFixtureItem"/>.
+/// Maps to <see cref="AniRuntime.Core.Models.ToolDescriptor"/> at load time.
+/// </summary>
+internal sealed class ToolCallFixtureToolItem
+{
+    public string?                     Name        { get; set; }
+    public string?                     Description { get; set; }
+    public Dictionary<string, string>? Parameters  { get; set; }
 }

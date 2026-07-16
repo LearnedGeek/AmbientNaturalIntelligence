@@ -798,6 +798,19 @@ public class AniOptions
     // See: docs/spec/ANI-Gate-Stack-Reduction-Plan.md §3 Step 1.
     public bool   ClaimVerificationR1Enabled { get; set; } = false;
 
+    // Issue #96 (2026-07-15) — Agentic tool-calling loop feature flag.
+    // Default false: the classifier + tool infrastructure exists but does
+    // not fire in the conversation reply pipeline. When flipped true, each
+    // user turn runs IToolCallClassifier against the enumerated
+    // IToolCallableAction descriptors; if a tool is selected, the result
+    // is injected into the character-model prompt as an attributed tool
+    // observation. Empirical baseline (2026-07-15 fixture): 100% accuracy
+    // on qwen3:14b with 15 canonical scenarios. Live-observation gate:
+    // flip to true on ani-server, watch 24-48h of tool-call rate + user-
+    // perceived value before promoting the default. Per Issue #96
+    // acceptance criteria.
+    public bool   ToolCallingEnabled { get; set; } = false;
+
     // Gate-stack reduction Step 2b (2026-05-15) — three regex+clock-based
     // temporal invariants (TemporalAnchor, StateNow, SubstrateTimeOfDay)
     // are redundant with the cloud verifier's q4 temporal-contradiction

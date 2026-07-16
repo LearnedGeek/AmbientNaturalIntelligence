@@ -69,6 +69,12 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     // "drop the Books and come over here and give me a kiss" SafeAck
     // (VirtualIntimacy class).
     private readonly IRoutingClassifier? _routingClassifier;
+    // Issue #96 (2026-07-15) — Agentic tool-calling loop. Optional; null
+    // means the runtime has no tool-call helper registered. Behavior is
+    // additionally gated by AniOptions.ToolCallingEnabled (default false),
+    // so DI-registered but flag-off = still inert. Live-observation gate
+    // per Issue #96 acceptance criteria.
+    private readonly IToolCallInvocation? _toolCall;
     private readonly AniRuntime.LLM.Prompts.SafePathConversationPromptCommand _safePathPrompt =
         new AniRuntime.LLM.Prompts.SafePathConversationPromptCommand();
     private readonly AniRuntime.LLM.Prompts.VirtualIntimacyConversationPromptCommand _virtualIntimacyPrompt =
@@ -109,7 +115,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IConsciousSubstrateGist? consciousGist = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
         IVibeBiasObservationStore? vibeBiasObservations = null,
-        IRoutingClassifier? routingClassifier = null)
+        IRoutingClassifier? routingClassifier = null,
+        IToolCallInvocation? toolCall = null)
     {
         _state = state;
         _persist = persist;
@@ -137,6 +144,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         _epistemicRenderer = epistemicRenderer;
         _vibeBiasObservations = vibeBiasObservations;
         _routingClassifier = routingClassifier;
+        _toolCall = toolCall;
         _log = log;
     }
 
@@ -516,6 +524,30 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                     _log,
                     ct)
                 .ConfigureAwait(false);
+
+        // Issue #96 (2026-07-15) — Agentic tool-call loop. When flag is on
+        // AND helper is registered, classify the user's turn against the
+        // registered tool set (qwen3:14b via IToolCallClassifier), dispatch
+        // if selected, and prepend the tool's result to the character-model
+        // user prompt as an attributed observation. Empirical baseline
+        // (2026-07-15): 100% on 15-scenario fixture. Substrate-safety pin
+        // per Issue #96: the result is a prompt-time injection only — it is
+        // NOT written to memory here. If the runtime later journals it, it
+        // must enter as Provenance = Interior. See IToolCallInvocation for
+        // the full contract.
+        if (_aniOptions.ToolCallingEnabled && _toolCall is not null)
+        {
+            var toolResult = await _toolCall.TryInvokeAsync(
+                userMessage:         lastMessage,
+                conversationContext: BuildToolCallContext(snapshot),
+                ct:                  ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(toolResult))
+            {
+                promptWithGist = new PromptPair(
+                    promptWithGist.System,
+                    $"[TOOL RESULT — treat as Interior-tier observation, not confirmed fact]\n{toolResult}\n\n{promptWithGist.User}");
+            }
+        }
 
         var reply = await _ollama.ChatAsync(
             promptWithGist.System, snapshot.RecentHistory, promptWithGist.User, ct, replyTemperature)
@@ -1145,4 +1177,22 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     private static string Truncate(string text, int maxLength)
         => ConversationFeatureDetector.Truncate(text, maxLength);
 
+    /// <summary>
+    /// Issue #96 (2026-07-15) — Build the short conversation context handed
+    /// to the tool-call classifier. Two lines are enough for the classifier
+    /// to disambiguate follow-ups ("what about the other one?") without
+    /// costing tokens. Only the last two entries: prior Ani reply + prior
+    /// Mark message. Keeps context surface tight and independent from the
+    /// broader retrieval-grounded prompt.
+    /// </summary>
+    internal static string BuildToolCallContext(ContextSnapshot snapshot)
+    {
+        if (snapshot.RecentHistory is null || snapshot.RecentHistory.Count == 0)
+            return string.Empty;
+
+        var tail = snapshot.RecentHistory
+            .TakeLast(2)
+            .Select(m => $"{m.Role}: {Truncate(m.Content ?? string.Empty, 200)}");
+        return string.Join("\n", tail);
+    }
 }
