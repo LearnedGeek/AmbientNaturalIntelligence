@@ -8,7 +8,7 @@
       "teaching tonight at WCTC",
       "The school is WCTC"
     ],
-    "notes": "Empirical anchor from 2026-07-15 tool-call test. Mark's canonical WCTC teaching substrate has ~10 hits including a Facts twilio-inbound record (importance=1.0) from 2026-03-25. Substrings are chosen to discriminate the PRIOR canonical/Episodic records from the current-turn echo (which just contains 'teach at WCTC' verbatim). Baseline pre-fix: test is expected to FAIL because recency-decay sinks the Mar 25 canonical Facts record beneath high-recency Interior mood memories."
+    "notes": "Empirical anchor from 2026-07-15 tool-call test. Mark's canonical WCTC teaching substrate: Facts twilio-inbound record (importance=1.0) from 2026-03-25. Substrings chosen to discriminate the PRIOR canonical/Episodic records from the current-turn echo (which just contains 'teach at WCTC' verbatim)."
   },
   {
     "name": "mia-canonical-daughter",
@@ -22,7 +22,7 @@
       "Mia and Karen",
       "Mia & Karen"
     ],
-    "notes": "50 hits in content-scan. Canonical Facts record: 'Mark cares about: Mia — his 15-year-old daughter, the center of his world'. Multiple Interior reflections reference her. Test asserts at least one canonical or contextual daughter-reference makes top-5."
+    "notes": "50 hits in content-scan. Canonical Facts: 'Mark cares about: Mia — his 15-year-old daughter, the center of his world'. FIXED by #98 refactor — now rank 1 (composite 0.023)."
   },
   {
     "name": "camping-thin-substrate",
@@ -31,6 +31,99 @@
     "expected_content_substrings": [
       "camping"
     ],
-    "notes": "1-hit substrate — Interior reflection 2026-07-14 that mentions camping in its body (importance=0.3, no canonical Facts). Regression case: if the one record that literally contains 'camping' can't surface for query 'camping', the retrieval mechanism has a serious problem. Weakest assertion: any content containing the literal token."
+    "notes": "1-hit substrate — Interior reflection 2026-07-14 that mentions camping (importance=0.3, no canonical Facts). Weakest assertion: any content containing the literal token."
+  },
+  {
+    "name": "peru-canonical-trip",
+    "query": "Peru",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "trip to Peru",
+      "peru before",
+      "mentioning peru",
+      "peru storytelling"
+    ],
+    "notes": "6 hits. Canonical Facts twilio-inbound: 'Did I ever tell you about my trip to Peru?'. Multiple Episodic conversation turns exploring this. Should be well-covered by substrate."
+  },
+  {
+    "name": "we-energies-canonical-job",
+    "query": "We Energies",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "We Energies",
+      "Senior Software Architect",
+      "utility company"
+    ],
+    "notes": "3 hits (thin but canonical). Facts twilio-inbound: 'I work during the day at a utility company, We Energies, as a Senior Software Architect.' — his primary professional identity. Should always surface for a direct query."
+  },
+  {
+    "name": "swimming-canonical-competitive",
+    "query": "swimming",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "competitively swam",
+      "competitive swimming",
+      "started competitively",
+      "swimming stats"
+    ],
+    "notes": "11 hits. Canonical Facts twilio-inbound: 'lol i'm not swimming now... but it'd be great if I started competitively again.' Multiple Interior reflections on Mark's competitive swimming history. Direct query should surface prior canonical context."
+  },
+  {
+    "name": "sarah-canonical-gym-friend",
+    "query": "Sarah",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "Kevin and Sarah",
+      "gym with Kevin and Sarah",
+      "gym — Kevin and Sarah"
+    ],
+    "notes": "50 hits. Canonical Facts world-experience: 'Mark cares about: The gym — Kevin and Sarah, PRs, the numbers game.' Sarah is Mark's gym friend; canonical since character seeds."
+  },
+  {
+    "name": "karen-canonical-wife",
+    "query": "Karen",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "wife Karen",
+      "Mia and Karen",
+      "Mia & Karen",
+      "Karen is thawing",
+      "Karen laughing"
+    ],
+    "notes": "50 hits. Canonical Facts: 'his wife Karen is thawing' + 'dinner with Mia & Karen'. Karen is Mark's wife per character seeds."
+  },
+  {
+    "name": "prince-canonical-singer",
+    "query": "Prince",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "Prince's",
+      "Daddy Pop",
+      "prince headphones",
+      "prince again"
+    ],
+    "notes": "50 hits. Canonical world-experience: 'listening to Prince's Daddy Pop on repeat' + multiple gym-headphone references. Prince the musician is a genuine part of Mark's context."
+  },
+  {
+    "name": "sasha-canonical-dog",
+    "query": "Sasha",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "Sasha and Theo",
+      "Sasha's being",
+      "his dogs Sasha",
+      "dog food"
+    ],
+    "notes": "12 hits. Canonical world-experience: 'his dogs Sasha and Theo' + 'Mark boiling chicken... for Sasha and Theo'. Sasha is Mark's dog."
+  },
+  {
+    "name": "kathy-load-bearing-loadbearing-to-project",
+    "query": "Kathy",
+    "top_k": 5,
+    "expected_content_substrings": [
+      "Kathy",
+      "kathy"
+    ],
+    "notes": "**LOAD-BEARING.** Kathy (Kathleen Ann Smith, née Frick, died 2007-04-22) is the person Ani is named for. Content-scan surfaces only 2 records, and NEITHER clearly identifies her as the load-bearing late-wife — both read as casual mentions. This fixture entry's weak substring assertion just checks 'any Kathy content surfaces at all.' A FAIL here means her name doesn't reach top-5 even for its own query. This is a genuine finding about the substrate itself, not just the retrieval mechanism — the person the project was built for has almost no memory footprint."
   }
 ]
