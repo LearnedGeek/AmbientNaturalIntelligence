@@ -46,6 +46,28 @@ public class EmotionalState
 
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
 
+    // ── Interoceptive Axis (Feature 44, Phase I.1, 2026-08-03) ──────────────
+    // Body-sensed felt state. Categorically different from Warmth/Energy/Worry/
+    // Playfulness — driven by EXOGENOUS factors (time, cycles, weather, contact-
+    // gap), NOT thought content. This is the counterforce signal source that
+    // pulls register out of the warm-mirror-echo attractor (Issue #99).
+    //
+    // Each 0.0–1.0:
+    //   Tiredness         — physical/cognitive fatigue from cycle accumulation + circadian
+    //   Restlessness      — action-drive from time-since-last-outreach + interlocutor gap
+    //   Groundedness      — settled attention; inverse of ambient perception change intensity
+    //   AmbientBodySense  — weather-driven + circadian; hot/cold/late-night discomfort
+    //
+    // See ani-docs/spec/ANI-Interoceptive-Axis-Implementation-Plan.md.
+    // Gated by AniOptions.InteroceptiveAxisEnabled (default false). When off,
+    // these fields stay at their defaults and no consumer reads them.
+    public float Tiredness         { get; set; } = 0.2f;
+    public float Restlessness      { get; set; } = 0.2f;
+    public float Groundedness      { get; set; } = 0.5f;
+    public float AmbientBodySense  { get; set; } = 0.3f;
+
+    public DateTimeOffset LastInteroceptiveUpdate { get; set; } = DateTimeOffset.MinValue;
+
     /// <summary>
     /// Feature 17: Effective warmth — the warmth the outside world sees.
     /// ContactGapTension suppresses expressed warmth by up to 30% of tension value.

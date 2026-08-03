@@ -500,6 +500,13 @@ public static class AniRuntimeServiceContainer
         services.AddSingleton<AdminCommandHandler>();
         services.AddSingleton<IAdminCommandHandler>(sp => sp.GetRequiredService<AdminCommandHandler>());
         services.AddSingleton<EmotionalProcessor>();
+
+        // Feature 44 (Interoceptive Axis, Phase I.1, 2026-08-03) — updates
+        // interoceptive-axis fields on EmotionalState from exogenous drivers
+        // (time / cycles / weather / contact-gap). Fail-open no-op when
+        // AniOptions.InteroceptiveAxisEnabled is false. Called from
+        // CognitiveCyclePipeline Phase 0 immediately before the state save.
+        services.AddSingleton<IInteroceptiveStateService, InteroceptiveStateService>();
         // 2026-05-19 — sub-builders of the ContextBuilder SRP decomposition.
         // See `ANI-Testability-Architecture-Plan.md` §2. Singleton matches
         // ContextBuilder's lifetime (consumes them via DI).

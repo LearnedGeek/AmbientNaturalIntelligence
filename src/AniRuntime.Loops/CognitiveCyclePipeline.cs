@@ -59,6 +59,10 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
     // NEXT cycle's composers consume the Layer 2 vector. Closes the
     // computed-then-logged-never-piped-back gap from the 5/24 audit.
     private readonly IMotivationVectorTracker?         _motivationTracker;
+    // Feature 44 (Interoceptive Axis, Phase I.1, 2026-08-03) — optional
+    // dep; when unregistered or when AniOptions.InteroceptiveAxisEnabled is
+    // false the service is a no-op and Phase 0 behavior is unchanged.
+    private readonly IInteroceptiveStateService?      _interoceptive;
     private readonly ILogger<CognitiveCyclePipeline>  _log;
     private int _cycleCount;
     private string? _lastAssociativeAnchor;
@@ -85,7 +89,8 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         ITextClassificationService?    mlClassifier = null,
         PersonaSummaryCache?           personaCache = null,
         IDominantRegisterTracker?      registerTracker = null,
-        IMotivationVectorTracker?      motivationTracker = null)
+        IMotivationVectorTracker?      motivationTracker = null,
+        IInteroceptiveStateService?    interoceptive = null)
     {
         _state             = state;
         _persist           = persist;
@@ -108,6 +113,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         _aniOptions        = aniOptions.Value;
         _registerTracker   = registerTracker;
         _motivationTracker = motivationTracker;
+        _interoceptive     = interoceptive;
         _log               = log;
     }
 
@@ -152,6 +158,36 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 _log.LogDebug("Contact-gap tension: {Previous:F3} → {New:F3} (hours since contact: {Hours:F1})",
                     previousTension, emotionalState.ContactGapTension, hoursSinceContact);
             }
+        }
+
+        // Feature 44 (Interoceptive Axis, Phase I.1, 2026-08-03) — update
+        // interoceptive-axis fields from exogenous drivers before save. No-op
+        // when service is unregistered OR when AniOptions.InteroceptiveAxisEnabled
+        // is false. Drivers wired for I.1: time-of-day (via ctx.Now), self-
+        // outreach gap (via DesireState.LastOutreach), interlocutor gap (via
+        // DesireState.LastContactInbound). RecentPerceptionEventCount stays
+        // 0 in I.1 (Groundedness holds at baseline until a later phase adds
+        // cross-cycle perception counting infrastructure); temperature stays
+        // null (AmbientBodySense reflects circadian only until weather is
+        // threaded into the service). Expanding the driver context in
+        // later phases is additive and does not require re-wiring this call.
+        if (_interoceptive is not null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var lastOutreach = desireForTension.LastOutreach;
+            var hoursSinceLastOutreach = lastOutreach != default
+                ? (now - lastOutreach).TotalHours
+                : 24.0; // never-outreached defaults to "a full day quiet"
+            var hoursSinceLastInboundContact = lastContact != default
+                ? (now - lastContact).TotalHours
+                : 0.0;
+            var context = new InteroceptiveDriverContext(
+                Now:                          now,
+                HoursSinceLastOutreach:       hoursSinceLastOutreach,
+                HoursSinceLastInboundContact: hoursSinceLastInboundContact,
+                RecentPerceptionEventCount:   0,
+                CurrentTemperatureFahrenheit: null);
+            _interoceptive.Update(emotionalState, context);
         }
 
         await _persist.SaveEmotionalStateAsync(emotionalState, ct).ConfigureAwait(false);

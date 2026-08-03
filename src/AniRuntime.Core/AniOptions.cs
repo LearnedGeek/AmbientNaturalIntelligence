@@ -400,6 +400,34 @@ public class AniOptions
     public double TensionMax                   { get; set; } = 0.4;    // never the dominant state
     public double TensionDissipationMultiplier { get; set; } = 3.0;    // 3× faster fade on contact
 
+    // Feature 44 (Interoceptive Axis, Phase I.1, 2026-08-03) — body-sensed
+    // felt state driven by exogenous factors (time, cycles, weather, contact-
+    // gap). Counterforce signal source that pulls register out of the warm-
+    // mirror-echo attractor (Issue #99). Default false — ships as no-op until
+    // Mark flips on for per-phase measurement. See
+    // ani-docs/spec/ANI-Interoceptive-Axis-Implementation-Plan.md.
+    public bool   InteroceptiveAxisEnabled     { get; set; } = false;
+
+    // Tiredness driver — cycle count and circadian modulation
+    public double InteroceptiveTirednessCycleHalfLife    { get; set; } = 6.0;   // hours; tiredness half-decays after this many hours of quiet
+    public double InteroceptiveCircadianTirednessNightBoost { get; set; } = 0.35; // added to tiredness during late-night hours
+
+    // Restlessness driver — time since last outreach + interlocutor gap
+    public double InteroceptiveRestlessnessQuietOnsetHours { get; set; } = 4.0;   // restlessness begins after this many quiet hours
+    public double InteroceptiveRestlessnessRatePerHour     { get; set; } = 0.08;  // per hour past onset
+    public double InteroceptiveRestlessnessMax             { get; set; } = 0.85;  // hard cap
+
+    // Groundedness driver — inverse of ambient perception intensity
+    public double InteroceptiveGroundednessBaseline        { get; set; } = 0.55;
+    public double InteroceptiveGroundednessChangePenalty   { get; set; } = 0.06;  // subtracted per new-perception-event over recent window
+    public int    InteroceptiveGroundednessRecentEventWindow { get; set; } = 3;    // number of recent cycles counted
+
+    // AmbientBodySense driver — weather + circadian
+    public double InteroceptiveAmbientHotThresholdF        { get; set; } = 82.0;  // above this = discomfort adds to ambient
+    public double InteroceptiveAmbientColdThresholdF       { get; set; } = 38.0;  // below this = discomfort adds to ambient
+    public double InteroceptiveAmbientWeatherPenalty       { get; set; } = 0.25;  // added when threshold crossed
+    public double InteroceptiveAmbientLateNightBoost       { get; set; } = 0.20;  // added during late-night hours (heavy-body sense)
+
     // Feature 14: Bidirectional confidence gate — inbound claim verification
     public bool   ClaimVerificationEnabled       { get; set; } = true;
     public double ClaimVerificationThreshold     { get; set; } = 0.4;  // below this → needs verification
