@@ -37,6 +37,7 @@ internal static class EfMemoryMappings
         Provenance        = e.Provenance,
         ConfirmedAt       = e.ConfirmedAt,
         ConfirmedBy       = e.ConfirmedBy,
+        Register          = e.Register,
     };
 
     /// <summary>

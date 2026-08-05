@@ -49,6 +49,32 @@ public class MemoryRecord
     // as "confirm" (Phase 2) will set ConfirmedAt=<tag time>, ConfirmedBy='mark-tag'.
     public DateTimeOffset? ConfirmedAt { get; set; }
     public string?         ConfirmedBy { get; set; }
+
+    /// <summary>
+    /// Feature 44 Phase I.3 (2026-08-05) — register-family classification for
+    /// this record. Populated at write time by the Posture-S+1 hybrid path
+    /// (qwen3:14b metadata recognizer emits <c>register</c>) so downstream
+    /// retrieval mechanisms (wandering-mind register-diversity slot) can
+    /// query "give me a record whose register differs from the current
+    /// attractor" without another LLM roundtrip.
+    ///
+    /// <para>
+    /// NULL is expected on:
+    /// - all records created before this field shipped (pending backfill),
+    /// - records persisted via legacy metadata paths that never emit register,
+    /// - Facts / Episodic records where register classification is not applicable.
+    /// </para>
+    ///
+    /// <para>
+    /// Values are the free-form register strings that qwen3:14b emits
+    /// (e.g. "warmth", "longing", "playfulness"). The
+    /// <see cref="EmotionalContribution.ToRegisterFamily"/> mapping folds
+    /// these into the <see cref="RegisterFamily"/> enum for diversity
+    /// comparisons; storing the raw string preserves substrate for
+    /// forward-compatible taxonomy revisions.
+    /// </para>
+    /// </summary>
+    public string?        Register { get; set; }
 }
 
 /// <summary>

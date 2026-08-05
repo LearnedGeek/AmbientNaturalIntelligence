@@ -269,6 +269,25 @@ public class AniDbContext : DbContext
             WHERE provenance IN ('Facts', 'Episodic')
               AND confirmed_at IS NULL";
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        // Feature 44 Phase I.3 (2026-08-05) — register column for the
+        // qwen3:14b metadata-recognizer output. Idempotent add; NULL on
+        // pre-shipping records pending backfill (backfill runs via the
+        // eval CLI tool, not inline here — schema rescue is fast, LLM
+        // classification of 2000+ records is not).
+        await using var checkReg = conn.CreateCommand();
+        checkReg.CommandText = "SELECT name FROM pragma_table_info('memories') WHERE name = 'register'";
+        var hasRegister = false;
+        await using (var reader = await checkReg.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            if (await reader.ReadAsync(ct).ConfigureAwait(false))
+                hasRegister = true;
+        }
+        if (!hasRegister)
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN register TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
     }
 
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)

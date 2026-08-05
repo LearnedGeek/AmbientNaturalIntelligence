@@ -99,4 +99,15 @@ public class MemoryEntity
     /// </summary>
     [Column("confirmed_by")]
     public string? ConfirmedBy { get; set; }
+
+    /// <summary>
+    /// Feature 44 Phase I.3 (2026-08-05) — register-family label emitted by
+    /// the qwen3:14b metadata recognizer at InnerThought write time.
+    /// Populated forward; NULL on pre-shipping records pending backfill.
+    /// Storage is free-form TEXT so taxonomy revisions don't require a
+    /// schema migration — the enum mapping lives in
+    /// <see cref="AniRuntime.Core.Models.EmotionalContribution.ToRegisterFamily"/>.
+    /// </summary>
+    [Column("register")]
+    public string? Register { get; set; }
 }

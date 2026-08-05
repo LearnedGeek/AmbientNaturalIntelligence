@@ -231,6 +231,7 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
             existing.Provenance        = record.Provenance;
             existing.ConfirmedAt       = record.ConfirmedAt;
             existing.ConfirmedBy       = record.ConfirmedBy;
+            existing.Register          = record.Register;
         }
         else
         {
@@ -254,6 +255,7 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
                 Provenance        = record.Provenance,
                 ConfirmedAt       = record.ConfirmedAt,
                 ConfirmedBy       = record.ConfirmedBy,
+                Register          = record.Register,
             });
         }
 

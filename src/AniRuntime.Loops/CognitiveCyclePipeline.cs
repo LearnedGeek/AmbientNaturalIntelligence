@@ -417,6 +417,11 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 // reflections are always Interior tier — they are Ani's self-model
                 // content and never grounded facts about Mark's world.
                 Provenance  = EpistemicTier.Interior,
+                // Feature 44 Phase I.3 (2026-08-05): persist the register
+                // string the hybrid-path metadata recognizer emitted for
+                // this thought. Legacy-path records get Register=null
+                // (recognizer didn't run); backfill covers those.
+                Register    = innerResult.Register,
             }, ct).ConfigureAwait(false);
         }
 
