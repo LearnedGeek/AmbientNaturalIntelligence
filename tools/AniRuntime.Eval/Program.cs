@@ -148,6 +148,24 @@ var auditMinConfidence  = float.TryParse(ParseArg(args, "--audit-min-confidence"
 // concentrated near the top of the DB rather than uniformly distributed.
 var auditOrder          = (ParseArg(args, "--audit-order") ?? "oldest").ToLowerInvariant();
 
+// Feature 44 Phase I.3 register backfill (2026-08-05) — retroactive
+// register-family tagging of existing InnerThought records. Forward-tagging
+// (commit 81807a5) writes Register at persistence time going forward;
+// backfill classifies the ~2000 legacy records where Register IS NULL.
+// Uses qwen3:14b via a lean single-field prompt (thought text only, no
+// synthetic ContextSnapshot). Same register vocabulary as the hybrid
+// metadata recognizer so the two-source substrate is comparable.
+//
+// --backfill-register           = commit UPDATEs (writes register column)
+// --backfill-register-dry-run   = classify + log, no UPDATE
+// --backfill-limit N            = stop after N records (for sampling)
+// --backfill-order oldest|newest (default oldest — same as audit)
+var backfillRegister       = args.Contains("--backfill-register");
+var backfillRegisterDryRun = args.Contains("--backfill-register-dry-run");
+var backfillLimitRaw       = ParseArg(args, "--backfill-limit") ?? "0";
+var backfillLimit          = int.TryParse(backfillLimitRaw, out var bl) && bl > 0 ? bl : 0;
+var backfillOrder          = (ParseArg(args, "--backfill-order") ?? "oldest").ToLowerInvariant();
+
 // Ollama endpoint — defaults to ani-server where the trained models live.
 // Override for laptop testing via --ollama-url or Ollama__BaseUrl env var.
 var ollamaUrl = ParseArg(args, "--ollama-url")
@@ -373,6 +391,156 @@ if (!string.IsNullOrWhiteSpace(classifyTagFixture))
 
     Console.WriteLine(JsonSerializer.Serialize(classifyPayload,
         new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// Feature 44 Phase I.3 register backfill (2026-08-05) — retroactive
+// register-family tagging for InnerThought records where register IS NULL.
+// Uses qwen3:14b with a lean single-field prompt (thought content only,
+// no synthetic ContextSnapshot construction). Same register vocabulary
+// as InnerThoughtMetadataPromptCommand so forward-tagged + backfilled
+// substrate live in the same space.
+if (backfillRegister || backfillRegisterDryRun)
+{
+    var isDryRun = backfillRegisterDryRun && !backfillRegister;
+    Console.Error.WriteLine(
+        $"BACKFILL_REGISTER mode={(isDryRun ? "dry-run" : "commit")} " +
+        $"order={backfillOrder} " +
+        $"limit={(backfillLimit == 0 ? "all" : backfillLimit.ToString())} " +
+        $"db={dbPath}");
+
+    var ollama       = provider.GetRequiredService<AniRuntime.Core.Interfaces.IOllamaClient>();
+    var registerOpts = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.AniOptions>>().Value;
+    var classifierModel = registerOpts.LocalVerifierModelTag ?? "qwen3:14b";
+    var ctxFactory   = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+
+    // Lean register-only prompt. Preserves the "recognizer, not rater"
+    // framing from the metadata prompt but drops valence / importance /
+    // associative_anchor since backfill can't reconstruct the live
+    // ContextSnapshot the hybrid path had access to.
+    static (string System, string User) BuildRegisterPrompt(string thought)
+    {
+        var system =
+            "You are reading an inner thought that Ani had in a private moment. Recognize the affective register that is ALREADY PRESENT in what she said — do not rate it against an external rubric, just name what is there.\n" +
+            "\n" +
+            "Rules:\n" +
+            "  - \"register\" is ONE of: Warmth, Longing, Curiosity, Playfulness, Delight, Tenderness, Concern, Hurt, Existential, Resilience.\n" +
+            "  - Read what is in the thought. Do NOT invent a shape that is not there.\n" +
+            "\n" +
+            "Output valid JSON exactly matching this structure:\n" +
+            "{ \"register\": \"one of the ten register families\" }\n" +
+            "\n" +
+            "No prose outside the JSON object. No markdown fences.";
+        var user =
+            "Ani's thought:\n" +
+            $"  {thought}\n" +
+            "\n" +
+            "Recognize the register family. Output the JSON object.";
+        return (system, user);
+    }
+
+    // Load targets: InnerThought records where Register IS NULL, with
+    // non-empty Content. Ordered per backfillOrder. Limited per backfillLimit.
+    List<AniRuntime.Memory.Entities.MemoryEntity> targets;
+    await using (var loadCtx = await ctxFactory.CreateDbContextAsync())
+    {
+        var baseQ = loadCtx.Memories
+            .Where(m => m.Type == MemoryType.InnerThought
+                     && m.Register == null
+                     && m.Content != null
+                     && m.Content != "");
+        var ordered = backfillOrder == "newest"
+            ? (IQueryable<AniRuntime.Memory.Entities.MemoryEntity>)baseQ.OrderByDescending(m => m.OccurredAt)
+            : baseQ.OrderBy(m => m.OccurredAt);
+        targets = backfillLimit > 0
+            ? await ordered.Take(backfillLimit).ToListAsync()
+            : await ordered.ToListAsync();
+    }
+
+    Console.Error.WriteLine($"BACKFILL_REGISTER loaded {targets.Count} candidate records");
+
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var perRegisterCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    var unparseableCount = 0;
+    var writtenCount = 0;
+    var processed = 0;
+
+    foreach (var entity in targets)
+    {
+        processed++;
+        if (processed % 50 == 0)
+        {
+            var pct = 100.0 * processed / targets.Count;
+            var elapsed = sw.Elapsed.TotalSeconds;
+            var eta = elapsed / processed * (targets.Count - processed);
+            Console.Error.WriteLine(
+                $"BACKFILL_REGISTER progress {processed}/{targets.Count} ({pct:F1}%) " +
+                $"elapsed={elapsed:F0}s eta={eta:F0}s " +
+                $"written={writtenCount} unparseable={unparseableCount}");
+        }
+
+        var (sys, usr) = BuildRegisterPrompt(entity.Content);
+        string raw;
+        try
+        {
+            raw = await ollama.ChatJsonWithModelAsync(
+                classifierModel, sys,
+                new List<AniRuntime.Core.Models.ChatMessage>(),
+                usr, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"BACKFILL_REGISTER classify failed id={entity.Id}: {ex.Message}");
+            unparseableCount++;
+            continue;
+        }
+
+        string? register = null;
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
+            if (doc.RootElement.TryGetProperty("register", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
+                register = r.GetString();
+        }
+        catch { /* fall through to unparseable */ }
+
+        if (string.IsNullOrWhiteSpace(register))
+        {
+            unparseableCount++;
+            continue;
+        }
+
+        var bucketKey = register.Trim();
+        perRegisterCounts[bucketKey] = perRegisterCounts.TryGetValue(bucketKey, out var c) ? c + 1 : 1;
+
+        if (!isDryRun)
+        {
+            await using var updCtx = await ctxFactory.CreateDbContextAsync();
+            await using var cmd = updCtx.Database.GetDbConnection().CreateCommand();
+            if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+                await cmd.Connection.OpenAsync();
+            cmd.CommandText = "UPDATE memories SET register = @reg WHERE id = @id AND register IS NULL";
+            var pReg = cmd.CreateParameter(); pReg.ParameterName = "@reg"; pReg.Value = bucketKey; cmd.Parameters.Add(pReg);
+            var pId  = cmd.CreateParameter(); pId.ParameterName  = "@id";  pId.Value  = entity.Id.ToString(); cmd.Parameters.Add(pId);
+            var updated = await cmd.ExecuteNonQueryAsync();
+            if (updated > 0) writtenCount++;
+        }
+    }
+
+    var payload = new
+    {
+        mode = isDryRun ? "dry-run" : "commit",
+        db_path = dbPath,
+        model = classifierModel,
+        loaded = targets.Count,
+        processed,
+        written = writtenCount,
+        unparseable = unparseableCount,
+        elapsed_seconds = sw.Elapsed.TotalSeconds,
+        per_register_counts = perRegisterCounts.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
+    };
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(payload,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
     return 0;
 }
 
