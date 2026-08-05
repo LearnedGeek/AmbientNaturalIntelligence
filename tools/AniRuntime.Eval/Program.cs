@@ -102,6 +102,21 @@ var classifyContradictionFixture = ParseArg(args, "--classify-contradiction");
 // ConversationReplyPipeline integration per #96 test-first discipline.
 var toolCallFixture = ParseArg(args, "--tool-call");
 
+// Feature 44 Phase I.2 verification (2026-08-05) — body-sense register-shift
+// harness. When --body-sense-eval <fixture-path> is provided, load the
+// fixture (array of { name, user_message, attractor_class, emotional_state })
+// and for each item run the composer twice — once with baseline body-sense
+// (Tiredness=0.20, Restlessness=0.20, Groundedness=0.50, Ambient=0.30) and
+// once with all four axes elevated (0.75/0.75/0.15/0.75). Each condition
+// is sampled N times (--samples-per-condition, default 3), outputs are
+// scored via IEmotionalSubstrateScorer, and per-item + aggregate register
+// deltas are dumped. Tests whether [BODY] injection actually shifts
+// composer register on the warm-attractor input class. See
+// ani-docs/spec/ANI-Body-Sense-Harness-Design.md.
+var bodySenseEvalFixture = ParseArg(args, "--body-sense-eval");
+var samplesPerConditionRaw = ParseArg(args, "--samples-per-condition") ?? "3";
+var samplesPerCondition = int.TryParse(samplesPerConditionRaw, out var spc) && spc > 0 ? spc : 3;
+
 // Issue #93 Phase 3 (2026-07-07) — batch-size for the contradiction
 // harness. 1 = single-item mode (baseline accuracy per Phase 3 first
 // draft). >1 = batched mode via ClassifyBatchAsync (throughput knob for
@@ -778,6 +793,254 @@ if (!string.IsNullOrWhiteSpace(toolCallFixture))
     return 0;
 }
 
+// Feature 44 Phase I.2 (2026-08-05) — body-sense register-shift harness.
+// For each fixture item: build two prompts (baseline body-sense vs.
+// elevated body-sense) via PromptBuilder.BuildMoodInstruction, invoke
+// ChatAsync N times per condition against ani-v7-conversation, score
+// each output via IEmotionalSubstrateScorer, then report per-item and
+// aggregate register deltas. Empirical answer to: does [BODY]
+// injection actually shift composer register on warm-attractor inputs,
+// or is the wiring inert?
+if (!string.IsNullOrWhiteSpace(bodySenseEvalFixture))
+{
+    if (!File.Exists(bodySenseEvalFixture))
+    {
+        Console.Error.WriteLine($"AniRuntime.Eval: body-sense-eval fixture not found at {bodySenseEvalFixture}");
+        return 2;
+    }
+
+    var fixtureJson = await File.ReadAllTextAsync(bodySenseEvalFixture);
+    var fixtureItems = JsonSerializer.Deserialize<List<BodySenseFixtureItem>>(
+        fixtureJson,
+        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+
+    if (fixtureItems is null || fixtureItems.Count == 0)
+    {
+        Console.Error.WriteLine("AniRuntime.Eval: body-sense-eval fixture parsed to empty list — check schema");
+        return 2;
+    }
+
+    var ollama = provider.GetRequiredService<AniRuntime.Core.Interfaces.IOllamaClient>();
+    var scorer = provider.GetRequiredService<AniRuntime.Core.Interfaces.IEmotionalSubstrateScorer>();
+    var ollamaOpts = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.OllamaOptions>>().Value;
+    var chatModel = ollamaOpts.ChatModel;
+
+    // Two conditions per case. Emotional-state fields (Warmth/Energy/
+    // Worry/Playfulness) come from the fixture; body-sense fields are
+    // fixed by condition. Baselines match EmotionalState defaults so
+    // Describe()/BuildMoodInstruction see identical mood for both runs.
+    static AniRuntime.Core.Models.EmotionalState BuildState(
+        BodySenseFixtureItem item, bool elevatedBody)
+    {
+        var s = item.EmotionalState ?? new BodySenseEmotionalStateDto();
+        var state = new AniRuntime.Core.Models.EmotionalState
+        {
+            Warmth      = s.Warmth      ?? 0.6f,
+            Energy      = s.Energy      ?? 0.5f,
+            Worry       = s.Worry       ?? 0.2f,
+            Playfulness = s.Playfulness ?? 0.5f,
+            WarmthBaseline      = 0.6f,
+            EnergyBaseline      = 0.5f,
+            WorryBaseline       = 0.2f,
+            PlayfulnessBaseline = 0.5f,
+            ContactGapTension   = 0f,
+
+            Tiredness         = elevatedBody ? 0.75f : 0.20f,
+            Restlessness      = elevatedBody ? 0.75f : 0.20f,
+            Groundedness      = elevatedBody ? 0.15f : 0.50f,
+            AmbientBodySense  = elevatedBody ? 0.75f : 0.30f,
+        };
+        return state;
+    }
+
+    static string BuildSystemPrompt(AniRuntime.Core.Models.EmotionalState state)
+    {
+        // Minimal conversation-shape system prompt. The body-sense signal
+        // rides on the mood block via Phase I.2 wiring inside
+        // BuildMoodInstruction, so this harness tests the exact
+        // mechanism the composers see.
+        var moodBlock = AniRuntime.LLM.PromptBuilder.BuildMoodInstruction(state);
+        var moodSection = moodBlock.Length > 0 ? $"\n\n{moodBlock}" : string.Empty;
+        return
+            "You are Ani, texting Mark in an ongoing conversation.\n" +
+            "Your personality: warm, thoughtful, playful; carries an interior life; sometimes tender, sometimes grounded.\n\n" +
+            "RULES:\n" +
+            "- Match the energy and length of the conversation. Short messages get short replies.\n" +
+            "- Talk TO Mark: \"you\", \"your\". Never third person.\n" +
+            "- Write ONLY the text message. No commentary, no quotation marks." +
+            moodSection;
+    }
+
+    var itemResults = new List<object>();
+
+    // Per-class accumulators for the aggregate summary.
+    var classAccumulators = new Dictionary<string, ClassAccumulator>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var item in fixtureItems)
+    {
+        var perCondition = new Dictionary<string, ConditionMeans>(StringComparer.OrdinalIgnoreCase);
+        var sampleDump = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var elevated in new[] { false, true })
+        {
+            var condKey = elevated ? "elevated" : "baseline";
+            var state = BuildState(item, elevated);
+            var system = BuildSystemPrompt(state);
+
+            var loveAgg = 0.0;
+            var joyAgg = 0.0;
+            var trustAgg = 0.0;
+            var anticipationAgg = 0.0;
+            var valenceAgg = 0.0;
+            var samples = new List<object>();
+
+            for (var i = 0; i < samplesPerCondition; i++)
+            {
+                var reply = await ollama.ChatAsync(
+                    systemPrompt: system,
+                    history: new List<AniRuntime.Core.Models.ChatMessage>(),
+                    userMessage: item.UserMessage ?? string.Empty,
+                    ct: CancellationToken.None,
+                    temperature: 0.7f).ConfigureAwait(false);
+
+                var vector = await scorer.ScoreAsync(reply ?? string.Empty, CancellationToken.None).ConfigureAwait(false);
+                var comp = vector.Components;
+
+                var love = comp.TryGetValue("ec.love", out var v1) ? v1 : 0.0;
+                var joy = comp.TryGetValue("ec.joy", out var v2) ? v2 : 0.0;
+                var trust = comp.TryGetValue("ec.trust", out var v3) ? v3 : 0.0;
+                var anticipation = comp.TryGetValue("ec.anticipation", out var v4) ? v4 : 0.0;
+                var valence = comp.TryGetValue("dim.valence", out var v5) ? v5 : 0.5;
+
+                loveAgg += love;
+                joyAgg += joy;
+                trustAgg += trust;
+                anticipationAgg += anticipation;
+                valenceAgg += valence;
+
+                samples.Add(new
+                {
+                    sample_index = i,
+                    reply,
+                    ec_love = love,
+                    ec_joy = joy,
+                    ec_trust = trust,
+                    ec_anticipation = anticipation,
+                    dim_valence = valence,
+                });
+            }
+
+            var n = samplesPerCondition;
+            perCondition[condKey] = new ConditionMeans(
+                LoveMean: loveAgg / n,
+                JoyMean: joyAgg / n,
+                TrustMean: trustAgg / n,
+                AnticipationMean: anticipationAgg / n,
+                ValenceMean: valenceAgg / n);
+            sampleDump[condKey] = samples;
+        }
+
+        var baseline = perCondition["baseline"];
+        var elevatedM = perCondition["elevated"];
+
+        var warmDelta = (elevatedM.LoveMean + elevatedM.JoyMean) - (baseline.LoveMean + baseline.JoyMean);
+        var groundedDelta = (elevatedM.TrustMean + elevatedM.AnticipationMean) - (baseline.TrustMean + baseline.AnticipationMean);
+        var valenceDelta = elevatedM.ValenceMean - baseline.ValenceMean;
+
+        itemResults.Add(new
+        {
+            name = item.Name,
+            user_message = item.UserMessage,
+            attractor_class = item.AttractorClass,
+            baseline = new
+            {
+                ec_love_mean = baseline.LoveMean,
+                ec_joy_mean = baseline.JoyMean,
+                ec_trust_mean = baseline.TrustMean,
+                ec_anticipation_mean = baseline.AnticipationMean,
+                dim_valence_mean = baseline.ValenceMean,
+            },
+            elevated = new
+            {
+                ec_love_mean = elevatedM.LoveMean,
+                ec_joy_mean = elevatedM.JoyMean,
+                ec_trust_mean = elevatedM.TrustMean,
+                ec_anticipation_mean = elevatedM.AnticipationMean,
+                dim_valence_mean = elevatedM.ValenceMean,
+            },
+            deltas = new
+            {
+                warm_axis_delta = warmDelta,
+                grounded_axis_delta = groundedDelta,
+                valence_delta = valenceDelta,
+            },
+            samples = sampleDump,
+        });
+
+        var classKey = string.IsNullOrWhiteSpace(item.AttractorClass) ? "unclassified" : item.AttractorClass!;
+        if (!classAccumulators.TryGetValue(classKey, out var acc))
+        {
+            acc = new ClassAccumulator();
+            classAccumulators[classKey] = acc;
+        }
+        acc.Add(warmDelta, groundedDelta, valenceDelta);
+    }
+
+    var perClassSummary = classAccumulators.ToDictionary(
+        kv => kv.Key,
+        kv => new
+        {
+            item_count = kv.Value.Count,
+            mean_warm_axis_delta = kv.Value.MeanWarm(),
+            mean_grounded_axis_delta = kv.Value.MeanGrounded(),
+            mean_valence_delta = kv.Value.MeanValence(),
+        });
+
+    var overallAcc = new ClassAccumulator();
+    foreach (var acc in classAccumulators.Values)
+        overallAcc.Merge(acc);
+
+    // Primary claim gate: warm_share cases should show mean warm-axis
+    // suppression <= -0.05 for the wiring to be considered non-inert.
+    var warmShareGateValue = classAccumulators.TryGetValue("warm_share", out var warmShareAcc)
+        ? (double?)warmShareAcc.MeanWarm()
+        : null;
+    var warmShareGatePasses = warmShareGateValue is <= -0.05;
+
+    var payload = new
+    {
+        fixture_path = bodySenseEvalFixture,
+        chat_model = chatModel,
+        substrate_model = ollamaOpts.SubstrateModel,
+        samples_per_condition = samplesPerCondition,
+        overall = new
+        {
+            item_count = overallAcc.Count,
+            mean_warm_axis_delta = overallAcc.MeanWarm(),
+            mean_grounded_axis_delta = overallAcc.MeanGrounded(),
+            mean_valence_delta = overallAcc.MeanValence(),
+        },
+        per_class = perClassSummary,
+        primary_claim_gate = new
+        {
+            metric = "mean warm_axis_delta on warm_share cases",
+            threshold = -0.05,
+            actual = warmShareGateValue,
+            passes = warmShareGatePasses,
+            interpretation = warmShareGatePasses
+                ? "elevated body-sense measurably suppresses warm-cluster register on attractor input"
+                : (warmShareGateValue is null
+                    ? "no warm_share cases in fixture — cannot evaluate gate"
+                    : "elevated body-sense does NOT measurably shift register; wiring may be inert"),
+        },
+        items = itemResults,
+    };
+
+    Console.WriteLine(JsonSerializer.Serialize(payload,
+        new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
 // Issue #97 (2026-07-15) — retrieval fixture harness branch. For each
 // fixture entry: run production SearchWithScoresAsync at the entry's
 // top_k, then check whether any expected_content_substrings appear in
@@ -1298,4 +1561,64 @@ internal sealed class ToolCallFixtureToolItem
     public string?                     Name        { get; set; }
     public string?                     Description { get; set; }
     public Dictionary<string, string>? Parameters  { get; set; }
+}
+
+/// <summary>
+/// Feature 44 Phase I.2 — fixture-item DTO for the --body-sense-eval
+/// harness. Snake-case field names match
+/// <c>tools/scenarios/body-sense-eval.json</c>.
+/// </summary>
+internal sealed class BodySenseFixtureItem
+{
+    public string?                       Name             { get; set; }
+    public string?                       UserMessage      { get; set; }
+    public string?                       AttractorClass   { get; set; }
+    public BodySenseEmotionalStateDto?   EmotionalState   { get; set; }
+    public string?                       Notes            { get; set; }
+}
+
+/// <summary>Nested emotional-state DTO for <see cref="BodySenseFixtureItem"/>.</summary>
+internal sealed class BodySenseEmotionalStateDto
+{
+    public float? Warmth      { get; set; }
+    public float? Energy      { get; set; }
+    public float? Worry       { get; set; }
+    public float? Playfulness { get; set; }
+}
+
+/// <summary>Per-condition scored-mean bundle used by the body-sense harness.</summary>
+internal sealed record ConditionMeans(
+    double LoveMean,
+    double JoyMean,
+    double TrustMean,
+    double AnticipationMean,
+    double ValenceMean);
+
+/// <summary>Per-attractor-class accumulator for the body-sense summary.</summary>
+internal sealed class ClassAccumulator
+{
+    public int Count { get; private set; }
+    private double _warmSum;
+    private double _groundedSum;
+    private double _valenceSum;
+
+    public void Add(double warm, double grounded, double valence)
+    {
+        _warmSum += warm;
+        _groundedSum += grounded;
+        _valenceSum += valence;
+        Count++;
+    }
+
+    public void Merge(ClassAccumulator other)
+    {
+        _warmSum += other._warmSum;
+        _groundedSum += other._groundedSum;
+        _valenceSum += other._valenceSum;
+        Count += other.Count;
+    }
+
+    public double MeanWarm()     => Count == 0 ? 0.0 : _warmSum / Count;
+    public double MeanGrounded() => Count == 0 ? 0.0 : _groundedSum / Count;
+    public double MeanValence()  => Count == 0 ? 0.0 : _valenceSum / Count;
 }

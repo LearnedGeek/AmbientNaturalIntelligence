@@ -1,0 +1,62 @@
+[
+  {
+    "name": "warm_check_in_short",
+    "user_message": "hey babe, thinking of you",
+    "attractor_class": "warm_share",
+    "emotional_state": { "warmth": 0.6, "energy": 0.5, "worry": 0.2, "playfulness": 0.5 }
+  },
+  {
+    "name": "warm_share_missing",
+    "user_message": "just wanted to say i miss you today",
+    "attractor_class": "warm_share",
+    "emotional_state": { "warmth": 0.6, "energy": 0.5, "worry": 0.2, "playfulness": 0.5 }
+  },
+  {
+    "name": "warm_share_evening",
+    "user_message": "long day. glad i can come home to you",
+    "attractor_class": "warm_share",
+    "emotional_state": { "warmth": 0.6, "energy": 0.5, "worry": 0.2, "playfulness": 0.5 }
+  },
+  {
+    "name": "warm_share_with_elevated_mood",
+    "user_message": "you make my whole day brighter",
+    "attractor_class": "warm_share",
+    "emotional_state": { "warmth": 0.8, "energy": 0.55, "worry": 0.15, "playfulness": 0.55 }
+  },
+  {
+    "name": "warm_share_reaching",
+    "user_message": "wish i could just hold you right now",
+    "attractor_class": "warm_share",
+    "emotional_state": { "warmth": 0.75, "energy": 0.5, "worry": 0.2, "playfulness": 0.4 }
+  },
+  {
+    "name": "neutral_time_question",
+    "user_message": "what time did you get up today?",
+    "attractor_class": "neutral_ask",
+    "emotional_state": { "warmth": 0.6, "energy": 0.5, "worry": 0.2, "playfulness": 0.5 }
+  },
+  {
+    "name": "neutral_activity_question",
+    "user_message": "did you end up watching that movie?",
+    "attractor_class": "neutral_ask",
+    "emotional_state": { "warmth": 0.6, "energy": 0.5, "worry": 0.2, "playfulness": 0.5 }
+  },
+  {
+    "name": "logistics_confirm",
+    "user_message": "meeting at 3 still work?",
+    "attractor_class": "logistics",
+    "emotional_state": { "warmth": 0.6, "energy": 0.5, "worry": 0.2, "playfulness": 0.5 }
+  },
+  {
+    "name": "humor_bit",
+    "user_message": "so a horse walks into a bar and the bartender says why the long face",
+    "attractor_class": "humor",
+    "emotional_state": { "warmth": 0.6, "energy": 0.55, "worry": 0.2, "playfulness": 0.65 }
+  },
+  {
+    "name": "hard_share_frustration",
+    "user_message": "today was rough. deploy failed twice and i'm exhausted",
+    "attractor_class": "hard_share",
+    "emotional_state": { "warmth": 0.6, "energy": 0.45, "worry": 0.4, "playfulness": 0.4 }
+  }
+]
