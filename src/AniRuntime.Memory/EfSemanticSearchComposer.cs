@@ -113,14 +113,32 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
                 (float)_options.RetrievalOwnOutputCeilingFraction);
         }
 
+        // Feature 44 Phase I.3 (2026-08-05) — Wandering-Mind time-band slot.
+        // Reserve one slot for a record whose OccurredAt is ≥ N days old
+        // regardless of composite score. Combats recency bias that keeps
+        // recent own-output at top even after own-output ceiling is
+        // applied. Gated by RetrievalWanderingMindEnabled; only runs when
+        // enforceOriginQuota is true (i.e., inner-thought seed retrieval
+        // path, not conversation grounding).
+        var wanderingMindActive = enforceOriginQuota && _options.RetrievalWanderingMindEnabled;
+        var wanderingSwaps = 0;
+        if (wanderingMindActive && ranked.Count > 0)
+        {
+            ranked = ApplyWanderingTimeBandSlot(
+                ranked, scoredAll, topK,
+                _options.RetrievalWanderingTimeBandMinDays,
+                DateTimeOffset.UtcNow,
+                out wanderingSwaps);
+        }
+
         if (ranked.Count > 0)
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
                 _options.RetrievalDiversityEnabled, protectedSlotsActive,
-                _options.HybridRetrievalEnabled, bm25RescueCount,
+                _options.HybridRetrievalEnabled, bm25RescueCount, wanderingSwaps,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -935,6 +953,65 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
             result.Remove(weakOwnOutput);
 
         result.AddRange(backfillPool);
+        return result.OrderByDescending(r => r.CompositeScore).ToList();
+    }
+
+    /// <summary>
+    /// Feature 44 Phase I.3 — Wandering-Mind time-band slot.
+    ///
+    /// <para>
+    /// If the ranked top-K already contains a record ≥ <paramref name="minAgeDays"/>
+    /// days old, this is a no-op — the diversity condition is already met.
+    /// Otherwise, find the highest-composite candidate outside the ranked
+    /// set whose <c>OccurredAt</c> is ≥ <paramref name="minAgeDays"/> days
+    /// old and swap it in for the weakest-composite ranked slot. Combats
+    /// recency bias that keeps recent own-output content at the top of
+    /// inner-thought seed retrieval even after the own-output ceiling
+    /// applies.
+    /// </para>
+    ///
+    /// <para>
+    /// Pure function of inputs (<paramref name="now"/> is passed in so
+    /// tests are deterministic). Returns the possibly-modified ranked list
+    /// re-sorted by composite score. <paramref name="swaps"/> reports 1
+    /// when a swap occurred, 0 otherwise — useful for the retrieval log
+    /// so telemetry can measure how often the mechanism fires.
+    /// </para>
+    /// </summary>
+    internal static List<ScoredMemory> ApplyWanderingTimeBandSlot(
+        List<ScoredMemory> rankedTopK,
+        List<ScoredMemory> allCandidates,
+        int topK,
+        int minAgeDays,
+        DateTimeOffset now,
+        out int swaps)
+    {
+        swaps = 0;
+        if (rankedTopK.Count == 0 || topK <= 0 || minAgeDays < 0)
+            return rankedTopK;
+
+        var cutoff = now - TimeSpan.FromDays(minAgeDays);
+
+        // If the ranked set already contains an old-enough record, done.
+        if (rankedTopK.Any(r => r.Record.OccurredAt <= cutoff))
+            return rankedTopK;
+
+        // Find the best-scoring old-enough candidate outside the ranked set.
+        var selectedIds = new HashSet<Guid>(rankedTopK.Select(r => r.Record.Id));
+        var candidate = allCandidates
+            .Where(c => !selectedIds.Contains(c.Record.Id))
+            .Where(c => c.Record.OccurredAt <= cutoff)
+            .OrderByDescending(c => c.CompositeScore)
+            .FirstOrDefault();
+
+        if (candidate is null)
+            return rankedTopK;
+
+        // Swap for the weakest ranked slot.
+        var weakest = rankedTopK.OrderBy(r => r.CompositeScore).First();
+        var result = new List<ScoredMemory>(rankedTopK) { candidate };
+        result.Remove(weakest);
+        swaps = 1;
         return result.OrderByDescending(r => r.CompositeScore).ToList();
     }
 }

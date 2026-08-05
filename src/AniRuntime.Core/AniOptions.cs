@@ -221,6 +221,35 @@ public class AniOptions
     public bool   RetrievalOwnOutputCeilingEnabled  { get; set; } = false;
     public double RetrievalOwnOutputCeilingFraction { get; set; } = 0.25;
 
+    // ── Feature 44 Phase I.3 (2026-08-05) — Wandering-Mind retrieval discipline
+    //
+    // Reserves top-K slots in inner-thought seed retrieval for topical /
+    // temporal / seed-entity diversity, forcing the inner-thought model to
+    // consider substrate outside the "recent-own-output + current-attractor"
+    // gravity well. Complements the Theme G own-output ceiling: ceiling
+    // removes dominance FROM below, wandering-mind adds diversity FROM
+    // outside the ranked pool.
+    //
+    // Phase I.3 shipping cadence:
+    //   - First mechanism (this commit): time-band sampling — reserve 1 slot
+    //     for a record whose OccurredAt is ≥ RetrievalWanderingTimeBandMinDays
+    //     old, regardless of composite score. Combats recency bias that
+    //     keeps recent own-output at top even after own-output ceiling.
+    //   - Follow-up mechanisms (subsequent commits): register-family
+    //     diversity slot, character-seed entity injection slot,
+    //     substrate_feedback_ratio metric logging, retrieval-anchors
+    //     fixture entries for wandering-mind acceptance.
+    //
+    // All wandering-mind slots gate on the same flag so operational rollback
+    // is one flip. Slot count is additive on top of ranked top-K — the top-K
+    // itself doesn't shrink; the highest-composite candidates are preserved
+    // and the reserved slot(s) are prepended / appended.
+    //
+    // Default false in code; production appsettings ships true so live
+    // observation begins on deploy.
+    public bool   RetrievalWanderingMindEnabled        { get; set; } = false;
+    public int    RetrievalWanderingTimeBandMinDays    { get; set; } = 7;
+
     // Agentic Lens Layer 1 Phase 1d: self-dominance perception source (Apr 2026).
     //
     // When enabled, the RetrievalSelfDominancePerceptionSource emits an
