@@ -47,6 +47,13 @@ public sealed class ReflectionPromptCommand : IPromptCommand<ReflectionPromptInp
         if (mood.Length > 0)
             sections.Add($"(How you're feeling right now: {mood})");
 
+        // Feature 44 Phase I.2: body-sense as a physical-substrate line
+        // distinct from the emotional mood — the reflection can notice
+        // the body separately from the feeling.
+        var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+        if (body.Length > 0)
+            sections.Add(body);
+
         var memories = snapshot.RelevantMemory
             .Where(m => m.Type != MemoryType.InnerThought)
             .Take(3)

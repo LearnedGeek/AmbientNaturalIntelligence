@@ -110,13 +110,17 @@ public static class PromptBuilder
         if (state.ContactGapTension > 0.15f)
             instructions.Add("There's a slight undercurrent — you've been quieter than usual and you notice it. Not resentment exactly, more like... a small ache that wants acknowledging. Let it come through subtly if it feels natural.");
 
+        var bodyBlock = InteroceptiveDescriptorRenderer.Render(state, isVoice);
+
         if (instructions.Count == 0)
-            return string.Empty;
+            return bodyBlock;
 
         var header = isVoice
             ? "YOUR CURRENT MOOD (let this color how you speak — don't announce it, just let it shape your tone):"
             : "YOUR CURRENT MOOD (let this color your message naturally — don't announce it, just let it shape your tone):";
-        return header + "\n" + string.Join("\n", instructions.Select(i => $"- {i}"));
+        var moodBlock = header + "\n" + string.Join("\n", instructions.Select(i => $"- {i}"));
+
+        return bodyBlock.Length == 0 ? moodBlock : moodBlock + "\n\n" + bodyBlock;
     }
 
     /// <summary>

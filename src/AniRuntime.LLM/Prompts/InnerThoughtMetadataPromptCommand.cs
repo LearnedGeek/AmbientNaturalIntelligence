@@ -63,6 +63,13 @@ public sealed class InnerThoughtMetadataPromptCommand : IPromptCommand<InnerThou
             $"  Mood: {snapshot.EmotionalState.Describe()}",
         };
 
+        // Feature 44 Phase I.2: interoceptive body-sense as a distinct
+        // context line so the recognizer sees the physical substrate
+        // alongside the emotional one.
+        var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+        if (body.Length > 0)
+            sections.Add($"  Body: {body}");
+
         if (!string.IsNullOrEmpty(snapshot.WorldSeed))
             sections.Add($"  Lingering: {snapshot.WorldSeed}");
 

@@ -58,6 +58,12 @@ public sealed class ReconsiderationReplyPromptCommand : IPromptCommand<Reconside
         if (mood.Length > 0)
             sections.Add($"(Your current mood: {mood})");
 
+        // Feature 44 Phase I.2: interoceptive body-sense as a distinct
+        // physical-substrate line beside the emotional mood.
+        var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+        if (body.Length > 0)
+            sections.Add(body);
+
         sections.Add($"Acknowledge {contact}'s message, then share what's on your mind.");
 
         var user = string.Join("\n", sections);

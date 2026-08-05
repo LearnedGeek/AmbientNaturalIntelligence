@@ -106,6 +106,13 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             var mood = snapshot.EmotionalState.Describe();
             if (mood.Length > 0)
                 sections.Add($"(Your current mood: {mood})");
+
+            // Feature 44 Phase I.2: interoceptive body-sense surfaces even
+            // when BuildMoodInstruction had nothing to say (both baseline
+            // registers can coexist with an elevated body signal).
+            var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+            if (body.Length > 0)
+                sections.Add(body);
         }
 
         var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
