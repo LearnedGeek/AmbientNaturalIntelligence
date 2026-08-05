@@ -122,8 +122,17 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         // path, not conversation grounding).
         var wanderingMindActive = enforceOriginQuota && _options.RetrievalWanderingMindEnabled;
         var wanderingSwaps = 0;
+        // Phase I.3 disambiguation telemetry (2026-08-05 evening) — we need
+        // to distinguish "mechanism ran but ranked already contained an old
+        // record" from "mechanism didn't run at all". Capture the age of
+        // the oldest record in ranked at the moment the mechanism is
+        // considered, so `wander_ranked_oldest_days` on the log line tells
+        // us which branch we're in without another deploy.
+        var wanderRankedOldestDays = -1.0;
         if (wanderingMindActive && ranked.Count > 0)
         {
+            var oldest = ranked.Min(r => r.Record.OccurredAt);
+            wanderRankedOldestDays = (DateTimeOffset.UtcNow - oldest).TotalDays;
             ranked = ApplyWanderingTimeBandSlot(
                 ranked, scoredAll, topK,
                 _options.RetrievalWanderingTimeBandMinDays,
@@ -135,10 +144,10 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
                 _options.RetrievalDiversityEnabled, protectedSlotsActive,
-                _options.HybridRetrievalEnabled, bm25RescueCount, wanderingSwaps,
+                _options.HybridRetrievalEnabled, bm25RescueCount, wanderingSwaps, wanderRankedOldestDays,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
