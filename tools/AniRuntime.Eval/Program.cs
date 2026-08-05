@@ -258,6 +258,16 @@ services.AddLogging(b =>
 });
 AniRuntimeServiceContainer.AddAniRuntimeCore(services, configuration);
 
+// AniRuntimeServiceContainer registers IOllamaClient's HttpClient with a
+// hardcoded 2-minute timeout — appropriate for the runtime's cycle cadence
+// but too short for eval harnesses that may hit cold-load of a 4GB
+// substrate model. Post-configure the same typed-client's HttpClient
+// actions to raise the ceiling; the extra action runs after the
+// container's 2-minute setter, so the last-write-wins to 10 minutes.
+services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(
+    nameof(AniRuntime.Core.Interfaces.IOllamaClient),
+    o => o.HttpClientActions.Add(c => c.Timeout = TimeSpan.FromMinutes(10)));
+
 // ── Override the reply channel + resolver with capturing implementations ──
 // Last-registration-wins for GetService<T>; our capturing resolver shadows
 // the production ReplyChannelResolver. The capturing channel is exposed as
@@ -824,6 +834,45 @@ if (!string.IsNullOrWhiteSpace(bodySenseEvalFixture))
     var scorer = provider.GetRequiredService<AniRuntime.Core.Interfaces.IEmotionalSubstrateScorer>();
     var ollamaOpts = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.OllamaOptions>>().Value;
     var chatModel = ollamaOpts.ChatModel;
+
+    // Warm both models before the fixture loop. Cold-load of a 4GB model
+    // exceeds the OllamaClient's 90s per-attempt HttpClient timeout (see
+    // Aug 5 smoke run — EmoLLaMA cold load timed out on the first EI-reg
+    // call). We spend a couple of long-timeout warmup calls up-front so
+    // each fixture call hits a warm model.
+    Console.Error.WriteLine("body-sense-eval: warming chat model...");
+    try
+    {
+        using var warmCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        _ = await ollama.ChatAsync(
+            systemPrompt: "You are Ani.",
+            history: new List<AniRuntime.Core.Models.ChatMessage>(),
+            userMessage: "hi",
+            ct: warmCts.Token,
+            temperature: 0.0f).ConfigureAwait(false);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"body-sense-eval: chat warmup failed — {ex.GetType().Name}: {ex.Message}");
+        return 3;
+    }
+    Console.Error.WriteLine("body-sense-eval: warming substrate model (this is the 4GB cold load)...");
+    try
+    {
+        using var warmCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        _ = await ollama.GenerateAsync(
+            model: ollamaOpts.SubstrateModel,
+            prompt: "Human:\nTask: Assign a numerical value between 0 and 1.\nText: hello world\nEmotion: joy\nIntensity Score:",
+            ct: warmCts.Token,
+            temperature: 0.0f,
+            maxTokens: 8).ConfigureAwait(false);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"body-sense-eval: substrate warmup failed — {ex.GetType().Name}: {ex.Message}");
+        return 3;
+    }
+    Console.Error.WriteLine("body-sense-eval: models warm; beginning fixture loop.");
 
     // Two conditions per case. Emotional-state fields (Warmth/Energy/
     // Worry/Playfulness) come from the fixture; body-sense fields are
