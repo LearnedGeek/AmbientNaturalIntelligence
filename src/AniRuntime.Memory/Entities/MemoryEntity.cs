@@ -106,7 +106,7 @@ public class MemoryEntity
     /// Populated forward; NULL on pre-shipping records pending backfill.
     /// Storage is free-form TEXT so taxonomy revisions don't require a
     /// schema migration — the enum mapping lives in
-    /// <see cref="AniRuntime.Core.Models.EmotionalContribution.ToRegisterFamily"/>.
+    /// <see cref="AniRuntime.Core.Models.ImpactCategoryDefaults.ToRegisterFamily"/>.
     /// </summary>
     [Column("register")]
     public string? Register { get; set; }

@@ -37,17 +37,22 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
     private readonly IOllamaClient? _ollama;
     private readonly AniOptions _options;
     private readonly ILogger<EfSemanticSearchComposer> _log;
+    // Feature 44 Phase I.3 (2026-08-06) — optional so tests without register
+    // tracking still construct cleanly; production wires it via DI.
+    private readonly IDominantRegisterTracker? _registerTracker;
 
     public EfSemanticSearchComposer(
         IDbContextFactory<AniDbContext> dbFactory,
         IOptions<AniOptions> options,
         ILogger<EfSemanticSearchComposer> log,
-        IOllamaClient? ollama = null)
+        IOllamaClient? ollama = null,
+        IDominantRegisterTracker? registerTracker = null)
     {
-        _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
-        _options   = options.Value;
-        _log       = log       ?? throw new ArgumentNullException(nameof(log));
-        _ollama    = ollama;
+        _dbFactory       = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
+        _options         = options.Value;
+        _log             = log       ?? throw new ArgumentNullException(nameof(log));
+        _ollama          = ollama;
+        _registerTracker = registerTracker;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -140,14 +145,33 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
                 out wanderingSwaps);
         }
 
+        // Feature 44 Phase I.3 register-family diversity slot (2026-08-06) —
+        // if the ranked top-K's registers all fold into the same family as
+        // the current attractor (per IDominantRegisterTracker), swap the
+        // weakest ranked slot for the highest-composite candidate whose
+        // register folds into a different family. Skips when the tracker is
+        // null (no register signal yet, e.g. first cycle after restart) or
+        // when the candidate pool has no different-family record.
+        var wanderRegisterSwaps = 0;
+        var attractorFamily = "none";
+        if (wanderingMindActive && ranked.Count > 0 && _registerTracker?.Current is { } currentRegister)
+        {
+            var attractor = AniRuntime.Core.Models.ImpactCategoryDefaults.ToRegisterFamily(currentRegister);
+            attractorFamily = attractor.ToString();
+            ranked = ApplyWanderingRegisterDiversitySlot(
+                ranked, scoredAll, topK, attractor,
+                out wanderRegisterSwaps);
+        }
+
         if (ranked.Count > 0)
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}, wander_register_swaps={WanderRegisterSwaps}, wander_attractor={WanderAttractor}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
                 _options.RetrievalDiversityEnabled, protectedSlotsActive,
                 _options.HybridRetrievalEnabled, bm25RescueCount, wanderingSwaps, wanderRankedOldestDays,
+                wanderRegisterSwaps, attractorFamily,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -1017,6 +1041,79 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
             return rankedTopK;
 
         // Swap for the weakest ranked slot.
+        var weakest = rankedTopK.OrderBy(r => r.CompositeScore).First();
+        var result = new List<ScoredMemory>(rankedTopK) { candidate };
+        result.Remove(weakest);
+        swaps = 1;
+        return result.OrderByDescending(r => r.CompositeScore).ToList();
+    }
+
+    /// <summary>
+    /// Feature 44 Phase I.3 (2026-08-06) — Wandering-Mind register-family
+    /// diversity slot. Complements the time-band slot with an orthogonal
+    /// counterforce: even if the ranked top-K contains temporally-diverse
+    /// records, if EVERY record's Register folds into the same family as
+    /// the current attractor (per <see cref="IDominantRegisterTracker"/>),
+    /// swap the weakest slot for the highest-composite candidate whose
+    /// Register folds into a different family.
+    ///
+    /// <para>
+    /// This attacks the specific #99 warm-mirror-echo pattern where
+    /// Warmth/Tenderness/Longing dominate the substrate (82.6% of the
+    /// 6,705 backfilled records as of 2026-08-06). Time-band alone
+    /// doesn't help if all the old records in the pool are also warm-
+    /// family. Register-family diversity actively pulls from the small
+    /// end of the distribution (Existential / Curiosity / Playfulness /
+    /// Delight etc.).
+    /// </para>
+    ///
+    /// <para>
+    /// Records with Register == null are treated as unknown-family — they
+    /// don't satisfy the diversity condition (can't confirm they differ)
+    /// and aren't eligible as swap candidates (can't confirm they help).
+    /// Backfill (see <c>--backfill-register</c> in the eval CLI) narrows
+    /// this null-set over time.
+    /// </para>
+    ///
+    /// <para>
+    /// Pure function of inputs. Deterministic. Returns swap count via
+    /// out parameter for retrieval-log telemetry.
+    /// </para>
+    /// </summary>
+    internal static List<ScoredMemory> ApplyWanderingRegisterDiversitySlot(
+        List<ScoredMemory> rankedTopK,
+        List<ScoredMemory> allCandidates,
+        int topK,
+        AniRuntime.Core.Models.RegisterFamily attractorFamily,
+        out int swaps)
+    {
+        swaps = 0;
+        if (rankedTopK.Count == 0 || topK <= 0)
+            return rankedTopK;
+
+        // Fold each ranked record's Register (nullable string) into a
+        // family; null Register -> Longing (the default in
+        // ToRegisterFamily) — but we distinguish null via a separate
+        // check because null means "unknown," not "actually Longing."
+        // A record with a real different-family classification satisfies
+        // the diversity condition; a record with null Register does not.
+        var alreadyDiverse = rankedTopK.Any(r =>
+            !string.IsNullOrWhiteSpace(r.Record.Register) &&
+            AniRuntime.Core.Models.ImpactCategoryDefaults.ToRegisterFamily(r.Record.Register!) != attractorFamily);
+        if (alreadyDiverse)
+            return rankedTopK;
+
+        var selectedIds = new HashSet<Guid>(rankedTopK.Select(r => r.Record.Id));
+        var candidate = allCandidates
+            .Where(c => !selectedIds.Contains(c.Record.Id))
+            .Where(c => !string.IsNullOrWhiteSpace(c.Record.Register))
+            .Where(c => AniRuntime.Core.Models.ImpactCategoryDefaults.ToRegisterFamily(c.Record.Register!) != attractorFamily)
+            .OrderByDescending(c => c.CompositeScore)
+            .FirstOrDefault();
+
+        if (candidate is null)
+            return rankedTopK;
+
         var weakest = rankedTopK.OrderBy(r => r.CompositeScore).First();
         var result = new List<ScoredMemory>(rankedTopK) { candidate };
         result.Remove(weakest);

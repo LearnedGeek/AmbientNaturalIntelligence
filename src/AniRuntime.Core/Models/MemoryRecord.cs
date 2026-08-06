@@ -68,7 +68,7 @@ public class MemoryRecord
     /// <para>
     /// Values are the free-form register strings that qwen3:14b emits
     /// (e.g. "warmth", "longing", "playfulness"). The
-    /// <see cref="EmotionalContribution.ToRegisterFamily"/> mapping folds
+    /// <see cref="ImpactCategoryDefaults.ToRegisterFamily"/> mapping folds
     /// these into the <see cref="RegisterFamily"/> enum for diversity
     /// comparisons; storing the raw string preserves substrate for
     /// forward-compatible taxonomy revisions.
