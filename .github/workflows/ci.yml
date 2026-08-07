@@ -39,19 +39,20 @@ jobs:
     defaults:
       run:
         working-directory: AmbientNaturalIntelligence
-        # Pinning shell to the explicit Git Bash path — `shell: bash` on
-        # Windows self-hosted with a SYSTEM-account runner picks
-        # C:\WINDOWS\system32\bash.EXE (WSL bash) first per PATH order,
-        # and WSL refuses to launch as SYSTEM
-        # (Bash/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED).
+        # `shell: bash` on Windows self-hosted with a SYSTEM-account
+        # runner would normally pick C:\WINDOWS\system32\bash.EXE (WSL
+        # bash) first per PATH order, and WSL refuses to launch as SYSTEM
+        # (Bash/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED). Two prior attempts to
+        # bypass this via an inline explicit shell path both failed on
+        # GitHub Actions' argument parser (Path.Combine UNC error;
+        # executable-not-found).
         #
-        # Explicit path uses forward slashes + double quotes — the
-        # backslash form triggers GitHub Actions' internal Path.Combine
-        # with "Second path fragment must not be a drive or UNC name"
-        # because the runner argument parser interprets `C:\` as a UNC
-        # prefix. Forward slashes bypass that. The `{0}` is the standard
-        # GitHub Actions placeholder for the script file the runner writes.
-        shell: '"C:/Program Files/Git/bin/bash.exe" --noprofile --norc -e -o pipefail "{0}"'
+        # Fix lives at the runner level, not the workflow: the runner's
+        # `.env` file at C:\dev\actions-runner\.env prepends
+        # `C:\Program Files\Git\bin` to PATH so `bash` resolves to Git
+        # Bash first. Runner service was restarted after writing the
+        # .env so the new PATH takes effect.
+        shell: bash
 
     steps:
       # Sibling-repo layout so the cross-repo <ProjectReference> in csproj
