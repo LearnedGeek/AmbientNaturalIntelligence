@@ -43,10 +43,15 @@ jobs:
         # Windows self-hosted with a SYSTEM-account runner picks
         # C:\WINDOWS\system32\bash.EXE (WSL bash) first per PATH order,
         # and WSL refuses to launch as SYSTEM
-        # (Bash/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED). Explicit path bypasses
-        # the ambiguity. The `{0}` is the standard GitHub-Actions
-        # placeholder for the script file the runner writes.
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # (Bash/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED).
+        #
+        # Explicit path uses forward slashes + double quotes — the
+        # backslash form triggers GitHub Actions' internal Path.Combine
+        # with "Second path fragment must not be a drive or UNC name"
+        # because the runner argument parser interprets `C:\` as a UNC
+        # prefix. Forward slashes bypass that. The `{0}` is the standard
+        # GitHub Actions placeholder for the script file the runner writes.
+        shell: '"C:/Program Files/Git/bin/bash.exe" --noprofile --norc -e -o pipefail "{0}"'
 
     steps:
       # Sibling-repo layout so the cross-repo <ProjectReference> in csproj
