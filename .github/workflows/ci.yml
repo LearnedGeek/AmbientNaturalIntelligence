@@ -18,12 +18,28 @@ env:
 jobs:
   build-and-test:
     name: Build & Test
-    runs-on: ubuntu-latest
+    # 2026-08-06 — moved off GitHub-hosted ubuntu-latest to the self-hosted
+    # ani-server runner. Rationale: GitHub-hosted queue depth wedged us for
+    # 20+ min after ani-server reboot on 2026-08-06 because reruns still had
+    # to compete for the shared public runner pool. Self-hosted eliminates
+    # that queue entirely (single-tenant runner, always available whenever
+    # the ani-server host is up).
+    #
+    # Prerequisites present on ani-server as of the move date:
+    #   - .NET 8 SDK at C:\Program Files\dotnet\sdk (8.0.422, 8.0.423)
+    #   - Git for Windows bash at C:\Program Files\Git\bin\bash.exe
+    #     (GitHub Actions defaults `shell: bash` to Git Bash on Windows)
+    #   - actions/setup-java@v4 installs Zulu JDK 17 into the runner's tool
+    #     cache on first run; cached across subsequent runs.
+    # SDK version pinned via `global.json` at repo root (rollForward:
+    # latestFeature). Bumping the pin is intentional + visible in git blame.
+    runs-on: [self-hosted, windows, ani-server]
     timeout-minutes: 20
 
     defaults:
       run:
         working-directory: AmbientNaturalIntelligence
+        shell: bash
 
     steps:
       # Sibling-repo layout so the cross-repo <ProjectReference> in csproj
@@ -49,10 +65,19 @@ jobs:
           path: learnedgeek-libs
           token: ${{ secrets.LEARNEDGEEK_LIBS_TOKEN }}
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
+      # 2026-08-06 — actions/setup-dotnet DELETED on the self-hosted move
+      # per ~/.claude/CI-INFRA.md §1. setup-dotnet@v4 unconditionally
+      # attempts to write a base LTS runtime to C:\Program Files\dotnet\,
+      # which the runner user can't do. SDK pin lives in ./global.json
+      # (rollForward: latestFeature); ani-server has 8.0.422 + 8.0.423
+      # installed globally so the pin resolves. This verify step fails
+      # loud if the runner is ever missing the pinned SDK — fix by
+      # installing that version on the runner, NOT by reintroducing
+      # setup-dotnet.
+      - name: Verify pinned SDK is present
+        run: |
+          dotnet --version
+          dotnet --list-sdks
 
       # SonarScanner for .NET is a Java tool; needs JDK 17+.
       - name: Setup JDK 17
