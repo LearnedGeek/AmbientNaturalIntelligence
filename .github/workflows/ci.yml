@@ -39,7 +39,14 @@ jobs:
     defaults:
       run:
         working-directory: AmbientNaturalIntelligence
-        shell: bash
+        # Pinning shell to the explicit Git Bash path — `shell: bash` on
+        # Windows self-hosted with a SYSTEM-account runner picks
+        # C:\WINDOWS\system32\bash.EXE (WSL bash) first per PATH order,
+        # and WSL refuses to launch as SYSTEM
+        # (Bash/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED). Explicit path bypasses
+        # the ambiguity. The `{0}` is the standard GitHub-Actions
+        # placeholder for the script file the runner writes.
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
 
     steps:
       # Sibling-repo layout so the cross-repo <ProjectReference> in csproj
