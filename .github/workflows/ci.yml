@@ -14,6 +14,12 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
   NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  # 2026-08-07 — MSYS path conversion off. Git Bash on Windows translates
+  # argument-leading `/` to Windows paths (e.g. `/k:foo` → `C:/Program
+  # Files/Git/k:foo`), which strips the leading slash SonarScanner
+  # requires on its `/k:`, `/o:`, `/d:` args. `MSYS_NO_PATHCONV=1`
+  # disables that translation for all bash steps in this job.
+  MSYS_NO_PATHCONV: "1"
 
 jobs:
   build-and-test:
