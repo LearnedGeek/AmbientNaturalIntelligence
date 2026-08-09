@@ -163,15 +163,31 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
                 out wanderRegisterSwaps);
         }
 
+        // Feature 44 Phase I.3 (2026-08-09) — substrate_feedback_ratio metric.
+        // Fraction of the final ranked top-K that is BOTH Interior-tier AND
+        // recent (within the last 24h). This is the quantified version of the
+        // "she's feeding on her own recent thoughts" observation that
+        // motivated Wandering-Mind in the first place. Pure telemetry —
+        // does not alter retrieval behavior. Enables per-cycle measurement
+        // of whether the diversity mechanisms are actually lowering the
+        // substrate-feedback pressure over time.
+        var substrateFeedbackCutoff = DateTimeOffset.UtcNow.AddHours(-24);
+        var substrateFeedbackRatio = ranked.Count == 0
+            ? 0.0
+            : (double)ranked.Count(r =>
+                r.Record.Provenance == EpistemicTier.Interior
+                && r.Record.OccurredAt >= substrateFeedbackCutoff)
+              / ranked.Count;
+
         if (ranked.Count > 0)
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}, wander_register_swaps={WanderRegisterSwaps}, wander_attractor={WanderAttractor}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}, wander_register_swaps={WanderRegisterSwaps}, wander_attractor={WanderAttractor}, substrate_feedback_ratio={SubstrateFeedbackRatio:F2}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
                 _options.RetrievalDiversityEnabled, protectedSlotsActive,
                 _options.HybridRetrievalEnabled, bm25RescueCount, wanderingSwaps, wanderRankedOldestDays,
-                wanderRegisterSwaps, attractorFamily,
+                wanderRegisterSwaps, attractorFamily, substrateFeedbackRatio,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
