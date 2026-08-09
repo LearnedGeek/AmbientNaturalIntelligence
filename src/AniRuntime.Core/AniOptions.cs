@@ -250,6 +250,19 @@ public class AniOptions
     public bool   RetrievalWanderingMindEnabled        { get; set; } = false;
     public int    RetrievalWanderingTimeBandMinDays    { get; set; } = 7;
 
+    // Feature 44 Phase I.3 (2026-08-09) — character-seed entity injection.
+    // Semicolon-separated list of entities (people, places, interests,
+    // canonical world nouns) that Wandering-Mind's character-seed slot
+    // randomly draws from when reserving a diversity slot. Empty = slot
+    // is inactive. Seed with names Mark wants Ani to occasionally think
+    // about — friends, past experiences, hobbies, canonical world
+    // characters. Example: "Kevin;Sarah;camping;Peru;bookstore;the porch".
+    //
+    // Semicolon separator (not comma) so entities can contain commas
+    // (e.g., "Kevin from gym, Tuesday nights"). Case-insensitive
+    // substring match against MemoryRecord.Content.
+    public string RetrievalWanderingSeedEntities       { get; set; } = string.Empty;
+
     // Agentic Lens Layer 1 Phase 1d: self-dominance perception source (Apr 2026).
     //
     // When enabled, the RetrievalSelfDominancePerceptionSource emits an

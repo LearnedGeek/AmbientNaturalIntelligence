@@ -163,6 +163,32 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
                 out wanderRegisterSwaps);
         }
 
+        // Feature 44 Phase I.3 character-seed entity injection slot
+        // (2026-08-09). Reserves one top-K slot for a memory that contains
+        // a random entity from the seed list — a person's name, place, or
+        // canonical world concept. Breaks the "she has nothing to think
+        // about besides her own recent moods" loop by anchoring one slot
+        // to something concrete and external.
+        //
+        // Uses semicolon-separated AniOptions.RetrievalWanderingSeedEntities
+        // to sidestep a hot-path IStateStore dependency; can migrate to
+        // dynamic character-state pull as a follow-up if the shape works.
+        var wanderSeedSwaps = 0;
+        var pickedSeedEntity = "none";
+        if (wanderingMindActive && ranked.Count > 0 && !string.IsNullOrWhiteSpace(_options.RetrievalWanderingSeedEntities))
+        {
+            var entities = _options.RetrievalWanderingSeedEntities
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (entities.Length > 0)
+            {
+                var picked = entities[Random.Shared.Next(entities.Length)];
+                pickedSeedEntity = picked;
+                ranked = ApplyWanderingCharacterSeedSlot(
+                    ranked, scoredAll, topK, picked,
+                    out wanderSeedSwaps);
+            }
+        }
+
         // Feature 44 Phase I.3 (2026-08-09) — substrate_feedback_ratio metric.
         // Fraction of the final ranked top-K that is BOTH Interior-tier AND
         // recent (within the last 24h). This is the quantified version of the
@@ -183,11 +209,12 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
         {
             var top = ranked[0];
             _log.LogDebug(
-                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}, wander_register_swaps={WanderRegisterSwaps}, wander_attractor={WanderAttractor}, substrate_feedback_ratio={SubstrateFeedbackRatio:F2}): {Content}",
+                "Semantic search: {Candidates} candidates, top score={Score:F3} (cosine={Cosine:F3}, importance={Importance:F2}, type={Type}, mmr={Mmr}, slots={Slots}, hybrid={Hybrid}, bm25_rescues={Bm25Rescues}, wander_swaps={WanderSwaps}, wander_ranked_oldest_days={WanderOldestDays:F1}, wander_register_swaps={WanderRegisterSwaps}, wander_attractor={WanderAttractor}, wander_seed_swaps={WanderSeedSwaps}, wander_seed_entity={WanderSeedEntity}, substrate_feedback_ratio={SubstrateFeedbackRatio:F2}): {Content}",
                 candidates.Count, top.CompositeScore, top.CosineSimilarity, top.Record.Importance, top.Record.Type,
                 _options.RetrievalDiversityEnabled, protectedSlotsActive,
                 _options.HybridRetrievalEnabled, bm25RescueCount, wanderingSwaps, wanderRankedOldestDays,
-                wanderRegisterSwaps, attractorFamily, substrateFeedbackRatio,
+                wanderRegisterSwaps, attractorFamily,
+                wanderSeedSwaps, pickedSeedEntity, substrateFeedbackRatio,
                 top.Record.Content.Length > 80 ? top.Record.Content[..80] + "..." : top.Record.Content);
         }
 
@@ -1129,6 +1156,64 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
 
         if (candidate is null)
             return rankedTopK;
+
+        var weakest = rankedTopK.OrderBy(r => r.CompositeScore).First();
+        var result = new List<ScoredMemory>(rankedTopK) { candidate };
+        result.Remove(weakest);
+        swaps = 1;
+        return result.OrderByDescending(r => r.CompositeScore).ToList();
+    }
+
+    /// <summary>
+    /// Feature 44 Phase I.3 (2026-08-09) — character-seed entity injection
+    /// slot. Reserves one top-K slot for a memory containing the seed
+    /// entity (case-insensitive substring match on Content). Breaks the
+    /// "she has nothing to think about besides her own recent moods" loop
+    /// by anchoring one slot to something external and concrete.
+    ///
+    /// <para>
+    /// No-op paths (all safe): empty ranked, zero topK, blank entity, or
+    /// ranked already contains a record matching the entity. Also no-op
+    /// when no candidate outside ranked contains the entity — better to
+    /// leave the ranked list intact than to swap in nothing.
+    /// </para>
+    ///
+    /// <para>
+    /// Pure function of inputs. Deterministic (given the same inputs
+    /// including the entity string). Substring match is intentionally
+    /// simple — a semantic-similarity approach would need an additional
+    /// embedding call per cycle. The substring floor is: entity's proper
+    /// name shows up literally in the content. Semantic-similarity is a
+    /// possible follow-up if the substring filter turns out too narrow.
+    /// </para>
+    /// </summary>
+    internal static List<ScoredMemory> ApplyWanderingCharacterSeedSlot(
+        List<ScoredMemory> rankedTopK,
+        List<ScoredMemory> allCandidates,
+        int topK,
+        string entity,
+        out int swaps)
+    {
+        swaps = 0;
+        if (rankedTopK.Count == 0 || topK <= 0 || string.IsNullOrWhiteSpace(entity))
+            return rankedTopK;
+
+        // Diversity already met if any ranked record's content already
+        // mentions the entity.
+        var alreadyIn = rankedTopK.Any(r =>
+            r.Record.Content is not null &&
+            r.Record.Content.Contains(entity, StringComparison.OrdinalIgnoreCase));
+        if (alreadyIn) return rankedTopK;
+
+        var selectedIds = new HashSet<Guid>(rankedTopK.Select(r => r.Record.Id));
+        var candidate = allCandidates
+            .Where(c => !selectedIds.Contains(c.Record.Id))
+            .Where(c => c.Record.Content is not null &&
+                        c.Record.Content.Contains(entity, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(c => c.CompositeScore)
+            .FirstOrDefault();
+
+        if (candidate is null) return rankedTopK;
 
         var weakest = rankedTopK.OrderBy(r => r.CompositeScore).First();
         var result = new List<ScoredMemory>(rankedTopK) { candidate };
