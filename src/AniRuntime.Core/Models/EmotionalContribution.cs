@@ -91,6 +91,17 @@ public class EmotionalContribution
     public string? AssociativeAnchor { get; set; }
 
     /// <summary>
+    /// EmoLLaMA-7B substrate vector, serialised JSON. Contains the 15-axis
+    /// substrate emitted by <c>IEmotionalSubstrateScorer</c> (ei.*, ec.*,
+    /// dim.valence) plus the schema id. Populated by the persist-mode
+    /// substrate scorer at contribution time and by <c>--backfill-substrate</c>
+    /// retroactively. Retires the Issue #68 "shadow-mode / follow-on PR" TODO —
+    /// the vector was computed but discarded from May 28, 2026 through the
+    /// 2026-08-12 flip.
+    /// </summary>
+    public string? SubstrateJson { get; set; }
+
+    /// <summary>
     /// Compute the decay factor at a given point in time.
     /// Returns a multiplier 0.0–1.0 to apply to the initial deltas.
     /// </summary>

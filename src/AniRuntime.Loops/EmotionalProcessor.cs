@@ -82,19 +82,26 @@ public class EmotionalProcessor
 
             var (warmth, energy, worry, playfulness, register, severity) = ParseEmotionalShift(raw, effectiveMax);
 
-            // Contribution 9 PR-2 (Issue #68) — shadow-mode substrate scoring.
-            // EmoLLaMA-chat-7B substrate vector logged in parallel with the
-            // discrete classifier above for paired-observation data. No behavior
-            // change: the substrate vector is observed only, not yet consumed by
-            // contribution composition. Migration of this consumer to substrate-
-            // first is a separate follow-on PR.
+            // Issue #68 follow-on (2026-08-12) — flipped from shadow-mode to
+            // persist mode. The EmoLLaMA-7B 15-axis substrate vector was being
+            // computed every cycle and thrown away since May 28. Now serialised
+            // into SubstrateJson on the contribution so we finally have a
+            // second classifier signal alongside qwen3's discrete register
+            // (LM-Kit turned out to be stuck-at-neutral per the 2026-08-12
+            // divergence-column diagnostic — see MEMORY.md).
+            string? substrateJson = null;
             if (_substrateScorer is not null)
             {
                 try
                 {
                     var substrate = await _substrateScorer.ScoreAsync(content, ct).ConfigureAwait(false);
+                    substrateJson = JsonSerializer.Serialize(new
+                    {
+                        schema = substrate.MeasurementSchema,
+                        components = substrate.Components,
+                    });
                     _log.LogInformation(
-                        "Substrate shadow-score: schema={Schema} discreteRegister={Register} discreteSeverity={Severity:F2} substrate={Components}",
+                        "Substrate persist-score: schema={Schema} discreteRegister={Register} discreteSeverity={Severity:F2} substrate={Components}",
                         substrate.MeasurementSchema,
                         register,
                         severity,
@@ -102,7 +109,7 @@ public class EmotionalProcessor
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _log.LogWarning(ex, "Substrate shadow-scoring failed; continuing with discrete classifier only");
+                    _log.LogWarning(ex, "Substrate scoring failed; contribution will persist without substrate_json");
                 }
             }
 
@@ -170,6 +177,7 @@ public class EmotionalProcessor
                     match.Register = register;
                     match.CreatedAt = DateTimeOffset.UtcNow;
                     match.SourceContent = sourceContent;
+                    if (substrateJson is not null) match.SubstrateJson = substrateJson;
                     await ClassifyWithMLAsync(match, sourceContent, ct).ConfigureAwait(false);
                     await _persist.SaveEmotionalContributionAsync(match, ct).ConfigureAwait(false);
                     _log.LogDebug("Refreshed existing emotional contribution (semantic match)");
@@ -197,6 +205,7 @@ public class EmotionalProcessor
                 Severity = severity,
                 IsOutreachReady = isOutreachReady,
                 Register = register,
+                SubstrateJson = substrateJson,
             };
 
             await _persist.SaveEmotionalContributionAsync(contribution, ct).ConfigureAwait(false);

@@ -166,6 +166,17 @@ var backfillLimitRaw       = ParseArg(args, "--backfill-limit") ?? "0";
 var backfillLimit          = int.TryParse(backfillLimitRaw, out var bl) && bl > 0 ? bl : 0;
 var backfillOrder          = (ParseArg(args, "--backfill-order") ?? "oldest").ToLowerInvariant();
 
+// Issue #68 follow-on (2026-08-12) substrate backfill — retroactive
+// substrate_json for emotional_contributions where the column is NULL.
+// Same shape as --backfill-register but iterates emotional_contributions
+// instead of memories and calls IEmotionalSubstrateScorer (EmoLLaMA-7B via
+// /api/generate). Kicked off after the schema rescue adds the column.
+// --backfill-substrate         = commit writes
+// --backfill-substrate-dry-run = classify + log, no UPDATE
+// Reuses --backfill-limit and --backfill-order.
+var backfillSubstrate       = args.Contains("--backfill-substrate");
+var backfillSubstrateDryRun = args.Contains("--backfill-substrate-dry-run");
+
 // Ollama endpoint — defaults to ani-server where the trained models live.
 // Override for laptop testing via --ollama-url or Ollama__BaseUrl env var.
 var ollamaUrl = ParseArg(args, "--ollama-url")
@@ -538,6 +549,122 @@ if (backfillRegister || backfillRegisterDryRun)
         unparseable = unparseableCount,
         elapsed_seconds = sw.Elapsed.TotalSeconds,
         per_register_counts = perRegisterCounts.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
+    };
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(payload,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// Issue #68 follow-on (2026-08-12) substrate backfill — retroactive
+// substrate_json for emotional_contributions rows where the column is NULL.
+// Calls IEmotionalSubstrateScorer.ScoreAsync per record (EmoLLaMA-7B via
+// /api/generate: 6 calls per record = 4 EI-reg + 1 E-c + 1 V-reg). Same
+// idempotent WHERE guard as --backfill-register so re-runs skip rows
+// already scored.
+if (backfillSubstrate || backfillSubstrateDryRun)
+{
+    var isDryRun = backfillSubstrateDryRun && !backfillSubstrate;
+    Console.Error.WriteLine(
+        $"BACKFILL_SUBSTRATE mode={(isDryRun ? "dry-run" : "commit")} " +
+        $"order={backfillOrder} " +
+        $"limit={(backfillLimit == 0 ? "all" : backfillLimit.ToString())} " +
+        $"db={dbPath}");
+
+    var scorer     = provider.GetRequiredService<AniRuntime.Core.Interfaces.IEmotionalSubstrateScorer>();
+    var ctxFactory = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+
+    // Load target ids + source_content. Read-only for the load — writes
+    // happen through a per-record write context (mirrors backfill-register).
+    List<(Guid Id, string Content)> targets;
+    await using (var loadCtx = await ctxFactory.CreateDbContextAsync())
+    await using (var loadConn = loadCtx.Database.GetDbConnection() as System.Data.Common.DbConnection)
+    {
+        if (loadConn!.State != System.Data.ConnectionState.Open)
+            await loadConn.OpenAsync();
+        await using var loadCmd = loadConn.CreateCommand();
+        var orderClause = backfillOrder == "newest" ? "DESC" : "ASC";
+        var limitClause = backfillLimit > 0 ? $"LIMIT {backfillLimit}" : string.Empty;
+        loadCmd.CommandText =
+            $"SELECT id, source_content FROM emotional_contributions " +
+            $"WHERE substrate_json IS NULL AND source_content IS NOT NULL AND source_content <> '' " +
+            $"ORDER BY created_at {orderClause} {limitClause}";
+        var list = new List<(Guid, string)>();
+        await using var reader = await loadCmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (Guid.TryParse(reader.GetString(0), out var gid))
+                list.Add((gid, reader.GetString(1)));
+        }
+        targets = list;
+    }
+
+    Console.Error.WriteLine($"BACKFILL_SUBSTRATE loaded {targets.Count} candidate records");
+
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var perSchemaCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    var failedCount = 0;
+    var writtenCount = 0;
+    var processed = 0;
+
+    foreach (var (id, content) in targets)
+    {
+        processed++;
+        if (processed % 25 == 0)
+        {
+            var pct = 100.0 * processed / targets.Count;
+            var elapsed = sw.Elapsed.TotalSeconds;
+            var eta = elapsed / processed * (targets.Count - processed);
+            Console.Error.WriteLine(
+                $"BACKFILL_SUBSTRATE progress {processed}/{targets.Count} ({pct:F1}%) " +
+                $"elapsed={elapsed:F0}s eta={eta:F0}s " +
+                $"written={writtenCount} failed={failedCount}");
+        }
+
+        AniRuntime.Core.Models.EmotionVector vector;
+        try
+        {
+            vector = await scorer.ScoreAsync(content, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"BACKFILL_SUBSTRATE score failed id={id}: {ex.Message}");
+            failedCount++;
+            continue;
+        }
+
+        var substrateJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            schema = vector.MeasurementSchema,
+            components = vector.Components,
+        });
+
+        perSchemaCounts[vector.MeasurementSchema] = perSchemaCounts.TryGetValue(vector.MeasurementSchema, out var c) ? c + 1 : 1;
+
+        if (!isDryRun)
+        {
+            await using var updCtx = await ctxFactory.CreateDbContextAsync();
+            await using var cmd = updCtx.Database.GetDbConnection().CreateCommand();
+            if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+                await cmd.Connection.OpenAsync();
+            cmd.CommandText = "UPDATE emotional_contributions SET substrate_json = @json WHERE id = @id AND substrate_json IS NULL";
+            var pJson = cmd.CreateParameter(); pJson.ParameterName = "@json"; pJson.Value = substrateJson; cmd.Parameters.Add(pJson);
+            var pId   = cmd.CreateParameter(); pId.ParameterName   = "@id";   pId.Value   = id.ToString(); cmd.Parameters.Add(pId);
+            var updated = await cmd.ExecuteNonQueryAsync();
+            if (updated > 0) writtenCount++;
+        }
+    }
+
+    var payload = new
+    {
+        mode = isDryRun ? "dry-run" : "commit",
+        db_path = dbPath,
+        scorer = "IEmotionalSubstrateScorer",
+        loaded = targets.Count,
+        processed,
+        written = writtenCount,
+        failed = failedCount,
+        elapsed_seconds = sw.Elapsed.TotalSeconds,
+        per_schema_counts = perSchemaCounts.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
     };
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(payload,
         new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));

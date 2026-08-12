@@ -288,6 +288,25 @@ public class AniDbContext : DbContext
             cmd.CommandText = "ALTER TABLE memories ADD COLUMN register TEXT NULL";
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
+
+        // Issue #68 follow-on (2026-08-12) — retire the "substrate vector is
+        // observed only, not yet consumed" TODO from EmotionalProcessor. Add
+        // substrate_json to emotional_contributions so the EmoLLaMA-7B 15-axis
+        // vector persists alongside the qwen3 register. Backfill of historical
+        // records runs via the eval CLI (--backfill-substrate), not inline.
+        await using var checkSub = conn.CreateCommand();
+        checkSub.CommandText = "SELECT name FROM pragma_table_info('emotional_contributions') WHERE name = 'substrate_json'";
+        var hasSubstrate = false;
+        await using (var reader = await checkSub.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            if (await reader.ReadAsync(ct).ConfigureAwait(false))
+                hasSubstrate = true;
+        }
+        if (!hasSubstrate)
+        {
+            cmd.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN substrate_json TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
     }
 
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)

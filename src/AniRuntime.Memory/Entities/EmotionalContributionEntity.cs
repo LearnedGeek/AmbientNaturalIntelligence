@@ -65,4 +65,7 @@ public class EmotionalContributionEntity
 
     [Column("associative_anchor")]
     public string? AssociativeAnchor { get; set; }
+
+    [Column("substrate_json")]
+    public string? SubstrateJson { get; set; }
 }

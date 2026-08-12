@@ -414,6 +414,7 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
         entity.MLSarcasm         = contribution.MLSarcasmDetected;
         entity.DivergenceScore   = contribution.DivergenceScore;
         entity.AssociativeAnchor = contribution.AssociativeAnchor;
+        entity.SubstrateJson     = contribution.SubstrateJson;
 
         if (existing == null) repo.Add(entity);
 

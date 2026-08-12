@@ -193,5 +193,6 @@ public sealed class EfMemoryAnalyticsService : IMemoryAnalytics
         MLSarcasmDetected = e.MLSarcasm,
         DivergenceScore   = e.DivergenceScore,
         AssociativeAnchor = e.AssociativeAnchor,
+        SubstrateJson     = e.SubstrateJson,
     };
 }
