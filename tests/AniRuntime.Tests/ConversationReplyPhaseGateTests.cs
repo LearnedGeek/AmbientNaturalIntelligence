@@ -50,7 +50,7 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             NullLogger<DesireEngine>.Instance);
         var emotional = new EmotionalProcessor(
             MockMemory.Object, MockMemory.Object, MockMemory.Object,
-            MockOllama.Object, options,
+            MockOllama.Object, new StubRegisterClassifier(), options,
             NullLogger<EmotionalProcessor>.Instance);
         var diagnostic = new Mock<IDiagnosticService>();
         diagnostic.Setup(d => d.RunDiagnosticAsync(It.IsAny<CancellationToken>()))

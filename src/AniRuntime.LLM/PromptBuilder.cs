@@ -40,10 +40,16 @@ public static class PromptBuilder
     /// pivoted 3/3, metadata coherent with thought content, importance
     /// variance restored.
     /// </summary>
+    /// <summary>
+    /// Register was moved from output to input on 2026-08-12 as part of
+    /// the <see cref="IRegisterClassifier"/> singular-surface refactor.
+    /// Callers classify register first, then pass it in — this prompt then
+    /// produces the remaining recognizer fields (valence/importance/anchor).
+    /// </summary>
     public static (string System, string User) BuildInnerThoughtMetadataPrompt(
-        string thought, ContextSnapshot snapshot)
+        string thought, ContextSnapshot snapshot, string register)
         => new Prompts.InnerThoughtMetadataPromptCommand()
-            .Build(new Prompts.InnerThoughtMetadataPromptInput(thought, snapshot));
+            .Build(new Prompts.InnerThoughtMetadataPromptInput(thought, snapshot, register));
 
     /// <summary>
     /// Builds a reflection prompt for post-thought introspection. Ani considers what her
@@ -264,13 +270,17 @@ public static class PromptBuilder
 
 
     /// <summary>
-    /// Scores emotional shift from an inner thought or conversation event.
-    /// Returns JSON with delta values for each emotional dimension.
+    /// Scores emotional-shift deltas + severity given a pre-classified
+    /// <paramref name="register"/>. Register was moved from output to input
+    /// on 2026-08-12 as part of the <c>IRegisterClassifier</c> singular-surface
+    /// refactor. Callers classify register first via <c>IRegisterClassifier</c>,
+    /// then call this to score the deltas within that register context.
     /// </summary>
     public static (string System, string User) BuildEmotionalShiftPrompt(
-        string content, EmotionalState current, float maxDelta = 0.2f, bool isAmbientCycle = false)
+        string content, EmotionalState current, string register,
+        float maxDelta = 0.2f, bool isAmbientCycle = false)
         => new Prompts.EmotionalShiftPromptCommand()
-            .Build(new Prompts.EmotionalShiftPromptInput(content, current, maxDelta, isAmbientCycle));
+            .Build(new Prompts.EmotionalShiftPromptInput(content, current, register, maxDelta, isAmbientCycle));
 
     public static (string System, string User) BuildReactiveSharePrompt(
         CharacterStateDoc character, string itemSummary, EmotionalState? emotionalState = null,

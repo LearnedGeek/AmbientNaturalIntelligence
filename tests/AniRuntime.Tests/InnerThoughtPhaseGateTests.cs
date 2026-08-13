@@ -3,6 +3,7 @@ using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 using AniRuntime.LLM;
 using AniRuntime.Loops;
+using AniRuntime.Tests.Infrastructure;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -42,7 +43,7 @@ public class InnerThoughtPhaseGateTests
     private const string ValenceJson = "{\"score\": 0.62}";
 
     private InnerThoughtPhase BuildPhase(ICognitiveOutputGate? gate)
-        => new(_mockOllama.Object, NullLogger<InnerThoughtPhase>.Instance, gate);
+        => new(_mockOllama.Object, new StubRegisterClassifier(), NullLogger<InnerThoughtPhase>.Instance, gate);
 
     private static ContextSnapshot BuildSnapshot(IEnumerable<MemoryRecord>? priorThoughts = null)
         => new()

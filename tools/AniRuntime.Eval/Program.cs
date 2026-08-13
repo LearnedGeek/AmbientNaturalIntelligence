@@ -420,35 +420,11 @@ if (backfillRegister || backfillRegisterDryRun)
         $"limit={(backfillLimit == 0 ? "all" : backfillLimit.ToString())} " +
         $"db={dbPath}");
 
-    var ollama       = provider.GetRequiredService<AniRuntime.Core.Interfaces.IOllamaClient>();
-    var registerOpts = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AniRuntime.Core.AniOptions>>().Value;
-    var classifierModel = registerOpts.LocalVerifierModelTag ?? "qwen3:14b";
+    // 2026-08-12 singular-surface refactor: backfill now routes through
+    // IRegisterClassifier so the inline prompt is retired. Single prompt
+    // definition lives in QwenRegisterClassifier.
+    var classifier   = provider.GetRequiredService<AniRuntime.Core.Interfaces.IRegisterClassifier>();
     var ctxFactory   = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
-
-    // Lean register-only prompt. Preserves the "recognizer, not rater"
-    // framing from the metadata prompt but drops valence / importance /
-    // associative_anchor since backfill can't reconstruct the live
-    // ContextSnapshot the hybrid path had access to.
-    static (string System, string User) BuildRegisterPrompt(string thought)
-    {
-        var system =
-            "You are reading an inner thought that Ani had in a private moment. Recognize the affective register that is ALREADY PRESENT in what she said — do not rate it against an external rubric, just name what is there.\n" +
-            "\n" +
-            "Rules:\n" +
-            "  - \"register\" is ONE of: Warmth, Longing, Curiosity, Playfulness, Delight, Tenderness, Concern, Hurt, Existential, Resilience.\n" +
-            "  - Read what is in the thought. Do NOT invent a shape that is not there.\n" +
-            "\n" +
-            "Output valid JSON exactly matching this structure:\n" +
-            "{ \"register\": \"one of the ten register families\" }\n" +
-            "\n" +
-            "No prose outside the JSON object. No markdown fences.";
-        var user =
-            "Ani's thought:\n" +
-            $"  {thought}\n" +
-            "\n" +
-            "Recognize the register family. Output the JSON object.";
-        return (system, user);
-    }
 
     // Load targets: InnerThought records where Register IS NULL, with
     // non-empty Content. Ordered per backfillOrder. Limited per backfillLimit.
@@ -490,14 +466,10 @@ if (backfillRegister || backfillRegisterDryRun)
                 $"written={writtenCount} unparseable={unparseableCount}");
         }
 
-        var (sys, usr) = BuildRegisterPrompt(entity.Content);
-        string raw;
+        string register;
         try
         {
-            raw = await ollama.ChatJsonWithModelAsync(
-                classifierModel, sys,
-                new List<AniRuntime.Core.Models.ChatMessage>(),
-                usr, CancellationToken.None).ConfigureAwait(false);
+            register = await classifier.ClassifyAsync(entity.Content, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -506,16 +478,7 @@ if (backfillRegister || backfillRegisterDryRun)
             continue;
         }
 
-        string? register = null;
-        try
-        {
-            var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
-            if (doc.RootElement.TryGetProperty("register", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
-                register = r.GetString();
-        }
-        catch { /* fall through to unparseable */ }
-
-        if (string.IsNullOrWhiteSpace(register))
+        if (string.IsNullOrWhiteSpace(register) || register == "Unclassified")
         {
             unparseableCount++;
             continue;
@@ -542,7 +505,7 @@ if (backfillRegister || backfillRegisterDryRun)
     {
         mode = isDryRun ? "dry-run" : "commit",
         db_path = dbPath,
-        model = classifierModel,
+        classifier = "IRegisterClassifier",
         loaded = targets.Count,
         processed,
         written = writtenCount,

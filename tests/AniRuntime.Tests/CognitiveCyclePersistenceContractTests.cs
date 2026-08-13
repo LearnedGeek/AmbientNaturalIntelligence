@@ -132,7 +132,7 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
 
         var emotional = new EmotionalProcessor(
             MockMemory.Object, MockMemory.Object, MockMemory.Object,
-            MockOllama.Object, DefaultOptions,
+            MockOllama.Object, new StubRegisterClassifier(), DefaultOptions,
             NullLogger<EmotionalProcessor>.Instance);
         var contextBuilder = new ContextBuilder(
             NoOpState(), NoOpRetrieval(), NoOpEpistemic(), NoOpConversation(), NoOpEmotional(),
@@ -155,7 +155,7 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
         var perception = new PerceptionPhase(
             new[] { _mockSource.Object }, MockMemory.Object, NullLogger<PerceptionPhase>.Instance);
         var innerThought = new InnerThoughtPhase(
-            MockOllama.Object, NullLogger<InnerThoughtPhase>.Instance);
+            MockOllama.Object, new StubRegisterClassifier(), NullLogger<InnerThoughtPhase>.Instance);
         var reflection = new ReflectionPhase(
             MockOllama.Object, MockMemory.Object, MockMemory.Object, DefaultOptions,
             NullLogger<ReflectionPhase>.Instance);

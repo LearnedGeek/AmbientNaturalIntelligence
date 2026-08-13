@@ -7,6 +7,7 @@
 @using Microsoft.Extensions.Options
 @inject IMemoryAnalytics MemoryAnalytics
 @inject IMemoryPersistence MemoryPersistence
+@inject IRegisterClassifier RegisterClassifier
 @using LearnedGeek.ML.Interfaces
 @inject IOllamaClient Ollama
 @inject EmotionalProcessor EmotionalProcessor
@@ -585,18 +586,16 @@
 
         var changed = 0;
         var processed = 0;
-        var dummyState = new EmotionalState(); // Neutral state for scoring context
 
         foreach (var c in targets)
         {
             try
             {
-                var prompt = PromptBuilder.BuildEmotionalShiftPrompt(
-                    c.SourceContent, dummyState, 0.2f, c.Category == ImpactCategory.Ambient);
-                var raw = await Ollama.ChatJsonAsync(
-                    prompt.System, Array.Empty<ChatMessage>(), prompt.User);
-
-                var (_, _, _, _, newRegister, _) = EmotionalProcessor.ParseEmotionalShift(raw);
+                // Post-2026-08-12 singular-surface: reclassify via IRegisterClassifier
+                // directly. The old path routed through the composite shift prompt
+                // just to extract the register field — that N-places drift was
+                // exactly what the refactor retired.
+                var newRegister = await RegisterClassifier.ClassifyAsync(c.SourceContent, CancellationToken.None);
 
                 if (newRegister != c.Register)
                 {

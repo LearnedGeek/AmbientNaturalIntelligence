@@ -21,6 +21,7 @@ public class EmotionalProcessor
     private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly AniOptions _aniOptions;
+    private readonly IRegisterClassifier _registerClassifier;
     private readonly ITextClassificationService? _mlClassifier;
     private readonly IEmotionalSubstrateScorer? _substrateScorer;
     private readonly ILogger<EmotionalProcessor> _log;
@@ -45,6 +46,7 @@ public class EmotionalProcessor
         IMemoryPersistence persist,
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
+        IRegisterClassifier registerClassifier,
         IOptions<AniOptions> aniOptions,
         ILogger<EmotionalProcessor> log,
         ITextClassificationService? mlClassifier = null,
@@ -54,6 +56,7 @@ public class EmotionalProcessor
         _persist = persist;
         _analytics = analytics;
         _ollama = ollama;
+        _registerClassifier = registerClassifier;
         _aniOptions = aniOptions.Value;
         _log = log;
         _mlClassifier = mlClassifier;
@@ -75,12 +78,17 @@ public class EmotionalProcessor
             var (catMaxDelta, _) = ImpactCategoryDefaults.GetDefaults(category);
             var effectiveMax = Math.Min(maxDelta, catMaxDelta);
 
-            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, effectiveMax, isAmbientCycle);
+            // Singular-surface register classification (2026-08-12): all
+            // register labels flow through IRegisterClassifier so we have
+            // one prompt + one model + one taxonomy for the whole system.
+            var register = await _registerClassifier.ClassifyAsync(content, ct).ConfigureAwait(false);
+
+            var prompt = PromptBuilder.BuildEmotionalShiftPrompt(content, state, register, effectiveMax, isAmbientCycle);
             var raw = await _ollama.ChatJsonAsync(
                 prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct)
                 .ConfigureAwait(false);
 
-            var (warmth, energy, worry, playfulness, register, severity) = ParseEmotionalShift(raw, effectiveMax);
+            var (warmth, energy, worry, playfulness, severity) = ParseEmotionalShift(raw, effectiveMax);
 
             // Issue #68 follow-on (2026-08-12) — flipped from shadow-mode to
             // persist mode. The EmoLLaMA-7B 15-axis substrate vector was being
@@ -330,69 +338,21 @@ public class EmotionalProcessor
         return 1.0f; // Unknown emotion — fully divergent
     }
 
-    private static readonly HashSet<string> ValidRegisters = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Longing", "Delight", "Playfulness", "Curiosity", "Desire",
-        "Tenderness", "Existential", "Wistful", "Frustration"
-    };
 
-    /// <summary>
-    /// Normalize register names: fix casing, extract primary from blended,
-    /// and fall back to Unclassified for unknown values.
-    /// </summary>
-    private static string NormalizeRegister(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return "Unclassified";
-
-        // Handle blended registers: "primarily Longing, secondarily Tenderness" → "Longing"
-        // Also handles "Longing+Curiosity", "Longing/Tenderness", etc.
-        var cleaned = raw.Trim();
-
-        // "primarily X" pattern
-        if (cleaned.StartsWith("primarily ", StringComparison.OrdinalIgnoreCase))
-            cleaned = cleaned[10..].Split([',', '+', '/', ';'], 2)[0].Trim();
-
-        // Split on common delimiters and take first
-        cleaned = cleaned.Split([',', '+', '/', ';'], 2)[0].Trim();
-
-        // Strip "secondarily" if it somehow ended up first
-        if (cleaned.StartsWith("secondarily ", StringComparison.OrdinalIgnoreCase))
-            cleaned = cleaned[12..].Trim();
-
-        // Match against valid registers (case-insensitive) and return canonical casing
-        foreach (var valid in ValidRegisters)
-        {
-            if (string.Equals(cleaned, valid, StringComparison.OrdinalIgnoreCase))
-                return valid;
-        }
-
-        return "Unclassified";
-    }
-
-    public (float warmth, float energy, float worry, float playfulness, string register, float severity)
+    public (float warmth, float energy, float worry, float playfulness, float severity)
         ParseEmotionalShift(string raw, float maxDelta = 0.2f)
     {
         try
         {
             // 2026-07-10 — the 8B model (ani-v7-conversation) sometimes emits
-            // valid JSON followed by an Analysis: paragraph, e.g.
-            //   { "register": "Playfulness", ... }  Analysis: Register: ...
-            // Strict JsonDocument.Parse fails on the trailing prose. Extract
-            // the JSON prefix (first balanced { ... } block) before parsing so
-            // the well-formed JSON prefix still delivers a usable shift instead
-            // of falling back to zero-delta Unclassified.
+            // valid JSON followed by an Analysis: paragraph. Strict
+            // JsonDocument.Parse fails on the trailing prose. Extract the
+            // JSON prefix (first balanced { ... } block) before parsing so
+            // the well-formed JSON prefix still delivers a usable shift
+            // instead of falling back to zero-delta.
             var jsonPrefix = ExtractJsonPrefix(raw.Trim());
             var doc = JsonDocument.Parse(jsonPrefix);
             var root = doc.RootElement;
-
-            var rawRegister = root.TryGetProperty("register", out var regVal)
-                ? regVal.GetString() ?? "Unclassified"
-                : "Unclassified";
-
-            // Normalize: take primary register from blended ("primarily Longing, secondarily Tenderness" → "Longing")
-            // and fix case ("longing" → "Longing")
-            var register = NormalizeRegister(rawRegister);
 
             var rawSeverity = root.TryGetProperty("severity", out var sevVal)
                 ? (float)Math.Clamp(sevVal.GetDouble(), 0.0, 1.0)
@@ -412,14 +372,13 @@ public class EmotionalProcessor
                 ClampDelta(root, "energy"),
                 ClampDelta(root, "worry"),
                 ClampDelta(root, "playfulness"),
-                register,
                 severity
             );
         }
         catch
         {
             _log.LogDebug("Emotional shift parse failure: {Raw}", raw);
-            return (0f, 0f, 0f, 0f, "Unclassified", 0.1f);
+            return (0f, 0f, 0f, 0f, 0.1f);
         }
 
         float ClampDelta(JsonElement root, string prop)

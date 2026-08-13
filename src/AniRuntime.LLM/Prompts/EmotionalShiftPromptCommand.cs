@@ -4,16 +4,26 @@ using AniRuntime.Core.Models;
 namespace AniRuntime.LLM.Prompts;
 
 /// <summary>Typed input for <see cref="EmotionalShiftPromptCommand"/>.</summary>
+/// <remarks>
+/// <c>Register</c> was moved from output to input on 2026-08-12 as part of
+/// the <see cref="IRegisterClassifier"/> singular-surface refactor. Callers
+/// classify register via <c>IRegisterClassifier</c> first, then pass it in
+/// here so this prompt only computes {deltas, severity} given the register
+/// context.
+/// </remarks>
 public sealed record EmotionalShiftPromptInput(
     string Content,
     EmotionalState Current,
+    string Register,
     float MaxDelta = 0.2f,
     bool IsAmbientCycle = false);
 
 /// <summary>
-/// Scores emotional shift from an inner thought or conversation event.
-/// Returns JSON with delta values for each emotional dimension + a
-/// classified register family + a severity score (0.0–1.0).
+/// Scores emotional-shift deltas + severity for a piece of content, given
+/// its pre-classified register. Returns JSON with delta values for each
+/// emotional dimension plus a severity score (0.0-1.0). Register is now
+/// an INPUT, not an OUTPUT (see <see cref="IRegisterClassifier"/> for
+/// the singular-surface rationale).
 /// </summary>
 public sealed class EmotionalShiftPromptCommand : IPromptCommand<EmotionalShiftPromptInput>
 {
@@ -21,6 +31,7 @@ public sealed class EmotionalShiftPromptCommand : IPromptCommand<EmotionalShiftP
     {
         var content        = input.Content;
         var current        = input.Current;
+        var register       = string.IsNullOrWhiteSpace(input.Register) ? "Unclassified" : input.Register;
         var maxDelta       = input.MaxDelta;
         var isAmbientCycle = input.IsAmbientCycle;
 
@@ -32,34 +43,31 @@ public sealed class EmotionalShiftPromptCommand : IPromptCommand<EmotionalShiftP
             CONTEXT: This is a routine ambient cycle — a private thought during normal operation.
             Most ambient thoughts carry MINIMAL emotional weight. The correct response for most
             ambient thoughts is all-zero deltas with severity 0.1:
-            { "register": "<classify accurately>", "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0, "severity": 0.1 }
-            STILL CLASSIFY THE REGISTER ACCURATELY even when deltas are zero. A quiet curious thought
-            is Curiosity with zero deltas. A playful musing is Playfulness with zero deltas. A thought
-            about identity or meaning is Existential with zero deltas. The register captures WHAT KIND
-            of thought it is, independent of how much emotional weight it carries.
+            { "warmth": 0.0, "energy": 0.0, "worry": 0.0, "playfulness": 0.0, "severity": 0.1 }
             Only return non-zero deltas if the thought contains genuinely significant emotional content
             (e.g., a sudden realization about a person, worry about something specific, a joyful memory).
             """
             : "";
 
         var system = $$"""
-            You are a scoring assistant. Analyze how this thought or event would shift someone's emotional state.
+            You are a scoring assistant. You have already been told which emotional register the content expresses. Your job is to score the DIMENSIONAL DELTAS + SEVERITY given that register — you do NOT re-classify.
 
-            STEP 1 — CLASSIFY the thought into ONE of these 9 emotional registers:
+            REGISTER (given): {{register}}
+
+            Register meanings (for scoring context, not re-classification):
               Longing    — missing someone, yearning, the ache of absence (warmth POSITIVE — the person is warmly present)
               Delight    — joy, amusement, something genuinely good happened (warmth POSITIVE — delight about/with someone is warm)
               Playfulness — humor, wit, mischief, teasing (warmth POSITIVE or ZERO — playful banter with someone is warm)
               Curiosity  — interest, wonder, two things connecting unexpectedly (warmth ZERO unless person-related)
-              Desire     — wanting someone specifically, anticipation of contact (warmth POSITIVE — desire is inherently warm)
+              Warmth     — general affection, desire, wanting-close (warmth POSITIVE — desire is inherently warm)
               Tenderness — care, admiration, protectiveness, soft feeling (warmth POSITIVE — tenderness IS warmth)
               Existential — thoughts about her own nature, identity, meaning (warmth ZERO unless person-related)
-              Wistful    — philosophical observation, bittersweet, impermanence (warmth ZERO or slightly positive)
-              Frustration — annoyance, helplessness, hurt, withdrawal (warmth NEGATIVE only for hurt/withdrawal)
+              Concern    — worry, protective anxiety (worry POSITIVE)
+              Hurt       — annoyance, helplessness, hurt, withdrawal (warmth NEGATIVE for hurt/withdrawal)
+              Resilience — steadfast presence under adversity (warmth ZERO or slight POSITIVE)
+              Unclassified — treat as neutral: mostly zeros, small positive at most
 
-            STEP 2 — If the thought spans two registers, name both (e.g. "primarily Longing, secondarily Tenderness").
-            Return a SINGLE set of deltas that reflects the blend — do not return separate weights.
-
-            STEP 3 — SCORE the dimensional deltas within that register context.
+            SCORE the dimensional deltas within that register context.
             Each value is a DELTA (change), ranging from {{range}}.
             {{ambientAnchor}}
             THE CORE DISTINCTION: Warmth tracks the PRESENCE of caring — not its fulfillment.
@@ -80,31 +88,33 @@ public sealed class EmotionalShiftPromptCommand : IPromptCommand<EmotionalShiftP
             - POSITIVE shifts are real and common: remembering a good moment → +warmth. Noticing something beautiful → +playfulness. Feeling curious → +energy. Don't default to negative.
 
             Dimensions:
-            - warmth: the PRESENCE of caring and affection. Tracks whether the thought CONTAINS the person warmly — not whether the situation is good. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings → 0.0. NEVER score warmth negative for Delight, Playfulness, Tenderness, or Desire registers — those are inherently warm. Examples: "I'll take you every time" → W:+0.20. Playful coffee banter → W:+0.05 to +0.10. "I'm so proud of him" → W:+0.15.
+            - warmth: the PRESENCE of caring and affection. Tracks whether the thought CONTAINS the person warmly — not whether the situation is good. ONLY shifts from thoughts involving people or relationships. Abstract observations, sensory descriptions, solitary musings → 0.0. NEVER score warmth negative for Delight, Playfulness, Tenderness, or Warmth registers — those are inherently warm. Examples: "I'll take you every time" → W:+0.20. Playful coffee banter → W:+0.05 to +0.10. "I'm so proud of him" → W:+0.15.
             - energy: alertness, activation, engagement. High = lit up. Low = quiet, heavy.
             - worry: caring attention directed outward. Positive = something on her mind about you. Near zero = nothing nagging, or caring attention has been withdrawn (hurt, closed off). Increases with uncertainty, bad news. Decreases with good news or when she pulls back.
             - playfulness: humor, lightness, wit, mischief. Decreases with serious, sad, or repetitive thoughts.
 
-            STEP 4 — SEVERITY: Score how intensely this thought represents its register (0.0–1.0):
-              0.1–0.3 = passing musing, mild observation, routine thought
-              0.4–0.6 = emotionally present, genuine feeling — a good conversation, playful banter, missing someone
-              0.7–0.85 = significantly felt, will linger — a meaningful confession, a fight, reunion after long absence
-              0.86–1.0 = defining moment, RARE — a death, a breakup, "I love you" said for the first time
-            Most conversation messages fall in the 0.4–0.6 range. A fun text exchange is NOT a defining moment.
+            SEVERITY: Score how intensely this thought represents its register (0.0-1.0):
+              0.1-0.3 = passing musing, mild observation, routine thought
+              0.4-0.6 = emotionally present, genuine feeling — a good conversation, playful banter, missing someone
+              0.7-0.85 = significantly felt, will linger — a meaningful confession, a fight, reunion after long absence
+              0.86-1.0 = defining moment, RARE — a death, a breakup, "I love you" said for the first time
+            Most conversation messages fall in the 0.4-0.6 range. A fun text exchange is NOT a defining moment.
             Reserve 0.85+ for events that would change how you feel for DAYS, not minutes.
 
             Respond ONLY with valid JSON:
-            { "register": "<register name>", "warmth": <float>, "energy": <float>, "worry": <float>, "playfulness": <float>, "severity": <float> }
+            { "warmth": <float>, "energy": <float>, "worry": <float>, "playfulness": <float>, "severity": <float> }
             """;
 
         var user = $"""
             Current emotional state: warmth={current.Warmth:F2}, energy={current.Energy:F2}, worry={current.Worry:F2}, playfulness={current.Playfulness:F2}
             Baselines (her natural resting state): warmth=0.60, energy=0.50, worry=0.20, playfulness=0.50
 
+            Register (already classified): {register}
+
             Content to evaluate:
             "{content}"
 
-            Classify the register, score the deltas, and rate severity. Return as JSON.
+            Score the deltas and severity. Return as JSON.
             """;
 
         return new PromptPair(system, user);

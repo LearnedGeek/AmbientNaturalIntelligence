@@ -160,6 +160,14 @@ public static class AniRuntimeServiceContainer
         // OllamaTagIntentClassifier for design rationale.
         services.AddSingleton<ITagIntentClassifier, OllamaTagIntentClassifier>();
 
+        // 2026-08-12 — singular-surface register classifier (per Theme J
+        // shared-boundary principle). Retires the N-places drift where three
+        // prompts across two models were producing the same-schema register
+        // field. See IRegisterClassifier XML doc for the arbiter diagnostic
+        // that motivated this. Consumers: EmotionalProcessor, InnerThoughtPhase,
+        // Research.razor reclassify button, AniRuntime.Eval --backfill-register.
+        services.AddSingleton<IRegisterClassifier, QwenRegisterClassifier>();
+
         // Issue #93 Phase 3 (2026-07-06) — Ani's self-audit classifier. Reads
         // one Interior record's content against confirmed substrate and
         // returns contradicts / grounded / neutral / unknown. Consumed by:

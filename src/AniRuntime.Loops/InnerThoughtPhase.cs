@@ -42,6 +42,7 @@ namespace AniRuntime.Loops;
 public class InnerThoughtPhase
 {
     private readonly IOllamaClient _ollama;
+    private readonly IRegisterClassifier _registerClassifier;
     private readonly ILogger<InnerThoughtPhase> _log;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
@@ -51,12 +52,14 @@ public class InnerThoughtPhase
 
     public InnerThoughtPhase(
         IOllamaClient ollama,
+        IRegisterClassifier registerClassifier,
         ILogger<InnerThoughtPhase> log,
         ICognitiveOutputGate? outputGate = null,
         Microsoft.Extensions.Options.IOptions<AniOptions>? aniOptions = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         _ollama = ollama;
+        _registerClassifier = registerClassifier;
         _log = log;
         _outputGate = outputGate;
         _epistemicRenderer = epistemicRenderer;
@@ -139,7 +142,12 @@ public class InnerThoughtPhase
     internal async Task<MetadataRecognitionResult> RecognizeMetadataAsync(
         string thought, ContextSnapshot snapshot, CancellationToken ct)
     {
-        var (system, user) = PromptBuilder.BuildInnerThoughtMetadataPrompt(thought, snapshot);
+        // Singular-surface register classification (2026-08-12): register
+        // now flows through IRegisterClassifier so every producer in the
+        // system uses one prompt + one model + one taxonomy.
+        var register = await _registerClassifier.ClassifyAsync(thought, ct).ConfigureAwait(false);
+
+        var (system, user) = PromptBuilder.BuildInnerThoughtMetadataPrompt(thought, snapshot, register);
 
         string raw;
         try
@@ -161,7 +169,6 @@ public class InnerThoughtPhase
             var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
 
-            var register   = root.TryGetProperty("register", out var r) ? r.GetString() : null;
             var valence    = root.TryGetProperty("valence", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
                                 ? (float)Math.Clamp(v.GetDouble(), 0.0, 1.0) : 0.3f;
             var importance = root.TryGetProperty("importance", out var i) && i.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -171,13 +178,6 @@ public class InnerThoughtPhase
             {
                 var aStr = a.GetString();
                 if (!string.IsNullOrWhiteSpace(aStr)) anchor = aStr;
-            }
-
-            if (string.IsNullOrWhiteSpace(register))
-            {
-                _log.LogWarning(
-                    "Posture-S+1 hybrid metadata produced empty register field; falling back to legacy valence-scoring.");
-                return await FallbackToLegacyMetadataAsync(thought, snapshot, ct).ConfigureAwait(false);
             }
 
             return new MetadataRecognitionResult(register, valence, importance, anchor);
@@ -201,8 +201,11 @@ public class InnerThoughtPhase
         // threshold, so emit a single representative value matched to the legacy
         // post-threshold midpoint. Register/anchor null signals "no recognizer
         // signal" to the consumer.
+        // Fallback register: Longing is the canonical family for the old
+        // "Wistful" legacy default (per QwenRegisterClassifier.NormalizeToCanonical
+        // and ImpactCategoryDefaults.ToRegisterFamily).
         return new MetadataRecognitionResult(
-            Register:          "Wistful",
+            Register:          "Longing",
             Valence:           valence,
             Importance:        valence >= 0.5f ? 0.8f : 0.3f,
             AssociativeAnchor: null);
