@@ -125,24 +125,19 @@ jobs:
           retention-days: 14
 
       # AniRuntime.Eval is a CLI tool not referenced by the test project, so
-      # the transitive build above skips it. Build + publish it explicitly so
-      # the Phase A-E eval harness (Issue #79) is gated by CI and the binary
-      # is available as a workflow artifact for sweep runs.
+      # the transitive build above skips it. Build it explicitly (early) so
+      # the Phase A-E eval harness (Issue #79) is CI-gated. Publish moved
+      # to AFTER the service deploy — see #104. A long-running detached
+      # Eval process (backfills) holds DLL locks in EVAL_PUBLISH_DIR;
+      # publishing before service-deploy meant a lock failure skipped every
+      # subsequent step including Start service, silently no-op'ing deploys.
+      # Order now: service deploy is priority-1, Eval CLI publish is
+      # priority-2, and a lock failure on Eval publish still fails the
+      # workflow loud without gating service updates.
       - name: Build Eval CLI
         run: dotnet build tools/AniRuntime.Eval/AniRuntime.Eval.csproj --configuration Release
 
-      - name: Publish Eval CLI
-        run: dotnet publish tools/AniRuntime.Eval/AniRuntime.Eval.csproj -c Release -o ${{ env.EVAL_PUBLISH_DIR }} --no-build
-
-      - name: Upload Eval CLI
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: eval-cli-${{ github.sha }}
-          path: ${{ env.EVAL_PUBLISH_DIR }}/**
-          retention-days: 14
-
-      # If we get here, tests passed. Safe to deploy.
+      # If we get here, tests passed AND the Eval CLI built. Safe to deploy.
 
       - name: Check service exists
         id: service-check
@@ -228,6 +223,22 @@ jobs:
             Write-Warning "Deploy completed but service health is unconfirmed -- investigate server logs."
             # Non-fatal: service may still be warming up. Don't fail the deploy on this alone.
           }
+
+      # Publish Eval CLI runs AFTER the service is deployed and healthy (#104).
+      # File-lock failures here (from long-running detached Eval processes
+      # holding DLLs in EVAL_PUBLISH_DIR) no longer skip service deploy —
+      # they fail loud on their own step, service is already live.
+      - name: Publish Eval CLI
+        if: always()
+        run: dotnet publish tools/AniRuntime.Eval/AniRuntime.Eval.csproj -c Release -o ${{ env.EVAL_PUBLISH_DIR }} --no-build
+
+      - name: Upload Eval CLI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-cli-${{ github.sha }}
+          path: ${{ env.EVAL_PUBLISH_DIR }}/**
+          retention-days: 14
 
       - name: Deploy summary
         if: always()
