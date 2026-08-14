@@ -131,9 +131,12 @@ public sealed class QwenRegisterClassifier : IRegisterClassifier
 
     /// <summary>
     /// Normalize non-canonical register strings (case, older vocab like
-    /// "wistful", "frustration", "desire") to one of the ten canonical
-    /// families. Prevents downstream mapping surprises even if the model
-    /// occasionally slips outside the canonical set.
+    /// "wistful", "frustration", "desire", or foreign-language aliases
+    /// like "saudade" and "sehnsucht") to one of the eleven canonical
+    /// families defined in <see cref="RegisterFamily"/>. Prevents
+    /// downstream mapping surprises even if the model occasionally slips
+    /// outside the canonical set. Yearning added in taxonomy v1.5
+    /// (2026-08-14).
     /// </summary>
     private static string NormalizeToCanonical(string raw)
     {
