@@ -95,6 +95,30 @@ public sealed class OutreachPipeline : IOutreachPipeline
 
     public async Task RunAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
+        // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
+        // structured F1_INJECTION per composer entry so Phase 1 can measure:
+        // - recentThought char count (P1 → T1 "Your most recent thought:" — L1)
+        // - ActiveTriggers cardinality and semantic distinctness (P8 → T1
+        //   "Active triggers:" — L5)
+        // Referenced by ANI-Composer-Input-Provenance-Audit-2026-08-13.md.
+        var triggers = snapshot.DesireState.ActiveTriggers;
+        var triggerCount = triggers.Count;
+        var uniquePrefixCount = triggers
+            .Select(t => (t.Description ?? string.Empty).Length >= 20
+                ? (t.Description ?? string.Empty)[..20]
+                : (t.Description ?? string.Empty))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var oldestAgeSec = triggers.Count > 0
+            ? (int)(DateTimeOffset.UtcNow - triggers.Min(t => t.CreatedAt)).TotalSeconds
+            : 0;
+        _log.LogInformation(
+            "F1_INJECTION template=OutreachPromptCommand section=most_recent_thought producer=InnerThoughtPhase chars={ThoughtChars}",
+            recentThought?.Length ?? 0);
+        _log.LogInformation(
+            "F1_INJECTION template=OutreachPromptCommand section=active_triggers producer=DesireEngine count={Count} uniquePrefixes={Unique} oldestAgeSec={AgeSec}",
+            triggerCount, uniquePrefixCount, oldestAgeSec);
+
         // Step 1: Decision — should Ani reach out?
         var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
         var outreachPrompt = PromptBuilder.BuildOutreachPrompt(

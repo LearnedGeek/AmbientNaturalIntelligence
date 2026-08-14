@@ -106,6 +106,18 @@ internal static class ConsciousSubstrateGistObservation
             // RecentHistory remains the only user-role content the model sees.
             //
             // §4.6 composition rule: "merged into prose, not enumerated."
+            // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
+            // structured F1_GIST_INJECTION per injection so Phase 1 can measure:
+            // surface (system vs user role), gist size, slice count, and
+            // directive-in-system flag state at time of injection. Referenced
+            // by ANI-Composer-Input-Provenance-Audit-2026-08-13.md as L2.
+            log.LogInformation(
+                "F1_GIST_INJECTION surface={Surface} directiveInSystem={DirectiveInSystem} chars={Chars} sliceFlags={SliceFlags}",
+                directiveInSystem ? "system" : "user",
+                directiveInSystem,
+                gist.Composed.Length,
+                gist.Slices.ToString());
+
             if (directiveInSystem)
             {
                 var mergedSystem = string.IsNullOrEmpty(promptSystemText)
