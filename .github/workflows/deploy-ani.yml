@@ -30,6 +30,12 @@ name: Deploy ANI to Server
 on:
   push:
     branches: [ main ]
+    # Don't trigger a full deploy on Serge-review-only edits (rules
+    # file + AI review workflow itself). Neither reaches the runtime;
+    # skipping saves a build+publish cycle.
+    paths-ignore:
+      - '.ai/**'
+      - '.github/workflows/ai-review.yml'
   workflow_dispatch:     # manual trigger from the Actions UI
 
 concurrency:
