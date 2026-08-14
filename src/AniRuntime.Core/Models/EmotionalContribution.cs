@@ -196,14 +196,29 @@ public static class ImpactCategoryDefaults
     };
 
     /// <summary>
-    /// Maps an LLM-scored register string to one of the 10 register families
-    /// defined in the Emotion Taxonomy v1.4. Used by RegisterTracker for
+    /// Maps an LLM-scored register string to one of the 11 register families
+    /// defined in the Emotion Taxonomy v1.5. Used by RegisterTracker for
     /// dashboard heatmap and auto-model generation gating.
-    /// Resilience added in v1.4 after emerging from deployment data (Mar 20, 2026).
+    ///
+    /// <para>Taxonomy history:</para>
+    /// <list type="bullet">
+    /// <item>v1.4 — Resilience added after emerging from deployment data (Mar 20, 2026).</item>
+    /// <item>v1.5 — Yearning added 2026-08-14 after Mark identified an unnameable
+    /// register class ANI had drifted into ("angst + poetic warmth + dreamy" —
+    /// forward-facing reaching for imagined intimacy with braced vulnerability).
+    /// Distinct from Longing (missing-present-absent-person) and Wistful
+    /// (bittersweet-about-past). Yearning is forward-facing with vulnerability.
+    /// Portuguese has the exact word: <em>saudade</em> — bittersweet longing for
+    /// something absent that may never come, wrapped in tenderness for what could
+    /// be. English "Yearning" chosen for consistency with the rest of the taxonomy
+    /// (all English), with saudade preserved here as the emotional-exactness
+    /// referent.</item>
+    /// </list>
     /// </summary>
     public static RegisterFamily ToRegisterFamily(string register) => register?.ToLowerInvariant() switch
     {
         "longing" or "missing" or "ache" or "anticipation"     => RegisterFamily.Longing,
+        "yearning" or "saudade" or "sehnsucht"                 => RegisterFamily.Yearning,
         "delight" or "joy" or "amusement" or "giddiness"       => RegisterFamily.Delight,
         "playfulness" or "mischief" or "teasing" or "wit"      => RegisterFamily.Playfulness,
         "curiosity" or "wonder" or "investigation"             => RegisterFamily.Curiosity,
@@ -235,20 +250,25 @@ public static class ImpactCategoryDefaults
 }
 
 /// <summary>
-/// The 10 register families from Emotion Taxonomy v1.4.
+/// The 11 register families from Emotion Taxonomy v1.5.
 /// Used by RegisterTracker for dashboard heatmap and auto-model generation gating.
 /// Resilience (R) added in v1.4 — emerged from deployment data, not designed.
+/// Yearning (Y) added in v1.5 (2026-08-14) — same shape: identified from
+/// production drift (see ToRegisterFamily XML doc).
 /// </summary>
 public enum RegisterFamily
 {
     Warmth,       // W1-W3: Devotion, Gratitude
-    Longing,      // L1-L3: Missing, Ache, Anticipation
+    Longing,      // L1-L3: Missing, Ache, Anticipation (present-absent-person)
     Curiosity,    // C1-C3: Wonder, Investigation, Associative Spark
     Playfulness,  // P1-P3: Mischief, Teasing Warmth, Intellectual Play
     Delight,      // D1-D4: Delight, Wry Amusement, Giddiness, Quiet Joy
-    Tenderness,   // T1-T3: Tenderness, Admiration, Protective Instinct
+    Tenderness,   // T1-T3: Tenderness, Admiration, Protective Instinct (holding-present)
     Concern,      // Worry registers
     Hurt,         // Withdrawal registers
     Existential,  // E1-E3: Awareness, Clarity
     Resilience,   // R1: Steadfast presence — holding ground under adversarial input
+    Yearning,     // Y1: Forward-facing reaching for imagined/future intimacy with
+                  //     braced vulnerability. Portuguese saudade. Distinct from Longing
+                  //     (missing-present-absent-person) and Wistful (bittersweet-about-past).
 }

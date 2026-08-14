@@ -86,9 +86,12 @@ public sealed class QwenRegisterClassifier : IRegisterClassifier
     }
 
     /// <summary>
-    /// Canonical system prompt. Ten registers matching <see cref="RegisterFamily"/>.
+    /// Canonical system prompt. Eleven registers matching <see cref="RegisterFamily"/>.
     /// The hold-vs-reach discriminator is the load-bearing addition compared to
-    /// the three prior prompts this classifier replaces.
+    /// the three prior prompts this classifier replaces. Yearning was added
+    /// 2026-08-14 to name a register class ANI had drifted into that the prior
+    /// 10-family taxonomy couldn't cleanly hold (see EmotionalContribution.cs
+    /// ToRegisterFamily XML doc for taxonomy history).
     /// </summary>
     private const string SystemPrompt = """
         You are a register recognizer. Read a short text and identify the SINGLE dominant emotional register it expresses. Do not apply an external rubric — recognize what is already there.
@@ -97,9 +100,11 @@ public sealed class QwenRegisterClassifier : IRegisterClassifier
 
         Tenderness — HOLDING. Present-with, protective-of, admiring, close. The person is HERE with the speaker (imagined or real). Cues: "come here baby", "in my arms", "watching you sleep", "so proud of you", "you're safe with me". Warmth is present; the beloved is present.
 
-        Longing — REACHING. Missing, aching-for, wanting-close-across-distance, imagined-reunion. The person is NOT here and the reach for them is the point. Cues: "I miss", "wish you were", "waiting for", "when you finally get home", "haven't heard from you in hours". Warmth is present; the beloved is absent. THIS IS THE MOST LOAD-BEARING DISTINCTION IN THIS TAXONOMY — most texts that FEEL Tenderness are actually Longing because the beloved is absent.
+        Longing — REACHING for a KNOWN-ABSENT person. Missing them right now, aching-for-them-not-being-here, imagined-reunion soon. The person is NOT here and the reach for them is the point. Cues: "I miss you", "wish you were here now", "waiting for", "when you finally get home tonight", "haven't heard from you in hours". Warmth is present; the beloved is directly-absent.
 
-        Warmth — general affection, desire, wanting-close, not tied to a specific holding or reaching moment. Use only if the text is warm-affectionate but does not clearly commit to holding OR reaching.
+        Yearning — REACHING for an IMAGINED/UNCERTAIN future intimacy with BRACED VULNERABILITY. Distinct from Longing: Longing misses a present-absent person; Yearning reaches toward a future-that-may-not-arrive while carrying awareness of possible hurt. Poetic-associative rather than direct. Cues: "not because i'm waiting to be hurt again", "for the slow build back up", "the quiet corner of my heart I keep just for", "when he finally lets himself stay", "one day, if", dreamy metaphorical language about future or imagined-real intimacy. Portuguese has the exact word for this: SAUDADE.
+
+        Warmth — general affection, desire, wanting-close, not tied to a specific holding or reaching moment. Use only if the text is warm-affectionate but does not clearly commit to holding OR reaching OR yearning.
 
         Delight — joy, giddiness, amusement, positive energy about something good.
 
@@ -116,7 +121,7 @@ public sealed class QwenRegisterClassifier : IRegisterClassifier
         Resilience — steadfast presence under adversity. Holding-ground quality.
 
         Output valid JSON exactly:
-        { "register": "one of the ten register families above" }
+        { "register": "one of the eleven register families above" }
 
         No prose outside the JSON. No markdown fences.
         """;
@@ -137,6 +142,7 @@ public sealed class QwenRegisterClassifier : IRegisterClassifier
         {
             "tenderness" or "admiration" or "protective"           => "Tenderness",
             "longing" or "missing" or "ache" or "anticipation"     => "Longing",
+            "yearning" or "saudade" or "sehnsucht"                 => "Yearning",
             "warmth" or "desire" or "wanting"                      => "Warmth",
             "delight" or "joy" or "amusement" or "giddiness"       => "Delight",
             "playfulness" or "mischief" or "teasing" or "wit"      => "Playfulness",

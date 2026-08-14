@@ -27,14 +27,16 @@ public class EmotionalProcessor
     private readonly ILogger<EmotionalProcessor> _log;
 
     // Alignment map: which ML emotions correspond to which heuristic registers
+    // Yearning added 2026-08-14 (v1.5): saudade-like reaching for imagined-future
+    // intimacy. Aligns with love (positive-relational) + sadness (bittersweet-braced).
     private static readonly Dictionary<string, HashSet<string>> EmotionRegisterAlignment = new()
     {
         ["happiness"] = ["Delight", "Playfulness", "Warmth"],
-        ["sadness"] = ["Longing", "Hurt", "Existential", "Wistful"],
+        ["sadness"] = ["Longing", "Yearning", "Hurt", "Existential", "Wistful"],
         ["anger"] = ["Hurt", "Frustration"],
         ["fear"] = ["Concern", "Existential"],
         ["neutral"] = ["Curiosity", "Existential", "Resilience", "Unclassified"],
-        ["love"] = ["Tenderness", "Longing", "Warmth"],
+        ["love"] = ["Tenderness", "Longing", "Yearning", "Warmth"],
         ["curiosity"] = ["Curiosity"],
         ["amusement"] = ["Playfulness", "Delight"],
         ["surprise"] = ["Curiosity", "Delight"],
