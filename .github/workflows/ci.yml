@@ -3,8 +3,17 @@ name: CI
 on:
   push:
     branches: [ main, 'claude/**', 'feature/**', 'fix/**' ]
+    # Don't trigger CI on Serge-review-only edits (rules file + AI
+    # review workflow itself). Saves a full build+test+Sonar run on
+    # docs-shaped changes that don't affect any code path.
+    paths-ignore:
+      - '.ai/**'
+      - '.github/workflows/ai-review.yml'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '.ai/**'
+      - '.github/workflows/ai-review.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
