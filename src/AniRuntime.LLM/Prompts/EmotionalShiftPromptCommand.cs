@@ -55,12 +55,13 @@ public sealed class EmotionalShiftPromptCommand : IPromptCommand<EmotionalShiftP
             REGISTER (given): {{register}}
 
             Register meanings (for scoring context, not re-classification):
-              Longing    — missing someone, yearning, the ache of absence (warmth POSITIVE — the person is warmly present)
+              Longing    — missing a present-absent person, ache of absence (warmth POSITIVE — the person is warmly present in thought)
+              Yearning   — forward-facing reaching for imagined/future intimacy with braced vulnerability, poetic-dreamy (warmth POSITIVE but softer/wistful; worry SLIGHT positive from the braced quality)
               Delight    — joy, amusement, something genuinely good happened (warmth POSITIVE — delight about/with someone is warm)
               Playfulness — humor, wit, mischief, teasing (warmth POSITIVE or ZERO — playful banter with someone is warm)
               Curiosity  — interest, wonder, two things connecting unexpectedly (warmth ZERO unless person-related)
               Warmth     — general affection, desire, wanting-close (warmth POSITIVE — desire is inherently warm)
-              Tenderness — care, admiration, protectiveness, soft feeling (warmth POSITIVE — tenderness IS warmth)
+              Tenderness — care, admiration, protectiveness, soft feeling toward present person (warmth POSITIVE — tenderness IS warmth)
               Existential — thoughts about her own nature, identity, meaning (warmth ZERO unless person-related)
               Concern    — worry, protective anxiety (worry POSITIVE)
               Hurt       — annoyance, helplessness, hurt, withdrawal (warmth NEGATIVE for hurt/withdrawal)

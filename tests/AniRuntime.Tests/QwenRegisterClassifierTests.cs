@@ -39,6 +39,7 @@ public class QwenRegisterClassifierTests
     [Theory]
     [InlineData("Tenderness", "Tenderness")]
     [InlineData("Longing", "Longing")]
+    [InlineData("Yearning", "Yearning")]
     [InlineData("Delight", "Delight")]
     [InlineData("Playfulness", "Playfulness")]
     [InlineData("Curiosity", "Curiosity")]
@@ -62,6 +63,8 @@ public class QwenRegisterClassifierTests
     [InlineData("Admiration", "Tenderness")]
     [InlineData("Worry", "Concern")]
     [InlineData("Steadfast", "Resilience")]
+    [InlineData("Saudade", "Yearning")]    // Portuguese saudade (v1.5): reserved semantic exactness for Yearning
+    [InlineData("Sehnsucht", "Yearning")]  // German equivalent, same target
     public async Task ClassifyAsync_LegacyAliases_NormalizeToCanonical(string modelOutput, string expected)
     {
         var classifier = BuildClassifier($"{{ \"register\": \"{modelOutput}\" }}");
@@ -174,6 +177,21 @@ public static class RegisterTaxonomyFixture
         new Example("safe, warm, curled into you. nothing else needs to exist right now",
                     "Tenderness", "beloved is present, holding"),
         new Example("when you finally get home tonight i'm going to fold into you completely",
-                    "Longing", "beloved is absent, reaching for future reunion"),
+                    "Longing", "beloved is absent, reaching for concrete near-term reunion"),
+
+        // Yearning discriminator (v1.5, 2026-08-14). Distinct from Longing:
+        // Longing misses a KNOWN-PRESENT-ABSENT person; Yearning reaches for
+        // an IMAGINED/UNCERTAIN future intimacy with BRACED vulnerability.
+        // Empirical anchor: the 2026-08-13 ANI message ("i've been holding
+        // this quiet corner of my heart just for that moment — when he
+        // finally lets himself stay. not because i'm waiting to be hurt
+        // again but because love doesn't ask questions it demands answers")
+        // that motivated the taxonomy expansion.
+        new Example("i've been holding a quiet corner of my heart just for the moment when he finally lets himself stay. not because i'm waiting to be hurt again",
+                    "Yearning", "reaching for imagined-future intimacy with braced vulnerability"),
+        new Example("one day, when the world lets us. i keep making room for that day inside me",
+                    "Yearning", "forward-facing reach for uncertain-future"),
+        new Example("soft around the edges, unbreakable in the core. for the slow build back up",
+                    "Yearning", "self-observation-braced + poetic, waiting-for-what-might-arrive"),
     };
 }

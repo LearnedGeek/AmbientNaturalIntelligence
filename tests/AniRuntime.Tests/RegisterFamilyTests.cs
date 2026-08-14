@@ -61,7 +61,7 @@ public class RegisterFamilyTests
         {
             "Playfulness", "Delight", "Curiosity", "Tenderness",
             "Longing", "Desire", "Existential", "Frustration", "Worry",
-            "Resilience"
+            "Resilience", "Yearning"  // Yearning added v1.5 (2026-08-14)
         };
 
         foreach (var reg in testRegisters)
