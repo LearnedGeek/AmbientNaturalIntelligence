@@ -122,7 +122,8 @@ public sealed class OutreachPipeline : IOutreachPipeline
         // Step 1: Decision — should Ani reach out?
         var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
         var outreachPrompt = PromptBuilder.BuildOutreachPrompt(
-            snapshot, recentThought, _desire.IsNightHours(), rendererForPrompt);
+            snapshot, recentThought, _desire.IsNightHours(), rendererForPrompt,
+            triggerRenderTopK: _aniOptions.TriggerRenderTopK);
         var raw = await _ollama.ChatJsonAsync(
             outreachPrompt.System, snapshot.RecentHistory, outreachPrompt.User, ct).ConfigureAwait(false);
 

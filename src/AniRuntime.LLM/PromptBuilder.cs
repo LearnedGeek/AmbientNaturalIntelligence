@@ -204,9 +204,10 @@ public static class PromptBuilder
 
     public static (string System, string User) BuildOutreachPrompt(
         ContextSnapshot snapshot, string recentThought, bool isNightTime = false,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        int triggerRenderTopK = 10)
         => new Prompts.OutreachPromptCommand()
-            .Build(new Prompts.OutreachPromptInput(snapshot, recentThought, isNightTime, epistemicRenderer));
+            .Build(new Prompts.OutreachPromptInput(snapshot, recentThought, isNightTime, epistemicRenderer, triggerRenderTopK));
 
     /// <summary>
     /// Lean conversation prompt — Conversation Mode (Phase 1).

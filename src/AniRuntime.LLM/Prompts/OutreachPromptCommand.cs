@@ -1,3 +1,4 @@
+using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
 
@@ -8,7 +9,8 @@ public sealed record OutreachPromptInput(
     ContextSnapshot Snapshot,
     string RecentThought,
     bool IsNightTime = false,
-    IEpistemicSubstrateRenderer? EpistemicRenderer = null);
+    IEpistemicSubstrateRenderer? EpistemicRenderer = null,
+    int TriggerRenderTopK = 10);
 
 /// <summary>
 /// Decision-stage prompt for the outreach pipeline: should Ani reach out
@@ -91,8 +93,24 @@ public sealed class OutreachPromptCommand : IPromptCommand<OutreachPromptInput>
         if (snapshot.OpenLoops.Count > 0)
             context.Add($"Open threads: {string.Join("; ", snapshot.OpenLoops.Select(l => l.Description))}");
 
+        // F-1 Phase 2 (2026-08-15): render triggers with type-tag and top-K cap.
+        // Pre-Phase-2 shape was a semicolon-joined flat description blob with
+        // no source-type distinction and no cardinality cap — see
+        // ANI-Composer-Input-Provenance-Audit-2026-08-13.md for the empirical
+        // audit. Semantic dedup happens WRITER-side in DesireEngine.AddTriggerAsync,
+        // so ActiveTriggers should already be semantically-distinct; the top-K
+        // cap here is a safety net against pathological embedding-failure runs.
         if (snapshot.DesireState.ActiveTriggers.Count > 0)
-            context.Add($"Active triggers: {string.Join("; ", snapshot.DesireState.ActiveTriggers.Select(t => t.Description))}");
+        {
+            var envelopes = snapshot.DesireState.ActiveTriggers
+                .OfType<IActiveTriggerEnvelope>()
+                .OrderByDescending(e => e.CreatedAt)
+                .Take(Math.Max(1, input.TriggerRenderTopK))
+                .ToList();
+
+            var rendered = string.Join("; ", envelopes.Select(e => $"[{e.SourceType}] {e.Content}"));
+            context.Add($"Active triggers: {rendered}");
+        }
 
         var outreachBlock = PromptBuilder.FormatOutreachContext(snapshot.OutreachContext, contact);
         if (outreachBlock is not null)
