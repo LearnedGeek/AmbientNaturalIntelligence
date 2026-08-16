@@ -91,7 +91,7 @@ public class ActiveTriggerEnvelopeTests : AniTestBase
 
         var ollama = new Mock<IOllamaClient>();
         var vecA = MakeUnitVector(seed: 1);
-        var vecB = ScaleVector(vecA, 0.98f); // ~0.98 cosine similarity → dupe
+        var vecB = NearDuplicateVector(vecA, seed: 2);  // cosine >0.99 with vecA
         ollama.SetupSequence(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
               .ReturnsAsync(vecA)
               .ReturnsAsync(vecB);
@@ -106,6 +106,126 @@ public class ActiveTriggerEnvelopeTests : AniTestBase
         saved.ActiveTriggers.Should().HaveCount(1, "near-duplicate should merge into the existing envelope");
         saved.ActiveTriggers[0].Weight.Should().Be(0.9f, "merge should take the max of both weights");
         saved.DesireToConnect.Should().Be(desireAfterFirst, "duplicate should NOT bump desire again");
+    }
+
+    [Fact]
+    public async Task AddTriggerAsync_NearDuplicateAcrossDifferentTriggerType_DoesNotMerge()
+    {
+        // Mark review 2026-08-15 [P1]: cross-type dedup would destroy provenance.
+        // Same embedding-similar text arriving as SpontaneousThought then as
+        // ReactiveShare must NOT collapse into one envelope tagged with the
+        // earlier type.
+        DesireState? saved = null;
+        SetupSavesToDelegate(s => saved = s, FreshDesireState());
+
+        var ollama = new Mock<IOllamaClient>();
+        var vecA = MakeUnitVector(seed: 1);
+        var vecB = NearDuplicateVector(vecA, seed: 2);  // cosine >0.99 with vecA
+        ollama.SetupSequence(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(vecA)
+              .ReturnsAsync(vecB);
+
+        var engine = EngineWithOllama(ollama.Object);
+
+        await engine.AddTriggerAsync(TriggerType.SpontaneousThought, 0.5f, "reflection on the news");
+        await engine.AddTriggerAsync(TriggerType.ReactiveShare,      0.5f, "reflection on the news");
+
+        saved!.ActiveTriggers.Should().HaveCount(2, "different trigger types must not merge even at cosine ≈1.0");
+        saved.ActiveTriggers.Select(t => t.Type)
+            .Should().BeEquivalentTo(new[] { TriggerType.SpontaneousThought, TriggerType.ReactiveShare });
+    }
+
+    [Fact]
+    public async Task AddTriggerAsync_NearDuplicateAcrossDifferentSource_DoesNotMerge()
+    {
+        // Mark review 2026-08-15 [P1]: same TriggerType from different call
+        // sites (source discriminator) must not collapse. Both call sites
+        // currently use SpontaneousThought; only Source distinguishes them.
+        DesireState? saved = null;
+        SetupSavesToDelegate(s => saved = s, FreshDesireState());
+
+        var ollama = new Mock<IOllamaClient>();
+        var vecA = MakeUnitVector(seed: 1);
+        var vecB = NearDuplicateVector(vecA, seed: 2);
+        ollama.SetupSequence(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(vecA)
+              .ReturnsAsync(vecB);
+
+        var engine = EngineWithOllama(ollama.Object);
+
+        await engine.AddTriggerAsync(
+            TriggerType.SpontaneousThought, 0.5f, "thinking about Mark", default,
+            source: "inner-thought-valence");
+        await engine.AddTriggerAsync(
+            TriggerType.SpontaneousThought, 0.5f, "thinking about Mark", default,
+            source: "held-back-outreach");
+
+        saved!.ActiveTriggers.Should().HaveCount(2, "different sources on same TriggerType must not merge");
+        saved.ActiveTriggers.Select(t => t.Source)
+            .Should().BeEquivalentTo(new[] { "inner-thought-valence", "held-back-outreach" });
+
+        // Rendering must reflect the distinct source tags.
+        IActiveTriggerEnvelope innerThought = saved.ActiveTriggers.First(t => t.Source == "inner-thought-valence");
+        IActiveTriggerEnvelope heldBack     = saved.ActiveTriggers.First(t => t.Source == "held-back-outreach");
+        innerThought.SourceType.Should().Be("trigger.inner-thought-valence");
+        heldBack.SourceType.Should().Be("trigger.held-back-outreach");
+    }
+
+    [Fact]
+    public async Task AddTriggerAsync_Merge_KeepsOriginalSemanticKeyAndDescription()
+    {
+        // Mark review 2026-08-15 [P2]: on merge, SemanticKey must stay paired
+        // with the ORIGINAL Description. If we reassigned key to the new
+        // embedding while leaving Description unchanged, chained
+        // near-threshold merges could walk the key away from the displayed
+        // content and start collapsing dissimilar-to-displayed triggers.
+        DesireState? saved = null;
+        SetupSavesToDelegate(s => saved = s, FreshDesireState());
+
+        var ollama = new Mock<IOllamaClient>();
+        var vecA = MakeUnitVector(seed: 1);
+        var vecB = NearDuplicateVector(vecA, seed: 2);
+        var vecC = NearDuplicateVector(vecB, seed: 3);
+        ollama.SetupSequence(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(vecA)
+              .ReturnsAsync(vecB)
+              .ReturnsAsync(vecC);
+
+        var engine = EngineWithOllama(ollama.Object);
+
+        await engine.AddTriggerAsync(TriggerType.SpontaneousThought, 0.4f, "original description");
+        await engine.AddTriggerAsync(TriggerType.SpontaneousThought, 0.5f, "second phrasing");
+        await engine.AddTriggerAsync(TriggerType.SpontaneousThought, 0.6f, "third phrasing");
+
+        saved!.ActiveTriggers.Should().HaveCount(1, "all three should merge into the first envelope");
+        saved.ActiveTriggers[0].Description.Should().Be("original description",
+            "merge must not overwrite the displayed Description");
+        saved.ActiveTriggers[0].SemanticKey.Should().BeSameAs(vecA,
+            "merge must not overwrite SemanticKey — key stays paired with Description");
+        saved.ActiveTriggers[0].Weight.Should().Be(0.6f, "weight is the max across all merges");
+    }
+
+    [Fact]
+    public async Task AddTriggerAsync_Cancellation_PropagatesToCaller()
+    {
+        // Serge review 2026-08-15 IMPORTANT: broad catch (Exception) around
+        // EmbedAsync must NOT swallow OperationCanceledException. Cancellation
+        // has to propagate so service shutdown / request timeout surfaces
+        // instead of silently falling through to the append path.
+        DesireState? saved = null;
+        SetupSavesToDelegate(s => saved = s, FreshDesireState());
+
+        var ollama = new Mock<IOllamaClient>();
+        ollama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+              .ThrowsAsync(new OperationCanceledException("simulated cancellation"));
+
+        var engine = EngineWithOllama(ollama.Object);
+
+        var act = () => engine.AddTriggerAsync(
+            TriggerType.SpontaneousThought, 0.5f, "will cancel",
+            new CancellationTokenSource().Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]
@@ -249,8 +369,8 @@ public class ActiveTriggerEnvelopeTests : AniTestBase
 
         // Top-3 by CreatedAt DESC: trigger-0, trigger-1, trigger-2.
         user.Should().Contain("trigger-0").And.Contain("trigger-1").And.Contain("trigger-2");
-        user.Should().NotContain("trigger-4").And.NotContain("trigger-5")
-            .And.NotContain("trigger-6").And.NotContain("trigger-7");
+        user.Should().NotContain("trigger-3").And.NotContain("trigger-4")
+            .And.NotContain("trigger-5").And.NotContain("trigger-6").And.NotContain("trigger-7");
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -266,15 +386,20 @@ public class ActiveTriggerEnvelopeTests : AniTestBase
         return v;
     }
 
-    private static float[] ScaleVector(float[] v, float factor)
+    /// <summary>
+    /// Produces a unit vector very close to <paramref name="v"/> (cosine
+    /// similarity typically ≥0.99) by adding tiny per-component noise and
+    /// re-normalising. Intended for exercising the ≥0.85 dedup threshold —
+    /// safely well above it. NOT a precision helper: the exact similarity
+    /// depends on the RNG seed and vector dimension; assert on merge
+    /// outcome rather than on the raw similarity value.
+    /// </summary>
+    private static float[] NearDuplicateVector(float[] v, int seed, int dim = 32)
     {
-        // Perturb v slightly then re-normalize — produces a near-duplicate vector
-        // whose cosine similarity with v is ~factor.
-        var rand = new Random(42);
+        var rand = new Random(seed);
         var w = new float[v.Length];
         for (var i = 0; i < v.Length; i++)
-            w[i] = v[i] * factor + (float)((rand.NextDouble() * 2 - 1) * (1 - factor) * 0.1);
-        // Normalize
+            w[i] = v[i] + (float)((rand.NextDouble() * 2 - 1) * 0.01);
         double mag = 0;
         foreach (var x in w) mag += x * x;
         var norm = 1.0 / Math.Sqrt(mag);

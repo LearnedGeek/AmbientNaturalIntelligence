@@ -549,7 +549,8 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         if (valence > (float)_aniOptions.ValenceTriggerThreshold)
             await _desire.AddTriggerAsync(
                 TriggerType.SpontaneousThought, valence,
-                $"thought: {thought[..Math.Min(60, thought.Length)]}", ct).ConfigureAwait(false);
+                $"thought: {thought[..Math.Min(60, thought.Length)]}", ct,
+                source: "inner-thought-valence").ConfigureAwait(false);
 
         var desireAfter = await _desire.GetStateAsync(ct).ConfigureAwait(false);
         obs.DesireToConnect = desireAfter.DesireToConnect;

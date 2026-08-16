@@ -250,11 +250,20 @@ public class DesireEngine
     /// is on and an <see cref="IOllamaClient"/> is available, an embedding
     /// of <paramref name="description"/> is computed and compared against
     /// existing <see cref="DesireTrigger.SemanticKey"/> vectors. If any
-    /// existing trigger is cosine-similar ≥ <see cref="AniOptions.TriggerSemanticDedupThreshold"/>,
-    /// the existing trigger is REFRESHED (weight bumped to max, CreatedAt
-    /// reset) and no new envelope is appended. The desire scalar is not
-    /// bumped again in the merge case — duplicate triggers shouldn't
-    /// double-count against the outreach threshold.
+    /// existing trigger with the SAME <paramref name="type"/> AND
+    /// <paramref name="source"/> is cosine-similar ≥
+    /// <see cref="AniOptions.TriggerSemanticDedupThreshold"/>, the existing
+    /// trigger is REFRESHED (weight bumped to max, CreatedAt reset) and no
+    /// new envelope is appended. The desire scalar is not bumped again in
+    /// the merge case — duplicate triggers shouldn't double-count against
+    /// the outreach threshold.
+    /// </para>
+    ///
+    /// <para>
+    /// Dedup is scoped to (Type, Source) so that semantically-identical
+    /// text arriving from different producer sites keeps distinct
+    /// provenance rather than being folded into an earlier envelope under
+    /// the earlier tag (Mark review 2026-08-15 P1 finding).
     /// </para>
     ///
     /// <para>
@@ -264,13 +273,28 @@ public class DesireEngine
     /// grow unboundedly.
     /// </para>
     /// </summary>
+    /// <param name="type">The trigger family enum (kept for bookkeeping continuity).</param>
+    /// <param name="weight">Weight in [0,1] — how strongly this trigger elevates desire.</param>
+    /// <param name="description">The human-readable text rendered into the outreach prompt.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="source">
+    /// Optional call-site source discriminator (e.g. <c>"inner-thought-valence"</c>,
+    /// <c>"held-back-outreach"</c>). Populates <see cref="DesireTrigger.Source"/>;
+    /// scopes semantic-dedup match against other triggers of the same source only;
+    /// composes into the rendered <c>SourceType</c> tag as <c>trigger.{source}</c>.
+    /// When null, dedup matches against triggers where <c>Source</c> is also null
+    /// (grouped as the untagged legacy family), and the rendered tag falls back to
+    /// the <see cref="TriggerType"/>-derived default.
+    /// </param>
     public async Task AddTriggerAsync(
-        TriggerType type, float weight, string description, CancellationToken ct = default)
+        TriggerType type, float weight, string description, CancellationToken ct = default,
+        string? source = null)
     {
         var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
         // F-1 Phase 2: try to compute an embedding for semantic dedup.
         // Failure is non-fatal — degrades to append-only path (pre-Phase-2 shape).
+        // Cancellation MUST propagate (Serge review 2026-08-15) — don't swallow OCE.
         float[]? embedding = null;
         if (_options.TriggerSemanticDedupEnabled && _ollama is not null
             && !string.IsNullOrWhiteSpace(description))
@@ -279,6 +303,10 @@ public class DesireEngine
             {
                 embedding = await _ollama.EmbedAsync(description, ct).ConfigureAwait(false);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _log.LogDebug(ex, "Trigger embedding failed — appending without semantic dedup");
@@ -286,27 +314,30 @@ public class DesireEngine
         }
 
         // If we have an embedding, look for a near-duplicate to merge into.
+        // Match is scoped to same (Type, Source) so cross-source-type duplicates
+        // do NOT collapse and destroy provenance (Mark review P1 finding).
         if (embedding is not null)
         {
             var threshold = (float)_options.TriggerSemanticDedupThreshold;
             var match = state.ActiveTriggers.FirstOrDefault(t =>
+                t.Type == type &&
+                string.Equals(t.Source, source, StringComparison.Ordinal) &&
                 t.SemanticKey is not null &&
                 VectorMath.CosineSimilarity(embedding, t.SemanticKey) >= threshold);
 
             if (match is not null)
             {
                 // Refresh the existing trigger — do NOT bump desire (already counted).
+                // Leave SemanticKey and Description UNCHANGED (Mark review P2 finding):
+                // key must stay paired with the displayed text so chained
+                // near-threshold merges cannot walk the key away from Description.
                 var prevWeight = match.Weight;
                 match.Weight    = Math.Max(match.Weight, weight);
                 match.CreatedAt = DateTimeOffset.UtcNow;
-                // Optionally update the SemanticKey to the newer embedding
-                // (they are near-identical by construction, but this keeps
-                // the vector aligned with the most recent phrasing).
-                match.SemanticKey = embedding;
 
                 _log.LogDebug(
-                    "Trigger merged: {Type} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
-                    type, TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
+                    "Trigger merged: {Type}/{Source} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
+                    type, source ?? "(null)", TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
 
                 await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
                 return;
@@ -321,6 +352,7 @@ public class DesireEngine
             Description = description,
             CreatedAt   = DateTimeOffset.UtcNow,
             SemanticKey = embedding,
+            Source      = source,
         });
 
         // Enforce hard cap independent of dedup — drops OLDEST first.

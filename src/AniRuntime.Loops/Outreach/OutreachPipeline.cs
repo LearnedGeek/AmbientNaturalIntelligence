@@ -136,7 +136,8 @@ public sealed class OutreachPipeline : IOutreachPipeline
                 decision.Confidence, decision.Reasoning);
             await _desire.AddTriggerAsync(
                 TriggerType.SpontaneousThought, 0.3f,
-                "considered reaching out but held back", ct).ConfigureAwait(false);
+                "considered reaching out but held back", ct,
+                source: "held-back-outreach").ConfigureAwait(false);
             return;
         }
 
