@@ -19,6 +19,7 @@ public class DesireEngine
     private readonly IMemoryPersistence      _persist;
     private readonly AniOptions             _options;
     private readonly ILogger<DesireEngine>  _log;
+    private readonly IOllamaClient?         _ollama;
 
     // Daily outreach counter — resets when the day rolls over
     private int            _outreachCountToday;
@@ -32,12 +33,26 @@ public class DesireEngine
     private int  _morningSendCount;
     private bool _wasMorningWindow;
 
-    public DesireEngine(IStateStore state, IMemoryPersistence persist, IOptions<AniOptions> options, ILogger<DesireEngine> log)
+    /// <summary>
+    /// F-1 Phase 2 (2026-08-15): <paramref name="ollama"/> is optional. When
+    /// non-null and <see cref="AniOptions.TriggerSemanticDedupEnabled"/> is
+    /// true, <see cref="AddTriggerAsync"/> computes an embedding and merges
+    /// near-duplicate triggers rather than appending. When null (test
+    /// harnesses, some fixtures), dedup silently no-ops and behaviour
+    /// matches the pre-Phase-2 append-only shape.
+    /// </summary>
+    public DesireEngine(
+        IStateStore state,
+        IMemoryPersistence persist,
+        IOptions<AniOptions> options,
+        ILogger<DesireEngine> log,
+        IOllamaClient? ollama = null)
     {
         _state   = state;
         _persist = persist;
         _options = options.Value;
         _log     = log;
+        _ollama  = ollama;
     }
 
     // ── Scheduling ────────────────────────────────────────────────────────────
@@ -227,29 +242,141 @@ public class DesireEngine
 
     /// <summary>
     /// Records a new trigger and proportionally elevates desire.
-    /// Each trigger contributes weight * 0.15 to desire (capped at 1.0).
+    /// Each new trigger contributes weight * TriggerDesireMultiplier to
+    /// desire (capped at 1.0).
+    ///
+    /// <para>
+    /// F-1 Phase 2 (2026-08-15): when <see cref="AniOptions.TriggerSemanticDedupEnabled"/>
+    /// is on and an <see cref="IOllamaClient"/> is available, an embedding
+    /// of <paramref name="description"/> is computed and compared against
+    /// existing <see cref="DesireTrigger.SemanticKey"/> vectors. If any
+    /// existing trigger with the SAME <paramref name="type"/> AND
+    /// <paramref name="source"/> is cosine-similar ≥
+    /// <see cref="AniOptions.TriggerSemanticDedupThreshold"/>, the existing
+    /// trigger is REFRESHED (weight bumped to max, CreatedAt reset) and no
+    /// new envelope is appended. The desire scalar is not bumped again in
+    /// the merge case — duplicate triggers shouldn't double-count against
+    /// the outreach threshold.
+    /// </para>
+    ///
+    /// <para>
+    /// Dedup is scoped to (Type, Source) so that semantically-identical
+    /// text arriving from different producer sites keeps distinct
+    /// provenance rather than being folded into an earlier envelope under
+    /// the earlier tag (Mark review 2026-08-15 P1 finding).
+    /// </para>
+    ///
+    /// <para>
+    /// A hard cap <see cref="AniOptions.TriggerMaxActive"/> is enforced
+    /// as a safety net (drops oldest) independent of dedup, so a
+    /// pathological run of embedding failures cannot let ActiveTriggers
+    /// grow unboundedly.
+    /// </para>
     /// </summary>
+    /// <param name="type">The trigger family enum (kept for bookkeeping continuity).</param>
+    /// <param name="weight">Weight in [0,1] — how strongly this trigger elevates desire.</param>
+    /// <param name="description">The human-readable text rendered into the outreach prompt.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="source">
+    /// Optional call-site source discriminator (e.g. <c>"inner-thought-valence"</c>,
+    /// <c>"held-back-outreach"</c>). Populates <see cref="DesireTrigger.Source"/>;
+    /// scopes semantic-dedup match against other triggers of the same source only;
+    /// composes into the rendered <c>SourceType</c> tag as <c>trigger.{source}</c>.
+    /// When null, dedup matches against triggers where <c>Source</c> is also null
+    /// (grouped as the untagged legacy family), and the rendered tag falls back to
+    /// the <see cref="TriggerType"/>-derived default.
+    /// </param>
     public async Task AddTriggerAsync(
-        TriggerType type, float weight, string description, CancellationToken ct = default)
+        TriggerType type, float weight, string description, CancellationToken ct = default,
+        string? source = null)
     {
         var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
+        // F-1 Phase 2: try to compute an embedding for semantic dedup.
+        // Failure is non-fatal — degrades to append-only path (pre-Phase-2 shape).
+        // Cancellation MUST propagate (Serge review 2026-08-15) — don't swallow OCE.
+        float[]? embedding = null;
+        if (_options.TriggerSemanticDedupEnabled && _ollama is not null
+            && !string.IsNullOrWhiteSpace(description))
+        {
+            try
+            {
+                embedding = await _ollama.EmbedAsync(description, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Trigger embedding failed — appending without semantic dedup");
+            }
+        }
+
+        // If we have an embedding, look for a near-duplicate to merge into.
+        // Match is scoped to same (Type, Source) so cross-source-type duplicates
+        // do NOT collapse and destroy provenance (Mark review P1 finding).
+        if (embedding is not null)
+        {
+            var threshold = (float)_options.TriggerSemanticDedupThreshold;
+            var match = state.ActiveTriggers.FirstOrDefault(t =>
+                t.Type == type &&
+                string.Equals(t.Source, source, StringComparison.Ordinal) &&
+                t.SemanticKey is not null &&
+                VectorMath.CosineSimilarity(embedding, t.SemanticKey) >= threshold);
+
+            if (match is not null)
+            {
+                // Refresh the existing trigger — do NOT bump desire (already counted).
+                // Leave SemanticKey and Description UNCHANGED (Mark review P2 finding):
+                // key must stay paired with the displayed text so chained
+                // near-threshold merges cannot walk the key away from Description.
+                var prevWeight = match.Weight;
+                match.Weight    = Math.Max(match.Weight, weight);
+                match.CreatedAt = DateTimeOffset.UtcNow;
+
+                _log.LogDebug(
+                    "Trigger merged: {Type}/{Source} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
+                    type, source ?? "(null)", TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
+
+                await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        // No merge — append a new envelope and bump desire as before.
         state.ActiveTriggers.Add(new DesireTrigger
         {
             Type        = type,
             Weight      = weight,
             Description = description,
             CreatedAt   = DateTimeOffset.UtcNow,
+            SemanticKey = embedding,
+            Source      = source,
         });
+
+        // Enforce hard cap independent of dedup — drops OLDEST first.
+        var cap = _options.TriggerMaxActive;
+        if (cap > 0 && state.ActiveTriggers.Count > cap)
+        {
+            var toDrop = state.ActiveTriggers.Count - cap;
+            state.ActiveTriggers
+                .Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
+            state.ActiveTriggers.RemoveRange(0, toDrop);
+            _log.LogDebug("Trigger cap enforced: dropped {Count} oldest (cap={Cap})", toDrop, cap);
+        }
 
         var bump = weight * (float)_options.TriggerDesireMultiplier;
         state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + bump);
 
-        _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2}",
-            type, weight, bump, state.DesireToConnect);
+        _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2} (active={Count})",
+            type, weight, bump, state.DesireToConnect, state.ActiveTriggers.Count);
 
         await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
+
+    private static string TrimForLog(string s)
+        => s.Length <= 40 ? s : s[..40] + "…";
 
     /// <summary>
     /// Marks cooldown active. The heartbeat's next ComputeNextWakeTime call will return

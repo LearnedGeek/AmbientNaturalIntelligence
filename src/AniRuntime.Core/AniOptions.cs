@@ -46,6 +46,25 @@ public class AniOptions
     // Trigger weight multiplier — how much a trigger raises desire
     public double TriggerDesireMultiplier { get; set; } = 0.15;
 
+    // Foundation Input (F-1) Phase 2 (2026-08-15): semantic-dedup at the
+    // trigger producer boundary. When a new trigger arrives whose embedding
+    // is cosine-similar ≥ TriggerSemanticDedupThreshold to an existing
+    // ActiveTriggers entry, the existing entry is REFRESHED (weight bumped
+    // to max, CreatedAt reset) rather than a new envelope being appended.
+    // Prevents the semicolon-joined-blob rendering pathology captured in
+    // ANI-Composer-Input-Provenance-Audit-2026-08-13.md. Default ON — see
+    // Foundation State (F-2) empirical anchor for the register-monoculture
+    // symptom this is one of several structural responses to.
+    //
+    // TriggerMaxActive is a hard safety cap on the ActiveTriggers list
+    // length independent of dedup. TriggerRenderTopK bounds the number of
+    // envelope entries rendered into the outreach decision prompt (most
+    // recent K when the cap is exceeded).
+    public bool   TriggerSemanticDedupEnabled   { get; set; } = true;
+    public double TriggerSemanticDedupThreshold { get; set; } = 0.85;
+    public int    TriggerMaxActive              { get; set; } = 15;
+    public int    TriggerRenderTopK             { get; set; } = 10;
+
     // Satisfaction dampening — composite metric that provides downward pressure on desire
     // Without this, desire only ever increases (monotonic drift upward until outreach or reset)
     public double SatisfactionDampeningFactor { get; set; } = 0.6;  // max dampening at full satisfaction
