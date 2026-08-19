@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text.Json;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
@@ -49,6 +50,13 @@ public sealed class QwenThoughtShapeClassifier : IThoughtShapeClassifier
             ? "qwen3:14b"
             : _options.HybridInnerThoughtMetadataModel;
 
+        // Reviewer feedback PR #112 (2026-08-18) — narrow catches per global
+        // CLAUDE.md rule #4. Was: broad catch (Exception) which would swallow
+        // real defects. Now: catch only the expected transport-adjacent
+        // failure classes so unrelated bugs surface for diagnosis. Cancellation
+        // propagates via the OCE rethrow (HttpClient.Timeout maps to
+        // TaskCanceledException with a null token — must NOT be treated as
+        // cancellation; keep it in the transport-failure bucket).
         string raw;
         try
         {
@@ -60,11 +68,14 @@ public sealed class QwenThoughtShapeClassifier : IThoughtShapeClassifier
                 ct:           ct)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException
+                                     or IOException
+                                     or TaskCanceledException  // HttpClient.Timeout
+                                     or TimeoutException)
         {
             _log.LogWarning(ex, "IThoughtShapeClassifier: transport failure — falling back to Unclassified");
             return ThoughtShape.Unclassified;
@@ -72,7 +83,7 @@ public sealed class QwenThoughtShapeClassifier : IThoughtShapeClassifier
 
         try
         {
-            var doc = JsonDocument.Parse(raw.Trim());
+            using var doc = JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
             if (root.TryGetProperty("shape", out var s) && s.ValueKind == JsonValueKind.String)
             {
@@ -84,7 +95,7 @@ public sealed class QwenThoughtShapeClassifier : IThoughtShapeClassifier
                 raw.Length > 200 ? raw[..200] : raw);
             return ThoughtShape.Unclassified;
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
             _log.LogWarning(ex, "IThoughtShapeClassifier: JSON parse failure — raw: {Raw}",
                 raw.Length > 200 ? raw[..200] : raw);

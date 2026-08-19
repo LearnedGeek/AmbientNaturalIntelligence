@@ -51,4 +51,26 @@ public class ThoughtEnvelopeTests
         result.Shape.Should().Be(ThoughtShape.Unclassified);
         ((IThoughtEnvelope)result).SourceType.Should().Be("thought.unclassified");
     }
+
+    [Fact]
+    public async Task InnerThoughtResult_CreatedAt_IsStableAcrossReads()
+    {
+        // Reviewer-caught bug PR #112 (Devin / Serge / github-actions
+        // converged 2026-08-18): the initial implementation made CreatedAt
+        // a computed property returning DateTimeOffset.UtcNow on every
+        // access, which meant two reads of the same instance returned
+        // different values and any age-based logic would silently see 0.
+        // The IProvenancedContent<T> contract documents CreatedAt as
+        // "UTC timestamp when the envelope was created by the producer" —
+        // a stable point-in-time, not a live clock. This regression test
+        // pins the stability.
+        IThoughtEnvelope env = new InnerThoughtResult(
+            "x", null, 0f, Shape: ThoughtShape.CoherentThought);
+
+        var first = env.CreatedAt;
+        await Task.Delay(20);
+        var second = env.CreatedAt;
+
+        second.Should().Be(first, "CreatedAt must be captured once at construction, not recomputed on each read");
+    }
 }

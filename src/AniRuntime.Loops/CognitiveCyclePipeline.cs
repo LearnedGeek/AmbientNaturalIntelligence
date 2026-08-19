@@ -562,6 +562,15 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 await _desire.ShouldReachOutAsync(ct).ConfigureAwait(false))
             {
                 _log.LogInformation("Desire built after choosing silence — reconsidering reply");
+                // F-1 Phase 3 (2026-08-18) — reviewer-flagged (Devin PR #112):
+                // the reconsideration branch also composes contact-facing text
+                // driven by the current cycle's inner thought, so the same
+                // shape instrumentation applies here. Without this, the 48h
+                // shape-at-composition aggregation would miss every
+                // reconsidered-reply cycle.
+                _log.LogInformation(
+                    "F1_THOUGHT_SHAPE_AT_COMPOSITION producer=InnerThoughtPhase consumer=ConversationReplyPipeline shape={Shape} chars={Chars} branch=reconsideration",
+                    innerResult.Shape, thought.Length);
                 await _conversationReply.RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState,
                     isReconsideration: true).ConfigureAwait(false);
             }
@@ -628,7 +637,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         // mumble-loop shapes drop toward zero at this boundary over the
         // observation window. Tag-and-observe — no retry/drop policy yet.
         _log.LogInformation(
-            "F1_THOUGHT_SHAPE_AT_COMPOSITION producer=InnerThoughtPhase consumer=OutreachPipeline shape={Shape} chars={Chars}",
+            "F1_THOUGHT_SHAPE_AT_COMPOSITION producer=InnerThoughtPhase consumer=OutreachPipeline shape={Shape} chars={Chars} branch=outreach",
             innerResult.Shape, thought.Length);
 
         await _outreach.RunOutreachAsync(snapshot, thought, ct).ConfigureAwait(false);

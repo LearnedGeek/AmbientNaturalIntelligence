@@ -64,7 +64,17 @@ public sealed record InnerThoughtResult(
     string IProvenancedContent<string>.Producer => "InnerThoughtPhase";
 
     /// <inheritdoc />
-    DateTimeOffset IProvenancedContent<string>.CreatedAt => DateTimeOffset.UtcNow;
+    /// <remarks>
+    /// Captured ONCE at construction — see <c>IProvenancedContent&lt;T&gt;.CreatedAt</c>
+    /// contract: "UTC timestamp when the envelope was CREATED by the
+    /// producer." Every other implementor (<c>DesireTrigger</c>,
+    /// <c>MemoryRecord</c>, <c>EmotionalContribution</c>, <c>MemoryLink</c>,
+    /// <c>OpenLoop</c>) stores at construction; matching that discipline
+    /// here keeps timestamp-based dedup / staleness / ordering stable
+    /// against repeated envelope reads. Reviewer-caught (Devin / Serge /
+    /// github-actions) on PR #112, fixed 2026-08-18.
+    /// </remarks>
+    DateTimeOffset IProvenancedContent<string>.CreatedAt { get; } = DateTimeOffset.UtcNow;
 
     /// <inheritdoc />
     float[]? IProvenancedContent<string>.SemanticKey => null;

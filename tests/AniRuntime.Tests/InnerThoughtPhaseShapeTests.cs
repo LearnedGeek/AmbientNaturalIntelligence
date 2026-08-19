@@ -111,19 +111,46 @@ public class InnerThoughtPhaseShapeTests
     }
 
     [Fact]
-    public async Task RunAsync_ClassifierThrows_FailsOpenAsUnclassified()
+    public async Task RunAsync_ClassifierThrowsUnexpectedException_Propagates()
     {
+        // Reviewer feedback PR #112 (2026-08-18): InnerThoughtPhase no
+        // longer wraps the classifier call in a belt-and-suspenders
+        // try/catch that would swallow real defects. The classifier's
+        // own contract (IThoughtShapeClassifier) already guarantees
+        // fail-open return of Unclassified on transport / parse /
+        // timeout failures. If a classifier IMPLEMENTATION throws
+        // (a bug), the exception must surface for diagnosis — not be
+        // silently converted to Unclassified.
         SetupOllama(Thought);
         var mockClassifier = new Mock<IThoughtShapeClassifier>();
         mockClassifier
             .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("classifier broken"));
+            .ThrowsAsync(new InvalidOperationException("classifier bug — must not be swallowed"));
+
+        var phase = BuildPhase(mockClassifier.Object);
+        var act = () => phase.RunAsync(BuildSnapshot(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task RunAsync_ClassifierHonorsContractAndReturnsUnclassified_ShapeFlowsThrough()
+    {
+        // Complementary to the propagation test: when the classifier
+        // implementation honors its fail-open contract and returns
+        // Unclassified (rather than throwing), that flows into
+        // InnerThoughtResult.Shape and the cycle proceeds normally.
+        SetupOllama(Thought);
+        var mockClassifier = new Mock<IThoughtShapeClassifier>();
+        mockClassifier
+            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ThoughtShape.Unclassified);
 
         var phase = BuildPhase(mockClassifier.Object);
         var result = await phase.RunAsync(BuildSnapshot(), CancellationToken.None);
 
-        result.Shape.Should().Be(ThoughtShape.Unclassified, "classifier failure must NOT block the cycle");
-        result.Thought.Should().Be(Thought, "cycle still proceeds with raw thought text");
+        result.Shape.Should().Be(ThoughtShape.Unclassified);
+        result.Thought.Should().Be(Thought);
     }
 
     [Fact]
@@ -150,7 +177,8 @@ public class InnerThoughtPhaseShapeTests
             .ThrowsAsync(new OperationCanceledException());
 
         var phase = BuildPhase(mockClassifier.Object);
-        var act = () => phase.RunAsync(BuildSnapshot(), new CancellationTokenSource().Token);
+        using var cts = new CancellationTokenSource();
+        var act = () => phase.RunAsync(BuildSnapshot(), cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

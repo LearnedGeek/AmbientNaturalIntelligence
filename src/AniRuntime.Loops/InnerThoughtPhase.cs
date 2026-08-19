@@ -163,27 +163,28 @@ public class InnerThoughtPhase
     /// <summary>
     /// F-1 Phase 3 (2026-08-18) — classify the shape of a generated thought.
     /// Returns <see cref="ThoughtShape.Unclassified"/> when the classifier is
-    /// unavailable, disabled, or fails. Kicked off in parallel with the
-    /// metadata call so it contributes no serial latency.
+    /// unavailable or disabled. Kicked off in parallel with the metadata
+    /// call so it contributes no serial latency (subject to Ollama's
+    /// concurrency configuration — see PR #112 Devin note about
+    /// OLLAMA_NUM_PARALLEL).
+    ///
+    /// <para>
+    /// Reviewer feedback PR #112 (2026-08-18): removed the wrapping try/catch
+    /// that swallowed all non-OCE exceptions. The classifier's own contract
+    /// (<see cref="IThoughtShapeClassifier"/>) already guarantees fail-open
+    /// return of Unclassified on transport / parse / timeout failures — a
+    /// second belt-and-suspenders catch here was masking real defects in
+    /// the classifier implementation (per global CLAUDE.md rule #4:
+    /// don't swallow with generic catch). Any exception escaping the
+    /// classifier IS a bug and must surface for diagnosis.
+    /// </para>
     /// </summary>
-    internal async Task<ThoughtShape> ClassifyShapeAsync(string thought, CancellationToken ct)
+    internal Task<ThoughtShape> ClassifyShapeAsync(string thought, CancellationToken ct)
     {
         if (_shapeClassifier is null || !_thoughtShapeClassificationEnabled)
-            return ThoughtShape.Unclassified;
+            return Task.FromResult(ThoughtShape.Unclassified);
 
-        try
-        {
-            return await _shapeClassifier.ClassifyAsync(thought, ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "IThoughtShapeClassifier threw — falling back to Unclassified");
-            return ThoughtShape.Unclassified;
-        }
+        return _shapeClassifier.ClassifyAsync(thought, ct);
     }
 
     /// <summary>
