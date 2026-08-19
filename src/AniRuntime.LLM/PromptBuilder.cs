@@ -555,6 +555,55 @@ public static class PromptBuilder
     }
 
     /// <summary>
+    /// F-1 Phase 6 (2026-08-19) — render a perception event as a
+    /// per-source, parenthetical framing line for the InnerThought
+    /// (Background: ...) section. Replaces the pre-Phase-6 semicolon-joined
+    /// blob (`Background: X; Y; Z`) with per-source phrasing so
+    /// inner-thoughts can distinguish "a text from Mark arrived" from
+    /// "the weather changed" from "some interior register-saturation
+    /// signal fired" without confabulating cross-source content.
+    ///
+    /// <para>
+    /// Kept as a switch-expression mapping SourceName + Category to
+    /// human-readable phrases. Mirrors the shape of
+    /// <see cref="FormatMemorySource"/>; keep the two in sync when
+    /// perception sources ship. When <paramref name="contactName"/> is
+    /// supplied, twilio-inbound perceptions render with the contact's
+    /// name; otherwise a neutral phrase is used (Phase 5 review-fix
+    /// discipline — never hardcode "Mark").
+    /// </para>
+    /// </summary>
+    public static string FormatPerceptionLine(PerceptionEvent p, DateTimeOffset? now = null, string? contactName = null)
+    {
+        var currentTime = now ?? DateTimeOffset.Now;
+        var age = currentTime - p.OccurredAt;
+        var ago = age.TotalMinutes < 2 ? "just now"
+                : age.TotalMinutes < 60 ? $"{(int)Math.Max(1, age.TotalMinutes)}m ago"
+                : age.TotalHours < 24 ? $"{(int)age.TotalHours}h ago"
+                : $"{(int)age.TotalDays}d ago";
+
+        var src = p.SourceName?.ToLowerInvariant() ?? "";
+        var frame = (p.Category, src, contactName) switch
+        {
+            (PerceptionCategory.Communication, "twilio-inbound", { Length: > 0 } name)
+                => $"You received a text from {name} {ago}",
+            (PerceptionCategory.Communication, "twilio-inbound", _)
+                => $"You received an inbound text {ago}",
+            (_, "rss", _)                  => $"News right now",
+            (_, "weather", _)              => $"Weather right now",
+            (_, "time", _)                 => $"Time-of-day right now",
+            (_, "temporal-gap", _)         => $"Time noticed ({ago})",
+            (_, "contact-state", _)        => $"Contact state ({ago})",
+            (_, "register-saturation", _)  => $"Interior signal — register saturation ({ago})",
+            (_, "retrieval-self-dominance", _) => $"Interior signal — self-dominance in retrieval ({ago})",
+            (_, "outage", _)               => $"World-quiet signal ({ago})",
+            (PerceptionCategory.Internal, _, _) => $"Interior signal — {p.SourceName} ({ago})",
+            _                              => $"Perception — {p.SourceName} ({ago})",
+        };
+        return $"({frame}: {p.Summary})";
+    }
+
+    /// <summary>
     /// F-1 Phase 5 (2026-08-18) — human-readable source attribution for a
     /// retrieved memory. Maps <see cref="MemoryRecord.Provenance"/> +
     /// <see cref="MemoryRecord.SourceName"/> + <see cref="MemoryRecord.Type"/>
