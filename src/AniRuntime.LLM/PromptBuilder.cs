@@ -555,6 +555,131 @@ public static class PromptBuilder
     }
 
     /// <summary>
+    /// F-1 Phase 6 (2026-08-19) — render a perception event as a
+    /// per-source, parenthetical framing line for the InnerThought
+    /// (Background: ...) section. Replaces the pre-Phase-6 semicolon-joined
+    /// blob (`Background: X; Y; Z`) with per-source phrasing so
+    /// inner-thoughts can distinguish "a text from Mark arrived" from
+    /// "the weather changed" from "some interior register-saturation
+    /// signal fired" without confabulating cross-source content.
+    ///
+    /// <para>
+    /// Kept as a switch-expression mapping SourceName + Category to
+    /// human-readable phrases. Mirrors the shape of
+    /// <see cref="FormatMemorySource"/>; keep the two in sync when
+    /// perception sources ship. When <paramref name="contactName"/> is
+    /// supplied, twilio-inbound perceptions render with the contact's
+    /// name; otherwise a neutral phrase is used (Phase 5 review-fix
+    /// discipline — never hardcode "Mark").
+    /// </para>
+    /// </summary>
+    public static string FormatPerceptionLine(PerceptionEvent p, DateTimeOffset? now = null, string? contactName = null)
+    {
+        // Default to UtcNow (not Now / local wall clock) so age arithmetic
+        // stays consistent with PerceptionEvent.OccurredAt = UtcNow at
+        // construction. Reviewer-caught (Serge) on PR #116: DateTimeOffset
+        // subtraction normalizes to UTC so today's behavior is correct,
+        // but the default was a latent hazard for future callers.
+        // Callers with snapshot.BuiltAt available should pass it explicitly.
+        var currentTime = now ?? DateTimeOffset.UtcNow;
+        var age = currentTime - p.OccurredAt;
+        var ago = age.TotalMinutes < 2 ? "just now"
+                : age.TotalMinutes < 60 ? $"{(int)Math.Max(1, age.TotalMinutes)}m ago"
+                : age.TotalHours < 24 ? $"{(int)age.TotalHours}h ago"
+                : $"{(int)age.TotalDays}d ago";
+
+        var src = p.SourceName?.ToLowerInvariant() ?? "";
+
+        // PR #116 review (Devin) — twilio-inbound Summary is set via
+        // MemoryPrefixes.FormatContactPerception → `{contact} texted: "{body}"`
+        // so the pre-fix rendering was `(You received a text from Mark 5m ago: Mark texted: "...")`
+        // with the contact named twice. Strip the "{contact} texted: "
+        // prefix from the summary when the framing already carries the
+        // attribution; keep just the quoted body.
+        var summary = (p.Category, src) switch
+        {
+            (PerceptionCategory.Communication, "twilio-inbound")
+                => StripContactTextedPrefix(p.Summary, contactName),
+            _   => p.Summary,
+        };
+
+        var frame = (p.Category, src, contactName) switch
+        {
+            (PerceptionCategory.Communication, "twilio-inbound", { Length: > 0 } name)
+                => $"You received a text from {name} {ago}",
+            (PerceptionCategory.Communication, "twilio-inbound", _)
+                => $"You received an inbound text {ago}",
+            // PR #116 review (Devin BUG) — RSS OccurredAt is the feed item's
+            // publish date, not the poll time. Hardcoded "right now" would
+            // render hours-old headlines as fresh events (same temporal-
+            // misattribution failure the PR set out to fix). Weather/time
+            // do stamp UtcNow but the frames drop the age unconditionally,
+            // so any future source reusing them would inherit the hazard.
+            // Fixed per Devin's suggestion: use `({ago})` for all three.
+            (_, "rss", _)                  => $"News ({ago})",
+            (_, "weather", _)              => $"Weather ({ago})",
+            (_, "time", _)                 => $"Time-of-day ({ago})",
+            (_, "temporal-gap", _)         => $"Time noticed ({ago})",
+            (_, "contact-state", _)        => $"Contact state ({ago})",
+            (_, "register-saturation", _)  => $"Interior signal — register saturation ({ago})",
+            (_, "retrieval-self-dominance", _) => $"Interior signal — self-dominance in retrieval ({ago})",
+            (_, "outage", _)               => $"World-quiet signal ({ago})",
+            (PerceptionCategory.Internal, _, _) => $"Interior signal — {p.SourceName} ({ago})",
+            _                              => $"Perception — {p.SourceName} ({ago})",
+        };
+        return $"({frame}: {summary})";
+    }
+
+    /// <summary>
+    /// F-1 Phase 6 (PR #116 review-fix) — strips the
+    /// <c>{contact} texted: "..."</c> prefix that
+    /// <see cref="AniRuntime.Core.MemoryPrefixes.FormatContactPerception"/>
+    /// applies to inbound twilio perception summaries. Used only in the
+    /// twilio-inbound framing arm where <see cref="FormatPerceptionLine"/>
+    /// already names the contact in the frame; keeping the prefix would
+    /// render the contact twice. When contactName is null, strips any
+    /// <c>{word} texted: </c>-shaped prefix.
+    /// </summary>
+    internal static string StripContactTextedPrefix(string summary, string? contactName)
+    {
+        if (string.IsNullOrEmpty(summary)) return summary;
+
+        // With contactName: strip exact "{contact} texted: " (case-sensitive
+        // match; the prefix is written by our own code, not user input).
+        if (!string.IsNullOrEmpty(contactName))
+        {
+            var expectedPrefix = $"{contactName} texted: ";
+            if (summary.StartsWith(expectedPrefix, StringComparison.Ordinal))
+                return summary[expectedPrefix.Length..];
+        }
+
+        // No contactName threaded (rare) or the exact prefix didn't match —
+        // fall through to a permissive regex-free strip: single leading
+        // word + " texted: ". Handles legacy summaries whose contactName at
+        // record time differs from the current one.
+        var textedMarker = " texted: ";
+        var markerIdx = summary.IndexOf(textedMarker, StringComparison.Ordinal);
+        if (markerIdx > 0 && markerIdx < 40)  // arbitrary sanity cap on "contact name" length
+        {
+            // Ensure the prefix is a single word (letters/digits/underscore/hyphen only)
+            var prefixSpan = summary.AsSpan(0, markerIdx);
+            var allWordChars = true;
+            foreach (var ch in prefixSpan)
+            {
+                if (!(char.IsLetterOrDigit(ch) || ch == '_' || ch == '-'))
+                {
+                    allWordChars = false;
+                    break;
+                }
+            }
+            if (allWordChars)
+                return summary[(markerIdx + textedMarker.Length)..];
+        }
+
+        return summary;
+    }
+
+    /// <summary>
     /// F-1 Phase 5 (2026-08-18) — human-readable source attribution for a
     /// retrieved memory. Maps <see cref="MemoryRecord.Provenance"/> +
     /// <see cref="MemoryRecord.SourceName"/> + <see cref="MemoryRecord.Type"/>

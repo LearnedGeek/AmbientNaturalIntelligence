@@ -130,8 +130,20 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         if (snapshot.Perceptions.Count > 0)
         {
-            var perceptionSummary = string.Join("; ", snapshot.Perceptions.Select(p => p.Summary));
-            sections.Add($"(Background: {perceptionSummary})");
+            // F-1 Phase 6 (2026-08-19) — split the pre-Phase-6 semicolon-joined
+            // background blob into per-source, per-category framing lines via
+            // PromptBuilder.FormatPerceptionLine. Closes #85 — inner-thoughts
+            // confabulating Mark's actions from stale twilio-in-perception-bucket
+            // items now see them tagged as `(You received a text from {contact}
+            // Nm ago: "...")` distinct from `(Weather right now: ...)`.
+            var perceptionContact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? null : cs.PrimaryContactName;
+            // PR #116 review (Serge + Devin) — pass snapshot.BuiltAt so
+            // temporal renderings in this prompt use one consistent clock
+            // (the pre-fix default of DateTimeOffset.Now was a UTC-vs-local
+            // hazard and made the section non-deterministic under test).
+            sections.Add("Background right now:");
+            sections.AddRange(snapshot.Perceptions.Select(p =>
+                $"  - {PromptBuilder.FormatPerceptionLine(p, snapshot.BuiltAt, contactName: perceptionContact)}"));
         }
 
         // G.4 (2026-06-11) — same fallback hardening as G.3 for the outreach
