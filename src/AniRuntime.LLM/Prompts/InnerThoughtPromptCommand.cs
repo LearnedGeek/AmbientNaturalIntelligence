@@ -124,8 +124,49 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         if (snapshot.AnchoredMemories.Count > 0)
         {
-            sections.Add("Things that are part of who you are (always true, never forgotten):");
-            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+            // F-1 Phase 7 (2026-08-19) — split the pre-Phase-7 single-heading
+            // anchored dump into three voice-grouped headings. Closes #63 —
+            // pronoun-flip of Mark-facts into Ani-identity statements traced
+            // to mixed rendering under one "part of who you are" heading.
+            //
+            // PR #117 review-fix (Devin BUG): pass PrimaryContactName to
+            // the classifier so the contact-fact match is contact-aware
+            // rather than hardcoded to "Mark" (the Phase 5/6
+            // "never hardcode Mark" discipline). Heading uses the same
+            // configured name so the render is consistent across
+            // classification and prose.
+            var anchoredContact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? null : cs.PrimaryContactName;
+            var byVoice = snapshot.AnchoredMemories
+                .GroupBy(m => AnchoredMemoryVoiceClassifier.Classify(m, anchoredContact))
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            if (byVoice.TryGetValue(AnchoredMemoryVoice.AniSelfStatement, out var selfStatements))
+            {
+                sections.Add("Part of who you are (always true, never forgotten):");
+                sections.AddRange(selfStatements.Select(m => $"  - {m.Content}"));
+            }
+
+            // Contact-fact heading is only rendered when a contactName is
+            // known AND we actually classified some records into it.
+            if (anchoredContact is not null
+             && byVoice.TryGetValue(AnchoredMemoryVoice.MarkFactAssertion, out var contactFacts))
+            {
+                sections.Add($"Things you know about {anchoredContact}:");
+                sections.AddRange(contactFacts.Select(m => $"  - {m.Content}"));
+            }
+
+            if (byVoice.TryGetValue(AnchoredMemoryVoice.SeedNarrative, out var seedNarrative))
+            {
+                sections.Add("Background you can draw from:");
+                sections.AddRange(seedNarrative.Select(m => $"  - {m.Content}"));
+            }
+
+            // Unclassified-heading fallback DROPPED in PR #117 review-fix
+            // (Devin): Unclassified is only reachable when a record's
+            // Content is null/empty/whitespace — rendering "  - " for
+            // those would emit an empty bullet under a phantom heading.
+            // Blank-content records are silently filtered out instead;
+            // there's nothing to say about them.
         }
 
         if (snapshot.Perceptions.Count > 0)

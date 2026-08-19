@@ -1,8 +1,9 @@
 using AniRuntime.Core.Interfaces;
+using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.Core.Models;
 
-public class MemoryRecord : IRetrievalEnvelope
+public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope
 {
     public Guid           Id          { get; set; } = Guid.NewGuid();
     public MemoryType     Type        { get; set; }
@@ -130,6 +131,17 @@ public class MemoryRecord : IRetrievalEnvelope
 
     /// <inheritdoc />
     EpistemicTier IRetrievalEnvelope.Provenance => Provenance;
+
+    // ── IAnchoredMemoryEnvelope ────────────────────────────────────────────
+    // F-1 Phase 7 (2026-08-19). Voice derived from Provenance + content
+    // signals; no schema change, no LLM call. Called only for records in
+    // the AnchoredMemories pool (DecayTier=Anchored), but returning a
+    // classification for any MemoryRecord is harmless — non-anchored
+    // consumers ignore the property.
+
+    /// <inheritdoc />
+    AnchoredMemoryVoice IAnchoredMemoryEnvelope.Voice
+        => AnchoredMemoryVoiceClassifier.Classify(this);
 }
 
 /// <summary>
