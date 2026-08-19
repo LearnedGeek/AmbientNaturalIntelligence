@@ -124,8 +124,43 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         if (snapshot.AnchoredMemories.Count > 0)
         {
-            sections.Add("Things that are part of who you are (always true, never forgotten):");
-            sections.AddRange(snapshot.AnchoredMemories.Select(m => $"  - {m.Content}"));
+            // F-1 Phase 7 (2026-08-19) — split the pre-Phase-7 single-heading
+            // anchored dump into three voice-grouped headings. Closes #63 —
+            // pronoun-flip of Mark-facts into Ani-identity statements traced
+            // to mixed rendering under one "part of who you are" heading.
+            // Voice is derived via AnchoredMemoryVoiceClassifier (no LLM /
+            // schema / backfill in Phase 7; Phase 7b can replace the
+            // heuristic if empirical results demand it).
+            var byVoice = snapshot.AnchoredMemories
+                .Cast<IAnchoredMemoryEnvelope>()
+                .GroupBy(m => m.Voice)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            if (byVoice.TryGetValue(AnchoredMemoryVoice.AniSelfStatement, out var selfStatements))
+            {
+                sections.Add("Part of who you are (always true, never forgotten):");
+                sections.AddRange(selfStatements.Select(e => $"  - {e.Content.Content}"));
+            }
+
+            if (byVoice.TryGetValue(AnchoredMemoryVoice.MarkFactAssertion, out var markFacts))
+            {
+                sections.Add("Things you know about Mark:");
+                sections.AddRange(markFacts.Select(e => $"  - {e.Content.Content}"));
+            }
+
+            if (byVoice.TryGetValue(AnchoredMemoryVoice.SeedNarrative, out var seedNarrative))
+            {
+                sections.Add("Background you can draw from:");
+                sections.AddRange(seedNarrative.Select(e => $"  - {e.Content.Content}"));
+            }
+
+            if (byVoice.TryGetValue(AnchoredMemoryVoice.Unclassified, out var unclassified))
+            {
+                // Preserve pre-Phase-7 shape as fallback so nothing is
+                // silently dropped when the heuristic can't classify.
+                sections.Add("Other things always true:");
+                sections.AddRange(unclassified.Select(e => $"  - {e.Content.Content}"));
+            }
         }
 
         if (snapshot.Perceptions.Count > 0)
