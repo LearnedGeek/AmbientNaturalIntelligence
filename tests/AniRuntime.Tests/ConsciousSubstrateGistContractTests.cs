@@ -830,18 +830,30 @@ public class ConsciousSubstrateGistContractTests
     }
 
     [Fact]
-    public void ConsciousSubstrateGistEmpty_IsCanonicalSingleton()
+    public void ConsciousSubstrateGistEmpty_IsCanonicalFactoryOfIsEmptyInstances()
     {
         // Spec note for downstream consumers: ConsciousSubstrateGist.Empty
-        // is the canonical empty instance. Equality by record value is
-        // sufficient; reference equality is not required.
+        // is the canonical empty INSTANCE returned by the M.0 no-op composer
+        // and by feature-flag-off short-circuits. Downstream code that wants
+        // to test "did I get nothing?" MUST use IsEmpty (content-based),
+        // not record equality against Empty.
+        //
+        // F-1 Phase 4 (2026-08-18) — record value equality no longer holds
+        // across independently-constructed empty instances because each
+        // captures its own CreatedAt at construction (IProvenancedContent<T>
+        // contract requires stable per-instance point-in-time; PR #112
+        // reviewer finding). The IsEmpty content-based check is the correct
+        // and grep-confirmed downstream pattern (zero production sites use
+        // record equality against Empty).
         ConsciousSubstrateGist.Empty.Should().NotBeNull();
         ConsciousSubstrateGist.Empty.IsEmpty.Should().BeTrue();
         ConsciousSubstrateGist.Empty.Composed.Should().BeEmpty();
         ConsciousSubstrateGist.Empty.TokenCount.Should().Be(0);
 
         var anotherEmpty = new ConsciousSubstrateGist();
-        anotherEmpty.Should().Be(ConsciousSubstrateGist.Empty,
-            "record value equality lets consumers compare against Empty without reference-tracking");
+        anotherEmpty.IsEmpty.Should().BeTrue(
+            "IsEmpty is the content-based test consumers must use to detect an empty gist");
+        anotherEmpty.Composed.Should().BeEmpty();
+        anotherEmpty.TokenCount.Should().Be(0);
     }
 }
