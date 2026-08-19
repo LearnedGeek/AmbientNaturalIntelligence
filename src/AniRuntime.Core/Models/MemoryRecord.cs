@@ -1,6 +1,8 @@
+using AniRuntime.Core.Interfaces;
+
 namespace AniRuntime.Core.Models;
 
-public class MemoryRecord
+public class MemoryRecord : IRetrievalEnvelope
 {
     public Guid           Id          { get; set; } = Guid.NewGuid();
     public MemoryType     Type        { get; set; }
@@ -75,6 +77,59 @@ public class MemoryRecord
     /// </para>
     /// </summary>
     public string?        Register { get; set; }
+
+    // ── IRetrievalEnvelope / IProvenancedContent<MemoryRecord> ─────────────
+    // F-1 Phase 5 (2026-08-18). All fields already exist on MemoryRecord —
+    // this is pure interface implementation with zero new persisted state.
+    // Because MemoryRecord is a class (not record) there is no equality-
+    // behavior change to worry about here (Phase 4 reviewer-caught the
+    // record-equality change on ConsciousSubstrateGist; classes are exempt).
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The envelope's Content is the whole MemoryRecord (self-reference)
+    /// so consumers that need the raw <see cref="Content"/> text OR the
+    /// temporal <see cref="OccurredAt"/> OR the raw metadata can read them
+    /// directly from the wrapped payload. Not a string wrapping the
+    /// content field alone.
+    /// </remarks>
+    MemoryRecord IProvenancedContent<MemoryRecord>.Content => this;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Composed from <see cref="Provenance"/> + <see cref="SourceName"/>
+    /// so the dotted-lowercase tag identifies both the epistemic tier and
+    /// the producer that emitted the underlying record
+    /// (e.g. <c>"retrieval.facts.rss"</c>, <c>"retrieval.interior.ani"</c>,
+    /// <c>"retrieval.episodic.mark"</c>). SourceName defaults to
+    /// <c>"unknown"</c> when null — most pre-Phase-6 records have null
+    /// SourceName, so downstream aggregation shouldn't crash on that case.
+    /// </remarks>
+    string IProvenancedContent<MemoryRecord>.SourceType
+        => $"retrieval.{Provenance.ToString().ToLowerInvariant()}.{(SourceName ?? "unknown").ToLowerInvariant()}";
+
+    /// <inheritdoc />
+    string IProvenancedContent<MemoryRecord>.Producer => "RetrievalContextBuilder";
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Uses the existing <see cref="CreatedAt"/> field which is set at
+    /// record construction and persisted to the DB. Mutable per the
+    /// pre-Phase-5 record contract (EF write path sets it), but treated
+    /// as stable-point-in-time by all readers.
+    /// </remarks>
+    DateTimeOffset IProvenancedContent<MemoryRecord>.CreatedAt => CreatedAt;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reuses the existing <see cref="Embedding"/> field so callers doing
+    /// envelope-based semantic dedup (Phase 2 pattern) can pool retrieval
+    /// envelopes with active-trigger envelopes on the same cosine surface.
+    /// </remarks>
+    float[]? IProvenancedContent<MemoryRecord>.SemanticKey => Embedding;
+
+    /// <inheritdoc />
+    EpistemicTier IRetrievalEnvelope.Provenance => Provenance;
 }
 
 /// <summary>

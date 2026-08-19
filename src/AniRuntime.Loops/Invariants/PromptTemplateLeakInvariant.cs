@@ -66,6 +66,14 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
         // pre-existing `[LABEL]` pattern semantics are unchanged (SUBSTRATE
         // is followed by prose, not immediately-closed like [CONTEXT]).
         SubstrateMarker(),
+
+        // F-1 Phase 5 (2026-08-18) — [FROM: source, N ago] attribution
+        // prefix introduced by PromptBuilder.FormatMemoryWithTime. Added
+        // pre-emptively (before a reviewer flags it — same class of concern
+        // Devin surfaced on Phase 4 SUBSTRATE markers). Every retrieval
+        // memory now enters composer prompts with this bracket-prefix; if
+        // the model echoes it into a reply, this pattern must catch it.
+        FromAttributionMarker(),
     };
 
     public Task<InvariantResult> EvaluateAsync(
@@ -130,4 +138,14 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
     // (label immediately followed by `]`) are unchanged.
     [GeneratedRegex(@"\[/?SUBSTRATE\b", RegexOptions.IgnoreCase)]
     private static partial Regex SubstrateMarker();
+
+    // F-1 Phase 5 (2026-08-18) — matches the `[FROM: ...]` attribution
+    // marker introduced by PromptBuilder.FormatMemoryWithTime. The colon
+    // is load-bearing: it distinguishes the template marker from ordinary
+    // prose like "a note from mom" or "here's a message from work".
+    // Whitespace after the colon is OPTIONAL (PR #115 review fix from
+    // Devin — tightly-echoed `[FROM:conversation]` would otherwise slip
+    // through). Case-insensitive to catch echoed variants like `[from: ...]`.
+    [GeneratedRegex(@"\[FROM:\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex FromAttributionMarker();
 }

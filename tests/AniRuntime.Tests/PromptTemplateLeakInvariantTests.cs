@@ -175,6 +175,29 @@ public class PromptTemplateLeakInvariantTests
         result.Passed.Should().BeFalse($"F-1 Phase 4 leak class: model echoed the substrate boundary marker \"{marker}\"");
     }
 
+    // F-1 Phase 5 (2026-08-18) — coverage for the new [FROM: source] attribution
+    // marker introduced by PromptBuilder.FormatMemoryWithTime. Added
+    // pre-emptively per the discipline established after Phase 4's Devin
+    // finding on SUBSTRATE markers. Every retrieval memory now enters
+    // composer prompts prefixed with this bracket — if the model echoes
+    // it into a reply, this invariant must catch it.
+    [Theory]
+    [InlineData("[FROM: text from Mark]")]
+    [InlineData("[FROM: your prior thought]")]
+    [InlineData("[FROM: conversation]")]
+    [InlineData("[FROM: news]")]
+    [InlineData("[from: character seed]")]  // case-insensitive
+    // PR #115 review (Devin) — regex tightened to \[FROM:\s* so
+    // tightly-echoed variants without whitespace after the colon also match.
+    [InlineData("[FROM:conversation]")]  // no space after colon
+    [InlineData("[from:news]")]           // no space + case-insensitive
+    public async Task Evaluate_FromAttributionMarker_Fails(string marker)
+    {
+        var output = $"before. {marker} after.";
+        var result = await _invariant.EvaluateAsync(Artifact(output), CancellationToken.None);
+        result.Passed.Should().BeFalse($"F-1 Phase 5 leak class: model echoed the retrieval attribution marker \"{marker}\"");
+    }
+
     // ── Evaluate — false-positive guards ────────────────────────────────
 
     [Theory]
@@ -185,6 +208,12 @@ public class PromptTemplateLeakInvariantTests
     [InlineData("i don't want to repeat what happened last week")]                // "repeat" without "do not" instruction
     [InlineData("the substrate underneath the paint was still tacky")]            // "substrate" as a normal word — not bracketed, no leak
     [InlineData("i keep thinking about the substrate of what we've been building")]
+    // F-1 Phase 5 (2026-08-18) — "from" without the colon+space marker
+    // pattern is normal prose (e.g. "a note from mom") and must NOT trip
+    // the FromAttributionMarker regex.
+    [InlineData("i got a note from mom this morning")]
+    [InlineData("hearing from you always makes my day")]
+    [InlineData("from what i can tell, everything's fine")]
     public async Task Evaluate_FalsePositiveGuards_Pass(string benignContent)
     {
         var artifact = Artifact(benignContent);

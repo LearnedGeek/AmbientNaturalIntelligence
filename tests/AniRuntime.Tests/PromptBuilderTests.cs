@@ -1018,19 +1018,24 @@ public class PromptBuilderTests
         // Pin the canonical FormatMemoryWithTime behaviour so future changes
         // to the function are detected by test failure rather than silent
         // drift in prompt-builder output.
+        // F-1 Phase 5 (2026-08-18) — output now prefixes with
+        // `[FROM: <source>] ` before the temporal phrase. Test records
+        // default to Provenance=Episodic + no SourceName which maps to
+        // `[FROM: conversation]` via FormatMemorySource.
         var now = new DateTimeOffset(2026, 04, 27, 12, 0, 0, TimeSpan.Zero);
+        const string prefix = "[FROM: conversation] ";
 
         var justNow = new MemoryRecord { Content = "test", OccurredAt = now.AddMinutes(-10) };
-        PromptBuilder.FormatMemoryWithTime(justNow, now).Should().StartWith("(just now)");
+        PromptBuilder.FormatMemoryWithTime(justNow, now).Should().StartWith(prefix + "(just now)");
 
         var aLittleWhileAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddMinutes(-45) };
-        PromptBuilder.FormatMemoryWithTime(aLittleWhileAgo, now).Should().StartWith("(a little while ago)");
+        PromptBuilder.FormatMemoryWithTime(aLittleWhileAgo, now).Should().StartWith(prefix + "(a little while ago)");
 
         var fourDaysAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddDays(-4) };
-        PromptBuilder.FormatMemoryWithTime(fourDaysAgo, now).Should().StartWith("(4 days ago)");
+        PromptBuilder.FormatMemoryWithTime(fourDaysAgo, now).Should().StartWith(prefix + "(4 days ago)");
 
         var twoWeeksAgo = new MemoryRecord { Content = "test", OccurredAt = now.AddDays(-15) };
-        PromptBuilder.FormatMemoryWithTime(twoWeeksAgo, now).Should().StartWith("(2 weeks ago)");
+        PromptBuilder.FormatMemoryWithTime(twoWeeksAgo, now).Should().StartWith(prefix + "(2 weeks ago)");
     }
 
     // ── May 3, 2026: WHAT IS TRUE → Verified facts rephrase regression tests
