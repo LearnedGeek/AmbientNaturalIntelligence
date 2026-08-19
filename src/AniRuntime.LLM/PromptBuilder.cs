@@ -506,10 +506,15 @@ public static class PromptBuilder
             .Build(new Prompts.ReflectionSynthesisPromptInput(characterName, contactName, recentMemories));
 
     /// <summary>
-    /// Formats a memory for prompt injection with felt-time temporal context.
+    /// Formats a memory for prompt injection with felt-time temporal context
+    /// AND a source-attribution tag.
     /// The timestamp is converted to natural language relative to now:
     /// "just now", "earlier today", "yesterday evening", "3 days ago".
-    /// This gives the model temporal awareness without polluting the embedding.
+    /// The source is derived from <see cref="MemoryRecord.Provenance"/> +
+    /// <see cref="MemoryRecord.SourceName"/> (F-1 Phase 5 IRetrievalEnvelope).
+    /// Together they give the model temporal awareness AND where each retrieved
+    /// memory came from — so composers can distinguish, e.g., a stored Mark text
+    /// from Ani's own prior thought without ambiguity.
     /// </summary>
     public static string FormatMemoryWithTime(MemoryRecord memory, DateTimeOffset? now = null)
     {
@@ -546,6 +551,44 @@ public static class PromptBuilder
         else
             temporal = $"{(int)(age.TotalDays / 7)} weeks ago";
 
-        return $"({temporal}) {memory.Content}";
+        return $"[FROM: {FormatMemorySource(memory)}] ({temporal}) {memory.Content}";
+    }
+
+    /// <summary>
+    /// F-1 Phase 5 (2026-08-18) — human-readable source attribution for a
+    /// retrieved memory. Maps <see cref="MemoryRecord.Provenance"/> +
+    /// <see cref="MemoryRecord.SourceName"/> + <see cref="MemoryRecord.Type"/>
+    /// to a short phrase that reads naturally inside the <c>[FROM: ...]</c>
+    /// tag prefixed by <see cref="FormatMemoryWithTime"/>.
+    ///
+    /// <para>
+    /// Kept as a switch expression rather than a dictionary so the fallback
+    /// arms are code-visible and the mapping is grep-able against the
+    /// perception-source SourceName strings defined in
+    /// <c>src/AniRuntime.Perception/*.cs</c>. New perception sources can add
+    /// their SourceName here as they ship.
+    /// </para>
+    /// </summary>
+    public static string FormatMemorySource(MemoryRecord memory)
+    {
+        var src = memory.SourceName?.ToLowerInvariant();
+        return (memory.Provenance, memory.Type, src) switch
+        {
+            (EpistemicTier.Facts, _, "rss")             => "news",
+            (EpistemicTier.Facts, _, "twilio-inbound")  => "text from Mark",
+            (EpistemicTier.Facts, _, "weather")         => "weather",
+            (EpistemicTier.Facts, _, "time")            => "time-of-day",
+            (EpistemicTier.Facts, _, "temporal-gap")    => "temporal gap",
+            (EpistemicTier.Facts, _, "contact-state")   => "contact state",
+            (EpistemicTier.Facts, _, "register-saturation") => "register saturation",
+            (EpistemicTier.Facts, _, "retrieval-self-dominance") => "self-dominance signal",
+            (EpistemicTier.Facts, _, "outage")          => "outage signal",
+            (EpistemicTier.Facts, _, null)              => "character seed",
+            (EpistemicTier.Facts, _, _)                 => memory.SourceName ?? "fact",
+            (EpistemicTier.Interior, _, _)              => "your prior thought",
+            (EpistemicTier.Episodic, MemoryType.InnerThought, _) => "your prior thought",
+            (EpistemicTier.Episodic, _, _)              => "conversation",
+            _                                            => "memory",
+        };
     }
 }
