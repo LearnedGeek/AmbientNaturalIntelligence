@@ -46,26 +46,40 @@ public class InnerThoughtPhase
     private readonly ILogger<InnerThoughtPhase> _log;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
+    private readonly IThoughtShapeClassifier? _shapeClassifier;
     private readonly bool _epistemicFramingEnabled;
     private readonly bool _hybridCycleEnabled;
     private readonly string _hybridMetadataModel;
+    private readonly bool _thoughtShapeClassificationEnabled;
 
+    /// <summary>
+    /// F-1 Phase 3 (2026-08-18): <paramref name="shapeClassifier"/> is
+    /// optional. When non-null AND
+    /// <see cref="AniOptions.ThoughtShapeClassificationEnabled"/> is true,
+    /// each generated thought is classified into a <see cref="ThoughtShape"/>
+    /// and the result is written to <see cref="InnerThoughtResult.Shape"/>.
+    /// Failure is fail-open — the cycle proceeds using the raw thought text
+    /// as-is with <see cref="ThoughtShape.Unclassified"/>.
+    /// </summary>
     public InnerThoughtPhase(
         IOllamaClient ollama,
         IRegisterClassifier registerClassifier,
         ILogger<InnerThoughtPhase> log,
         ICognitiveOutputGate? outputGate = null,
         Microsoft.Extensions.Options.IOptions<AniOptions>? aniOptions = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        IThoughtShapeClassifier? shapeClassifier = null)
     {
         _ollama = ollama;
         _registerClassifier = registerClassifier;
         _log = log;
         _outputGate = outputGate;
         _epistemicRenderer = epistemicRenderer;
+        _shapeClassifier = shapeClassifier;
         _epistemicFramingEnabled = aniOptions?.Value.EpistemicFramingEnabled ?? false;
         _hybridCycleEnabled = aniOptions?.Value.UseHybridInnerThoughtCycle ?? false;
         _hybridMetadataModel = aniOptions?.Value.HybridInnerThoughtMetadataModel ?? "qwen3:14b";
+        _thoughtShapeClassificationEnabled = aniOptions?.Value.ThoughtShapeClassificationEnabled ?? true;
     }
 
     /// <summary>
@@ -105,6 +119,12 @@ public class InnerThoughtPhase
             return new InnerThoughtResult(thought, Reflection: null, Valence: 0.3f);
         }
 
+        // F-1 Phase 3 (2026-08-18): shape classification. Runs in parallel
+        // with metadata recognition when the hybrid path is on, so it adds
+        // no serial latency vs the pre-Phase-3 cycle. Fail-open — a
+        // classifier failure returns Unclassified and the cycle proceeds.
+        var shapeTask = ClassifyShapeAsync(thought, ct);
+
         // Posture-S+1 hybrid path. Single Qwen call recognizes register,
         // valence, importance, and associative-anchor from the thought v7
         // already produced. Drops the separate reflection call (May 17
@@ -113,13 +133,18 @@ public class InnerThoughtPhase
         {
             var metadata = await RecognizeMetadataAsync(thought, snapshot, ct)
                 .ConfigureAwait(false);
+            var shape = await shapeTask.ConfigureAwait(false);
+            _log.LogInformation(
+                "F1_THOUGHT_SHAPE producer=InnerThoughtPhase shape={Shape} chars={Chars} path=hybrid",
+                shape, thought.Length);
             return new InnerThoughtResult(
                 Thought:           thought,
                 Reflection:        null,
                 Valence:           metadata.Valence,
                 Register:          metadata.Register,
                 Importance:        metadata.Importance,
-                AssociativeAnchor: metadata.AssociativeAnchor);
+                AssociativeAnchor: metadata.AssociativeAnchor,
+                Shape:             shape);
         }
 
         // Legacy three-call path. Kept callable for safe rollout and so
@@ -127,8 +152,39 @@ public class InnerThoughtPhase
         var valence = await ScoreRelationalValenceAsync(thought, snapshot.CharacterState, ct)
             .ConfigureAwait(false);
         var reflection = await ReflectOnThoughtAsync(thought, snapshot, ct).ConfigureAwait(false);
+        var legacyShape = await shapeTask.ConfigureAwait(false);
+        _log.LogInformation(
+            "F1_THOUGHT_SHAPE producer=InnerThoughtPhase shape={Shape} chars={Chars} path=legacy",
+            legacyShape, thought.Length);
 
-        return new InnerThoughtResult(thought, reflection, valence);
+        return new InnerThoughtResult(thought, reflection, valence, Shape: legacyShape);
+    }
+
+    /// <summary>
+    /// F-1 Phase 3 (2026-08-18) — classify the shape of a generated thought.
+    /// Returns <see cref="ThoughtShape.Unclassified"/> when the classifier is
+    /// unavailable or disabled. Kicked off in parallel with the metadata
+    /// call so it contributes no serial latency (subject to Ollama's
+    /// concurrency configuration — see PR #112 Devin note about
+    /// OLLAMA_NUM_PARALLEL).
+    ///
+    /// <para>
+    /// Reviewer feedback PR #112 (2026-08-18): removed the wrapping try/catch
+    /// that swallowed all non-OCE exceptions. The classifier's own contract
+    /// (<see cref="IThoughtShapeClassifier"/>) already guarantees fail-open
+    /// return of Unclassified on transport / parse / timeout failures — a
+    /// second belt-and-suspenders catch here was masking real defects in
+    /// the classifier implementation (per global CLAUDE.md rule #4:
+    /// don't swallow with generic catch). Any exception escaping the
+    /// classifier IS a bug and must surface for diagnosis.
+    /// </para>
+    /// </summary>
+    internal Task<ThoughtShape> ClassifyShapeAsync(string thought, CancellationToken ct)
+    {
+        if (_shapeClassifier is null || !_thoughtShapeClassificationEnabled)
+            return Task.FromResult(ThoughtShape.Unclassified);
+
+        return _shapeClassifier.ClassifyAsync(thought, ct);
     }
 
     /// <summary>
