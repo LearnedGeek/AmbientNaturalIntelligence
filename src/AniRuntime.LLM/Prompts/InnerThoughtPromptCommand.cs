@@ -128,39 +128,45 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             // anchored dump into three voice-grouped headings. Closes #63 —
             // pronoun-flip of Mark-facts into Ani-identity statements traced
             // to mixed rendering under one "part of who you are" heading.
-            // Voice is derived via AnchoredMemoryVoiceClassifier (no LLM /
-            // schema / backfill in Phase 7; Phase 7b can replace the
-            // heuristic if empirical results demand it).
+            //
+            // PR #117 review-fix (Devin BUG): pass PrimaryContactName to
+            // the classifier so the contact-fact match is contact-aware
+            // rather than hardcoded to "Mark" (the Phase 5/6
+            // "never hardcode Mark" discipline). Heading uses the same
+            // configured name so the render is consistent across
+            // classification and prose.
+            var anchoredContact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? null : cs.PrimaryContactName;
             var byVoice = snapshot.AnchoredMemories
-                .Cast<IAnchoredMemoryEnvelope>()
-                .GroupBy(m => m.Voice)
+                .GroupBy(m => AnchoredMemoryVoiceClassifier.Classify(m, anchoredContact))
                 .ToDictionary(g => g.Key, g => g.ToList());
 
             if (byVoice.TryGetValue(AnchoredMemoryVoice.AniSelfStatement, out var selfStatements))
             {
                 sections.Add("Part of who you are (always true, never forgotten):");
-                sections.AddRange(selfStatements.Select(e => $"  - {e.Content.Content}"));
+                sections.AddRange(selfStatements.Select(m => $"  - {m.Content}"));
             }
 
-            if (byVoice.TryGetValue(AnchoredMemoryVoice.MarkFactAssertion, out var markFacts))
+            // Contact-fact heading is only rendered when a contactName is
+            // known AND we actually classified some records into it.
+            if (anchoredContact is not null
+             && byVoice.TryGetValue(AnchoredMemoryVoice.MarkFactAssertion, out var contactFacts))
             {
-                sections.Add("Things you know about Mark:");
-                sections.AddRange(markFacts.Select(e => $"  - {e.Content.Content}"));
+                sections.Add($"Things you know about {anchoredContact}:");
+                sections.AddRange(contactFacts.Select(m => $"  - {m.Content}"));
             }
 
             if (byVoice.TryGetValue(AnchoredMemoryVoice.SeedNarrative, out var seedNarrative))
             {
                 sections.Add("Background you can draw from:");
-                sections.AddRange(seedNarrative.Select(e => $"  - {e.Content.Content}"));
+                sections.AddRange(seedNarrative.Select(m => $"  - {m.Content}"));
             }
 
-            if (byVoice.TryGetValue(AnchoredMemoryVoice.Unclassified, out var unclassified))
-            {
-                // Preserve pre-Phase-7 shape as fallback so nothing is
-                // silently dropped when the heuristic can't classify.
-                sections.Add("Other things always true:");
-                sections.AddRange(unclassified.Select(e => $"  - {e.Content.Content}"));
-            }
+            // Unclassified-heading fallback DROPPED in PR #117 review-fix
+            // (Devin): Unclassified is only reachable when a record's
+            // Content is null/empty/whitespace — rendering "  - " for
+            // those would emit an empty bullet under a phantom heading.
+            // Blank-content records are silently filtered out instead;
+            // there's nothing to say about them.
         }
 
         if (snapshot.Perceptions.Count > 0)

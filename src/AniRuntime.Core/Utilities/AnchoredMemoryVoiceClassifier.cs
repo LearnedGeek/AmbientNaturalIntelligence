@@ -24,31 +24,53 @@ namespace AniRuntime.Core.Utilities;
 public static class AnchoredMemoryVoiceClassifier
 {
     /// <summary>
+    /// Head-window size (characters) for the contact-name-as-subject
+    /// heuristic. Contact names appearing beyond this offset are treated
+    /// as passing mentions inside longer sentences rather than the
+    /// grammatical subject of a foundation fact.
+    /// </summary>
+    private const int ContactMatchHeadWindow = 60;
+
+    /// <summary>
     /// Classify the voice of an anchored (foundation) memory. Handles null
     /// and empty content defensively (returns Unclassified) so callers can
     /// invoke unconditionally without defensive checks at the call site.
     ///
     /// <para>
-    /// Priority order (first match wins):
+    /// Priority order (first match wins) — reordered PR #117 review-fix so
+    /// first-person "I always thought Mark's..." reads as self-statement
+    /// rather than being pulled into the contact-fact bucket by the
+    /// head-window match:
     /// <list type="number">
     ///   <item><c>Provenance = Interior</c> → <see cref="AnchoredMemoryVoice.AniSelfStatement"/>
     ///         — Interior tier IS Ani's inner life by definition.</item>
-    ///   <item>Content starts with second-person "You" / "Your" / "You're"
-    ///         → <see cref="AnchoredMemoryVoice.AniSelfStatement"/>
-    ///         — character-seed shape addressing Ani.</item>
-    ///   <item>Content contains "Mark" as subject (first token, or after
-    ///         common openers like "That"/"Because") →
-    ///         <see cref="AnchoredMemoryVoice.MarkFactAssertion"/>.</item>
-    ///   <item>Content starts with first-person "I" / "I'm" / "My" →
-    ///         <see cref="AnchoredMemoryVoice.AniSelfStatement"/>
-    ///         (uncommon for character seeds but present in some anchored
-    ///         inner-thoughts).</item>
+    ///   <item>Content starts with second-person "You" / "Your" (apostrophe
+    ///         forms hit the same probe via word-boundary) →
+    ///         <see cref="AnchoredMemoryVoice.AniSelfStatement"/> —
+    ///         character-seed shape addressing Ani.</item>
+    ///   <item>Content starts with first-person "I" / "My" (apostrophe
+    ///         forms hit the "I" probe via word-boundary) →
+    ///         <see cref="AnchoredMemoryVoice.AniSelfStatement"/>.</item>
+    ///   <item>When <paramref name="contactName"/> is supplied: contact
+    ///         name appears as subject at start OR within the head window
+    ///         → <see cref="AnchoredMemoryVoice.MarkFactAssertion"/>.
+    ///         Skipped entirely when <paramref name="contactName"/> is
+    ///         null — no hardcoded fallback (PR #117 review-fix; the
+    ///         Phase 5/6 "never hardcode Mark" discipline).</item>
     ///   <item>Fallback → <see cref="AnchoredMemoryVoice.SeedNarrative"/>
     ///         (background world / atmospheric context).</item>
     /// </list>
     /// </para>
     /// </summary>
-    public static AnchoredMemoryVoice Classify(MemoryRecord memory)
+    /// <param name="memory">The anchored memory to classify.</param>
+    /// <param name="contactName">
+    /// The configured primary contact name (e.g. from
+    /// <c>CharacterStateDoc.PrimaryContactName</c>). When null, contact-
+    /// subject detection is skipped entirely — records that would have
+    /// matched fall to <see cref="AnchoredMemoryVoice.SeedNarrative"/>
+    /// rather than false-matching a hardcoded name (PR #117 review).
+    /// </param>
+    public static AnchoredMemoryVoice Classify(MemoryRecord memory, string? contactName = null)
     {
         if (memory is null || string.IsNullOrWhiteSpace(memory.Content))
             return AnchoredMemoryVoice.Unclassified;
@@ -59,31 +81,34 @@ public static class AnchoredMemoryVoiceClassifier
         var trimmed = memory.Content.TrimStart();
 
         // Second-person opener → Ani-self-statement (character-seed shape).
-        // Match on token boundary to avoid catching "Youthful" etc.
-        if (StartsWithWord(trimmed, "You")
-         || StartsWithWord(trimmed, "Your")
-         || StartsWithWord(trimmed, "You're")
-         || StartsWithWord(trimmed, "Youre"))
+        // "You're" / "Youre" hit the "You" probe via word-boundary
+        // (apostrophe is non-alphanumeric, so it counts as boundary).
+        if (StartsWithWord(trimmed, "You") || StartsWithWord(trimmed, "Your"))
             return AnchoredMemoryVoice.AniSelfStatement;
 
-        // Mark as grammatical subject. Match at start OR after a common
-        // sentence-opener that precedes the subject.
-        if (StartsWithWord(trimmed, "Mark"))
-            return AnchoredMemoryVoice.MarkFactAssertion;
-
-        // "Mark" appearing prominently early in the content (within first
-        // ~40 chars) as a word — covers "That's Mark's dad's name" and
-        // similar shapes that would otherwise fall through.
-        var head = trimmed.Length <= 60 ? trimmed : trimmed[..60];
-        if (ContainsWord(head, "Mark"))
-            return AnchoredMemoryVoice.MarkFactAssertion;
-
-        // First-person self-reference at start.
-        if (StartsWithWord(trimmed, "I")
-         || StartsWithWord(trimmed, "I'm")
-         || StartsWithWord(trimmed, "Im")
-         || StartsWithWord(trimmed, "My"))
+        // First-person opener → self-statement. Reordered ABOVE the
+        // contact-name check (PR #117 review — Devin) so "I always
+        // thought Mark's shop was warmer" reads as self-statement rather
+        // than falling into MarkFactAssertion via the head-window match.
+        // "I'm" / "Im" / "I've" hit the "I" probe via word-boundary.
+        if (StartsWithWord(trimmed, "I") || StartsWithWord(trimmed, "My"))
             return AnchoredMemoryVoice.AniSelfStatement;
+
+        // Contact-name-as-subject match. Skipped entirely when contactName
+        // is null (PR #117 review — no hardcoded "Mark" fallback).
+        if (!string.IsNullOrEmpty(contactName))
+        {
+            if (StartsWithWord(trimmed, contactName))
+                return AnchoredMemoryVoice.MarkFactAssertion;
+
+            // Contact-name as a whole word appearing within the head
+            // window. Bound the match START index instead of chopping
+            // the string (PR #117 review — Devin bug: chopping at 60
+            // chars made "Marketplace" starting at offset 56 truncate
+            // to "Mark" and false-match as a whole word).
+            if (ContainsWordBeforeIndex(trimmed, contactName, ContactMatchHeadWindow))
+                return AnchoredMemoryVoice.MarkFactAssertion;
+        }
 
         return AnchoredMemoryVoice.SeedNarrative;
     }
@@ -97,13 +122,22 @@ public static class AnchoredMemoryVoiceClassifier
         return !char.IsLetterOrDigit(next) && next != '_';
     }
 
-    private static bool ContainsWord(string text, string word)
+    /// <summary>
+    /// True if <paramref name="word"/> appears as a whole word in
+    /// <paramref name="text"/> STARTING at an index strictly less than
+    /// <paramref name="maxStartIndex"/>. Bounds the match start rather
+    /// than truncating the string, so a longer word like "Marketplace"
+    /// beginning near the window boundary cannot masquerade as the target
+    /// via string-end-as-word-boundary (PR #117 review — Devin bug).
+    /// </summary>
+    private static bool ContainsWordBeforeIndex(string text, string word, int maxStartIndex)
     {
+        var searchLimit = Math.Min(text.Length, maxStartIndex);
         var idx = 0;
-        while (idx < text.Length)
+        while (idx < searchLimit)
         {
             var found = text.IndexOf(word, idx, StringComparison.Ordinal);
-            if (found < 0) return false;
+            if (found < 0 || found >= searchLimit) return false;
             var before = found == 0 || !(char.IsLetterOrDigit(text[found - 1]) || text[found - 1] == '_');
             var afterIdx = found + word.Length;
             var after = afterIdx >= text.Length || !(char.IsLetterOrDigit(text[afterIdx]) || text[afterIdx] == '_');
