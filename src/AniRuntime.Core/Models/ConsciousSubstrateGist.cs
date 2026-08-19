@@ -1,3 +1,5 @@
+using AniRuntime.Core.Interfaces;
+
 namespace AniRuntime.Core.Models;
 
 /// <summary>
@@ -23,8 +25,15 @@ namespace AniRuntime.Core.Models;
 /// (<c>M0_GIST_SUBSTRATE_RATIO</c>) is computed at the consumer surface
 /// (the prompt builder) since it depends on retrieval / character-seed
 /// sizes that the composer does not see.
+///
+/// <para>
+/// F-1 Phase 4 (2026-08-18) — implements <see cref="ISubstrateGistEnvelope"/>.
+/// <see cref="ISubstrateGistEnvelope.Treatment"/> defaults to
+/// <see cref="SubstrateGistTreatment.ReferenceOnlyDoNotAdoptVoice"/>. See
+/// F-1 Phase 4 sub-tasks in <c>ani-docs/spec/ANI-Foundation-Input-Refactor-Plan.md</c>.
+/// </para>
 /// </summary>
-public sealed record ConsciousSubstrateGist
+public sealed record ConsciousSubstrateGist : ISubstrateGistEnvelope
 {
     /// <summary>
     /// The composed gist text, or empty when no slice is active.
@@ -62,6 +71,39 @@ public sealed record ConsciousSubstrateGist
     /// <summary>True when no slice contributed content — e.g. M.0 default
     /// state or feature-flag-disabled state.</summary>
     public bool IsEmpty => string.IsNullOrEmpty(Composed) && TokenCount == 0;
+
+    // ── ISubstrateGistEnvelope / IProvenancedContent<string> ────────────────
+    // F-1 Phase 4 (2026-08-18). Computed accessors — no additional persisted
+    // fields except CreatedAt which is captured once at construction to
+    // satisfy the IProvenancedContent<T> contract (stable point-in-time,
+    // not a live clock; verified against sibling implementors DesireTrigger
+    // + InnerThoughtResult).
+
+    /// <inheritdoc />
+    string IProvenancedContent<string>.Content => Composed;
+
+    /// <inheritdoc />
+    string IProvenancedContent<string>.SourceType => "gist.substrate";
+
+    /// <inheritdoc />
+    string IProvenancedContent<string>.Producer => "ConsciousSubstrateGistComposer";
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Captured once at construction per <c>IProvenancedContent&lt;T&gt;.CreatedAt</c>
+    /// contract. Note that <see cref="Empty"/> is a shared static instance,
+    /// so its CreatedAt points to application startup rather than any
+    /// runtime observation — but consumers short-circuit on
+    /// <see cref="IsEmpty"/> before reading CreatedAt, so this is benign.
+    /// </remarks>
+    DateTimeOffset IProvenancedContent<string>.CreatedAt { get; } = DateTimeOffset.UtcNow;
+
+    /// <inheritdoc />
+    float[]? IProvenancedContent<string>.SemanticKey => null;
+
+    /// <inheritdoc />
+    SubstrateGistTreatment ISubstrateGistEnvelope.Treatment
+        => SubstrateGistTreatment.ReferenceOnlyDoNotAdoptVoice;
 }
 
 /// <summary>

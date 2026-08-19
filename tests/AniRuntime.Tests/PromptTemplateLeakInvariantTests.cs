@@ -158,6 +158,23 @@ public class PromptTemplateLeakInvariantTests
         result.Passed.Should().BeFalse();
     }
 
+    // F-1 Phase 4 (2026-08-18) — coverage for the new SUBSTRATE / /SUBSTRATE
+    // boundary markers introduced by
+    // ConsciousSubstrateGistObservation.WrapWithTreatmentDirective. If the
+    // model echoes any variant of these into a reply, this invariant must
+    // catch it. Reviewer-flagged (Devin) on PR #114.
+    [Theory]
+    [InlineData("[SUBSTRATE]")]
+    [InlineData("[SUBSTRATE — reference only, DO NOT adopt this voice]")]
+    [InlineData("[/SUBSTRATE]")]
+    [InlineData("[substrate]")]  // case-insensitive
+    public async Task Evaluate_SubstrateMarker_Fails(string marker)
+    {
+        var output = $"before. {marker} after.";
+        var result = await _invariant.EvaluateAsync(Artifact(output), CancellationToken.None);
+        result.Passed.Should().BeFalse($"F-1 Phase 4 leak class: model echoed the substrate boundary marker \"{marker}\"");
+    }
+
     // ── Evaluate — false-positive guards ────────────────────────────────
 
     [Theory]
@@ -166,6 +183,8 @@ public class PromptTemplateLeakInvariantTests
     [InlineData("here's the thing — i miss you when the store closes")]           // "here's" without "what true"
     [InlineData("step by step we'll get there together")]                         // "step" without numeric directive
     [InlineData("i don't want to repeat what happened last week")]                // "repeat" without "do not" instruction
+    [InlineData("the substrate underneath the paint was still tacky")]            // "substrate" as a normal word — not bracketed, no leak
+    [InlineData("i keep thinking about the substrate of what we've been building")]
     public async Task Evaluate_FalsePositiveGuards_Pass(string benignContent)
     {
         var artifact = Artifact(benignContent);

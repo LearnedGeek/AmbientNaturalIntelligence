@@ -29,6 +29,14 @@ public class ConsciousSubstrateGistInjectionTests
     private const string OriginalSystem = "You are Ani. Be kind. Be honest.";
     private const string OriginalUser   = "Mark just texted: \"how was your day?\"";
 
+    // F-1 Phase 4 (2026-08-18) — every injected gist body is wrapped with
+    // these treatment-directive boundary markers. Kept as constants so the
+    // regression tests fail loudly if the marker text is changed without
+    // deliberate intent (this is the load-bearing string the model reads).
+    private const string SubstrateOpen  = "[SUBSTRATE — reference only, DO NOT adopt this voice]";
+    private const string SubstrateClose = "[/SUBSTRATE]";
+    private static string Wrap(string body) => $"{SubstrateOpen}\n{body}\n{SubstrateClose}";
+
     private static AniOptions Options(bool enabled) => new()
     {
         ConsciousSubstrateGistEnabled   = enabled,
@@ -133,8 +141,8 @@ public class ConsciousSubstrateGistInjectionTests
             log:                NullLogger.Instance,
             ct:                 CancellationToken.None);
 
-        result.System.Should().Be(OriginalSystem + "\n\n" + gistText,
-            "gist appends to system when directive is system-side");
+        result.System.Should().Be(OriginalSystem + "\n\n" + Wrap(gistText),
+            "gist appends to system when directive is system-side, wrapped with F-1 Phase 4 treatment-directive markers");
         result.User.Should().Be(OriginalUser,
             "user prompt must remain unchanged so Mark's actual turn from RecentHistory stays the only user-role content");
     }
@@ -166,8 +174,8 @@ public class ConsciousSubstrateGistInjectionTests
             log:                NullLogger.Instance,
             ct:                 CancellationToken.None);
 
-        result.System.Should().Be(OriginalSystem + "\n\n" + gistText,
-            "gist appends to system");
+        result.System.Should().Be(OriginalSystem + "\n\n" + Wrap(gistText),
+            "gist appends to system, wrapped with F-1 Phase 4 treatment-directive markers");
         result.User.Should().BeEmpty(
             "G.1 invariant: gist MUST NOT populate the user prompt when directive is system-side — that's the second-user-role-turn cascade root cause");
     }
@@ -202,8 +210,8 @@ public class ConsciousSubstrateGistInjectionTests
 
         result.System.Should().Be(OriginalSystem,
             "system unchanged when directive is user-side");
-        result.User.Should().Be(gistText + "\n\n" + OriginalUser,
-            "gist prepends user prompt — legacy May-18 shape");
+        result.User.Should().Be(Wrap(gistText) + "\n\n" + OriginalUser,
+            "gist prepends user prompt — legacy May-18 shape, wrapped with F-1 Phase 4 treatment-directive markers");
     }
 
     [Fact]

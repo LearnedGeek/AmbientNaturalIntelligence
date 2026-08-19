@@ -59,6 +59,13 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
 
         // Bracketed prompt-section labels (e.g. "[CONTEXT]", "[INSTRUCTIONS]").
         BracketedSectionLabel(),
+
+        // F-1 Phase 4 (2026-08-18) — SUBSTRATE / /SUBSTRATE boundary markers
+        // introduced by ConsciousSubstrateGistObservation.WrapWithTreatmentDirective.
+        // Kept as a separate regex from BracketedSectionLabel so the
+        // pre-existing `[LABEL]` pattern semantics are unchanged (SUBSTRATE
+        // is followed by prose, not immediately-closed like [CONTEXT]).
+        SubstrateMarker(),
     };
 
     public Task<InvariantResult> EvaluateAsync(
@@ -111,4 +118,16 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
 
     [GeneratedRegex(@"\[(?:CONTEXT|INSTRUCTIONS?|CRITICAL|IMPORTANT|RULES|STEP\s*\d+)\]", RegexOptions.IgnoreCase)]
     private static partial Regex BracketedSectionLabel();
+
+    // F-1 Phase 4 (2026-08-18) — matches either the open marker
+    // `[SUBSTRATE` (with optional trailing prose before a `]`) or the close
+    // marker `[/SUBSTRATE]`. Added after PR #114 reviewer (Devin) flagged
+    // that the new `[SUBSTRATE — reference only, DO NOT adopt this voice]`
+    // boundary text produced by
+    // ConsciousSubstrateGistObservation.WrapWithTreatmentDirective is
+    // literal text the model could echo into replies. Kept as its own
+    // regex so the pre-existing BracketedSectionLabel pattern semantics
+    // (label immediately followed by `]`) are unchanged.
+    [GeneratedRegex(@"\[/?SUBSTRATE\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SubstrateMarker();
 }

@@ -105,29 +105,49 @@ internal static class ConsciousSubstrateGistObservation
             // than turn-adjacent content. Mark's actual current turn from
             // RecentHistory remains the only user-role content the model sees.
             //
+            // F-1 Phase 4 (2026-08-18) — wrap the gist body with explicit
+            // treatment-directive boundary markers derived from the envelope.
+            // The wrapped block makes the "this is reference-only substrate,
+            // do NOT lift the voice" intent legible to the model at the same
+            // surface where the content is provided. The G.1 system-vs-user
+            // routing (above) handled WHERE the gist lives; F-1 Phase 4
+            // handles HOW it is presented once placed. See
+            // ISubstrateGistEnvelope.Treatment.
+            //
+            // Wrap happens BEFORE the F1_GIST_INJECTION log so the `chars`
+            // field reflects the actual injected length (reviewer feedback
+            // PR #114: Serge + Devin — pre-wrap `chars` would undercount).
+            var wrappedGist = WrapWithTreatmentDirective(gist);
+
             // §4.6 composition rule: "merged into prose, not enumerated."
             // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
             // structured F1_GIST_INJECTION per injection so Phase 1 can measure:
             // surface (system vs user role), gist size, slice count, and
             // directive-in-system flag state at time of injection. Referenced
             // by ANI-Composer-Input-Provenance-Audit-2026-08-13.md as L2.
+            //
+            // `chars` reflects the WRAPPED length that actually enters the
+            // prompt (post-Phase-4). `bodyChars` preserves the pre-wrap
+            // composer-body length so the wrapper overhead is visible to
+            // downstream aggregation.
             log.LogInformation(
-                "F1_GIST_INJECTION surface={Surface} directiveInSystem={DirectiveInSystem} chars={Chars} sliceFlags={SliceFlags}",
+                "F1_GIST_INJECTION surface={Surface} directiveInSystem={DirectiveInSystem} chars={Chars} bodyChars={BodyChars} sliceFlags={SliceFlags}",
                 directiveInSystem ? "system" : "user",
                 directiveInSystem,
+                wrappedGist.Length,
                 gist.Composed.Length,
                 gist.Slices.ToString());
 
             if (directiveInSystem)
             {
                 var mergedSystem = string.IsNullOrEmpty(promptSystemText)
-                    ? gist.Composed
-                    : promptSystemText + "\n\n" + gist.Composed;
+                    ? wrappedGist
+                    : promptSystemText + "\n\n" + wrappedGist;
                 return new PromptPair(mergedSystem, promptUserText);
             }
 
             // Legacy path (directive in user) — gist prepends user prompt.
-            return new PromptPair(promptSystemText, gist.Composed + "\n\n" + promptUserText);
+            return new PromptPair(promptSystemText, wrappedGist + "\n\n" + promptUserText);
         }
         catch (Exception ex)
         {
@@ -213,4 +233,25 @@ internal static class ConsciousSubstrateGistObservation
     /// </summary>
     private static int ApproxTokens(string? text) =>
         string.IsNullOrEmpty(text) ? 0 : (text.Length + 3) / 4;
+
+    /// <summary>
+    /// F-1 Phase 4 (2026-08-18) — render the gist body wrapped in explicit
+    /// treatment-directive boundary markers so the "reference-only, do NOT
+    /// adopt this voice" intent from <see cref="ISubstrateGistEnvelope"/>
+    /// is visible to the model at the same surface where the content lives.
+    /// Text markers were chosen over structured XML/JSON so the boundary is
+    /// legible to any downstream that renders the prompt for humans
+    /// (log grep, dashboard, replay) without needing to know the envelope's
+    /// serialization shape.
+    /// </summary>
+    internal static string WrapWithTreatmentDirective(ISubstrateGistEnvelope envelope)
+    {
+        var directiveText = envelope.Treatment switch
+        {
+            SubstrateGistTreatment.ReferenceOnlyDoNotAdoptVoice
+                => "[SUBSTRATE — reference only, DO NOT adopt this voice]",
+            _   => "[SUBSTRATE]",
+        };
+        return $"{directiveText}\n{envelope.Content}\n[/SUBSTRATE]";
+    }
 }
