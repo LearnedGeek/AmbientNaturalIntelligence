@@ -168,6 +168,14 @@ public static class AniRuntimeServiceContainer
         // Research.razor reclassify button, AniRuntime.Eval --backfill-register.
         services.AddSingleton<IRegisterClassifier, QwenRegisterClassifier>();
 
+        // 2026-08-18 — Foundation Input (F-1) Phase 3 shape classifier.
+        // Dedicated seam mirroring IRegisterClassifier (per Mark's decision
+        // to keep shape recognition independently tunable/swappable rather
+        // than folding into the existing hybrid metadata prompt). Consumer:
+        // InnerThoughtPhase populates InnerThoughtResult.Shape from this.
+        // See IThoughtShapeClassifier XML doc for scope + acceptance.
+        services.AddSingleton<IThoughtShapeClassifier, QwenThoughtShapeClassifier>();
+
         // Issue #93 Phase 3 (2026-07-06) — Ani's self-audit classifier. Reads
         // one Interior record's content against confirmed substrate and
         // returns contradicts / grounded / neutral / unknown. Consumed by:

@@ -621,6 +621,16 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             }
         }
 
+        // F-1 Phase 3 (2026-08-18) — composition-boundary shape instrumentation.
+        // Every thought reaching the outreach composer is logged with its
+        // classified ThoughtShape (from InnerThoughtPhase). The Phase 3
+        // acceptance target is that fact-catalog / third-person-frame /
+        // mumble-loop shapes drop toward zero at this boundary over the
+        // observation window. Tag-and-observe — no retry/drop policy yet.
+        _log.LogInformation(
+            "F1_THOUGHT_SHAPE_AT_COMPOSITION producer=InnerThoughtPhase consumer=OutreachPipeline shape={Shape} chars={Chars}",
+            innerResult.Shape, thought.Length);
+
         await _outreach.RunOutreachAsync(snapshot, thought, ct).ConfigureAwait(false);
         obs.OutreachOutcome = "send";
 

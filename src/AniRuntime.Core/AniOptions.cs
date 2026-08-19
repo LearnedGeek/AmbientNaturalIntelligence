@@ -46,6 +46,16 @@ public class AniOptions
     // Trigger weight multiplier — how much a trigger raises desire
     public double TriggerDesireMultiplier { get; set; } = 0.15;
 
+    // Foundation Input (F-1) Phase 3 (2026-08-18): shape classification at
+    // the InnerThoughtPhase producer boundary. When enabled, each generated
+    // thought is classified into one of five ThoughtShape values by a
+    // dedicated classifier (mirroring IRegisterClassifier); the result is
+    // written to InnerThoughtResult.Shape. Tag-and-observe — no retry logic
+    // on shape-mismatch in this phase; downstream consumers instrument what
+    // shapes reach composition. Default ON per the ship-live discipline.
+    // Failure is fail-open — classifier failures return Unclassified.
+    public bool ThoughtShapeClassificationEnabled { get; set; } = true;
+
     // Foundation Input (F-1) Phase 2 (2026-08-15): semantic-dedup at the
     // trigger producer boundary. When a new trigger arrives whose embedding
     // is cosine-similar ≥ TriggerSemanticDedupThreshold to an existing

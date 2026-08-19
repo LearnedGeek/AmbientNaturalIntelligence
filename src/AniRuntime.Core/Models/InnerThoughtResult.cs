@@ -1,3 +1,5 @@
+using AniRuntime.Core.Interfaces;
+
 namespace AniRuntime.Core.Models;
 
 /// <summary>
@@ -24,11 +26,46 @@ namespace AniRuntime.Core.Models;
 ///
 /// See <c>docs/spec/ANI-Substrate-Led-Character-Plan.md</c> §7 and the
 /// Paper 3 Contribution 8 stub for the architectural distinction.
+///
+/// <para>
+/// F-1 Phase 3 (2026-08-18) — implements <see cref="IThoughtEnvelope"/>.
+/// <see cref="Shape"/> is populated by <c>InnerThoughtPhase</c> via
+/// <see cref="IThoughtShapeClassifier"/>; consumers can read either the
+/// concrete field or the envelope interface. See F-1 Phase 3 sub-tasks in
+/// <c>ani-docs/spec/ANI-Foundation-Input-Refactor-Plan.md</c>.
+/// </para>
 /// </summary>
 public sealed record InnerThoughtResult(
-    string  Thought,
-    string? Reflection,
-    float   Valence,
-    string? Register          = null,
-    float?  Importance        = null,
-    string? AssociativeAnchor = null);
+    string       Thought,
+    string?      Reflection,
+    float        Valence,
+    string?      Register          = null,
+    float?       Importance        = null,
+    string?      AssociativeAnchor = null,
+    ThoughtShape Shape             = ThoughtShape.Unclassified) : IThoughtEnvelope
+{
+    // ── IThoughtEnvelope / IProvenancedContent<string> ─────────────────────
+    // Computed accessors — no additional persisted fields required.
+
+    /// <inheritdoc />
+    string IProvenancedContent<string>.Content => Thought;
+
+    /// <inheritdoc />
+    string IProvenancedContent<string>.SourceType => Shape switch
+    {
+        ThoughtShape.CoherentThought  => "thought.coherent-thought",
+        ThoughtShape.ThirdPersonFrame => "thought.third-person-frame",
+        ThoughtShape.FactCatalog      => "thought.fact-catalog",
+        ThoughtShape.MumbleLoop       => "thought.mumble-loop",
+        _                             => "thought.unclassified",
+    };
+
+    /// <inheritdoc />
+    string IProvenancedContent<string>.Producer => "InnerThoughtPhase";
+
+    /// <inheritdoc />
+    DateTimeOffset IProvenancedContent<string>.CreatedAt => DateTimeOffset.UtcNow;
+
+    /// <inheritdoc />
+    float[]? IProvenancedContent<string>.SemanticKey => null;
+}
