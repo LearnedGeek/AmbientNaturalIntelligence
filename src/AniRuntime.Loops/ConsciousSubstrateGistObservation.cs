@@ -105,19 +105,6 @@ internal static class ConsciousSubstrateGistObservation
             // than turn-adjacent content. Mark's actual current turn from
             // RecentHistory remains the only user-role content the model sees.
             //
-            // §4.6 composition rule: "merged into prose, not enumerated."
-            // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
-            // structured F1_GIST_INJECTION per injection so Phase 1 can measure:
-            // surface (system vs user role), gist size, slice count, and
-            // directive-in-system flag state at time of injection. Referenced
-            // by ANI-Composer-Input-Provenance-Audit-2026-08-13.md as L2.
-            log.LogInformation(
-                "F1_GIST_INJECTION surface={Surface} directiveInSystem={DirectiveInSystem} chars={Chars} sliceFlags={SliceFlags}",
-                directiveInSystem ? "system" : "user",
-                directiveInSystem,
-                gist.Composed.Length,
-                gist.Slices.ToString());
-
             // F-1 Phase 4 (2026-08-18) — wrap the gist body with explicit
             // treatment-directive boundary markers derived from the envelope.
             // The wrapped block makes the "this is reference-only substrate,
@@ -126,7 +113,30 @@ internal static class ConsciousSubstrateGistObservation
             // routing (above) handled WHERE the gist lives; F-1 Phase 4
             // handles HOW it is presented once placed. See
             // ISubstrateGistEnvelope.Treatment.
+            //
+            // Wrap happens BEFORE the F1_GIST_INJECTION log so the `chars`
+            // field reflects the actual injected length (reviewer feedback
+            // PR #114: Serge + Devin — pre-wrap `chars` would undercount).
             var wrappedGist = WrapWithTreatmentDirective(gist);
+
+            // §4.6 composition rule: "merged into prose, not enumerated."
+            // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
+            // structured F1_GIST_INJECTION per injection so Phase 1 can measure:
+            // surface (system vs user role), gist size, slice count, and
+            // directive-in-system flag state at time of injection. Referenced
+            // by ANI-Composer-Input-Provenance-Audit-2026-08-13.md as L2.
+            //
+            // `chars` reflects the WRAPPED length that actually enters the
+            // prompt (post-Phase-4). `bodyChars` preserves the pre-wrap
+            // composer-body length so the wrapper overhead is visible to
+            // downstream aggregation.
+            log.LogInformation(
+                "F1_GIST_INJECTION surface={Surface} directiveInSystem={DirectiveInSystem} chars={Chars} bodyChars={BodyChars} sliceFlags={SliceFlags}",
+                directiveInSystem ? "system" : "user",
+                directiveInSystem,
+                wrappedGist.Length,
+                gist.Composed.Length,
+                gist.Slices.ToString());
 
             if (directiveInSystem)
             {
