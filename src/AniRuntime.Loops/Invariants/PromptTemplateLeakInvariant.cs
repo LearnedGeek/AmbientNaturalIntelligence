@@ -141,10 +141,11 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
 
     // F-1 Phase 5 (2026-08-18) — matches the `[FROM: ...]` attribution
     // marker introduced by PromptBuilder.FormatMemoryWithTime. The colon
-    // + whitespace after FROM is load-bearing: it distinguishes the
-    // template marker from ordinary prose like "a note from mom" or
-    // "here's a message from work". Case-insensitive to catch echoed
-    // variants like `[from: ...]`.
-    [GeneratedRegex(@"\[FROM:\s", RegexOptions.IgnoreCase)]
+    // is load-bearing: it distinguishes the template marker from ordinary
+    // prose like "a note from mom" or "here's a message from work".
+    // Whitespace after the colon is OPTIONAL (PR #115 review fix from
+    // Devin — tightly-echoed `[FROM:conversation]` would otherwise slip
+    // through). Case-insensitive to catch echoed variants like `[from: ...]`.
+    [GeneratedRegex(@"\[FROM:\s*", RegexOptions.IgnoreCase)]
     private static partial Regex FromAttributionMarker();
 }

@@ -516,7 +516,7 @@ public static class PromptBuilder
     /// memory came from — so composers can distinguish, e.g., a stored Mark text
     /// from Ani's own prior thought without ambiguity.
     /// </summary>
-    public static string FormatMemoryWithTime(MemoryRecord memory, DateTimeOffset? now = null)
+    public static string FormatMemoryWithTime(MemoryRecord memory, DateTimeOffset? now = null, string? contactName = null)
     {
         var currentTime = now ?? DateTimeOffset.Now;
         var age = currentTime - memory.OccurredAt;
@@ -551,7 +551,7 @@ public static class PromptBuilder
         else
             temporal = $"{(int)(age.TotalDays / 7)} weeks ago";
 
-        return $"[FROM: {FormatMemorySource(memory)}] ({temporal}) {memory.Content}";
+        return $"[FROM: {FormatMemorySource(memory, contactName)}] ({temporal}) {memory.Content}";
     }
 
     /// <summary>
@@ -568,14 +568,31 @@ public static class PromptBuilder
     /// <c>src/AniRuntime.Perception/*.cs</c>. New perception sources can add
     /// their SourceName here as they ship.
     /// </para>
+    ///
+    /// <para>
+    /// <paramref name="contactName"/> (F-1 Phase 5 PR #115 fix): when supplied,
+    /// twilio-inbound messages render as <c>text from {contactName}</c>. When
+    /// null, they render as the neutral <c>inbound text</c>. Reviewer-caught
+    /// (Devin) on the initial PR — the previous hardcoded "text from Mark"
+    /// ignored <see cref="Models.CharacterStateDoc.PrimaryContactName"/>
+    /// which is configurable at runtime.
+    /// </para>
     /// </summary>
-    public static string FormatMemorySource(MemoryRecord memory)
+    public static string FormatMemorySource(MemoryRecord memory, string? contactName = null)
     {
         var src = memory.SourceName?.ToLowerInvariant();
         return (memory.Provenance, memory.Type, src) switch
         {
+            // Character seeds are stored with SourceName="character-seed" (see
+            // SourceNames.CharacterSeed + Program.cs seeding path). PR #115
+            // review (Devin BUG) — the pre-fix mapping had the null and
+            // character-seed arms swapped, so real seeds fell through to
+            // "fact" and unlabeled Facts got labeled as "character seed."
+            (EpistemicTier.Facts, _, SourceNames.CharacterSeed) => "character seed",
             (EpistemicTier.Facts, _, "rss")             => "news",
-            (EpistemicTier.Facts, _, "twilio-inbound")  => "text from Mark",
+            (EpistemicTier.Facts, _, "twilio-inbound") when !string.IsNullOrEmpty(contactName)
+                                                        => $"text from {contactName}",
+            (EpistemicTier.Facts, _, "twilio-inbound")  => "inbound text",
             (EpistemicTier.Facts, _, "weather")         => "weather",
             (EpistemicTier.Facts, _, "time")            => "time-of-day",
             (EpistemicTier.Facts, _, "temporal-gap")    => "temporal gap",
@@ -583,8 +600,8 @@ public static class PromptBuilder
             (EpistemicTier.Facts, _, "register-saturation") => "register saturation",
             (EpistemicTier.Facts, _, "retrieval-self-dominance") => "self-dominance signal",
             (EpistemicTier.Facts, _, "outage")          => "outage signal",
-            (EpistemicTier.Facts, _, null)              => "character seed",
-            (EpistemicTier.Facts, _, _)                 => memory.SourceName ?? "fact",
+            (EpistemicTier.Facts, _, null)              => "fact",
+            (EpistemicTier.Facts, _, _)                 => memory.SourceName!,
             (EpistemicTier.Interior, _, _)              => "your prior thought",
             (EpistemicTier.Episodic, MemoryType.InnerThought, _) => "your prior thought",
             (EpistemicTier.Episodic, _, _)              => "conversation",

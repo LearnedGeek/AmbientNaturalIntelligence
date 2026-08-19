@@ -187,6 +187,10 @@ public class PromptTemplateLeakInvariantTests
     [InlineData("[FROM: conversation]")]
     [InlineData("[FROM: news]")]
     [InlineData("[from: character seed]")]  // case-insensitive
+    // PR #115 review (Devin) — regex tightened to \[FROM:\s* so
+    // tightly-echoed variants without whitespace after the colon also match.
+    [InlineData("[FROM:conversation]")]  // no space after colon
+    [InlineData("[from:news]")]           // no space + case-insensitive
     public async Task Evaluate_FromAttributionMarker_Fails(string marker)
     {
         var output = $"before. {marker} after.";

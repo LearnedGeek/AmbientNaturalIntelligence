@@ -68,16 +68,24 @@ public class RetrievalEnvelopeTests
 
     // ── FormatMemorySource — attribution mapping ───────────────────────────
 
+    // PR #115 review fixes (Devin BUG + Serge minor):
+    // - twilio-inbound with null contactName → "inbound text" (neutral),
+    //   was hardcoded "text from Mark"
+    // - Facts+null-source → "fact" (was mislabeled "character seed")
+    // - Facts+"character-seed" → "character seed" (was falling through to fact)
+    // - retrieval-self-dominance arm now covered
     [Theory]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "rss",             "news")]
-    [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "twilio-inbound",  "text from Mark")]
+    [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "twilio-inbound",  "inbound text")]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "weather",         "weather")]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "time",            "time-of-day")]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "temporal-gap",    "temporal gap")]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "contact-state",   "contact state")]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "register-saturation", "register saturation")]
+    [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "retrieval-self-dominance", "self-dominance signal")]
     [InlineData(EpistemicTier.Facts,    MemoryType.Perception,   "outage",          "outage signal")]
-    [InlineData(EpistemicTier.Facts,    MemoryType.Semantic,     null,              "character seed")]
+    [InlineData(EpistemicTier.Facts,    MemoryType.Semantic,     "character-seed",  "character seed")]
+    [InlineData(EpistemicTier.Facts,    MemoryType.Semantic,     null,              "fact")]
     [InlineData(EpistemicTier.Interior, MemoryType.InnerThought, null,              "your prior thought")]
     [InlineData(EpistemicTier.Interior, MemoryType.InnerThought, "ani",             "your prior thought")]
     [InlineData(EpistemicTier.Episodic, MemoryType.InnerThought, "ani",             "your prior thought")]
@@ -90,13 +98,32 @@ public class RetrievalEnvelopeTests
         PromptBuilder.FormatMemorySource(m).Should().Be(expected);
     }
 
+    // PR #115 review (Devin BUG #2) — when a contactName is threaded through,
+    // twilio-inbound renders "text from {contactName}". When contactName is
+    // null or empty, falls back to the neutral "inbound text" (previous test).
+    [Theory]
+    [InlineData("Mark",   "text from Mark")]
+    [InlineData("Kathy",  "text from Kathy")]
+    [InlineData("Sarah",  "text from Sarah")]
+    public void FormatMemorySource_TwilioInbound_UsesConfiguredContactNameWhenProvided(
+        string contactName, string expected)
+    {
+        var m = new MemoryRecord
+        {
+            Provenance = EpistemicTier.Facts,
+            Type       = MemoryType.Perception,
+            SourceName = "twilio-inbound",
+        };
+        PromptBuilder.FormatMemorySource(m, contactName).Should().Be(expected);
+    }
+
     // ── FormatMemoryWithTime — [FROM: …] prefix presence ───────────────────
 
     [Fact]
-    public void FormatMemoryWithTime_PrependsFromAttributionTag()
+    public void FormatMemoryWithTime_PrependsFromAttributionTag_WithContactName()
     {
         var now = new DateTimeOffset(2026, 08, 18, 22, 0, 0, TimeSpan.Zero);
-        var mark = new MemoryRecord
+        var inbound = new MemoryRecord
         {
             Content    = "hey babe, back from teaching",
             OccurredAt = now.AddHours(-2),
@@ -104,12 +131,30 @@ public class RetrievalEnvelopeTests
             SourceName = "twilio-inbound",
         };
 
-        var rendered = PromptBuilder.FormatMemoryWithTime(mark, now);
+        var rendered = PromptBuilder.FormatMemoryWithTime(inbound, now, contactName: "Mark");
 
         rendered.Should().StartWith("[FROM: text from Mark] ",
-            "F-1 Phase 5 attribution tag comes before the temporal phrase");
-        rendered.Should().Contain(mark.Content,
+            "F-1 Phase 5 attribution tag uses configured contactName when threaded through");
+        rendered.Should().Contain(inbound.Content,
             "content must still appear after the tag + temporal phrase");
+    }
+
+    [Fact]
+    public void FormatMemoryWithTime_PrependsFromAttributionTag_NeutralWhenContactNameMissing()
+    {
+        var now = new DateTimeOffset(2026, 08, 18, 22, 0, 0, TimeSpan.Zero);
+        var inbound = new MemoryRecord
+        {
+            Content    = "hey babe, back from teaching",
+            OccurredAt = now.AddHours(-2),
+            Provenance = EpistemicTier.Facts,
+            SourceName = "twilio-inbound",
+        };
+
+        var rendered = PromptBuilder.FormatMemoryWithTime(inbound, now);  // no contactName
+
+        rendered.Should().StartWith("[FROM: inbound text] ",
+            "neutral phrasing when contactName is not threaded through — never hardcode 'Mark'");
     }
 
     [Fact]

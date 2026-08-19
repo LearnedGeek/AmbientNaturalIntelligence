@@ -26,8 +26,11 @@ namespace AniRuntime.Core.Interfaces;
 /// substrate-supported callbacks blocked), and partial #56 (semantic
 /// dedup) all trace back to composers not being able to tell WHERE a
 /// retrieved memory came from. Prefixing rendered blocks with
-/// <c>[FROM: source, N ago]</c> at the consumer surface addresses this
-/// producer-boundary gap.
+/// <c>[FROM: source] (temporal) content</c> at the consumer surface
+/// addresses this producer-boundary gap. The source tag and the
+/// temporal-phrase tag are separate — PR #115 review noted the initial
+/// docstring's <c>[FROM: source, N ago]</c> phrasing didn't match the
+/// actual rendered shape.
 /// </para>
 /// </summary>
 public interface IRetrievalEnvelope : IProvenancedContent<MemoryRecord>
