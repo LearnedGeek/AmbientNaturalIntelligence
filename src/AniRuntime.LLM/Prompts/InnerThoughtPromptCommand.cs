@@ -137,9 +137,13 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             // items now see them tagged as `(You received a text from {contact}
             // Nm ago: "...")` distinct from `(Weather right now: ...)`.
             var perceptionContact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? null : cs.PrimaryContactName;
+            // PR #116 review (Serge + Devin) — pass snapshot.BuiltAt so
+            // temporal renderings in this prompt use one consistent clock
+            // (the pre-fix default of DateTimeOffset.Now was a UTC-vs-local
+            // hazard and made the section non-deterministic under test).
             sections.Add("Background right now:");
             sections.AddRange(snapshot.Perceptions.Select(p =>
-                $"  - {PromptBuilder.FormatPerceptionLine(p, contactName: perceptionContact)}"));
+                $"  - {PromptBuilder.FormatPerceptionLine(p, snapshot.BuiltAt, contactName: perceptionContact)}"));
         }
 
         // G.4 (2026-06-11) — same fallback hardening as G.3 for the outreach
