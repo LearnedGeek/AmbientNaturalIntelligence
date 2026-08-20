@@ -28,9 +28,13 @@ namespace AniRuntime.Core.Interfaces;
 /// Structured-log fields (Serilog message template): <c>{SourceType}</c>,
 /// <c>{Producer}</c>, <c>{CreatedAt}</c>. These are the exact interface
 /// property names to keep the structured-log side searchable by them.
-/// Log level is <c>LogDebug</c> so it doesn't flood the info-tier journal
-/// under normal operation; opt in via serilog category filter or debug
-/// tier to observe.
+/// Log level is <c>LogInformation</c> so the F1_PROVENANCE lines land in
+/// the default Info-tier journal (per ANI's dual-file Serilog: journal
+/// Info+ / diagnostic Debug+). PR #124 review-fix (Devin): promoted from
+/// Debug so <c>grep F1_PROVENANCE data/journal-*.log</c> works without
+/// a separate serilog category override that could silently fail on
+/// deploy. Volume is ~12 lines per cycle at most (one per envelope emit
+/// site), trivial vs. existing Info-tier verbosity.
 /// </para>
 ///
 /// <para>
@@ -59,7 +63,7 @@ public static class ProvenancedContentLoggingExtensions
     {
         if (envelope is null) return;
 
-        log.LogDebug(
+        log.LogInformation(
             "F1_PROVENANCE source={SourceType} producer={Producer} createdAt={CreatedAt:O}",
             envelope.SourceType, envelope.Producer, envelope.CreatedAt);
     }

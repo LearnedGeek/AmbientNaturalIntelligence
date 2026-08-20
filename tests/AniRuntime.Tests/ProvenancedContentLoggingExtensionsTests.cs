@@ -26,11 +26,14 @@ public class ProvenancedContentLoggingExtensionsTests
     [Fact]
     public void LogProvenance_EmitsStructuredF1ProvenanceLine()
     {
-        // Verify the structured-log call fires at LogLevel.Debug with the
-        // canonical message template ("F1_PROVENANCE source={SourceType}
-        // producer={Producer} createdAt={CreatedAt:O}"). Structured-log
-        // fields must use the exact IProvenancedContent<T> property names
-        // so grep/dashboards remain consistent.
+        // Verify the structured-log call fires at LogLevel.Information
+        // (PR #124 review-fix: bumped from Debug so it lands in ANI's
+        // default Info-tier journal without a serilog category override
+        // that could silently fail on deploy) with the canonical message
+        // template ("F1_PROVENANCE source={SourceType} producer={Producer}
+        // createdAt={CreatedAt:O}"). Structured-log fields must use the
+        // exact IProvenancedContent<T> property names so grep/dashboards
+        // remain consistent.
         var mockLog = new Mock<ILogger>(MockBehavior.Loose);
         var env = BuildStringEnvelope();
 
@@ -38,7 +41,7 @@ public class ProvenancedContentLoggingExtensionsTests
 
         mockLog.Verify(
             l => l.Log(
-                LogLevel.Debug,
+                LogLevel.Information,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("F1_PROVENANCE")),
                 null,
@@ -105,7 +108,7 @@ public class ProvenancedContentLoggingExtensionsTests
         // Six Phase 8 envelopes × one call each = 6 log calls.
         mockLog.Verify(
             l => l.Log(
-                LogLevel.Debug,
+                LogLevel.Information,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("F1_PROVENANCE")),
                 null,
