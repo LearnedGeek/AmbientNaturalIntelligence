@@ -279,7 +279,7 @@ public class ClosedConversationSummarizerTests
         _mockOllama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { 0.1f, 0.2f, 0.3f });
 
-        var record = await BuildSummarizer().SummariseAsync(thread);
+        var record = (await BuildSummarizer().SummariseAsync(thread)).Content;
 
         record.ThreadId.Should().Be(thread.Id);
         record.TurnCount.Should().Be(4);
@@ -333,7 +333,7 @@ public class ClosedConversationSummarizerTests
         _mockOllama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { 0.0f });
 
-        var record = await BuildSummarizer().SummariseAsync(thread);
+        var record = (await BuildSummarizer().SummariseAsync(thread)).Content;
 
         record.OutcomeSignalSeedVector["Tenderness"].Should().BeApproximately(+1.0f, 0.0001f,
             "second half is 100% Tenderness, first half is 0% Tenderness");
@@ -359,7 +359,7 @@ public class ClosedConversationSummarizerTests
         _mockOllama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("ollama unreachable"));
 
-        var record = await BuildSummarizer().SummariseAsync(thread);
+        var record = (await BuildSummarizer().SummariseAsync(thread)).Content;
 
         record.Gist.Should().NotBeNullOrWhiteSpace();
         record.Embedding.Should().BeNull("embedding failure must NOT block record production");
@@ -381,7 +381,7 @@ public class ClosedConversationSummarizerTests
         _mockOllama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { 0.42f });
 
-        var record = await BuildSummarizer().SummariseAsync(thread);
+        var record = (await BuildSummarizer().SummariseAsync(thread)).Content;
 
         record.Gist.Should().Contain("Mark and Ani", "heuristic gist names both speakers without echoing content");
         record.Gist.Should().NotContain("hey",
@@ -408,7 +408,7 @@ public class ClosedConversationSummarizerTests
         _mockOllama.Setup(o => o.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { 0.0f });
 
-        var record = await BuildSummarizer().SummariseAsync(thread);
+        var record = (await BuildSummarizer().SummariseAsync(thread)).Content;
 
         record.MarkRegister["Curiosity"].Should().BeApproximately(1.0f, 0.0001f);
         record.AniRegister.Values.Sum().Should().Be(0f, "Ani had no turns; her register vector should be all zeros");

@@ -74,7 +74,7 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
         _log                 = log;
     }
 
-    public async Task<ClosedConversationRecord> SummariseAsync(
+    public async Task<IClosedConversationEnvelope> SummariseAsync(
         ConversationThread thread, CancellationToken ct = default)
     {
         if (thread.Messages.Count == 0)
@@ -138,7 +138,7 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
             thread.Id, thread.Messages.Count, outcomeValence, validity,
             string.Join(",", keywords));
 
-        return record;
+        return new ClosedConversationEnvelope { Record = record };
     }
 
     /// <summary>

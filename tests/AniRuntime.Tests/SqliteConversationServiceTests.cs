@@ -192,10 +192,12 @@ public class SqliteConversationServiceTests : IDisposable
 
         ConversationThread? capturedThread = null;
         var sample = SampleSummaryFor(thread.Id);
+        // F-1 Phase 8c: SummariseAsync now returns IClosedConversationEnvelope;
+        // wrap sample record for the mock, assert store receives unwrapped record.
         _summarizer
             .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
             .Callback<ConversationThread, CancellationToken>((t, _) => capturedThread = t)
-            .ReturnsAsync(sample);
+            .ReturnsAsync(new ClosedConversationEnvelope { Record = sample });
 
         ClosedConversationRecord? capturedRecord = null;
         _closedStore
@@ -257,7 +259,7 @@ public class SqliteConversationServiceTests : IDisposable
 
         _summarizer
             .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SampleSummaryFor(thread.Id));
+            .ReturnsAsync(new ClosedConversationEnvelope { Record = SampleSummaryFor(thread.Id) });
         _closedStore
             .Setup(s => s.SaveAsync(It.IsAny<ClosedConversationRecord>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -300,7 +302,7 @@ public class SqliteConversationServiceTests : IDisposable
 
         _summarizer
             .Setup(s => s.SummariseAsync(It.IsAny<ConversationThread>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SampleSummaryFor(thread.Id));
+            .ReturnsAsync(new ClosedConversationEnvelope { Record = SampleSummaryFor(thread.Id) });
         _closedStore
             .Setup(s => s.SaveAsync(It.IsAny<ClosedConversationRecord>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
