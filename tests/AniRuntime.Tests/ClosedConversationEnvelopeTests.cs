@@ -41,9 +41,20 @@ public class ClosedConversationEnvelopeTests
     // SourceType tags the record's validity so downstream audit dashboards
     // can filter on the producer-boundary tag without unwrapping. Kebab-case
     // per sibling-envelope convention (frame.ani-interior, world-seed.circadian).
+    //
+    // PR #120 review-fix (Devin): case-insensitive matching + blank-as-valid
+    // normalization mirrors the downstream retrieval filter
+    // (ConsciousSubstrateGistComposer OrdinalIgnoreCase) + store default
+    // (SqliteClosedConversationStore blank→"valid"). Prevents envelope tag
+    // drifting from the store's actual retrieval treatment.
     [Theory]
     [InlineData("valid",               "closed-conversation.valid")]
+    [InlineData("Valid",               "closed-conversation.valid")]                // case-insensitive
+    [InlineData("VALID",               "closed-conversation.valid")]                // case-insensitive
+    [InlineData("",                    "closed-conversation.valid")]                // blank → valid (store default)
+    [InlineData("   ",                 "closed-conversation.valid")]                // whitespace → valid (store default)
     [InlineData("invalid_fabrication", "closed-conversation.invalid-fabrication")]
+    [InlineData("Invalid_Fabrication", "closed-conversation.invalid-fabrication")]  // case-insensitive
     [InlineData("invalid_other",       "closed-conversation.invalid-other")]
     [InlineData("some_future_state",   "closed-conversation.unknown")]
     public void SourceType_ComposesFromValidity_UsingKebabCaseConvention(string validity, string expected)
@@ -82,12 +93,35 @@ public class ClosedConversationEnvelopeTests
             "CreatedAt must be captured once at construction, not recomputed on each read");
     }
 
+    // PR #120 review-fix (Devin): SemanticKey forwards Record.Embedding so
+    // future generic near-duplicate detection over envelopes can consume it.
+    // Pre-fix, this was hard-null and the vector was silently dropped at the
+    // envelope layer even though the summarizer had already computed it.
     [Fact]
-    public void SemanticKey_IsNull()
+    public void SemanticKey_ForwardsRecordEmbedding_WhenPresent()
     {
+        var record = SampleRecord();
+        record.Embedding = new[] { 0.1f, 0.2f, 0.3f };
+
         IProvenancedContent<ClosedConversationRecord> env = new ClosedConversationEnvelope
         {
-            Record = SampleRecord(),
+            Record = record,
+        };
+        env.SemanticKey.Should().Equal(0.1f, 0.2f, 0.3f);
+    }
+
+    [Fact]
+    public void SemanticKey_IsNull_WhenRecordEmbeddingIsNull()
+    {
+        // Best-effort embedding: summarizer catches embedding failures and
+        // persists the record without one. Envelope must not synthesize a
+        // vector when the record has none.
+        var record = SampleRecord();
+        record.Embedding = null;
+
+        IProvenancedContent<ClosedConversationRecord> env = new ClosedConversationEnvelope
+        {
+            Record = record,
         };
         env.SemanticKey.Should().BeNull();
     }

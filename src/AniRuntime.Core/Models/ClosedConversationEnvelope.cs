@@ -53,14 +53,24 @@ public sealed class ClosedConversationEnvelope : IClosedConversationEnvelope
     /// consumers can filter without unwrapping. Values match the
     /// <see cref="ClosedConversationRecord.Validity"/> open-enum plus
     /// the <c>closed-conversation.</c> producer prefix.
+    ///
+    /// PR #120 review-fix (Devin): matching is case-insensitive and
+    /// treats blank as <c>"valid"</c> — mirrors the downstream retrieval
+    /// filter (<c>ConsciousSubstrateGistComposer.cs:411</c> uses
+    /// <c>StringComparison.OrdinalIgnoreCase</c>) and the store's blank
+    /// normalization (<c>SqliteClosedConversationStore.cs:162</c>). Without
+    /// this, a <c>"Valid"</c> or <c>""</c> would tag <c>unknown</c> at the
+    /// envelope while still passing the downstream valid-filter, so
+    /// audit-dashboard joins on the tag would silently omit the record.
     /// </remarks>
-    string IProvenancedContent<ClosedConversationRecord>.SourceType => Record.Validity switch
-    {
-        "valid"                => "closed-conversation.valid",
-        "invalid_fabrication"  => "closed-conversation.invalid-fabrication",
-        "invalid_other"        => "closed-conversation.invalid-other",
-        _                      => "closed-conversation.unknown",
-    };
+    string IProvenancedContent<ClosedConversationRecord>.SourceType =>
+        (string.IsNullOrWhiteSpace(Record.Validity) ? "valid" : Record.Validity) switch
+        {
+            var v when string.Equals(v, "valid",               StringComparison.OrdinalIgnoreCase) => "closed-conversation.valid",
+            var v when string.Equals(v, "invalid_fabrication", StringComparison.OrdinalIgnoreCase) => "closed-conversation.invalid-fabrication",
+            var v when string.Equals(v, "invalid_other",       StringComparison.OrdinalIgnoreCase) => "closed-conversation.invalid-other",
+            _                                                                                     => "closed-conversation.unknown",
+        };
 
     /// <inheritdoc />
     string IProvenancedContent<ClosedConversationRecord>.Producer => "ClosedConversationSummarizer";
@@ -75,10 +85,14 @@ public sealed class ClosedConversationEnvelope : IClosedConversationEnvelope
 
     /// <inheritdoc />
     /// <remarks>
-    /// The wrapped record carries its own <c>Embedding</c> field for
-    /// cosine-similarity retrieval, but that lives on the record for
-    /// downstream store queries — not exposed here to avoid duplicating
-    /// the surface. Null at the envelope layer.
+    /// PR #120 review-fix (Devin): forward the record's already-computed
+    /// gist <c>Embedding</c> so the <c>IProvenancedContent&lt;T&gt;.SemanticKey</c>
+    /// dedup contract is honored. The summarizer embeds the gist at wrap
+    /// time; producing null here would silently opt out of any future
+    /// generic near-duplicate detection over envelopes even though the
+    /// vector is already available. May be null if the summarizer's
+    /// embedding call failed (best-effort; see
+    /// <c>ClosedConversationSummarizer</c> catch/log).
     /// </remarks>
-    float[]? IProvenancedContent<ClosedConversationRecord>.SemanticKey => null;
+    float[]? IProvenancedContent<ClosedConversationRecord>.SemanticKey => Record.Embedding;
 }
