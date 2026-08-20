@@ -171,11 +171,38 @@ public class ContextSnapshot
     public List<MemoryRecord> RecentWorldExperiences { get; set; } = new();
 
     /// <summary>
-    /// World Layer: contextual seed for experiential grounding. When present,
-    /// the inner thought model generates a lived experience rather than a
-    /// self-referential thought. Tagged as "world-experience" in memory.
+    /// F-1 Phase 8a (2026-08-19) — producer-boundary envelope for the
+    /// world-seed / associative-anchor content. Two semantically-distinct
+    /// producers write this field:
+    /// <list type="bullet">
+    ///   <item><c>WorldSeedService.GenerateSeed</c> → circadian light-spark
+    ///         (time-of-day + weather + optional event flavor)</item>
+    ///   <item><c>CognitiveCyclePipeline._lastAssociativeAnchor</c> →
+    ///         carried-over "lingering" anchor from the previous cycle's
+    ///         inner thought</item>
+    /// </list>
+    /// Envelope's SourceType distinguishes them so downstream can tell them apart.
+    /// Nullable — some code paths (voice pipeline construction, tests)
+    /// populate snapshots without a world seed.
     /// </summary>
-    public string? WorldSeed { get; set; }
+    public Interfaces.IWorldSeedEnvelope? WorldSeedEnvelope { get; set; }
+
+    /// <summary>
+    /// World Layer: contextual seed text for experiential grounding.
+    /// Backwards-compat surface for pre-envelope consumers — always
+    /// mirrors <see cref="WorldSeedEnvelope"/>'s content via computed
+    /// getter, so the string and envelope can never drift.
+    ///
+    /// <para>
+    /// PR #118 review-fix (Devin): the pre-fix shape was two independent
+    /// mutable properties, opening drift risk if a future writer set one
+    /// and forgot the other. Post-fix: single source of truth (the
+    /// envelope). Writers set only <see cref="WorldSeedEnvelope"/>; readers
+    /// on the legacy surface still read <see cref="WorldSeed"/> and always
+    /// see agreement.
+    /// </para>
+    /// </summary>
+    public string? WorldSeed => WorldSeedEnvelope?.Content;
 
     // ─── Epistemic Grounding (Apr 10, 2026): Tier-partitioned retrieval ───
     // These three lists hold memories retrieved for each prompt section. The
