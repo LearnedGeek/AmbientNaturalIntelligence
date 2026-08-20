@@ -104,7 +104,9 @@ public sealed class ReactiveShareService : IReactiveShareService
             shareable.Summary, shareable.ContactRelevance);
 
         // ─── Theme N Phase N.6 — frame wiring (gated by OutreachFrameSelectorEnabled) ─
-        OutreachFrame? selectedFrame = null;
+        // F-1 Phase 8b (2026-08-19): SelectFrameAsync now returns
+        // IOutreachFrameEnvelope; passthrough properties keep call sites unchanged.
+        IOutreachFrameEnvelope? selectedFrame = null;
         string? sharedTopicGist = null;
         if (_aniOptions.OutreachFrameSelectorEnabled && _frameSelector is not null)
         {
@@ -143,7 +145,7 @@ public sealed class ReactiveShareService : IReactiveShareService
         var currentMood = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
         var prompt = PromptBuilder.BuildReactiveSharePrompt(
             charState, shareable.Summary, currentMood,
-            frame: selectedFrame,
+            frame: selectedFrame?.Content,  // F-1 Phase 8b: unwrap envelope for downstream prompt-builder
             sharedTopicGist: sharedTopicGist);
         var message = await _ollama.ChatAsync(
             prompt.System, Array.Empty<ChatMessage>(), prompt.User, ct).ConfigureAwait(false);

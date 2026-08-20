@@ -51,11 +51,20 @@ public interface IOutreachFrameSelector
 {
     /// <summary>
     /// Select the source-frame and substrate-anchor for an outreach
-    /// composition. Returns <see cref="OutreachFrame.None"/> when the
-    /// substrate is too thin to ground any frame honestly — the caller
-    /// (OutreachPhase) MUST suppress dispatch in that case.
+    /// composition. Returns an envelope wrapping <see cref="OutreachFrame.None"/>
+    /// when the substrate is too thin to ground any frame honestly — the
+    /// caller (OutreachPhase) MUST suppress dispatch in that case.
+    ///
+    /// <para>
+    /// F-1 Phase 8b (2026-08-19) — return type promoted from
+    /// <see cref="OutreachFrame"/> record to <see cref="IOutreachFrameEnvelope"/>
+    /// so the producer-boundary carries provenance metadata (SourceType /
+    /// Producer / CreatedAt). Consumers doing <c>envelope.FrameType</c>
+    /// read as clearly as pre-Phase-8b <c>frame.FrameType</c> via
+    /// passthrough properties on <see cref="IOutreachFrameEnvelope"/>.
+    /// </para>
     /// </summary>
     /// <param name="snapshot">The current cognitive-cycle context. The selector reads per-tier substrate already populated in the snapshot.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task<OutreachFrame> SelectFrameAsync(ContextSnapshot snapshot, CancellationToken ct);
+    Task<IOutreachFrameEnvelope> SelectFrameAsync(ContextSnapshot snapshot, CancellationToken ct);
 }

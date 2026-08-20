@@ -155,7 +155,7 @@ public class OutreachPhaseFrameCoherenceTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(aniInteriorFrame);
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = aniInteriorFrame });
 
         _mockFrameChecker.Setup(c => c.CheckCoherence(
                 It.IsAny<string>(), It.IsAny<OutreachFrame>()))
@@ -217,7 +217,7 @@ public class OutreachPhaseFrameCoherenceTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(aniInteriorFrame);
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = aniInteriorFrame });
 
         _mockFrameChecker.Setup(c => c.CheckCoherence(
                 It.IsAny<string>(), It.IsAny<OutreachFrame>()))
@@ -271,7 +271,7 @@ public class OutreachPhaseFrameCoherenceTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(sharedFrame);
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = sharedFrame });
 
         // No setup on _mockFrameChecker — strict mock will throw if called.
 

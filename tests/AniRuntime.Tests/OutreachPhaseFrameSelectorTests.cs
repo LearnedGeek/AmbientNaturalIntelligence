@@ -199,7 +199,7 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OutreachFrame.None);
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = OutreachFrame.None });
 
         var phase = BuildPhase(options);
 
@@ -252,10 +252,10 @@ public class OutreachPhaseFrameSelectorTests : AniTestBase
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
             .Callback<ContextSnapshot, CancellationToken>((snap, _) => observedSnapshot = snap)
-            .ReturnsAsync(new OutreachFrame(
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = new OutreachFrame(
                 OutreachFrameType.Shared,
                 "Mark said: I had a long day at work",
-                0.8f));
+                0.8f) });
 
         // 2026-05-15: composition migrated from ChatAsync to ChatJsonAsync.
         // SetupOllamaForShouldReach already sequences decision + empty
