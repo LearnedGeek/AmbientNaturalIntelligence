@@ -89,8 +89,15 @@ public class ContextBuilder
             state.CharacterState, retrieval.RecentMemory, ct).ConfigureAwait(false);
 
         // Emotional — needs charState.Name + emotionalState from state.
-        var emotional = await _emotional.BuildAsync(
+        //
+        // F-1 Phase 8f (2026-08-20): BuildAsync now returns
+        // IEmotionalContextEnvelope for producer-boundary provenance. Unwrap
+        // immediately — ContextSnapshot readers of the five component fields
+        // (RelationshipHealth, EmotionalDrift, PatternAwareness, ProcessedThemes,
+        // ContributionTrajectory) are unchanged.
+        var emotionalEnvelope = await _emotional.BuildAsync(
             state.CharacterState.Name, state.EmotionalState, ct).ConfigureAwait(false);
+        var emotional         = emotionalEnvelope.Content;
 
         // Agentic Lens Layer 1 Phase 1a — orchestrator-level retrieval-origin
         // distribution logging. Spans pool outputs from multiple sub-builders

@@ -46,7 +46,7 @@ public sealed class EmotionalContextBuilder : IEmotionalContextBuilder
         _log        = log;
     }
 
-    public async Task<EmotionalContextResult> BuildAsync(
+    public async Task<IEmotionalContextEnvelope> BuildAsync(
         string              characterName,
         EmotionalState      emotionalState,
         CancellationToken   ct)
@@ -144,12 +144,15 @@ public sealed class EmotionalContextBuilder : IEmotionalContextBuilder
             _log.LogWarning(ex, "R.6 — contribution trajectory build failed; continuing without");
         }
 
-        return new EmotionalContextResult(
-            relationshipHealth,
-            emotionalDrift,
-            patternAwareness,
-            processedThemes.ToList(),
-            trajectory);
+        return new EmotionalContextEnvelope
+        {
+            Result = new EmotionalContextResult(
+                relationshipHealth,
+                emotionalDrift,
+                patternAwareness,
+                processedThemes.ToList(),
+                trajectory),
+        };
     }
 
     /// <summary>
