@@ -31,14 +31,17 @@ public interface IClosedConversationSummarizer
 {
     /// <summary>
     /// Summarise a closed conversation thread into a structured
-    /// <see cref="ClosedConversationRecord"/>. The summarizer does NOT
-    /// persist the result — callers (V1.3 <c>CloseThreadAsync</c>) hand
+    /// <see cref="ClosedConversationRecord"/>, wrapped in an
+    /// <see cref="IClosedConversationEnvelope"/> for F-1 producer-boundary
+    /// provenance (Phase 8c, 2026-08-19). The summarizer does NOT
+    /// persist the result — callers (V1.3 <c>CloseThreadAsync</c>)
+    /// unwrap via <see cref="IProvenancedContent{T}.Content"/> and hand
     /// the record to <see cref="IClosedConversationStore.SaveAsync"/>.
     ///
     /// The thread MUST contain at least one message; otherwise behaviour
     /// is undefined (an empty thread is not a real "closed conversation"
     /// and should not be reaching this surface).
     /// </summary>
-    Task<ClosedConversationRecord> SummariseAsync(
+    Task<IClosedConversationEnvelope> SummariseAsync(
         ConversationThread thread, CancellationToken ct = default);
 }

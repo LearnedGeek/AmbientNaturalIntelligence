@@ -304,7 +304,12 @@ public class SqliteConversationService : IConversationService, IDisposable
 
         try
         {
-            var record = await _summarizer.SummariseAsync(threadMeta, ct).ConfigureAwait(false);
+            // F-1 Phase 8c: summariser now returns IClosedConversationEnvelope
+            // for producer-boundary provenance; unwrap the record here for
+            // storage. Envelope provenance is not persisted — the store
+            // reads/writes the record shape directly.
+            var envelope = await _summarizer.SummariseAsync(threadMeta, ct).ConfigureAwait(false);
+            var record   = envelope.Content;
             await _closedStore.SaveAsync(record, ct).ConfigureAwait(false);
 
             _log.LogInformation(
