@@ -159,14 +159,19 @@ public sealed class ReactiveShareService : IReactiveShareService
 
         _log.LogInformation("Reactive share: {Message}", message);
 
-        var decision = new OutreachDecision
+        // F-1 Phase 8d: producer-side wrap for provenance ("outreach-decision.reactive-share").
+        var envelope = new OutreachDecisionEnvelope
         {
-            ShouldReach = true,
-            Message     = message,
-            ActionType  = ActionTypes.Sms,
-            Reasoning   = $"reactive share: {shareable.Summary[..Math.Min(60, shareable.Summary.Length)]}",
+            Decision = new OutreachDecision
+            {
+                ShouldReach = true,
+                Message     = message,
+                ActionType  = ActionTypes.Sms,
+                Reasoning   = $"reactive share: {shareable.Summary[..Math.Min(60, shareable.Summary.Length)]}",
+            },
+            Source = OutreachDecisionSource.ReactiveShare,
         };
-        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+        await _dispatcher.DispatchAsync(envelope.Decision, ct).ConfigureAwait(false);
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
 
         _shareCount++;

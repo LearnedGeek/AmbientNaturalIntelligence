@@ -62,20 +62,27 @@ public sealed class AdminCommandHandler : IAdminCommandHandler
 
     private async Task SendAdminReplyAsync(string text, CancellationToken ct)
     {
-        var decision = new OutreachDecision
+        // F-1 Phase 8d: producer-side wrap for provenance ("outreach-decision.admin-meta").
+        // Envelope is producer-side documentation only in this phase; dispatcher
+        // continues to consume the bare OutreachDecision.
+        var envelope = new OutreachDecisionEnvelope
         {
-            ShouldReach = true,
-            Message     = text,
-            ActionType  = ActionTypes.Sms,
-            Reasoning   = "admin command response",
-            // May 1, 2026 — flag as admin-meta so the dispatch pipeline skips
-            // voice / image enrichment. Mark Apr 30 ///tag at 07:47:32 had ~184KB
-            // of ElevenLabs audio attached because the meta-dispatch went through
-            // the same enrichment path as a real reply. Admin tags are not
-            // relational content and should ship as plain SMS.
-            IsAdminMeta = true,
+            Decision = new OutreachDecision
+            {
+                ShouldReach = true,
+                Message     = text,
+                ActionType  = ActionTypes.Sms,
+                Reasoning   = "admin command response",
+                // May 1, 2026 — flag as admin-meta so the dispatch pipeline skips
+                // voice / image enrichment. Mark Apr 30 ///tag at 07:47:32 had ~184KB
+                // of ElevenLabs audio attached because the meta-dispatch went through
+                // the same enrichment path as a real reply. Admin tags are not
+                // relational content and should ship as plain SMS.
+                IsAdminMeta = true,
+            },
+            Source = OutreachDecisionSource.AdminMeta,
         };
 
-        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+        await _dispatcher.DispatchAsync(envelope.Decision, ct).ConfigureAwait(false);
     }
 }
