@@ -40,7 +40,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.RelationshipHealth.Should().BeNull("relationship-health load was wrapped in try/catch and degrades to null");
         result.EmotionalDrift.Should().BeNull("drift detection was wrapped in try/catch and degrades to null");
@@ -66,7 +66,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.RelationshipHealth.Should().BeSameAs(fresh, "fresh value (<24h old) is returned without recalculation");
         MockMemory.Verify(m => m.SaveRelationshipHealthAsync(
@@ -100,7 +100,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.RelationshipHealth.Should().NotBeNull();
         result.RelationshipHealth!.ConnectionScore.Should().BeGreaterThan(0.0)
@@ -125,7 +125,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.EmotionalDrift.Should().BeNull("drift detection requires at least 4 history records to split into halves");
     }
@@ -149,7 +149,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.PatternAwareness.Should().BeNull("pattern analysis requires ≥3 outreach records with embeddings");
     }
@@ -176,7 +176,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.PatternAwareness.Should().BeNull("orthogonal embeddings → 0 similarity, below 0.75 threshold");
     }
@@ -204,7 +204,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new List<string>());
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.PatternAwareness.Should().NotBeNull("identical embeddings → ~1.0 similarity, above 0.75 threshold");
         result.PatternAwareness.Should().Contain("thematically similar",
@@ -224,7 +224,7 @@ public class EmotionalContextBuilderTests : AniTestBase
         MockMemory.Setup(m => m.GetProcessedThemesAsync(5, It.IsAny<CancellationToken>()))
                   .ReturnsAsync(themes);
 
-        var result = await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None);
+        var result = (await Build().BuildAsync("Ani", new EmotionalState(), CancellationToken.None)).Content;
 
         result.ProcessedThemes.Should().BeEquivalentTo(themes,
             "processed themes are passed through from IMemoryAnalytics with no transformation");

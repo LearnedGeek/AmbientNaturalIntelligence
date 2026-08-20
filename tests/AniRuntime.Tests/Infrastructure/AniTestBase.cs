@@ -77,13 +77,20 @@ public abstract class AniTestBase
     protected static IEmotionalContextBuilder NoOpEmotional()
     {
         var mock = new Mock<IEmotionalContextBuilder>(MockBehavior.Strict);
+        // F-1 Phase 8f: BuildAsync now returns IEmotionalContextEnvelope;
+        // wrap the no-op result for the mock. ContextBuilder unwraps
+        // via .Content immediately, so downstream test behavior is
+        // unchanged.
         mock.Setup(b => b.BuildAsync(
                 It.IsAny<string>(), It.IsAny<EmotionalState>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmotionalContextResult(
-                RelationshipHealth: null,
-                EmotionalDrift:     null,
-                PatternAwareness:   null,
-                ProcessedThemes:    Array.Empty<string>()));
+            .ReturnsAsync(new EmotionalContextEnvelope
+            {
+                Result = new EmotionalContextResult(
+                    RelationshipHealth: null,
+                    EmotionalDrift:     null,
+                    PatternAwareness:   null,
+                    ProcessedThemes:    Array.Empty<string>()),
+            });
         return mock.Object;
     }
 
