@@ -182,7 +182,9 @@ public class PromptBuilderTests
     public void BuildInnerThoughtPrompt_UsesSubjectSpaceOpener_WhenNoWorldSeed()
     {
         var snapshot = MinimalSnapshot();
-        snapshot.WorldSeed = null;
+        // PR #118 review-fix: WorldSeed is a computed getter; null-out via
+        // WorldSeedEnvelope which is the single source of truth.
+        snapshot.WorldSeedEnvelope = null;
 
         var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
 
@@ -199,7 +201,12 @@ public class PromptBuilderTests
     public void BuildInnerThoughtPrompt_UsesWorldSeed_WhenPresent()
     {
         var snapshot = MinimalSnapshot();
-        snapshot.WorldSeed = "You're shelving romance novels on a slow Sunday morning.";
+        // PR #118 review-fix: set the envelope; WorldSeed getter mirrors it.
+        snapshot.WorldSeedEnvelope = new WorldSeedEnvelope
+        {
+            Text   = "You're shelving romance novels on a slow Sunday morning.",
+            Source = WorldSeedSource.WorldSeed,
+        };
 
         var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
 

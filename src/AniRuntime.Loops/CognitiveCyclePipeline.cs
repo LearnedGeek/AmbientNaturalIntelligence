@@ -259,10 +259,10 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 .FirstOrDefault(p => p.SourceName == "weather")?.Summary;
             var seed = _worldSeed.GenerateSeed(
                 DateTimeOffset.Now, weatherContext);
-            snapshot.WorldSeed = seed;
-            // F-1 Phase 8a (2026-08-19): populate the envelope alongside the
-            // raw string so envelope-aware consumers can distinguish this
-            // circadian world-seed from the associative-anchor variant below.
+            // F-1 Phase 8a (2026-08-19): populate the envelope only —
+            // ContextSnapshot.WorldSeed is a computed getter mirroring
+            // WorldSeedEnvelope.Content so the two surfaces cannot drift
+            // (PR #118 review-fix by Devin).
             snapshot.WorldSeedEnvelope = new WorldSeedEnvelope
             {
                 Text   = seed,
@@ -285,10 +285,13 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         // Associative anchor: inject the previous thought's anchor as a creative fragment.
         // This enables drift (bookstore → pages → turning points → ...) instead of
         // thematic repetition (warmth → warmth → warmth).
-        if (_lastAssociativeAnchor is not null && snapshot.WorldSeed is null)
+        // PR #118 review-fix (Devin): guard on envelope presence rather than
+        // the string, so the two surfaces stay consistent post the WorldSeed
+        // computed-getter change. Same semantics as before since WorldSeed
+        // now mirrors WorldSeedEnvelope.Content.
+        if (_lastAssociativeAnchor is not null && snapshot.WorldSeedEnvelope is null)
         {
             var lingering = $"The last thing lingering in your mind: {_lastAssociativeAnchor}";
-            snapshot.WorldSeed = lingering;
             // F-1 Phase 8a: envelope with distinct source-tag so consumers
             // can distinguish this carried-over interior anchor from a
             // freshly-generated circadian world-seed.

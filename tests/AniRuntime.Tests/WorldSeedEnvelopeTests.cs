@@ -90,16 +90,15 @@ public class WorldSeedEnvelopeTests
             "world-seed content isn't dedup-scored today; SemanticKey stays null unless a future consumer needs it");
     }
 
+    // PR #118 review-fix (Devin): ContextSnapshot.WorldSeed is a computed
+    // getter that mirrors WorldSeedEnvelope.Content. Single source of truth
+    // — the two surfaces can never drift because there IS only one surface;
+    // the string is a passthrough view.
     [Fact]
-    public void ContextSnapshot_CarriesBothWorldSeedStringAndEnvelope_ForBackwardsCompat()
+    public void ContextSnapshot_WorldSeedMirrorsEnvelope_SingleSourceOfTruth()
     {
-        // Both surfaces exist during the F-1 Phase 8a migration window:
-        // pre-envelope consumers keep reading .WorldSeed; envelope-aware
-        // consumers read .WorldSeedEnvelope. Both should populate together
-        // at writer sites.
         var snapshot = new ContextSnapshot
         {
-            WorldSeed         = "morning — the world picking up",
             WorldSeedEnvelope = new WorldSeedEnvelope
             {
                 Text   = "morning — the world picking up",
@@ -107,8 +106,44 @@ public class WorldSeedEnvelopeTests
             },
         };
 
-        snapshot.WorldSeed.Should().NotBeNull();
         snapshot.WorldSeedEnvelope.Should().NotBeNull();
-        snapshot.WorldSeedEnvelope!.Content.Should().Be(snapshot.WorldSeed);
+        snapshot.WorldSeed.Should().Be("morning — the world picking up",
+            "WorldSeed is a computed getter — always mirrors WorldSeedEnvelope.Content");
+    }
+
+    [Fact]
+    public void ContextSnapshot_NullEnvelope_YieldsNullWorldSeed()
+    {
+        var snapshot = new ContextSnapshot
+        {
+            WorldSeedEnvelope = null,
+        };
+
+        snapshot.WorldSeed.Should().BeNull(
+            "no envelope → no world seed on either surface (they cannot disagree)");
+    }
+
+    [Fact]
+    public void ContextSnapshot_ChangingEnvelope_ChangesComputedWorldSeed()
+    {
+        // Proves the surfaces cannot drift: switching the envelope changes
+        // the string; there is no independent .WorldSeed setter that could
+        // hold a stale value.
+        var snapshot = new ContextSnapshot
+        {
+            WorldSeedEnvelope = new WorldSeedEnvelope
+            {
+                Text   = "first",
+                Source = WorldSeedSource.WorldSeed,
+            },
+        };
+        snapshot.WorldSeed.Should().Be("first");
+
+        snapshot.WorldSeedEnvelope = new WorldSeedEnvelope
+        {
+            Text   = "second",
+            Source = WorldSeedSource.AssociativeAnchor,
+        };
+        snapshot.WorldSeed.Should().Be("second");
     }
 }
