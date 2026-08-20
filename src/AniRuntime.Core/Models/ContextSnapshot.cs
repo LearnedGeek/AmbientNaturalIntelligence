@@ -174,8 +174,30 @@ public class ContextSnapshot
     /// World Layer: contextual seed for experiential grounding. When present,
     /// the inner thought model generates a lived experience rather than a
     /// self-referential thought. Tagged as "world-experience" in memory.
+    ///
+    /// <para>
+    /// F-1 Phase 8a (2026-08-19): the raw string carries the CONTENT the
+    /// composer renders. <see cref="WorldSeedEnvelope"/> (below) carries
+    /// the producer-boundary metadata for the same content — distinguishes
+    /// the circadian light-spark from the carried-over "lingering" anchor
+    /// so downstream can tell them apart. Both are populated together at
+    /// the two writer sites in <c>CognitiveCyclePipeline</c>; the raw
+    /// string field is retained for backwards-compat with pre-Phase-8a
+    /// consumers and pre-envelope-migration snapshot construction paths.
+    /// </para>
     /// </summary>
     public string? WorldSeed { get; set; }
+
+    /// <summary>
+    /// F-1 Phase 8a (2026-08-19) — producer-boundary envelope for the
+    /// world-seed / associative-anchor content. Consumers on the
+    /// envelope-aware surface read <see cref="WorldSeedEnvelope"/> for
+    /// provenance; consumers on the legacy raw-string surface still read
+    /// <see cref="WorldSeed"/>. Both are set together at the writer sites.
+    /// Nullable — some code paths (voice pipeline construction, tests)
+    /// populate snapshots without a world seed.
+    /// </summary>
+    public Interfaces.IWorldSeedEnvelope? WorldSeedEnvelope { get; set; }
 
     // ─── Epistemic Grounding (Apr 10, 2026): Tier-partitioned retrieval ───
     // These three lists hold memories retrieved for each prompt section. The

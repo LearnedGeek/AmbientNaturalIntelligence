@@ -260,6 +260,14 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             var seed = _worldSeed.GenerateSeed(
                 DateTimeOffset.Now, weatherContext);
             snapshot.WorldSeed = seed;
+            // F-1 Phase 8a (2026-08-19): populate the envelope alongside the
+            // raw string so envelope-aware consumers can distinguish this
+            // circadian world-seed from the associative-anchor variant below.
+            snapshot.WorldSeedEnvelope = new WorldSeedEnvelope
+            {
+                Text   = seed,
+                Source = WorldSeedSource.WorldSeed,
+            };
 
             // Phase 1c: retrieve recent world experiences for consistency.
             // If Ani mentioned a coworker yesterday, that coworker still exists today.
@@ -279,7 +287,16 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         // thematic repetition (warmth → warmth → warmth).
         if (_lastAssociativeAnchor is not null && snapshot.WorldSeed is null)
         {
-            snapshot.WorldSeed = $"The last thing lingering in your mind: {_lastAssociativeAnchor}";
+            var lingering = $"The last thing lingering in your mind: {_lastAssociativeAnchor}";
+            snapshot.WorldSeed = lingering;
+            // F-1 Phase 8a: envelope with distinct source-tag so consumers
+            // can distinguish this carried-over interior anchor from a
+            // freshly-generated circadian world-seed.
+            snapshot.WorldSeedEnvelope = new WorldSeedEnvelope
+            {
+                Text   = lingering,
+                Source = WorldSeedSource.AssociativeAnchor,
+            };
         }
 
         var innerResult = await _innerThought.RunAsync(snapshot, ct).ConfigureAwait(false);
