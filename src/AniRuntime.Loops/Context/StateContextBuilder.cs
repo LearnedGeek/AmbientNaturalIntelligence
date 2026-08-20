@@ -56,7 +56,13 @@ public sealed class StateContextBuilder : IStateContextBuilder
         // IRecentOutreachContextEnvelope for producer-boundary provenance.
         // Unwrap immediately — StateContextResult / ContextSnapshot / prompt
         // commands downstream continue to consume the bare record.
+        //
+        // F-1 Phase 9 (2026-08-20): call LogProvenance at the producer
+        // emit site (here rather than inside BuildOutreachContext, which
+        // is static and has no logger instance). Emits F1_PROVENANCE
+        // structured-log line per cycle.
         var outreachContextEnv    = BuildOutreachContext(recentMemory, desireState);
+        outreachContextEnv.LogProvenance(_log);
         var thoughtDiversityNudge = BuildThoughtDiversityNudge();
 
         return new StateContextResult(

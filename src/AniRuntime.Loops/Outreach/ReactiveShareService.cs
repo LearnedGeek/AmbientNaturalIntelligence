@@ -171,6 +171,7 @@ public sealed class ReactiveShareService : IReactiveShareService
             },
             Source = OutreachDecisionSource.ReactiveShare,
         };
+        envelope.LogProvenance(_log);
         await _dispatcher.DispatchAsync(envelope.Decision, ct).ConfigureAwait(false);
         await _desire.ResetAfterOutreachAsync(ct).ConfigureAwait(false);
 

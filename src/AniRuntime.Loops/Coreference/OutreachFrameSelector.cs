@@ -135,6 +135,7 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
             top.Score,
             PreviewForLog(anchor));
 
+        envelope.LogProvenance(_log);
         return Task.FromResult<IOutreachFrameEnvelope>(envelope);
     }
 
@@ -149,7 +150,9 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
         // shared static singleton. The wrapped OutreachFrame.None record
         // IS still reference-shared (records are value-equal; the shared
         // static there is fine).
-        return new OutreachFrameEnvelope { Frame = OutreachFrame.None };
+        var envelope = new OutreachFrameEnvelope { Frame = OutreachFrame.None };
+        envelope.LogProvenance(_log);
+        return envelope;
     }
 
     // ─── SHARED candidates ────────────────────────────────────────────────
