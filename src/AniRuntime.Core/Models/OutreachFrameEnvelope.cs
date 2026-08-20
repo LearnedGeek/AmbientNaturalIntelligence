@@ -28,10 +28,18 @@ namespace AniRuntime.Core.Models;
 /// </summary>
 public sealed class OutreachFrameEnvelope : IOutreachFrameEnvelope
 {
+    /// <summary>
+    /// The wrapped record. Construction-only surface: production readers
+    /// should access the wrapped payload through the envelope interface
+    /// (<see cref="IProvenancedContent{T}.Content"/>) — that's the
+    /// canonical read path (documented on <see cref="IOutreachFrameEnvelope"/>).
+    /// <c>Frame</c> is exposed publicly for readable construction
+    /// (<c>new OutreachFrameEnvelope { Frame = ... }</c>) and test-fixture
+    /// wrapping; it points at the same object as <c>Content</c>. Reviewer
+    /// note (PR #119 Devin): two idioms for the same read — prod uses
+    /// <c>envelope.Content</c>; tests use <c>envelope.Frame</c>.
+    /// </summary>
     public required OutreachFrame Frame { get; init; }
-
-    /// <summary>Canonical "no frame; suppress" envelope wrapping <see cref="OutreachFrame.None"/>.</summary>
-    public static OutreachFrameEnvelope None { get; } = new() { Frame = OutreachFrame.None };
 
     // ── IOutreachFrameEnvelope passthroughs ────────────────────────────
     /// <inheritdoc />
@@ -47,13 +55,24 @@ public sealed class OutreachFrameEnvelope : IOutreachFrameEnvelope
 
     /// <inheritdoc />
     /// <remarks>
-    /// Composed from <see cref="OutreachFrame.FrameType"/> so downstream
-    /// audit / telemetry can distinguish <c>frame.shared</c> from
-    /// <c>frame.ani-interior</c> etc. without a switch statement at the
-    /// consumer.
+    /// PR #119 review-fix (Devin BUG): explicit switch to kebab-case
+    /// tags matching the sibling envelope convention
+    /// (<c>InnerThoughtResult.thought.third-person-frame</c>,
+    /// <c>WorldSeedEnvelope.world-seed.associative-anchor</c>). The
+    /// pre-fix `.ToString().ToLowerInvariant()` produced
+    /// <c>frame.aniinterior</c> because enum names have no separators —
+    /// audit dashboards / greps following the documented naming would
+    /// miss those entries.
     /// </remarks>
-    string IProvenancedContent<OutreachFrame>.SourceType
-        => $"frame.{Frame.FrameType.ToString().ToLowerInvariant()}";
+    string IProvenancedContent<OutreachFrame>.SourceType => Frame.FrameType switch
+    {
+        OutreachFrameType.None            => "frame.none",
+        OutreachFrameType.Shared          => "frame.shared",
+        OutreachFrameType.AniDomain       => "frame.ani-domain",
+        OutreachFrameType.AniInterior     => "frame.ani-interior",
+        OutreachFrameType.WorldPerception => "frame.world-perception",
+        _                                 => "frame.unknown",
+    };
 
     /// <inheritdoc />
     string IProvenancedContent<OutreachFrame>.Producer => "OutreachFrameSelector";

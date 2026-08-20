@@ -358,7 +358,7 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OutreachFrameEnvelope.None);
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = OutreachFrame.None });
 
         var phase = BuildPhase(options);
         var perceptions = BuildHighRelevanceRssPerception("[NPR] some article");

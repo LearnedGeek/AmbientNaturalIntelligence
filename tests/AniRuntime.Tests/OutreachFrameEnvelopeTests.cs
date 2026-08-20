@@ -27,21 +27,33 @@ public class OutreachFrameEnvelopeTests
     }
 
     [Fact]
-    public void Envelope_None_WrapsCanonicalNoneFrame()
+    public void Envelope_WrappingNoneFrame_ExposesNonePassthroughs()
     {
-        OutreachFrameEnvelope.None.Frame.Should().BeSameAs(OutreachFrame.None);
-        OutreachFrameEnvelope.None.FrameType.Should().Be(OutreachFrameType.None);
-        OutreachFrameEnvelope.None.Anchor.Should().BeEmpty();
-        OutreachFrameEnvelope.None.Confidence.Should().Be(0f);
+        // PR #119 review-fix (Devin): the pre-fix static `Envelope.None`
+        // was removed to avoid a process-wide-shared CreatedAt on the
+        // suppression path. Construction is per-call now
+        // (LogAndReturnSuppressed in the selector); this test verifies
+        // that wrapping OutreachFrame.None still surfaces the expected
+        // suppression passthroughs.
+        var env = new OutreachFrameEnvelope { Frame = OutreachFrame.None };
+
+        env.Frame.Should().BeSameAs(OutreachFrame.None);
+        env.FrameType.Should().Be(OutreachFrameType.None);
+        env.Anchor.Should().BeEmpty();
+        env.Confidence.Should().Be(0f);
     }
 
+    // PR #119 review-fix (Devin BUG): SourceType tag now uses kebab-case
+    // matching the sibling envelope convention (thought.third-person-frame,
+    // world-seed.associative-anchor). Pre-fix `.ToString().ToLowerInvariant()`
+    // produced `frame.aniinterior` — inconsistent with dashboards/greps.
     [Theory]
     [InlineData(OutreachFrameType.None,            "frame.none")]
     [InlineData(OutreachFrameType.Shared,          "frame.shared")]
-    [InlineData(OutreachFrameType.AniDomain,       "frame.anidomain")]
-    [InlineData(OutreachFrameType.AniInterior,     "frame.aniinterior")]
-    [InlineData(OutreachFrameType.WorldPerception, "frame.worldperception")]
-    public void SourceType_ComposesFromFrameType(OutreachFrameType type, string expected)
+    [InlineData(OutreachFrameType.AniDomain,       "frame.ani-domain")]
+    [InlineData(OutreachFrameType.AniInterior,     "frame.ani-interior")]
+    [InlineData(OutreachFrameType.WorldPerception, "frame.world-perception")]
+    public void SourceType_ComposesFromFrameType_UsingKebabCaseConvention(OutreachFrameType type, string expected)
     {
         IProvenancedContent<OutreachFrame> env = new OutreachFrameEnvelope
         {

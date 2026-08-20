@@ -25,6 +25,18 @@ namespace AniRuntime.Core.Interfaces;
 /// consumers doing <c>envelope.FrameType</c> read as clearly as the
 /// pre-Phase-8b <c>frame.FrameType</c>.
 /// </para>
+///
+/// <para>
+/// <b>Equality contract:</b> envelopes are classes with reference
+/// equality by default AND per-instance <c>CreatedAt</c> — two envelopes
+/// wrapping the same-value record will NOT compare equal via
+/// <c>Equals</c> / <c>GetHashCode</c>. Consumers who want value equality
+/// (e.g. determinism assertions, dedup, memoization) compare the wrapped
+/// <see cref="IProvenancedContent{T}.Content"/> record, which retains
+/// its record value-equality semantics unchanged. Reviewer-noted (Devin)
+/// on PR #119 so future consumers don't silently see every selector
+/// result as distinct.
+/// </para>
 /// </summary>
 public interface IOutreachFrameEnvelope : IProvenancedContent<OutreachFrame>
 {

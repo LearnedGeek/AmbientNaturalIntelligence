@@ -143,7 +143,13 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
         _log.LogInformation(
             "N4_FRAME_SUPPRESSED frame=None reason=\"substrate-thin top_score={TopScore:0.000}\"",
             topScore);
-        return OutreachFrameEnvelope.None;
+        // PR #119 review-fix (Devin): construct fresh envelope on each
+        // suppression so the envelope's CreatedAt reflects when the
+        // suppression decision was made — not process-start time from a
+        // shared static singleton. The wrapped OutreachFrame.None record
+        // IS still reference-shared (records are value-equal; the shared
+        // static there is fine).
+        return new OutreachFrameEnvelope { Frame = OutreachFrame.None };
     }
 
     // ─── SHARED candidates ────────────────────────────────────────────────
