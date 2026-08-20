@@ -52,7 +52,11 @@ public sealed class StateContextBuilder : IStateContextBuilder
         var emotionalState = emotionalStateOverride
             ?? await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
 
-        var outreachContext       = BuildOutreachContext(recentMemory, desireState);
+        // F-1 Phase 8e (2026-08-19): BuildOutreachContext returns
+        // IRecentOutreachContextEnvelope for producer-boundary provenance.
+        // Unwrap immediately — StateContextResult / ContextSnapshot / prompt
+        // commands downstream continue to consume the bare record.
+        var outreachContextEnv    = BuildOutreachContext(recentMemory, desireState);
         var thoughtDiversityNudge = BuildThoughtDiversityNudge();
 
         return new StateContextResult(
@@ -60,7 +64,7 @@ public sealed class StateContextBuilder : IStateContextBuilder
             DesireState:            desireState,
             EmotionalState:         emotionalState,
             OpenLoops:              openLoops,
-            OutreachContext:        outreachContext,
+            OutreachContext:        outreachContextEnv.Content,
             ThoughtDiversityNudge:  thoughtDiversityNudge);
     }
 
@@ -89,8 +93,15 @@ public sealed class StateContextBuilder : IStateContextBuilder
     /// memory. Determines which outreach messages were answered by checking
     /// if any conversation or inbound contact occurred after each outreach
     /// record.
+    ///
+    /// <para>
+    /// F-1 Phase 8e (2026-08-19): returns <see cref="IRecentOutreachContextEnvelope"/>
+    /// for producer-boundary provenance. The immediate caller
+    /// (<see cref="BuildAsync"/>) unwraps via <c>.Content</c> to construct
+    /// <c>StateContextResult</c>. Downstream contracts unchanged.
+    /// </para>
     /// </summary>
-    internal static RecentOutreachContext BuildOutreachContext(
+    internal static IRecentOutreachContextEnvelope BuildOutreachContext(
         IReadOnlyList<MemoryRecord> recentMemory, DesireState desireState)
     {
         const string outreachPrefix = "I reached out to ";
@@ -144,12 +155,15 @@ public sealed class StateContextBuilder : IStateContextBuilder
             ? DateTimeOffset.UtcNow - lastContactReply
             : (TimeSpan?)null;
 
-        return new RecentOutreachContext
+        return new RecentOutreachContextEnvelope
         {
-            RecentMessages             = records,
-            UnansweredCount            = unanswered,
-            TimeSinceLastSend          = timeSinceLastSend,
-            TimeSinceLastContactReply  = timeSinceReply,
+            Context = new RecentOutreachContext
+            {
+                RecentMessages             = records,
+                UnansweredCount            = unanswered,
+                TimeSinceLastSend          = timeSinceLastSend,
+                TimeSinceLastContactReply  = timeSinceReply,
+            },
         };
     }
 }
