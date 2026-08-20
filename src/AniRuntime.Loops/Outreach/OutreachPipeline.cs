@@ -456,7 +456,10 @@ public sealed class OutreachPipeline : IOutreachPipeline
     {
         try
         {
-            var doc = JsonDocument.Parse(raw.Trim());
+            // PR #121 review-fix (Devin): match sibling ParseOutreachComposition
+            // discipline — dispose JsonDocument (pooled buffers held until GC
+            // otherwise). Behavior unchanged; just hygiene.
+            using var doc = JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
 
             var decision = new OutreachDecision
@@ -485,10 +488,15 @@ public sealed class OutreachPipeline : IOutreachPipeline
         catch
         {
             _log.LogDebug("Outreach parse failure, raw response: {Raw}", raw);
+            // PR #121 review-fix (Devin): tag the fallback envelope with
+            // LlmParseFailure — distinguishes "LLM output was malformed"
+            // from "LLM said ShouldReach=false" (LlmParsed with false)
+            // at the boundary tag, so audit consumers don't need to
+            // string-match Reasoning == "parse failure".
             return new OutreachDecisionEnvelope
             {
                 Decision = new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" },
-                Source   = OutreachDecisionSource.LlmParsed,
+                Source   = OutreachDecisionSource.LlmParseFailure,
             };
         }
     }

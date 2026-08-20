@@ -44,14 +44,19 @@ public class OutreachDecisionEnvelopeTests
         env.Decision.Should().BeSameAs(decision);
     }
 
-    // SourceType tags distinguish the four production sites. Kebab-case per
+    // SourceType tags distinguish the five production sites. Kebab-case per
     // sibling-envelope convention (frame.ani-interior, world-seed.circadian,
     // closed-conversation.valid).
+    //
+    // PR #121 review-fix (Devin): LlmParseFailure added to distinguish
+    // "LLM output was malformed" from "LLM said ShouldReach=false"
+    // at the boundary tag.
     [Theory]
-    [InlineData(OutreachDecisionSource.LlmParsed,     "outreach-decision.llm-parsed")]
-    [InlineData(OutreachDecisionSource.AdminMeta,     "outreach-decision.admin-meta")]
-    [InlineData(OutreachDecisionSource.SmsReply,      "outreach-decision.sms-reply")]
-    [InlineData(OutreachDecisionSource.ReactiveShare, "outreach-decision.reactive-share")]
+    [InlineData(OutreachDecisionSource.LlmParsed,        "outreach-decision.llm-parsed")]
+    [InlineData(OutreachDecisionSource.LlmParseFailure,  "outreach-decision.llm-parse-failure")]
+    [InlineData(OutreachDecisionSource.AdminMeta,        "outreach-decision.admin-meta")]
+    [InlineData(OutreachDecisionSource.SmsReply,         "outreach-decision.sms-reply")]
+    [InlineData(OutreachDecisionSource.ReactiveShare,    "outreach-decision.reactive-share")]
     public void SourceType_ComposesFromSource_UsingKebabCaseConvention(OutreachDecisionSource source, string expected)
     {
         IProvenancedContent<OutreachDecision> env = new OutreachDecisionEnvelope
@@ -62,11 +67,15 @@ public class OutreachDecisionEnvelopeTests
         env.SourceType.Should().Be(expected);
     }
 
+    // PR #121 review-fix: LlmParseFailure and LlmParsed both attribute to
+    // OutreachPipeline (same producer, different outcomes) — the tag is
+    // the boundary discriminator, not the producer name.
     [Theory]
-    [InlineData(OutreachDecisionSource.LlmParsed,     "OutreachPipeline")]
-    [InlineData(OutreachDecisionSource.AdminMeta,     "AdminCommandHandler")]
-    [InlineData(OutreachDecisionSource.SmsReply,      "SmsReplyChannel")]
-    [InlineData(OutreachDecisionSource.ReactiveShare, "ReactiveShareService")]
+    [InlineData(OutreachDecisionSource.LlmParsed,        "OutreachPipeline")]
+    [InlineData(OutreachDecisionSource.LlmParseFailure,  "OutreachPipeline")]
+    [InlineData(OutreachDecisionSource.AdminMeta,        "AdminCommandHandler")]
+    [InlineData(OutreachDecisionSource.SmsReply,         "SmsReplyChannel")]
+    [InlineData(OutreachDecisionSource.ReactiveShare,    "ReactiveShareService")]
     public void Producer_IdentifiesConstructingSite(OutreachDecisionSource source, string expected)
     {
         IProvenancedContent<OutreachDecision> env = new OutreachDecisionEnvelope

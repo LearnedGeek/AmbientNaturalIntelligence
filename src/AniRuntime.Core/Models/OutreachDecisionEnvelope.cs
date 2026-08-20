@@ -59,21 +59,23 @@ public sealed class OutreachDecisionEnvelope : IOutreachDecisionEnvelope
     /// </remarks>
     string IProvenancedContent<OutreachDecision>.SourceType => Source switch
     {
-        OutreachDecisionSource.LlmParsed      => "outreach-decision.llm-parsed",
-        OutreachDecisionSource.AdminMeta      => "outreach-decision.admin-meta",
-        OutreachDecisionSource.SmsReply       => "outreach-decision.sms-reply",
-        OutreachDecisionSource.ReactiveShare  => "outreach-decision.reactive-share",
-        _                                     => "outreach-decision.unknown",
+        OutreachDecisionSource.LlmParsed        => "outreach-decision.llm-parsed",
+        OutreachDecisionSource.LlmParseFailure  => "outreach-decision.llm-parse-failure",
+        OutreachDecisionSource.AdminMeta        => "outreach-decision.admin-meta",
+        OutreachDecisionSource.SmsReply         => "outreach-decision.sms-reply",
+        OutreachDecisionSource.ReactiveShare    => "outreach-decision.reactive-share",
+        _                                       => "outreach-decision.unknown",
     };
 
     /// <inheritdoc />
     string IProvenancedContent<OutreachDecision>.Producer => Source switch
     {
-        OutreachDecisionSource.LlmParsed      => "OutreachPipeline",
-        OutreachDecisionSource.AdminMeta      => "AdminCommandHandler",
-        OutreachDecisionSource.SmsReply       => "SmsReplyChannel",
-        OutreachDecisionSource.ReactiveShare  => "ReactiveShareService",
-        _                                     => "unknown",
+        OutreachDecisionSource.LlmParsed        => "OutreachPipeline",
+        OutreachDecisionSource.LlmParseFailure  => "OutreachPipeline",
+        OutreachDecisionSource.AdminMeta        => "AdminCommandHandler",
+        OutreachDecisionSource.SmsReply         => "SmsReplyChannel",
+        OutreachDecisionSource.ReactiveShare    => "ReactiveShareService",
+        _                                       => "unknown",
     };
 
     /// <inheritdoc />
@@ -106,4 +108,13 @@ public enum OutreachDecisionSource
 
     /// <summary>Reactive-share flow — sharing a desire-driven observation with the contact.</summary>
     ReactiveShare = 3,
+
+    /// <summary>
+    /// PR #121 review-fix (Devin): LLM outreach-decision JSON parse threw and
+    /// the pipeline substituted a suppress-outreach fallback. Distinguishes
+    /// audit dashboards' "LLM said no" (LlmParsed with ShouldReach=false)
+    /// from "LLM output was malformed" (this) without inspecting the
+    /// <see cref="OutreachDecision.Reasoning"/> free-text.
+    /// </summary>
+    LlmParseFailure = 4,
 }
