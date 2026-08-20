@@ -127,7 +127,11 @@ public sealed class OutreachPipeline : IOutreachPipeline
         var raw = await _ollama.ChatJsonAsync(
             outreachPrompt.System, snapshot.RecentHistory, outreachPrompt.User, ct).ConfigureAwait(false);
 
-        var decision = ParseOutreachDecision(raw);
+        // F-1 Phase 8d: ParseOutreachDecision returns IOutreachDecisionEnvelope
+        // for producer-boundary provenance. Unwrap immediately — downstream
+        // dispatcher + actions continue to consume the bare OutreachDecision record.
+        var decisionEnvelope = ParseOutreachDecision(raw);
+        var decision         = decisionEnvelope.Content;
         _log.LogDebug("Outreach decision raw: {Raw}", raw);
 
         if (!decision.ShouldReach)
@@ -442,7 +446,13 @@ public sealed class OutreachPipeline : IOutreachPipeline
 
     // ─── Parsers + helpers (also surfaced via OutreachPhase facade for tests) ─
 
-    internal OutreachDecision ParseOutreachDecision(string raw)
+    // F-1 Phase 8d (2026-08-19) — LLM outreach-decision parse is the P9
+    // producer. Returns IOutreachDecisionEnvelope so the SourceType tag
+    // ("outreach-decision.llm-parsed") + Producer ("OutreachPipeline") +
+    // CreatedAt provenance are captured at the producer boundary. Immediate
+    // consumer in RunAsync unwraps via .Content — dispatcher and action
+    // signatures continue to consume the bare OutreachDecision record.
+    internal IOutreachDecisionEnvelope ParseOutreachDecision(string raw)
     {
         try
         {
@@ -466,12 +476,20 @@ public sealed class OutreachPipeline : IOutreachPipeline
                 }
             }
 
-            return decision;
+            return new OutreachDecisionEnvelope
+            {
+                Decision = decision,
+                Source   = OutreachDecisionSource.LlmParsed,
+            };
         }
         catch
         {
             _log.LogDebug("Outreach parse failure, raw response: {Raw}", raw);
-            return new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" };
+            return new OutreachDecisionEnvelope
+            {
+                Decision = new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" },
+                Source   = OutreachDecisionSource.LlmParsed,
+            };
         }
     }
 

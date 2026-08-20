@@ -26,13 +26,22 @@ public class SmsReplyChannel : IReplyChannel
         _log.LogInformation("Dispatching sms: {Reply}",
             message.Length > 80 ? message[..80] : message);
 
-        var decision = new OutreachDecision
+        // F-1 Phase 8d: producer-side wrap for provenance. Envelope is
+        // constructed here for the SourceType tag ("outreach-decision.sms-reply")
+        // and unwrapped immediately at the dispatcher call — the dispatcher
+        // signature continues to consume the bare OutreachDecision record
+        // (see IOutreachDecisionEnvelope XML doc for scope rationale).
+        var envelope = new OutreachDecisionEnvelope
         {
-            ShouldReach = true,
-            Message = message,
-            ActionType = ActionTypes.Sms,
-            Reasoning = "conversation reply",
+            Decision = new OutreachDecision
+            {
+                ShouldReach = true,
+                Message     = message,
+                ActionType  = ActionTypes.Sms,
+                Reasoning   = "conversation reply",
+            },
+            Source = OutreachDecisionSource.SmsReply,
         };
-        await _dispatcher.DispatchAsync(decision, ct).ConfigureAwait(false);
+        await _dispatcher.DispatchAsync(envelope.Decision, ct).ConfigureAwait(false);
     }
 }
