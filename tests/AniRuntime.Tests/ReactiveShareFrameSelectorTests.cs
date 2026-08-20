@@ -258,8 +258,8 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OutreachFrame(
-                OutreachFrameType.WorldPerception, articleAnchor, 0.82f));
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = new OutreachFrame(
+                OutreachFrameType.WorldPerception, articleAnchor, 0.82f) });
 
         // Capture the user prompt the composition step receives so we
         // can assert the [FRAME:] / [ANCHOR] / shared-topic shape.
@@ -314,8 +314,8 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OutreachFrame(
-                OutreachFrameType.WorldPerception, articleAnchor, 0.82f));
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = new OutreachFrame(
+                OutreachFrameType.WorldPerception, articleAnchor, 0.82f) });
 
         string? observedUserPrompt = null;
         MockOllama.Setup(o => o.ChatAsync(
@@ -358,7 +358,7 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OutreachFrame.None);
+            .ReturnsAsync(OutreachFrameEnvelope.None);
 
         var phase = BuildPhase(options);
         var perceptions = BuildHighRelevanceRssPerception("[NPR] some article");
@@ -412,8 +412,8 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
             .Callback<ContextSnapshot, CancellationToken>((snap, _) => observedSnapshot = snap)
-            .ReturnsAsync(new OutreachFrame(
-                OutreachFrameType.WorldPerception, articleAnchor, 0.82f));
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = new OutreachFrame(
+                OutreachFrameType.WorldPerception, articleAnchor, 0.82f) });
 
         MockOllama.Setup(o => o.ChatAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<string>(),
@@ -452,8 +452,8 @@ public class ReactiveShareFrameSelectorTests : AniTestBase
 
         _mockFrameSelector.Setup(s => s.SelectFrameAsync(
                 It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OutreachFrame(
-                OutreachFrameType.WorldPerception, articleAnchor, 0.82f));
+            .ReturnsAsync(new OutreachFrameEnvelope { Frame = new OutreachFrame(
+                OutreachFrameType.WorldPerception, articleAnchor, 0.82f) });
 
         string? observedUserPrompt = null;
         MockOllama.Setup(o => o.ChatAsync(

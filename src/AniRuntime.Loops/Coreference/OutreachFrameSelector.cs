@@ -88,7 +88,7 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
         _log = log;
     }
 
-    public Task<OutreachFrame> SelectFrameAsync(
+    public Task<IOutreachFrameEnvelope> SelectFrameAsync(
         ContextSnapshot snapshot,
         CancellationToken ct)
     {
@@ -105,7 +105,7 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
 
         if (candidates.Count == 0)
         {
-            return Task.FromResult(LogAndReturnSuppressed(0f));
+            return Task.FromResult<IOutreachFrameEnvelope>(LogAndReturnSuppressed(0f));
         }
 
         // Pick top candidate globally. Tie-break by frame priority.
@@ -116,12 +116,17 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
 
         if (top.Score < MinAcceptableScore)
         {
-            return Task.FromResult(LogAndReturnSuppressed(top.Score));
+            return Task.FromResult<IOutreachFrameEnvelope>(LogAndReturnSuppressed(top.Score));
         }
 
         var anchor    = TruncateAnchor(top.Anchor);
         var confidence = ComputeConfidence(top.Score);
         var frame     = new OutreachFrame(top.FrameType, anchor, confidence);
+        // F-1 Phase 8b (2026-08-19) — wrap the frame record in the
+        // producer-boundary envelope. Consumers use envelope passthrough
+        // properties (FrameType/Anchor/Confidence) or unwrap via .Frame
+        // when they need the record itself.
+        var envelope = new OutreachFrameEnvelope { Frame = frame };
 
         _log.LogInformation(
             "N4_FRAME_SELECTED frame={Frame} confidence={Confidence:0.000} score={Score:0.000} anchor_preview=\"{AnchorPreview}\"",
@@ -130,15 +135,15 @@ public sealed class OutreachFrameSelector : IOutreachFrameSelector
             top.Score,
             PreviewForLog(anchor));
 
-        return Task.FromResult(frame);
+        return Task.FromResult<IOutreachFrameEnvelope>(envelope);
     }
 
-    private OutreachFrame LogAndReturnSuppressed(float topScore)
+    private OutreachFrameEnvelope LogAndReturnSuppressed(float topScore)
     {
         _log.LogInformation(
             "N4_FRAME_SUPPRESSED frame=None reason=\"substrate-thin top_score={TopScore:0.000}\"",
             topScore);
-        return OutreachFrame.None;
+        return OutreachFrameEnvelope.None;
     }
 
     // ─── SHARED candidates ────────────────────────────────────────────────

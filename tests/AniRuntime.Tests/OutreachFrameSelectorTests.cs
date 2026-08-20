@@ -114,7 +114,12 @@ public class OutreachFrameSelectorTests
         var result1 = await selector.SelectFrameAsync(snapshot, CancellationToken.None);
         var result2 = await selector.SelectFrameAsync(snapshot, CancellationToken.None);
 
-        result1.Should().Be(result2,
+        // F-1 Phase 8b (2026-08-19): SelectFrameAsync now returns
+        // IOutreachFrameEnvelope. The envelope wrapper is a class (deliberate,
+        // to protect the wrapped record's equality — Phase 4 sibling-impl
+        // discipline). Compare the wrapped record via .Content, which IS
+        // value-equal (record semantics), to verify determinism.
+        result1.Content.Should().Be(result2.Content,
             "the selector must be deterministic — no LLM calls, no randomness");
     }
 

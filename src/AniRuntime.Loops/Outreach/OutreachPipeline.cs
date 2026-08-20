@@ -186,8 +186,11 @@ public sealed class OutreachPipeline : IOutreachPipeline
             observationStore: _vibeBiasObservations,
             threadId:         null).ConfigureAwait(false);
 
-        // Theme N N.3 — outreach source-frame selection
-        OutreachFrame? selectedFrame = null;
+        // Theme N N.3 — outreach source-frame selection.
+        // F-1 Phase 8b (2026-08-19) — SelectFrameAsync now returns
+        // IOutreachFrameEnvelope with passthrough FrameType/Anchor/Confidence
+        // properties so consumer reads stay one-hop even after the wrap.
+        IOutreachFrameEnvelope? selectedFrame = null;
         if (_aniOptions.OutreachFrameSelectorEnabled && _frameSelector is not null)
         {
             selectedFrame = await _frameSelector.SelectFrameAsync(snapshot, ct).ConfigureAwait(false);
@@ -271,7 +274,11 @@ public sealed class OutreachPipeline : IOutreachPipeline
             && selectedFrame.FrameType != OutreachFrameType.None
             && selectedFrame.FrameType != OutreachFrameType.Shared)
         {
-            var coherence = _frameChecker.CheckCoherence(message, selectedFrame);
+            // F-1 Phase 8b: unwrap the envelope for the coherence checker,
+            // which continues to operate on the OutreachFrame record shape
+            // (IFrameCoherenceChecker is a downstream consumer of the record,
+            // not of the producer-boundary envelope).
+            var coherence = _frameChecker.CheckCoherence(message, selectedFrame.Content);
             var violationsList = string.Join("; ", coherence.Violations);
             if (!coherence.IsCoherent)
             {
