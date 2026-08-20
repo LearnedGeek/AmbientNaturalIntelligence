@@ -479,11 +479,13 @@ public sealed class OutreachPipeline : IOutreachPipeline
                 }
             }
 
-            return new OutreachDecisionEnvelope
+            var envelope = new OutreachDecisionEnvelope
             {
                 Decision = decision,
                 Source   = OutreachDecisionSource.LlmParsed,
             };
+            envelope.LogProvenance(_log);
+            return envelope;
         }
         catch
         {
@@ -493,11 +495,13 @@ public sealed class OutreachPipeline : IOutreachPipeline
             // from "LLM said ShouldReach=false" (LlmParsed with false)
             // at the boundary tag, so audit consumers don't need to
             // string-match Reasoning == "parse failure".
-            return new OutreachDecisionEnvelope
+            var envelope = new OutreachDecisionEnvelope
             {
                 Decision = new OutreachDecision { ShouldReach = false, Reasoning = "parse failure" },
                 Source   = OutreachDecisionSource.LlmParseFailure,
             };
+            envelope.LogProvenance(_log);
+            return envelope;
         }
     }
 

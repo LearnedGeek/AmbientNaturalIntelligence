@@ -268,6 +268,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 Text   = seed,
                 Source = WorldSeedSource.WorldSeed,
             };
+            snapshot.WorldSeedEnvelope.LogProvenance(_log);
 
             // Phase 1c: retrieve recent world experiences for consistency.
             // If Ani mentioned a coworker yesterday, that coworker still exists today.
@@ -300,6 +301,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 Text   = lingering,
                 Source = WorldSeedSource.AssociativeAnchor,
             };
+            snapshot.WorldSeedEnvelope.LogProvenance(_log);
         }
 
         var innerResult = await _innerThought.RunAsync(snapshot, ct).ConfigureAwait(false);

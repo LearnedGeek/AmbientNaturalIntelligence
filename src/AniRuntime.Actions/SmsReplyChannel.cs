@@ -42,6 +42,7 @@ public class SmsReplyChannel : IReplyChannel
             },
             Source = OutreachDecisionSource.SmsReply,
         };
+        envelope.LogProvenance(_log);
         await _dispatcher.DispatchAsync(envelope.Decision, ct).ConfigureAwait(false);
     }
 }

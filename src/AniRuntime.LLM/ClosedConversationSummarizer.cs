@@ -138,7 +138,9 @@ public sealed class ClosedConversationSummarizer : IClosedConversationSummarizer
             thread.Id, thread.Messages.Count, outcomeValence, validity,
             string.Join(",", keywords));
 
-        return new ClosedConversationEnvelope { Record = record };
+        var envelope = new ClosedConversationEnvelope { Record = record };
+        envelope.LogProvenance(_log);
+        return envelope;
     }
 
     /// <summary>

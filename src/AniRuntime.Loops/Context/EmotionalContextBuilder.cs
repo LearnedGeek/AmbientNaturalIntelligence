@@ -144,7 +144,7 @@ public sealed class EmotionalContextBuilder : IEmotionalContextBuilder
             _log.LogWarning(ex, "R.6 — contribution trajectory build failed; continuing without");
         }
 
-        return new EmotionalContextEnvelope
+        var envelope = new EmotionalContextEnvelope
         {
             Result = new EmotionalContextResult(
                 relationshipHealth,
@@ -153,6 +153,8 @@ public sealed class EmotionalContextBuilder : IEmotionalContextBuilder
                 processedThemes.ToList(),
                 trajectory),
         };
+        envelope.LogProvenance(_log);
+        return envelope;
     }
 
     /// <summary>

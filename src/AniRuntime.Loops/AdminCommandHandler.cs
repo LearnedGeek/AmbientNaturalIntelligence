@@ -82,6 +82,7 @@ public sealed class AdminCommandHandler : IAdminCommandHandler
             },
             Source = OutreachDecisionSource.AdminMeta,
         };
+        envelope.LogProvenance(_log);
 
         await _dispatcher.DispatchAsync(envelope.Decision, ct).ConfigureAwait(false);
     }
