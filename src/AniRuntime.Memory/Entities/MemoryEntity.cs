@@ -110,4 +110,67 @@ public class MemoryEntity
     /// </summary>
     [Column("register")]
     public string? Register { get; set; }
+
+    // ── F-2 Phase 1 P2 (2026-08-21) — attribution columns ─────────────────
+    // Five new fields making attribution first-class per the F-2 Phase 1
+    // design plan. Populated at ingest by P6 producer wiring; existing
+    // records get heuristic backfill in P3. Zero-risk additive migration —
+    // all columns nullable or with default; existing reads unaffected.
+
+    /// <summary>
+    /// F-2 Phase 1 (2026-08-21) — who authored the content within this
+    /// record. Default <c>Unknown</c> (int 0) — every record should be
+    /// explicitly attributed at ingest by P6 producer wiring. Backfill (P3)
+    /// populates existing records via heuristic table (tier + type + source).
+    /// See <see cref="AniRuntime.Core.Interfaces.AttributedTo"/>.
+    /// </summary>
+    [Column("attributed_to")]
+    public AniRuntime.Core.Interfaces.AttributedTo AttributedTo { get; set; }
+        = AniRuntime.Core.Interfaces.AttributedTo.Unknown;
+
+    /// <summary>
+    /// F-2 Phase 1 — when the utterance happened (UTC). Null for
+    /// canonical/timeless attribution (character-seed content — no specific
+    /// utterance moment). Distinct from <see cref="OccurredAt"/> which is
+    /// the record's event-time, not the utterer's speaking time.
+    /// </summary>
+    [Column("attributed_at")]
+    public DateTimeOffset? AttributedAt { get; set; }
+
+    /// <summary>
+    /// F-2 Phase 1 — FK to the source <see cref="Id"/> when the source is
+    /// another persisted <c>memories</c> row (e.g. a reflection synthesized
+    /// from earlier memories references its source records). Null when the
+    /// source is ephemeral (chat-history turn, live inbound event) — see
+    /// <see cref="AttributedSourceDescriptor"/>.
+    /// </summary>
+    [Column("attributed_source_id")]
+    public Guid? AttributedSourceRecordId { get; set; }
+
+    /// <summary>
+    /// F-2 Phase 1 — free-text descriptor for ephemeral / non-record sources
+    /// (e.g. <c>"twilio-inbound:SM&lt;sid&gt;"</c>,
+    /// <c>"character-seed:mark.profile"</c>,
+    /// <c>"chat-history-turn:2026-08-20T16:29"</c>).
+    /// Convention: <see cref="AttributedSourceRecordId"/> and this field
+    /// should not both be non-null; producers pick one shape per record.
+    /// </summary>
+    [Column("attributed_source_desc")]
+    public string? AttributedSourceDescriptor { get; set; }
+
+    /// <summary>
+    /// F-2 Phase 1 — verification state of the attribution.
+    /// <list type="bullet">
+    ///   <item><c>"verified"</c> — trusted (canonical source or FK/descriptor
+    ///     resolves to a known utterance)</item>
+    ///   <item><c>"unverified"</c> — inferred, source cannot be checked</item>
+    ///   <item><c>"unverified-historical"</c> — pre-F-2 backfilled record;
+    ///     internal content claims cannot be retroactively verified. Surfaced
+    ///     at retrieval-render time so composer LLMs weight accordingly.</item>
+    /// </list>
+    /// String rather than enum for forward-compat with future trust categories
+    /// without schema migration.
+    /// </summary>
+    [Column("attribution_trust")]
+    public string AttributionTrust { get; set; } = "unverified";
 }

@@ -430,6 +430,14 @@ try
             await ctx.EnsureIssue93SchemaAsync();
             sw.Stop();
             Log.Information("Issue #93 schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
+
+            // F-2 Phase 1 P2 (2026-08-21) — attribution columns on memories.
+            // Idempotent additive ALTER TABLE; same fast metadata-only shape
+            // as Issue #93. Zero-risk — all columns nullable or with default.
+            sw.Restart();
+            await ctx.EnsureAttributionSchemaAsync();
+            sw.Stop();
+            Log.Information("F-2 attribution schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {

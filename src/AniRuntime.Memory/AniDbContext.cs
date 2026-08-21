@@ -309,6 +309,91 @@ public class AniDbContext : DbContext
         }
     }
 
+    /// <summary>
+    /// Foundation Attribution (F-2) Phase 1 P2 (2026-08-21) — idempotent
+    /// ALTER TABLE for the five attribution columns. Zero-risk additive
+    /// migration: all columns nullable or with default; existing reads
+    /// unaffected. Called at startup from Program.cs alongside
+    /// <see cref="EnsureIssue93SchemaAsync"/>.
+    ///
+    /// <para>
+    /// Columns added:
+    /// <list type="bullet">
+    ///   <item><c>attributed_to</c> INTEGER DEFAULT 0 (Unknown)</item>
+    ///   <item><c>attributed_at</c> TEXT NULL</item>
+    ///   <item><c>attributed_source_id</c> TEXT NULL (Guid FK to memories.id)</item>
+    ///   <item><c>attributed_source_desc</c> TEXT NULL</item>
+    ///   <item><c>attribution_trust</c> TEXT NOT NULL DEFAULT 'unverified'</item>
+    /// </list>
+    /// Plus indexes on <c>attributed_to</c> and <c>attribution_trust</c>.
+    /// </para>
+    ///
+    /// <para>Heuristic backfill (per design plan D4) runs via the eval CLI
+    /// tool (P3), not inline — schema rescue is fast, per-record attribution
+    /// inference over 25k+ rows warrants a dedicated one-shot script.</para>
+    ///
+    /// <para>Idempotent: subsequent runs are no-ops once columns + indexes
+    /// exist. Safe to call on every startup.</para>
+    /// </summary>
+    public async Task EnsureAttributionSchemaAsync(CancellationToken ct = default)
+    {
+        var conn = Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        // Detect which columns already exist.
+        await using var check = conn.CreateCommand();
+        check.CommandText = @"
+            SELECT name FROM pragma_table_info('memories')
+            WHERE name IN (
+                'attributed_to',
+                'attributed_at',
+                'attributed_source_id',
+                'attributed_source_desc',
+                'attribution_trust'
+            )";
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var reader = await check.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                existing.Add(reader.GetString(0));
+        }
+
+        await using var cmd = conn.CreateCommand();
+
+        if (!existing.Contains("attributed_to"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_to INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attributed_at"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_at TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attributed_source_id"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_source_id TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attributed_source_desc"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_source_desc TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attribution_trust"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attribution_trust TEXT NOT NULL DEFAULT 'unverified'";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS ix_memories_attributed_to ON memories (attributed_to)";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS ix_memories_attribution_trust ON memories (attribution_trust)";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)
     {
         await using var cmd = Database.GetDbConnection().CreateCommand();
