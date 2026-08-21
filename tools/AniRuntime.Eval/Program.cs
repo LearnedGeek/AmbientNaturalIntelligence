@@ -177,6 +177,17 @@ var backfillOrder          = (ParseArg(args, "--backfill-order") ?? "oldest").To
 var backfillSubstrate       = args.Contains("--backfill-substrate");
 var backfillSubstrateDryRun = args.Contains("--backfill-substrate-dry-run");
 
+// Foundation Attribution (F-2) Phase 1 P3 backfill (2026-08-21) —
+// heuristic attribution for existing memories rows where attributed_to
+// is Unknown. Pure heuristic (no LLM); ~25k rows should finish in a
+// few minutes. Idempotent: WHERE attributed_to = 0 guard so re-runs
+// skip already-attributed rows.
+// --backfill-attribution         = commit UPDATEs
+// --backfill-attribution-dry-run = infer + log summary, no UPDATE
+// Reuses --backfill-limit and --backfill-order.
+var backfillAttribution       = args.Contains("--backfill-attribution");
+var backfillAttributionDryRun = args.Contains("--backfill-attribution-dry-run");
+
 // Ollama endpoint — defaults to ani-server where the trained models live.
 // Override for laptop testing via --ollama-url or Ollama__BaseUrl env var.
 var ollamaUrl = ParseArg(args, "--ollama-url")
@@ -515,6 +526,49 @@ if (backfillRegister || backfillRegisterDryRun)
     };
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(payload,
         new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
+// F-2 Phase 1 P3 attribution backfill (2026-08-21) — heuristic
+// attribution over the memories table. Pure logic, no LLM roundtrips.
+// See AttributionBackfill.cs for the D4 heuristic table implementation.
+if (backfillAttribution || backfillAttributionDryRun)
+{
+    var isDryRun = backfillAttributionDryRun && !backfillAttribution;
+    Console.Error.WriteLine(
+        $"BACKFILL_ATTRIBUTION mode={(isDryRun ? "dry-run" : "commit")} " +
+        $"order={backfillOrder} " +
+        $"limit={(backfillLimit == 0 ? "all" : backfillLimit.ToString())} " +
+        $"db={dbPath}");
+
+    var ctxFactory = provider.GetRequiredService<IDbContextFactory<AniDbContext>>();
+
+    // Ensure the schema is present on the target DB (idempotent). Same
+    // rationale as EnsureIssue93SchemaAsync — a fixture / snapshot DB
+    // that pre-dates the F-2 Phase 1 P2 migration would crash EF queries.
+    await using (var schemaCtx = await ctxFactory.CreateDbContextAsync())
+    {
+        await schemaCtx.EnsureAttributionSchemaAsync();
+    }
+
+    var summary = await AniRuntime.Memory.Backfill.AttributionBackfill.RunAsync(
+        ctxFactory,
+        isDryRun,
+        backfillOrder,
+        backfillLimit,
+        line => Console.Error.WriteLine(line));
+
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+    {
+        summary.Mode,
+        db_path         = dbPath,
+        summary.Loaded,
+        summary.Processed,
+        summary.Written,
+        summary.ElapsedSeconds,
+        per_author = summary.PerAuthor,
+        per_trust  = summary.PerTrust,
+    }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
     return 0;
 }
 
