@@ -232,6 +232,12 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
             existing.ConfirmedAt       = record.ConfirmedAt;
             existing.ConfirmedBy       = record.ConfirmedBy;
             existing.Register          = record.Register;
+            // F-2 Phase 1 P2 (2026-08-21) — attribution
+            existing.AttributedTo               = record.AttributedTo;
+            existing.AttributedAt               = record.AttributedAt;
+            existing.AttributedSourceRecordId   = record.AttributedSourceRecordId;
+            existing.AttributedSourceDescriptor = record.AttributedSourceDescriptor;
+            existing.AttributionTrust           = record.AttributionTrust;
         }
         else
         {
@@ -256,6 +262,12 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
                 ConfirmedAt       = record.ConfirmedAt,
                 ConfirmedBy       = record.ConfirmedBy,
                 Register          = record.Register,
+                // F-2 Phase 1 P2 (2026-08-21) — attribution
+                AttributedTo               = record.AttributedTo,
+                AttributedAt               = record.AttributedAt,
+                AttributedSourceRecordId   = record.AttributedSourceRecordId,
+                AttributedSourceDescriptor = record.AttributedSourceDescriptor,
+                AttributionTrust           = record.AttributionTrust,
             });
         }
 

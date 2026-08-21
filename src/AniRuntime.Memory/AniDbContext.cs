@@ -55,6 +55,14 @@ public class AniDbContext : DbContext
             g => g.ToString(),
             s => Guid.Parse(s));
 
+        // F-2 Phase 1 P2 review-fix (Devin): nullable-Guid variant so the
+        // new AttributedSourceRecordId column stores in the same lowercase-
+        // TEXT format as Id. EF Core 8 default happens to match, but
+        // explicit registration matches the file's schema-parity convention.
+        var nullableGuidToTextConverter = new ValueConverter<Guid?, string?>(
+            g => g.HasValue ? g.Value.ToString() : null,
+            s => string.IsNullOrEmpty(s) ? null : Guid.Parse(s));
+
         var floatArrayToBlobConverter = new ValueConverter<float[]?, byte[]?>(
             arr => arr == null ? null : FloatArrayToBytes(arr),
             blob => blob == null ? null : BytesToFloatArray(blob));
@@ -81,12 +89,30 @@ public class AniDbContext : DbContext
             entity.Property(e => e.ConfirmedAt).HasConversion(nullableDateTimeOffsetToStringConverter);
             entity.Property(e => e.Tier).HasConversion<string>();           // DecayTier as TEXT
             entity.Property(e => e.Provenance).HasConversion<string>();     // EpistemicTier as TEXT
+            // F-2 Phase 1 P2 review-fix (Devin BUG): AttributedAt needs the
+            // same ISO-8601 "o" converter as sibling DateTimeOffset columns
+            // (OccurredAt/CreatedAt/ResolvedAt/AnchoredAt/ConfirmedAt);
+            // without it EF falls back to a space-separated format and the
+            // memories table would hold two timestamp formats, breaking
+            // cross-column comparison and raw-SQL reads. AttributedSourceRecordId
+            // gets the same guidToTextConverter as Id for parity (EF Core 8
+            // default already writes lowercase TEXT matching Guid.ToString(),
+            // but explicit registration matches file convention).
+            entity.Property(e => e.AttributedAt).HasConversion(nullableDateTimeOffsetToStringConverter);
+            entity.Property(e => e.AttributedSourceRecordId).HasConversion(nullableGuidToTextConverter);
             entity.HasIndex(e => e.Type).HasDatabaseName("ix_memories_type");
             entity.HasIndex(e => e.OccurredAt).HasDatabaseName("ix_memories_occurred").IsDescending();
             // Issue #62 (2026-05-23) — walk-back substrate-correction.
             entity.HasIndex(e => e.Validity).HasDatabaseName("ix_memories_validity");
             // Issue #93 (2026-07-06) — retrieval-bias filter uses IS NOT NULL.
             entity.HasIndex(e => e.ConfirmedAt).HasDatabaseName("ix_memories_confirmed_at");
+            // F-2 Phase 1 P2 review-fix (Devin analysis): declare attribution
+            // indexes in OnModelCreating so EnsureCreated-built DBs (test
+            // fixtures) get them without the migration having to run first.
+            // Migration in EnsureAttributionSchemaAsync stays as the
+            // production path for existing DBs.
+            entity.HasIndex(e => e.AttributedTo).HasDatabaseName("ix_memories_attributed_to");
+            entity.HasIndex(e => e.AttributionTrust).HasDatabaseName("ix_memories_attribution_trust");
         });
 
         // ── MemoryLinkEntity (composite PK + 2 FKs to memories) ────────
@@ -307,6 +333,91 @@ public class AniDbContext : DbContext
             cmd.CommandText = "ALTER TABLE emotional_contributions ADD COLUMN substrate_json TEXT NULL";
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Foundation Attribution (F-2) Phase 1 P2 (2026-08-21) — idempotent
+    /// ALTER TABLE for the five attribution columns. Zero-risk additive
+    /// migration: all columns nullable or with default; existing reads
+    /// unaffected. Called at startup from Program.cs alongside
+    /// <see cref="EnsureIssue93SchemaAsync"/>.
+    ///
+    /// <para>
+    /// Columns added:
+    /// <list type="bullet">
+    ///   <item><c>attributed_to</c> INTEGER DEFAULT 0 (Unknown)</item>
+    ///   <item><c>attributed_at</c> TEXT NULL</item>
+    ///   <item><c>attributed_source_id</c> TEXT NULL (Guid FK to memories.id)</item>
+    ///   <item><c>attributed_source_desc</c> TEXT NULL</item>
+    ///   <item><c>attribution_trust</c> TEXT NOT NULL DEFAULT 'unverified'</item>
+    /// </list>
+    /// Plus indexes on <c>attributed_to</c> and <c>attribution_trust</c>.
+    /// </para>
+    ///
+    /// <para>Heuristic backfill (per design plan D4) runs via the eval CLI
+    /// tool (P3), not inline — schema rescue is fast, per-record attribution
+    /// inference over 25k+ rows warrants a dedicated one-shot script.</para>
+    ///
+    /// <para>Idempotent: subsequent runs are no-ops once columns + indexes
+    /// exist. Safe to call on every startup.</para>
+    /// </summary>
+    public async Task EnsureAttributionSchemaAsync(CancellationToken ct = default)
+    {
+        var conn = Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        // Detect which columns already exist.
+        await using var check = conn.CreateCommand();
+        check.CommandText = @"
+            SELECT name FROM pragma_table_info('memories')
+            WHERE name IN (
+                'attributed_to',
+                'attributed_at',
+                'attributed_source_id',
+                'attributed_source_desc',
+                'attribution_trust'
+            )";
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var reader = await check.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                existing.Add(reader.GetString(0));
+        }
+
+        await using var cmd = conn.CreateCommand();
+
+        if (!existing.Contains("attributed_to"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_to INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attributed_at"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_at TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attributed_source_id"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_source_id TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attributed_source_desc"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attributed_source_desc TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("attribution_trust"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN attribution_trust TEXT NOT NULL DEFAULT 'unverified'";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS ix_memories_attributed_to ON memories (attributed_to)";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        cmd.CommandText = "CREATE INDEX IF NOT EXISTS ix_memories_attribution_trust ON memories (attribution_trust)";
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)

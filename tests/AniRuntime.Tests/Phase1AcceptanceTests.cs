@@ -62,6 +62,10 @@ public class Phase1AcceptanceTests
         await using (var migrateCtx = new AniDbContext(rwOptions))
         {
             await migrateCtx.EnsureIssue93SchemaAsync().ConfigureAwait(false);
+            // F-2 Phase 1 P2 (2026-08-21) — attribution columns; same
+            // rationale as EnsureIssue93SchemaAsync (EF queries against a
+            // snapshot pre-dating the new columns crash with "no such column").
+            await migrateCtx.EnsureAttributionSchemaAsync().ConfigureAwait(false);
         }
 
         return tempPath;

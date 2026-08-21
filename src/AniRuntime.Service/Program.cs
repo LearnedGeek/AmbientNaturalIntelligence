@@ -430,12 +430,23 @@ try
             await ctx.EnsureIssue93SchemaAsync();
             sw.Stop();
             Log.Information("Issue #93 schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
+
+            // F-2 Phase 1 P2 (2026-08-21) — attribution columns on memories.
+            // Idempotent additive ALTER TABLE; same fast metadata-only shape
+            // as Issue #93. Zero-risk — all columns nullable or with default.
+            sw.Restart();
+            await ctx.EnsureAttributionSchemaAsync();
+            sw.Stop();
+            Log.Information("F-2 attribution schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             // Fatal: without the schema, EF queries on memories will crash.
             // Better to die loudly here than during first cognitive cycle.
-            Log.Fatal(ex, "Issue #93 schema migration failed — cannot continue");
+            // PR #126 review-fix (Serge): message covers both migrations now
+            // (Issue #93 + F-2 Phase 1 P2 attribution). Broadened so
+            // production incident diagnosis reads the correct migration.
+            Log.Fatal(ex, "Startup schema migration failed — cannot continue");
             throw;
         }
     }

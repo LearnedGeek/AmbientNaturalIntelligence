@@ -3,7 +3,7 @@ using AniRuntime.Core.Utilities;
 
 namespace AniRuntime.Core.Models;
 
-public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope
+public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope, IAttributedContent<MemoryRecord>
 {
     public Guid           Id          { get; set; } = Guid.NewGuid();
     public MemoryType     Type        { get; set; }
@@ -79,6 +79,38 @@ public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope
     /// </summary>
     public string?        Register { get; set; }
 
+    // ── F-2 Phase 1 P2 (2026-08-21) — attribution fields ────────────────
+    // Public read/write for producer wiring in P6. Interface members below
+    // expose them via IAttributedContent<MemoryRecord> for consumer access.
+    // Default values: Unknown/null/null/null/"unverified" — every record
+    // should be explicitly attributed at ingest by P6 producers; backfill
+    // (P3) populates existing records via heuristic (tier + type + source).
+
+    /// <summary>
+    /// Who authored the content within this record. Default
+    /// <see cref="Interfaces.AttributedTo.Unknown"/>. See
+    /// <see cref="IAttributedContent{T}.AttributedTo"/> XML doc for the
+    /// full authorship-vs-provenance distinction.
+    /// </summary>
+    public AttributedTo AttributedTo { get; set; } = AttributedTo.Unknown;
+
+    /// <summary>When the utterance happened (UTC). Null for canonical/timeless attribution.</summary>
+    public DateTimeOffset? AttributedAt { get; set; }
+
+    /// <summary>FK to source <c>MemoryRecord.Id</c> when source is another persisted record.</summary>
+    public Guid? AttributedSourceRecordId { get; set; }
+
+    /// <summary>Free-text descriptor for ephemeral / non-record sources.</summary>
+    public string? AttributedSourceDescriptor { get; set; }
+
+    /// <summary>
+    /// Verification state — <c>"verified"</c> / <c>"unverified"</c> /
+    /// <c>"unverified-historical"</c>. Default <c>"unverified"</c>; new
+    /// records set to <c>"verified"</c> at producer wiring in P6; backfill
+    /// (P3) marks historical Interior records as <c>"unverified-historical"</c>.
+    /// </summary>
+    public string AttributionTrust { get; set; } = "unverified";
+
     // ── IRetrievalEnvelope / IProvenancedContent<MemoryRecord> ─────────────
     // F-1 Phase 5 (2026-08-18). All fields already exist on MemoryRecord —
     // this is pure interface implementation with zero new persisted state.
@@ -142,6 +174,31 @@ public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope
     /// <inheritdoc />
     AnchoredMemoryVoice IAnchoredMemoryEnvelope.Voice
         => AnchoredMemoryVoiceClassifier.Classify(this);
+
+    // ── IAttributedContent<MemoryRecord> ────────────────────────────────
+    // F-2 Phase 1 P2 (2026-08-21). Explicit-interface members mirror the
+    // Phase 5 IRetrievalEnvelope pattern — public read/write fields above
+    // are the ingest / mutation surface; interface members are the
+    // read-only consumer surface. Content is self-reference (whole record
+    // is the wrapped payload) matching the IRetrievalEnvelope shape.
+
+    /// <inheritdoc />
+    MemoryRecord IAttributedContent<MemoryRecord>.Content => this;
+
+    /// <inheritdoc />
+    AttributedTo IAttributedContent<MemoryRecord>.AttributedTo => AttributedTo;
+
+    /// <inheritdoc />
+    DateTimeOffset? IAttributedContent<MemoryRecord>.AttributedAt => AttributedAt;
+
+    /// <inheritdoc />
+    Guid? IAttributedContent<MemoryRecord>.AttributedSourceRecordId => AttributedSourceRecordId;
+
+    /// <inheritdoc />
+    string? IAttributedContent<MemoryRecord>.AttributedSourceDescriptor => AttributedSourceDescriptor;
+
+    /// <inheritdoc />
+    string IAttributedContent<MemoryRecord>.AttributionTrust => AttributionTrust;
 }
 
 /// <summary>
