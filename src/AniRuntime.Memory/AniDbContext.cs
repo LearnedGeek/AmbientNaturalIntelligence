@@ -55,6 +55,14 @@ public class AniDbContext : DbContext
             g => g.ToString(),
             s => Guid.Parse(s));
 
+        // F-2 Phase 1 P2 review-fix (Devin): nullable-Guid variant so the
+        // new AttributedSourceRecordId column stores in the same lowercase-
+        // TEXT format as Id. EF Core 8 default happens to match, but
+        // explicit registration matches the file's schema-parity convention.
+        var nullableGuidToTextConverter = new ValueConverter<Guid?, string?>(
+            g => g.HasValue ? g.Value.ToString() : null,
+            s => string.IsNullOrEmpty(s) ? null : Guid.Parse(s));
+
         var floatArrayToBlobConverter = new ValueConverter<float[]?, byte[]?>(
             arr => arr == null ? null : FloatArrayToBytes(arr),
             blob => blob == null ? null : BytesToFloatArray(blob));
@@ -81,12 +89,30 @@ public class AniDbContext : DbContext
             entity.Property(e => e.ConfirmedAt).HasConversion(nullableDateTimeOffsetToStringConverter);
             entity.Property(e => e.Tier).HasConversion<string>();           // DecayTier as TEXT
             entity.Property(e => e.Provenance).HasConversion<string>();     // EpistemicTier as TEXT
+            // F-2 Phase 1 P2 review-fix (Devin BUG): AttributedAt needs the
+            // same ISO-8601 "o" converter as sibling DateTimeOffset columns
+            // (OccurredAt/CreatedAt/ResolvedAt/AnchoredAt/ConfirmedAt);
+            // without it EF falls back to a space-separated format and the
+            // memories table would hold two timestamp formats, breaking
+            // cross-column comparison and raw-SQL reads. AttributedSourceRecordId
+            // gets the same guidToTextConverter as Id for parity (EF Core 8
+            // default already writes lowercase TEXT matching Guid.ToString(),
+            // but explicit registration matches file convention).
+            entity.Property(e => e.AttributedAt).HasConversion(nullableDateTimeOffsetToStringConverter);
+            entity.Property(e => e.AttributedSourceRecordId).HasConversion(nullableGuidToTextConverter);
             entity.HasIndex(e => e.Type).HasDatabaseName("ix_memories_type");
             entity.HasIndex(e => e.OccurredAt).HasDatabaseName("ix_memories_occurred").IsDescending();
             // Issue #62 (2026-05-23) — walk-back substrate-correction.
             entity.HasIndex(e => e.Validity).HasDatabaseName("ix_memories_validity");
             // Issue #93 (2026-07-06) — retrieval-bias filter uses IS NOT NULL.
             entity.HasIndex(e => e.ConfirmedAt).HasDatabaseName("ix_memories_confirmed_at");
+            // F-2 Phase 1 P2 review-fix (Devin analysis): declare attribution
+            // indexes in OnModelCreating so EnsureCreated-built DBs (test
+            // fixtures) get them without the migration having to run first.
+            // Migration in EnsureAttributionSchemaAsync stays as the
+            // production path for existing DBs.
+            entity.HasIndex(e => e.AttributedTo).HasDatabaseName("ix_memories_attributed_to");
+            entity.HasIndex(e => e.AttributionTrust).HasDatabaseName("ix_memories_attribution_trust");
         });
 
         // ── MemoryLinkEntity (composite PK + 2 FKs to memories) ────────
