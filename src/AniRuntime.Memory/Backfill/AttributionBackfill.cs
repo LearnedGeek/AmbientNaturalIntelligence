@@ -18,8 +18,11 @@ namespace AniRuntime.Memory.Backfill;
 /// <b>Pure-heuristic backfill — no LLM calls.</b> Every attribution
 /// decision comes from the tier + type + SourceName + content-prefix
 /// combination. Records where the heuristic can't infer land as
-/// <see cref="AttributedTo.Unknown"/> with <c>Trust = "unverified"</c> —
-/// they surface on the manual-curation tail for later review.
+/// <see cref="AttributedTo.Unknown"/> with
+/// <c>Trust = "unverified-historical"</c> — they surface on the
+/// manual-curation tail for later review. (PR #127 review-fix: the
+/// prior doc mistakenly claimed <c>"unverified"</c>, which would have
+/// made the idempotency guard re-process these rows forever.)
 /// </para>
 /// </summary>
 public static class AttributionBackfill
@@ -90,16 +93,42 @@ public static class AttributionBackfill
         Action<string>                  logProgress,
         CancellationToken               ct = default)
     {
-        // Idempotency discriminator: schema DEFAULT for AttributionTrust is
-        // "unverified". Any backfill outcome (including UnknownHistorical
-        // fallback) writes a different trust value ("verified" or
-        // "unverified-historical"), so re-runs skip already-processed rows
-        // even when the heuristic returned Unknown for a row. Using the
-        // AttributedTo enum as the guard would cycle Unknown records forever.
+        // Idempotency discriminator (PR #127 review-fix — Devin 🔍):
+        // combined guard "AttributionTrust == 'unverified' AND AttributedTo ==
+        // Unknown" catches only the schema-default state (never touched by
+        // any producer or prior backfill). The trust-only guard would have
+        // clobbered future P6 records with legitimate 'unverified' trust —
+        // 'unverified' is a documented valid trust for inferred attributions,
+        // not exclusively the schema default.
+        //
+        // Case matrix:
+        //   pre-F-2 record (never touched)           → both defaults → match
+        //   backfill Ani/Mark result                 → trust=verified → skip
+        //   backfill Unknown fallback                → trust=unverified-historical → skip
+        //   P6 producer (Ani, verified)              → attributed_to!=0 → skip
+        //   P6 producer (Ani, unverified inference)  → attributed_to!=0 → skip
+        //   P6 producer (Unknown, unverified)        → both defaults → match
+        //                                              (correctly re-runs — genuinely unattributed)
+        //
+        // Projection (PR #127 review-fix — Devin 📝 perf): load only the
+        // fields InferAttribution needs. Skipping the embedding blob
+        // (~3KB/record × 25k+ records = ~75MB) keeps the working set small.
         List<MemoryEntity> targets;
         await using (var loadCtx = await ctxFactory.CreateDbContextAsync(ct).ConfigureAwait(false))
         {
-            var baseQ = loadCtx.Memories.Where(m => m.AttributionTrust == "unverified");
+            var baseQ = loadCtx.Memories
+                .Where(m => m.AttributionTrust == "unverified"
+                         && m.AttributedTo == AttributedTo.Unknown)
+                .Select(m => new MemoryEntity
+                {
+                    Id         = m.Id,
+                    Type       = m.Type,
+                    Content    = m.Content,
+                    Provenance = m.Provenance,
+                    SourceName = m.SourceName,
+                    OccurredAt = m.OccurredAt,
+                    // Embedding intentionally omitted — heuristic doesn't need it.
+                });
             var ordered = string.Equals(order, "newest", StringComparison.OrdinalIgnoreCase)
                 ? (IQueryable<MemoryEntity>)baseQ.OrderByDescending(m => m.OccurredAt)
                 : baseQ.OrderBy(m => m.OccurredAt);
@@ -143,6 +172,12 @@ public static class AttributionBackfill
                 // second run over records already attributed by any means
                 // (this backfill's earlier pass OR future P6 producer
                 // wiring) is a no-op.
+                // PR #127 review-fix (Devin BUG 🟡): guard mirrors the loader's
+                // combined "AttributionTrust='unverified' AND AttributedTo=0"
+                // discriminator. The prior comment claiming attributed_to=0
+                // was the guard was stale from the mid-fix rewrite and
+                // would have misled a maintainer into reintroducing the
+                // Unknown-cycle bug the trust guard was added to prevent.
                 cmd.CommandText = @"
                     UPDATE memories
                     SET attributed_to = @to,
@@ -150,7 +185,9 @@ public static class AttributionBackfill
                         attributed_source_id = @src_id,
                         attributed_source_desc = @src_desc,
                         attribution_trust = @trust
-                    WHERE id = @id AND attribution_trust = 'unverified'";
+                    WHERE id = @id
+                      AND attribution_trust = 'unverified'
+                      AND attributed_to = 0";
                 AddParam(cmd, "@to",       (int)triple.AttributedTo);
                 AddParam(cmd, "@at",       triple.AttributedAt.HasValue ? triple.AttributedAt.Value.ToString("o") : (object)DBNull.Value);
                 AddParam(cmd, "@src_id",   triple.SourceRecordId.HasValue ? triple.SourceRecordId.Value.ToString() : (object)DBNull.Value);

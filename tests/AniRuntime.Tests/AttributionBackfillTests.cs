@@ -177,11 +177,16 @@ public class AttributionBackfillTests
 
     // ── Runner-level integration ─────────────────────────────────────
 
-    private static IDbContextFactory<AniDbContext> InMemoryFactory()
+    private static SharedConnectionFactory InMemoryFactory()
     {
         // Shared in-memory DB across ContextFactory scopes so the runner's
         // ctxFactory.CreateDbContextAsync produces contexts pointing at
         // the same store. Use a named shared cache connection.
+        //
+        // PR #127 review-fix (github-code-quality): return concrete
+        // SharedConnectionFactory so tests can `using var factory = ...` to
+        // dispose the underlying SqliteConnection. IDbContextFactory<T> has
+        // no Dispose surface, so the concrete return type is required.
         var conn = new Microsoft.Data.Sqlite.SqliteConnection(
             $"DataSource=file:memdb-{Guid.NewGuid():N}?mode=memory&cache=shared");
         conn.Open();
@@ -192,20 +197,34 @@ public class AttributionBackfillTests
         {
             seed.Database.EnsureCreated();
         }
-        return new SharedConnectionFactory(options);
+        return new SharedConnectionFactory(conn, options);
     }
 
-    private sealed class SharedConnectionFactory : IDbContextFactory<AniDbContext>
+    private sealed class SharedConnectionFactory : IDbContextFactory<AniDbContext>, IDisposable
     {
-        private readonly DbContextOptions<AniDbContext> _options;
-        public SharedConnectionFactory(DbContextOptions<AniDbContext> options) => _options = options;
+        private readonly Microsoft.Data.Sqlite.SqliteConnection _conn;
+        private readonly DbContextOptions<AniDbContext>          _options;
+        public SharedConnectionFactory(
+            Microsoft.Data.Sqlite.SqliteConnection conn,
+            DbContextOptions<AniDbContext>          options)
+        {
+            _conn    = conn;
+            _options = options;
+        }
         public AniDbContext CreateDbContext() => new AniDbContext(_options);
+        // Explicit async override so tests calling factory.CreateDbContextAsync()
+        // resolve on the concrete type (interface extension exists but the
+        // concrete return type from InMemoryFactory doesn't auto-see it in
+        // all resolution paths).
+        public Task<AniDbContext> CreateDbContextAsync(CancellationToken ct = default)
+            => Task.FromResult(new AniDbContext(_options));
+        public void Dispose() => _conn.Dispose();
     }
 
     [Fact]
     public async Task RunAsync_UpdatesRecords_IdempotentGuardHoldsOnSecondRun()
     {
-        var factory = InMemoryFactory();
+        using var factory = InMemoryFactory();
 
         // Seed a mix of records covering three heuristic paths.
         await using (var seed = await factory.CreateDbContextAsync())
@@ -263,7 +282,7 @@ public class AttributionBackfillTests
     [Fact]
     public async Task RunAsync_DryRun_DoesNotMutateDatabase()
     {
-        var factory = InMemoryFactory();
+        using var factory = InMemoryFactory();
         Guid seedId;
         await using (var seed = await factory.CreateDbContextAsync())
         {
