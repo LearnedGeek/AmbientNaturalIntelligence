@@ -1025,12 +1025,18 @@ public class PromptBuilderTests
         // Pin the canonical FormatMemoryWithTime behaviour so future changes
         // to the function are detected by test failure rather than silent
         // drift in prompt-builder output.
-        // F-1 Phase 5 (2026-08-18) — output now prefixes with
+        // F-1 Phase 5 (2026-08-18) — output prefixes with
         // `[FROM: <source>] ` before the temporal phrase. Test records
         // default to Provenance=Episodic + no SourceName which maps to
         // `[FROM: conversation]` via FormatMemorySource.
+        // F-2 Phase 1 P4 (2026-08-22) — tag now includes AUTHORED (and
+        // optional TRUST) segment: `[FROM: conversation | AUTHORED: unknown
+        // | TRUST: unverified] (temporal) ...`. Assert on the full tag
+        // shape so future drift in the attribution surface is caught here.
+        // Records default to AttributedTo=Unknown + AttributionTrust=
+        // "unverified" per P2 schema defaults.
         var now = new DateTimeOffset(2026, 04, 27, 12, 0, 0, TimeSpan.Zero);
-        const string prefix = "[FROM: conversation] ";
+        const string prefix = "[FROM: conversation | AUTHORED: unknown | TRUST: unverified] ";
 
         var justNow = new MemoryRecord { Content = "test", OccurredAt = now.AddMinutes(-10) };
         PromptBuilder.FormatMemoryWithTime(justNow, now).Should().StartWith(prefix + "(just now)");
