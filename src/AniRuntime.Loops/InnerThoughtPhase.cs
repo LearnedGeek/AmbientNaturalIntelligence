@@ -98,8 +98,19 @@ public class InnerThoughtPhase
     {
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);
+        // F-2 Phase 1 P5 (2026-08-22) — prepend chat-history attribution
+        // key when RecentHistory carries per-turn attribution. Load-bearing
+        // for the 12:04 misattribution class: without this key, the LLM
+        // reads role=assistant Ani turns as raw prior output and produces
+        // pronoun-slip inner thoughts ("I keep replaying how you said…"
+        // where "you" wrongly maps to Mark). BuildChatHistoryAttributionKey
+        // is a no-op when history is unattributed.
+        var attributionKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
+        var systemPrompt = string.IsNullOrEmpty(attributionKey)
+            ? thoughtPrompt.System
+            : attributionKey + "\n\n" + thoughtPrompt.System;
         var thought = await _ollama.InnerMonologueChatAsync(
-            thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
+            systemPrompt, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 
         // Theme J Phase J.5h-prelude (May 3, 2026) — gate the thought before it

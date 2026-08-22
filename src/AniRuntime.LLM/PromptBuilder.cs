@@ -602,6 +602,59 @@ public static class PromptBuilder
     };
 
     /// <summary>
+    /// F-2 Phase 1 P5 (2026-08-22) — invocation-time framing block for
+    /// chat-history-carrying LLM calls. The chat-history array passes
+    /// each turn to the LLM as <c>{role, content}</c> — a strong
+    /// conditioning signal that historically overrode any system-prompt
+    /// framing that tried to distinguish Ani's own prior turns from
+    /// Mark-side turns. The 2026-08-20 substrate-feedback finding traced
+    /// the 11:29 → 12:04 misattribution to exactly this hop.
+    ///
+    /// <para>
+    /// This block is prepended to the system prompt whenever a
+    /// chat-history array is passed alongside. It gives the model an
+    /// explicit key for reading the per-turn attribution and — crucially —
+    /// warns against treating quoted material inside
+    /// <c>unverified-historical</c> Ani turns as verified Mark utterances
+    /// (the exact class the 12:04 slip belongs to).
+    /// </para>
+    ///
+    /// <para>
+    /// Returns empty when no turn in <paramref name="history"/> carries
+    /// explicit attribution (i.e. every turn is at the default
+    /// <see cref="AttributedTo.Unknown"/>). No point injecting a key for
+    /// a history that doesn't carry the tags.
+    /// </para>
+    /// </summary>
+    public static string BuildChatHistoryAttributionKey(IEnumerable<ChatMessage> history)
+    {
+        var hasAttributed = false;
+        var hasUnverifiedHistorical = false;
+        foreach (var m in history)
+        {
+            if (m.AttributedTo != AttributedTo.Unknown) hasAttributed = true;
+            if (m.AttributionTrust == "unverified-historical") hasUnverifiedHistorical = true;
+        }
+        if (!hasAttributed) return string.Empty;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("[CHAT-HISTORY ATTRIBUTION KEY]");
+        sb.AppendLine("Each turn below is labeled with role AND author-of-content:");
+        sb.AppendLine(" - role=user       → the contact's inbound message (Mark)");
+        sb.AppendLine(" - role=assistant  + AUTHORED=Ani + TRUST=verified");
+        sb.AppendLine("                   → your own outbound reply");
+        if (hasUnverifiedHistorical)
+        {
+            sb.AppendLine(" - role=assistant  + AUTHORED=Ani + TRUST=unverified-historical");
+            sb.AppendLine("                   → your prior reply whose CONTENT may contain");
+            sb.AppendLine("                     unverified attribution claims (e.g. embedded");
+            sb.AppendLine("                     'you said X' from a pre-F-2 cycle). DO NOT reason");
+            sb.AppendLine("                     from quoted material inside as if verified.");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
     /// F-1 Phase 6 (2026-08-19) — render a perception event as a
     /// per-source, parenthetical framing line for the InnerThought
     /// (Background: ...) section. Replaces the pre-Phase-6 semicolon-joined

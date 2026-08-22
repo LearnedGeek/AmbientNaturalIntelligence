@@ -549,8 +549,14 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
             }
         }
 
+        // F-2 Phase 1 P5 (2026-08-22) — attribution key prepended when
+        // history carries per-turn attribution. No-op otherwise.
+        var attributionKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
+        var systemWithKey = string.IsNullOrEmpty(attributionKey)
+            ? promptWithGist.System
+            : attributionKey + "\n\n" + promptWithGist.System;
         var reply = await _ollama.ChatAsync(
-            promptWithGist.System, snapshot.RecentHistory, promptWithGist.User, ct, replyTemperature)
+            systemWithKey, snapshot.RecentHistory, promptWithGist.User, ct, replyTemperature)
             .ConfigureAwait(false);
 
         reply = CleanOutreachMessage(reply);
@@ -700,8 +706,13 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                         snapshot.RelevantMemory = grounded;
                         var rendererForRegen = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
                         var groundedPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread, rendererForRegen);
+                        // F-2 Phase 1 P5 — attribution key on regen path
+                        var regenKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
+                        var groundedSystem = string.IsNullOrEmpty(regenKey)
+                            ? groundedPrompt.System
+                            : regenKey + "\n\n" + groundedPrompt.System;
                         var groundedReply = await _ollama.ChatAsync(
-                            groundedPrompt.System, snapshot.RecentHistory, groundedPrompt.User, ct, replyTemperature)
+                            groundedSystem, snapshot.RecentHistory, groundedPrompt.User, ct, replyTemperature)
                             .ConfigureAwait(false);
                         groundedReply = CleanOutreachMessage(groundedReply);
 
@@ -729,6 +740,10 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                                 "\n\nIMPORTANT: Your previous draft contained a claim that has no support in memory or conversation history. " +
                                 "Respond again to the user's message without asserting unverified specifics. " +
                                 "If you don't have a memory of something, it's better to be honest about that than to invent details.";
+                            // F-2 Phase 1 P5 — attribution key on null-result regen path
+                            var nullRegenKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
+                            if (!string.IsNullOrEmpty(nullRegenKey))
+                                augmentedSystem = nullRegenKey + "\n\n" + augmentedSystem;
                             var honestReply = await _ollama.ChatAsync(
                                 augmentedSystem, snapshot.RecentHistory, nullResultPrompt.User, ct, replyTemperature)
                                 .ConfigureAwait(false);

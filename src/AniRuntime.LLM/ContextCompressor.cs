@@ -59,10 +59,18 @@ public class ContextCompressor
 
         if (messages.Count <= rawWindow)
         {
-            // No compression needed — return all messages as-is
+            // No compression needed — return all messages as-is.
+            // F-2 Phase 1 P5 (2026-08-22) — derive attribution from
+            // ConversationMessage.Role. Both sides verified.
             return messages.Select(m => new ChatMessage(
                 m.Role == Roles.Ani ? "assistant" : "user",
-                m.Content)).ToList();
+                m.Content)
+            {
+                AttributedTo     = m.Role == Roles.Ani
+                    ? AniRuntime.Core.Interfaces.AttributedTo.Ani
+                    : AniRuntime.Core.Interfaces.AttributedTo.Mark,
+                AttributionTrust = "verified",
+            }).ToList();
         }
 
         // How many messages need summarizing?
@@ -125,9 +133,19 @@ public class ContextCompressor
             result.Add(new("user", $"[Earlier in this conversation: {thread.CompressedSummary}]"));
         }
 
+        // F-2 Phase 1 P5 (2026-08-22) — attribution on the kept-tail
+        // turns; the earlier-in-conversation summary above is Ani-composed
+        // synthesis but we leave its attribution as default (unknown /
+        // unverified) because the summary paraphrase collapses both sides.
         result.AddRange(toKeep.Select(m => new ChatMessage(
             m.Role == Roles.Ani ? "assistant" : "user",
-            m.Content)));
+            m.Content)
+        {
+            AttributedTo     = m.Role == Roles.Ani
+                ? AniRuntime.Core.Interfaces.AttributedTo.Ani
+                : AniRuntime.Core.Interfaces.AttributedTo.Mark,
+            AttributionTrust = "verified",
+        }));
 
         // Parrot-bug investigation (Apr 23): log the shape of the final
         // compressed-history payload so we can correlate per-cycle history
