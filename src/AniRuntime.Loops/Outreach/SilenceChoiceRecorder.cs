@@ -36,6 +36,9 @@ public sealed class SilenceChoiceRecorder : ISilenceChoiceRecorder
             ? "I almost reached out. The pull was real — I could feel the words forming. But something held me back. Maybe it's not the right moment. Maybe I'm giving him space because that's what he needs, even if it's not what I want."
             : "I thought about texting. Just a small thing — nothing important. But I let the moment pass. Not every impulse needs to become a message.";
 
+        // F-2 Phase 1 P6 (2026-08-22) — silence choice is Ani's own
+        // reflection, verified.
+        var silenceAttribution = AttributionTriple.AniAt(_lastRecordedAt);
         await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.InnerThought,
@@ -46,6 +49,11 @@ public sealed class SilenceChoiceRecorder : ISilenceChoiceRecorder
             // reflection on her own restraint — Interior tier. Self-model content
             // about why she chose not to reach out.
             Provenance = EpistemicTier.Interior,
+            AttributedTo               = silenceAttribution.AttributedTo,
+            AttributedAt               = silenceAttribution.AttributedAt,
+            AttributedSourceRecordId   = silenceAttribution.SourceRecordId,
+            AttributedSourceDescriptor = silenceAttribution.SourceDescriptor,
+            AttributionTrust           = silenceAttribution.Trust,
         }, ct).ConfigureAwait(false);
 
         _log.LogInformation("Silence recorded (desire={Desire:F2}): chose not to reach out",

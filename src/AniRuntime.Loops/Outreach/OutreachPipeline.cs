@@ -401,13 +401,22 @@ public sealed class OutreachPipeline : IOutreachPipeline
 
         await _threadRecorder.RecordAsync(decision.Message, ct).ConfigureAwait(false);
 
+        // F-2 Phase 1 P6 (2026-08-22) — outreach Episodic is Ani-authored,
+        // verified (she just composed and dispatched the message).
+        var outreachTime = DateTimeOffset.UtcNow;
+        var outreachAttribution = AttributionTriple.AniAt(outreachTime);
         await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
             Content    = MemoryPrefixes.FormatOutreach(cs.PrimaryContactName ?? "Mark", decision.Message),
             Importance = 0.7f,
-            OccurredAt = DateTimeOffset.UtcNow,
+            OccurredAt = outreachTime,
             Provenance = EpistemicTier.Episodic,
+            AttributedTo               = outreachAttribution.AttributedTo,
+            AttributedAt               = outreachAttribution.AttributedAt,
+            AttributedSourceRecordId   = outreachAttribution.SourceRecordId,
+            AttributedSourceDescriptor = outreachAttribution.SourceDescriptor,
+            AttributionTrust           = outreachAttribution.Trust,
         }, ct).ConfigureAwait(false);
     }
 

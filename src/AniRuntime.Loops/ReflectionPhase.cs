@@ -386,6 +386,11 @@ public class ReflectionPhase
         CancellationToken ct)
     {
         var gistId = Guid.NewGuid();
+        // F-2 Phase 1 P6 (2026-08-22) — reflection synthesis is Ani-composed
+        // over source records; author verified, source descriptor points at
+        // the reflection process (source-links to the underlying gists live
+        // in the memory_links table separately).
+        var reflectionAttribution = AniRuntime.Core.Models.AttributionTriple.AniAt(DateTimeOffset.UtcNow);
         var record = new MemoryRecord
         {
             Id                = gistId,
@@ -395,6 +400,11 @@ public class ReflectionPhase
             RelationalValence = 0.5f,
             SourceName        = "reflection",
             Provenance        = EpistemicTier.Interior,
+            AttributedTo               = reflectionAttribution.AttributedTo,
+            AttributedAt               = reflectionAttribution.AttributedAt,
+            AttributedSourceRecordId   = reflectionAttribution.SourceRecordId,
+            AttributedSourceDescriptor = reflectionAttribution.SourceDescriptor,
+            AttributionTrust           = reflectionAttribution.Trust,
         };
 
         try

@@ -94,6 +94,9 @@ public sealed class PostReplyEmotionalProcessor : IPostReplyEmotionalProcessor
             _withdrawal.SetExpiry(expiresAt);
             _log.LogInformation("Withdrawal active until {Expires}", expiresAt.ToString("HH:mm"));
 
+            // F-2 Phase 1 P6 (2026-08-22) — hurt-acknowledgment inner
+            // thought is Ani-authored, verified.
+            var hurtAttribution = AniRuntime.Core.Models.AttributionTriple.AniAt(DateTimeOffset.UtcNow);
             await _persist.SaveAsync(new MemoryRecord
             {
                 Type       = MemoryType.InnerThought,
@@ -102,6 +105,11 @@ public sealed class PostReplyEmotionalProcessor : IPostReplyEmotionalProcessor
                 // Epistemic Grounding (Apr 10): Hurt acknowledgment is a self-model
                 // update — Ani observing her own emotional state. Interior tier.
                 Provenance = EpistemicTier.Interior,
+                AttributedTo               = hurtAttribution.AttributedTo,
+                AttributedAt               = hurtAttribution.AttributedAt,
+                AttributedSourceRecordId   = hurtAttribution.SourceRecordId,
+                AttributedSourceDescriptor = hurtAttribution.SourceDescriptor,
+                AttributionTrust           = hurtAttribution.Trust,
             }, ct).ConfigureAwait(false);
         }
     }

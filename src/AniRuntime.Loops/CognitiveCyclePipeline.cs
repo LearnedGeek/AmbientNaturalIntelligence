@@ -427,6 +427,15 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 ? (innerResult.Importance ?? 0.5f)
                 : (valence > (float)_aniOptions.ValenceTriggerThreshold ? 0.8f : 0.3f);
 
+            // F-2 Phase 1 P6 (2026-08-22) — attribution at emit time.
+            // Inner-thought records are Ani-authored (Interior tier ==
+            // Ani's self-model content). Record author is trivially
+            // verified; internal content claims (embedded "you said X"
+            // quotes from the LLM composition) may still contain
+            // attribution slips — those get caught by F-2 Phase 2
+            // output-side constraints when that phase ships.
+            var now = DateTimeOffset.UtcNow;
+            var attribution = AttributionTriple.AniAt(now);
             await _persist.SaveAsync(new MemoryRecord
             {
                 Type        = MemoryType.InnerThought,
@@ -434,7 +443,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 RelationalValence = valence,
                 Importance  = importance,
                 SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
-                OccurredAt  = DateTimeOffset.UtcNow,
+                OccurredAt  = now,
                 // Epistemic Grounding (Apr 10): Inner thoughts and world-experience
                 // reflections are always Interior tier — they are Ani's self-model
                 // content and never grounded facts about Mark's world.
@@ -444,6 +453,12 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 // this thought. Legacy-path records get Register=null
                 // (recognizer didn't run); backfill covers those.
                 Register    = innerResult.Register,
+                // F-2 Phase 1 P6 — Ani-authored, verified for the record itself.
+                AttributedTo               = attribution.AttributedTo,
+                AttributedAt               = attribution.AttributedAt,
+                AttributedSourceRecordId   = attribution.SourceRecordId,
+                AttributedSourceDescriptor = attribution.SourceDescriptor,
+                AttributionTrust           = attribution.Trust,
             }, ct).ConfigureAwait(false);
         }
 
