@@ -506,15 +506,41 @@ public static class PromptBuilder
             .Build(new Prompts.ReflectionSynthesisPromptInput(characterName, contactName, recentMemories));
 
     /// <summary>
-    /// Formats a memory for prompt injection with felt-time temporal context
-    /// AND a source-attribution tag.
-    /// The timestamp is converted to natural language relative to now:
-    /// "just now", "earlier today", "yesterday evening", "3 days ago".
+    /// Formats a memory for prompt injection with felt-time temporal context,
+    /// a source-attribution tag, and (F-2 Phase 1 P4) an author-attribution
+    /// tag with trust indicator.
+    ///
+    /// <para>
+    /// Output shape:
+    /// <c>[FROM: &lt;source&gt; | AUTHORED: &lt;actor&gt; (| TRUST: &lt;t&gt;)] (&lt;temporal&gt;) &lt;content&gt;</c>
+    /// </para>
+    ///
+    /// <para>
+    /// The <c>TRUST:</c> segment is omitted when the record's
+    /// <see cref="MemoryRecord.AttributionTrust"/> is <c>"verified"</c>
+    /// (the default assumption — reduces prompt noise). Non-verified trust
+    /// values (<c>"unverified"</c>, <c>"unverified-historical"</c>) are
+    /// rendered explicitly so composer LLMs weight the record accordingly.
+    /// The 12:04-shape misattribution class from the 2026-08-20 substrate-feedback
+    /// finding is flagged this way — Interior records with pre-F-2 embedded
+    /// "you said X" claims render with <c>TRUST: unverified-historical</c>.
+    /// </para>
+    ///
+    /// <para>
     /// The source is derived from <see cref="MemoryRecord.Provenance"/> +
     /// <see cref="MemoryRecord.SourceName"/> (F-1 Phase 5 IRetrievalEnvelope).
-    /// Together they give the model temporal awareness AND where each retrieved
-    /// memory came from — so composers can distinguish, e.g., a stored Mark text
-    /// from Ani's own prior thought without ambiguity.
+    /// The author comes from <see cref="MemoryRecord.AttributedTo"/> (F-2 Phase 1
+    /// IAttributedContent). Together they give the model temporal awareness,
+    /// where each retrieved memory came from, AND who authored the content —
+    /// so composers can distinguish, e.g., a stored Mark text from Ani's
+    /// own prior thought reflecting-on-Mark from Ani quoting-what-she-thinks-
+    /// Mark-said, without ambiguity.
+    /// </para>
+    ///
+    /// <para>
+    /// The timestamp is converted to natural language relative to now:
+    /// "just now", "earlier today", "yesterday evening", "3 days ago".
+    /// </para>
     /// </summary>
     public static string FormatMemoryWithTime(MemoryRecord memory, DateTimeOffset? now = null, string? contactName = null)
     {
@@ -551,8 +577,29 @@ public static class PromptBuilder
         else
             temporal = $"{(int)(age.TotalDays / 7)} weeks ago";
 
-        return $"[FROM: {FormatMemorySource(memory, contactName)}] ({temporal}) {memory.Content}";
+        // F-2 Phase 1 P4 (2026-08-22) — attribution segment. AUTHORED
+        // always present; TRUST omitted when verified (default assumption)
+        // to reduce prompt noise.
+        var authoredSegment = $" | AUTHORED: {FormatAuthor(memory.AttributedTo)}";
+        var trustSegment = memory.AttributionTrust == "verified"
+            ? string.Empty
+            : $" | TRUST: {memory.AttributionTrust}";
+
+        return $"[FROM: {FormatMemorySource(memory, contactName)}{authoredSegment}{trustSegment}] ({temporal}) {memory.Content}";
     }
+
+    /// <summary>
+    /// F-2 Phase 1 P4 (2026-08-22) — human-readable author label for the
+    /// AUTHORED: segment. Lowercase forms match the sibling FROM: convention.
+    /// </summary>
+    internal static string FormatAuthor(AttributedTo attributedTo) => attributedTo switch
+    {
+        AttributedTo.Mark    => "Mark",
+        AttributedTo.Ani     => "Ani",
+        AttributedTo.World   => "world",
+        AttributedTo.Unknown => "unknown",
+        _                    => "unknown",
+    };
 
     /// <summary>
     /// F-1 Phase 6 (2026-08-19) — render a perception event as a

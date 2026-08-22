@@ -133,7 +133,11 @@ public class RetrievalEnvelopeTests
 
         var rendered = PromptBuilder.FormatMemoryWithTime(inbound, now, contactName: "Mark");
 
-        rendered.Should().StartWith("[FROM: text from Mark] ",
+        // F-2 Phase 1 P4 (2026-08-22): tag now includes AUTHORED segment
+        // after FROM. StartWith on the FROM prefix (no trailing "] ") to
+        // stay attribution-agnostic — a companion test below pins the
+        // AUTHORED shape.
+        rendered.Should().StartWith("[FROM: text from Mark",
             "F-1 Phase 5 attribution tag uses configured contactName when threaded through");
         rendered.Should().Contain(inbound.Content,
             "content must still appear after the tag + temporal phrase");
@@ -153,7 +157,7 @@ public class RetrievalEnvelopeTests
 
         var rendered = PromptBuilder.FormatMemoryWithTime(inbound, now);  // no contactName
 
-        rendered.Should().StartWith("[FROM: inbound text] ",
+        rendered.Should().StartWith("[FROM: inbound text",
             "neutral phrasing when contactName is not threaded through — never hardcode 'Mark'");
     }
 
@@ -170,6 +174,6 @@ public class RetrievalEnvelopeTests
         };
 
         var rendered = PromptBuilder.FormatMemoryWithTime(thought, now);
-        rendered.Should().StartWith("[FROM: your prior thought] ");
+        rendered.Should().StartWith("[FROM: your prior thought");
     }
 }
