@@ -549,12 +549,13 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
             }
         }
 
-        // F-2 Phase 1 P5 (2026-08-22) — attribution key prepended when
-        // history carries per-turn attribution. No-op otherwise.
-        var attributionKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
-        var systemWithKey = string.IsNullOrEmpty(attributionKey)
-            ? promptWithGist.System
-            : attributionKey + "\n\n" + promptWithGist.System;
+        // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix 🔴 BUG): use
+        // WithAttributionKey helper which preserves empty base system
+        // (Phase K.1 lean-composer discipline — empty System keeps the
+        // Modelfile SYSTEM baked persona in effect). The lean conversation
+        // path passes promptWithGist.System = string.Empty for exactly
+        // this reason; a naive prepend would clobber Ani's character.
+        var systemWithKey = PromptBuilder.WithAttributionKey(promptWithGist.System, snapshot.RecentHistory);
         var reply = await _ollama.ChatAsync(
             systemWithKey, snapshot.RecentHistory, promptWithGist.User, ct, replyTemperature)
             .ConfigureAwait(false);
@@ -706,11 +707,8 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                         snapshot.RelevantMemory = grounded;
                         var rendererForRegen = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
                         var groundedPrompt = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread, rendererForRegen);
-                        // F-2 Phase 1 P5 — attribution key on regen path
-                        var regenKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
-                        var groundedSystem = string.IsNullOrEmpty(regenKey)
-                            ? groundedPrompt.System
-                            : regenKey + "\n\n" + groundedPrompt.System;
+                        // F-2 Phase 1 P5 (PR #129 review-fix) — safe helper.
+                        var groundedSystem = PromptBuilder.WithAttributionKey(groundedPrompt.System, snapshot.RecentHistory);
                         var groundedReply = await _ollama.ChatAsync(
                             groundedSystem, snapshot.RecentHistory, groundedPrompt.User, ct, replyTemperature)
                             .ConfigureAwait(false);
@@ -740,10 +738,11 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                                 "\n\nIMPORTANT: Your previous draft contained a claim that has no support in memory or conversation history. " +
                                 "Respond again to the user's message without asserting unverified specifics. " +
                                 "If you don't have a memory of something, it's better to be honest about that than to invent details.";
-                            // F-2 Phase 1 P5 — attribution key on null-result regen path
-                            var nullRegenKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
-                            if (!string.IsNullOrEmpty(nullRegenKey))
-                                augmentedSystem = nullRegenKey + "\n\n" + augmentedSystem;
+                            // F-2 Phase 1 P5 (PR #129 review-fix) — safe helper.
+                            // augmentedSystem is guaranteed non-empty (built from BuildConversationReplyPrompt
+                            // + appended IMPORTANT clause), so the helper will always inject
+                            // the key when history carries attribution.
+                            augmentedSystem = PromptBuilder.WithAttributionKey(augmentedSystem, snapshot.RecentHistory);
                             var honestReply = await _ollama.ChatAsync(
                                 augmentedSystem, snapshot.RecentHistory, nullResultPrompt.User, ct, replyTemperature)
                                 .ConfigureAwait(false);

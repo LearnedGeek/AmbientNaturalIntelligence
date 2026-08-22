@@ -93,41 +93,25 @@ public class ChatHistoryAttributionKeyTests
         key.Should().Contain("CHAT-HISTORY ATTRIBUTION KEY");
         key.Should().Contain("role=user");
         key.Should().Contain("role=assistant");
-        key.Should().Contain("AUTHORED=Ani");
-        key.Should().Contain("TRUST=verified");
+        // PR #129 review-fix (Devin 🔍): key text now describes only what
+        // IS in the payload — role→author deterministic mapping + general
+        // warning about quoted material in prior Ani turns. Per-turn
+        // AUTHORED/TRUST labels are NOT in Ollama's serialized wire
+        // format so the key must not claim they are.
+        key.Should().Contain("Mark", "role=user is the contact (Mark)");
+        key.Should().Contain("your own prior output", "role=assistant is Ani's own output");
+        key.Should().Contain("NOT be reasoned about",
+            "loop-warning always present when history is attributed — closes 12:04 reasoning path");
     }
 
     [Fact]
-    public void BuildKey_HistoryHasUnverifiedHistoricalTurn_IncludesLoopWarning()
+    public void BuildKey_LoopWarning_AlwaysPresent_NotConditionalOnUnverifiedHistorical()
     {
-        // The 12:04-shape corruption class. Framing block must warn the
-        // LLM against treating quoted material inside these turns as
-        // verified Mark utterances (the exact slip mechanism).
-        var history = new[]
-        {
-            new ChatMessage("user", "hey")
-            {
-                AttributedTo = AttributedTo.Mark, AttributionTrust = "verified",
-            },
-            new ChatMessage("assistant", "I keep replaying how you said 'mmm baby you're back'")
-            {
-                AttributedTo = AttributedTo.Ani, AttributionTrust = "unverified-historical",
-            },
-        };
-
-        var key = PromptBuilder.BuildChatHistoryAttributionKey(history);
-
-        key.Should().Contain("unverified-historical",
-            "the 12:04-shape trust class must be named explicitly in the framing");
-        key.Should().Contain("DO NOT reason",
-            "the loop-warning must instruct the model not to trust quoted material inside these turns");
-    }
-
-    [Fact]
-    public void BuildKey_HistoryVerifiedOnly_OmitsLoopWarning()
-    {
-        // When no turn is unverified-historical, don't include the
-        // loop-warning paragraph — reduces prompt noise for the common case.
+        // PR #129 review-fix (Devin 🔍): after reworking the key to not
+        // claim per-turn labels, the loop-warning applies uniformly —
+        // any prior Ani turn might contain misattribution quotes regardless
+        // of the individual trust value (which the payload can't carry
+        // per-turn anyway). Warning covers the reasoning path in all cases.
         var history = new[]
         {
             new ChatMessage("user", "hey") { AttributedTo = AttributedTo.Mark, AttributionTrust = "verified" },
@@ -136,10 +120,8 @@ public class ChatHistoryAttributionKeyTests
 
         var key = PromptBuilder.BuildChatHistoryAttributionKey(history);
 
-        key.Should().NotContain("unverified-historical",
-            "conditional inclusion: only surfaces when at least one turn IS unverified-historical");
-        key.Should().NotContain("DO NOT reason",
-            "loop-warning is only for unverified-historical case");
+        key.Should().Contain("NOT be reasoned about",
+            "loop-warning present even for verified-only history — closes reasoning path uniformly");
     }
 
     [Fact]
@@ -158,5 +140,69 @@ public class ChatHistoryAttributionKeyTests
 
         key.Should().NotBeEmpty("at least one attributed turn → key applies");
         key.Should().Contain("CHAT-HISTORY ATTRIBUTION KEY");
+    }
+
+    // ── WithAttributionKey — persona-preserve safety (PR #129 🔴 fix) ─
+
+    [Fact]
+    public void WithAttributionKey_EmptyBaseSystem_ReturnedUnchanged_PreservesModelfilePersona()
+    {
+        // Load-bearing fix: Phase K.1 lean composer path passes
+        // System=string.Empty so Ollama falls back to the fine-tune's
+        // baked Modelfile SYSTEM persona. A naive prepend would inject
+        // a non-empty system message, REPLACING the baked persona with
+        // just the framing key — stripping Ani's character from every
+        // default conversation reply. This test guards the fix.
+        var history = new[]
+        {
+            new ChatMessage("user", "hey") { AttributedTo = AttributedTo.Mark, AttributionTrust = "verified" },
+            new ChatMessage("assistant", "hi") { AttributedTo = AttributedTo.Ani, AttributionTrust = "verified" },
+        };
+
+        var result = PromptBuilder.WithAttributionKey(string.Empty, history);
+        result.Should().BeEmpty("empty base system MUST stay empty — Modelfile SYSTEM fallback is load-bearing");
+    }
+
+    [Fact]
+    public void WithAttributionKey_WhitespaceBaseSystem_ReturnedUnchanged()
+    {
+        var history = new[]
+        {
+            new ChatMessage("user", "hey") { AttributedTo = AttributedTo.Mark, AttributionTrust = "verified" },
+        };
+
+        var result = PromptBuilder.WithAttributionKey("   ", history);
+        result.Should().Be("   ", "whitespace base treated same as empty — never clobber baked persona");
+    }
+
+    [Fact]
+    public void WithAttributionKey_NonEmptyBaseSystem_UnattributedHistory_ReturnedUnchanged()
+    {
+        var history = new[]
+        {
+            new ChatMessage("user", "hey"),
+            new ChatMessage("assistant", "hi"),
+        };
+
+        var result = PromptBuilder.WithAttributionKey("You are Ani.", history);
+        result.Should().Be("You are Ani.", "no attribution → no key injected → base returned unchanged");
+    }
+
+    [Fact]
+    public void WithAttributionKey_NonEmptyBaseSystem_AttributedHistory_PrependsKey()
+    {
+        var history = new[]
+        {
+            new ChatMessage("user", "hey") { AttributedTo = AttributedTo.Mark, AttributionTrust = "verified" },
+            new ChatMessage("assistant", "hi") { AttributedTo = AttributedTo.Ani, AttributionTrust = "verified" },
+        };
+
+        var result = PromptBuilder.WithAttributionKey("You are Ani.", history);
+
+        result.Should().Contain("CHAT-HISTORY ATTRIBUTION KEY",
+            "attributed history + non-empty base → key prepended");
+        result.Should().EndWith("You are Ani.", "base system preserved after the key");
+        result.Should().StartWith("[CHAT-HISTORY ATTRIBUTION KEY]",
+            "key goes first, then blank line separator, then base");
     }
 }

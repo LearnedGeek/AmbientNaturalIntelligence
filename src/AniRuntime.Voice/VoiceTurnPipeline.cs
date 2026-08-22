@@ -134,11 +134,11 @@ public class VoiceTurnPipeline
                 AttributionTrust = "verified",
             }).ToList();
 
-            // Attribution key prepended when history is attributed.
-            var attributionKey = PromptBuilder.BuildChatHistoryAttributionKey(voiceHistory);
-            var systemWithKey = string.IsNullOrEmpty(attributionKey)
-                ? prompt.System
-                : attributionKey + "\n\n" + prompt.System;
+            // Attribution key prepended when history is attributed
+            // (PR #129 review-fix — safe helper preserves empty base
+            // system so BuildLeanConversationPrompt's Phase K.2 lean
+            // path keeps the Modelfile SYSTEM baked persona intact).
+            var systemWithKey = PromptBuilder.WithAttributionKey(prompt.System, voiceHistory);
 
             await foreach (var token in _ollama.ChatStreamAsync(
                 systemWithKey,

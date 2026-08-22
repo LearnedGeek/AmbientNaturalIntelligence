@@ -70,13 +70,9 @@ public sealed class VoiceReplyGenerator : IVoiceReplyGenerator
                 AttributionTrust = "verified",
             }).ToList();
 
-        // F-2 Phase 1 P5 — attribution key prepended when history is
-        // attributed. Materialize to a List above so the LINQ query is
-        // evaluated once (BuildChatHistoryAttributionKey also enumerates).
-        var attributionKey = PromptBuilder.BuildChatHistoryAttributionKey(history);
-        var systemWithKey = string.IsNullOrEmpty(attributionKey)
-            ? prompt.System
-            : attributionKey + "\n\n" + prompt.System;
+        // F-2 Phase 1 P5 (PR #129 review-fix) — safe helper preserves
+        // empty base system (Modelfile SYSTEM fallback for voice-lean paths).
+        var systemWithKey = PromptBuilder.WithAttributionKey(prompt.System, history);
 
         var reply = await _ollama.ChatAsync(systemWithKey, history, prompt.User, ct).ConfigureAwait(false);
 

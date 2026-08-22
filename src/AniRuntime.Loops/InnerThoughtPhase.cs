@@ -98,17 +98,12 @@ public class InnerThoughtPhase
     {
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);
-        // F-2 Phase 1 P5 (2026-08-22) — prepend chat-history attribution
-        // key when RecentHistory carries per-turn attribution. Load-bearing
-        // for the 12:04 misattribution class: without this key, the LLM
-        // reads role=assistant Ani turns as raw prior output and produces
-        // pronoun-slip inner thoughts ("I keep replaying how you said…"
-        // where "you" wrongly maps to Mark). BuildChatHistoryAttributionKey
-        // is a no-op when history is unattributed.
-        var attributionKey = PromptBuilder.BuildChatHistoryAttributionKey(snapshot.RecentHistory);
-        var systemPrompt = string.IsNullOrEmpty(attributionKey)
-            ? thoughtPrompt.System
-            : attributionKey + "\n\n" + thoughtPrompt.System;
+        // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
+        // is safe: preserves empty base system (Modelfile SYSTEM fallback),
+        // returns unchanged when history is unattributed, otherwise prepends
+        // the attribution framing block. Load-bearing for the 12:04
+        // misattribution class.
+        var systemPrompt = PromptBuilder.WithAttributionKey(thoughtPrompt.System, snapshot.RecentHistory);
         var thought = await _ollama.InnerMonologueChatAsync(
             systemPrompt, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
