@@ -119,10 +119,30 @@ public class VoiceTurnPipeline
             var tokenBuffer = new TokenBuffer();
             var fullReply = new StringBuilder();
 
+            // F-2 Phase 1 P5 (2026-08-22) — materialize chat history once
+            // so both the attribution-key builder and the LLM call see the
+            // same List (BuildChatHistoryAttributionKey enumerates).
+            var voiceHistory = allMessages.TakeLast(10).Select(m => new ChatMessage(
+                m.Role == Roles.Mark ? "user" : "assistant", m.Content)
+            {
+                // Derive attribution from ConversationMessage.Role. Mark's
+                // turns came from Twilio inbound (verified); Ani's turns
+                // are her own composed replies (verified).
+                AttributedTo     = m.Role == Roles.Mark
+                    ? AniRuntime.Core.Interfaces.AttributedTo.Mark
+                    : AniRuntime.Core.Interfaces.AttributedTo.Ani,
+                AttributionTrust = "verified",
+            }).ToList();
+
+            // Attribution key prepended when history is attributed
+            // (PR #129 review-fix — safe helper preserves empty base
+            // system so BuildLeanConversationPrompt's Phase K.2 lean
+            // path keeps the Modelfile SYSTEM baked persona intact).
+            var systemWithKey = PromptBuilder.WithAttributionKey(prompt.System, voiceHistory);
+
             await foreach (var token in _ollama.ChatStreamAsync(
-                prompt.System,
-                allMessages.TakeLast(10).Select(m =>
-                    new ChatMessage(m.Role == Roles.Mark ? "user" : "assistant", m.Content)),
+                systemWithKey,
+                voiceHistory,
                 prompt.User, turnCt).ConfigureAwait(false))
             {
                 fullReply.Append(token);

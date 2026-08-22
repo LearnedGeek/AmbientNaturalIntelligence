@@ -98,8 +98,14 @@ public class InnerThoughtPhase
     {
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);
+        // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
+        // is safe: preserves empty base system (Modelfile SYSTEM fallback),
+        // returns unchanged when history is unattributed, otherwise prepends
+        // the attribution framing block. Load-bearing for the 12:04
+        // misattribution class.
+        var systemPrompt = PromptBuilder.WithAttributionKey(thoughtPrompt.System, snapshot.RecentHistory);
         var thought = await _ollama.InnerMonologueChatAsync(
-            thoughtPrompt.System, snapshot.RecentHistory, thoughtPrompt.User, ct)
+            systemPrompt, snapshot.RecentHistory, thoughtPrompt.User, ct)
             .ConfigureAwait(false);
 
         // Theme J Phase J.5h-prelude (May 3, 2026) — gate the thought before it

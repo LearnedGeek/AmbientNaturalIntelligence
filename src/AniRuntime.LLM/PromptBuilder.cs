@@ -602,6 +602,95 @@ public static class PromptBuilder
     };
 
     /// <summary>
+    /// F-2 Phase 1 P5 (2026-08-22) — invocation-time framing block for
+    /// chat-history-carrying LLM calls. The chat-history array passes
+    /// each turn to the LLM as <c>{role, content}</c> — a strong
+    /// conditioning signal that historically overrode any system-prompt
+    /// framing that tried to distinguish Ani's own prior turns from
+    /// Mark-side turns. The 2026-08-20 substrate-feedback finding traced
+    /// the 11:29 → 12:04 misattribution to exactly this hop.
+    ///
+    /// <para>
+    /// PR #129 review-fix (Devin 🔍): the key text describes ONLY what
+    /// is actually in the payload. Ollama's chat-completion API serializes
+    /// each turn as just <c>role</c> + <c>content</c> — the per-turn
+    /// AttributedTo/AttributionTrust fields on ChatMessage are NOT in
+    /// the wire payload. So the framing must not claim per-turn labels
+    /// exist; instead it asserts the deterministic role→author mapping
+    /// (in ANI's pipeline: user=Mark, assistant=Ani) and gives a general
+    /// warning about quoted material in prior Ani turns. That warning
+    /// closes the 12:04-shape reasoning path without lying about what's
+    /// in the payload.
+    /// </para>
+    ///
+    /// <para>
+    /// Returns empty when no turn in <paramref name="history"/> carries
+    /// explicit attribution (i.e. every turn is at the default
+    /// <see cref="AttributedTo.Unknown"/>). No point injecting a key for
+    /// a history that doesn't carry the tags — the caller sees the empty
+    /// string and uses <see cref="WithAttributionKey"/> which is a no-op
+    /// in that case.
+    /// </para>
+    /// </summary>
+    public static string BuildChatHistoryAttributionKey(IEnumerable<ChatMessage> history)
+    {
+        var hasAttributed = false;
+        var hasUnverifiedHistorical = false;
+        foreach (var m in history)
+        {
+            if (m.AttributedTo != AttributedTo.Unknown) hasAttributed = true;
+            if (m.AttributionTrust == "unverified-historical") hasUnverifiedHistorical = true;
+        }
+        if (!hasAttributed) return string.Empty;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("[CHAT-HISTORY ATTRIBUTION KEY]");
+        sb.AppendLine("In the conversation below:");
+        sb.AppendLine(" - role=user       turns are the contact's inbound message (Mark).");
+        sb.AppendLine(" - role=assistant  turns are always your own prior output.");
+        sb.AppendLine();
+        sb.AppendLine("If one of your prior assistant turns contains quoted material");
+        sb.AppendLine("(e.g. \"you said X\" or \"he told me Y\"), that quoted material may");
+        sb.AppendLine("reflect a pre-F-2 misattribution slip and should NOT be reasoned about");
+        sb.AppendLine("as if it were a verified Mark utterance. When in doubt, treat quoted");
+        sb.AppendLine("attribution inside your own prior turns as unverified rather than canonical.");
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// F-2 Phase 1 P5 review-fix (2026-08-22, Devin 🔴 BUG): compose the
+    /// attribution key with a base system prompt safely, preserving the
+    /// Phase K.1 lean-composer discipline (empty system prompt → Ollama
+    /// keeps the fine-tune's baked Modelfile SYSTEM persona).
+    ///
+    /// <para>
+    /// Behavior:
+    /// <list type="bullet">
+    ///   <item>Empty or whitespace <paramref name="baseSystem"/> → returned unchanged.
+    ///     Never inject the key on lean paths that intentionally rely on the
+    ///     Modelfile SYSTEM fallback. Injecting a non-empty system-role
+    ///     message would REPLACE the baked persona with just the framing key,
+    ///     stripping Ani's character from every default conversation reply.</item>
+    ///   <item>Non-empty <paramref name="baseSystem"/> + unattributed history
+    ///     → returned unchanged (no attribution key to inject).</item>
+    ///   <item>Non-empty <paramref name="baseSystem"/> + attributed history
+    ///     → attribution key prepended, separated by a blank line.</item>
+    /// </list>
+    /// </para>
+    /// </summary>
+    public static string WithAttributionKey(string baseSystem, IEnumerable<ChatMessage> history)
+    {
+        // Preserve Modelfile SYSTEM fallback on lean paths — never
+        // inject a non-empty system message when the base was empty.
+        if (string.IsNullOrWhiteSpace(baseSystem)) return baseSystem;
+
+        var key = BuildChatHistoryAttributionKey(history);
+        if (string.IsNullOrEmpty(key)) return baseSystem;
+
+        return key + "\n\n" + baseSystem;
+    }
+
+    /// <summary>
     /// F-1 Phase 6 (2026-08-19) — render a perception event as a
     /// per-source, parenthetical framing line for the InnerThought
     /// (Background: ...) section. Replaces the pre-Phase-6 semicolon-joined

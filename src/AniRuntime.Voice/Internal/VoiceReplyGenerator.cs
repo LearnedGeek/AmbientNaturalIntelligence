@@ -57,13 +57,24 @@ public sealed class VoiceReplyGenerator : IVoiceReplyGenerator
             snapshot, thread, rendererForPrompt,
             directiveInSystem: _aniOptions.LeanConversationPromptDirectiveInSystem);
 
+        // F-2 Phase 1 P5 (2026-08-22) — attribution on each turn.
         var history = bufferedMessages
             .TakeLast(MaxHistoryMessages)
             .Select(m => new ChatMessage(
                 m.Role == Roles.Mark ? "user" : "assistant",
-                m.Content));
+                m.Content)
+            {
+                AttributedTo     = m.Role == Roles.Mark
+                    ? AniRuntime.Core.Interfaces.AttributedTo.Mark
+                    : AniRuntime.Core.Interfaces.AttributedTo.Ani,
+                AttributionTrust = "verified",
+            }).ToList();
 
-        var reply = await _ollama.ChatAsync(prompt.System, history, prompt.User, ct).ConfigureAwait(false);
+        // F-2 Phase 1 P5 (PR #129 review-fix) — safe helper preserves
+        // empty base system (Modelfile SYSTEM fallback for voice-lean paths).
+        var systemWithKey = PromptBuilder.WithAttributionKey(prompt.System, history);
+
+        var reply = await _ollama.ChatAsync(systemWithKey, history, prompt.User, ct).ConfigureAwait(false);
 
         reply = MessageCleaner.Clean(reply) ?? string.Empty;
         reply = TruncateForVoice(reply);
