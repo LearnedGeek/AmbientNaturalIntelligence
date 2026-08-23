@@ -176,22 +176,34 @@ public sealed class EfMemoryAnalyticsService : IMemoryAnalytics
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
 
-        // Single query, count-only projections — no record loading.
-        var byAttrRows = await db.Memories
-            .GroupBy(m => m.AttributedTo)
-            .Select(g => new { Key = g.Key, Count = g.Count() })
+        // Single count-only query grouped by BOTH axes at once. Roll up
+        // into the two per-axis dictionaries + TotalRows in memory.
+        //
+        // Why single query (PR #132 review-fix, Devin analysis): running
+        // two independent GROUP BYs opened a race window where a concurrent
+        // write between the two SELECTs could make ByTrust percentages
+        // not sum to 100% against TotalRows on the dashboard. One query
+        // → one snapshot → percentages always sum consistently.
+        var joint = await db.Memories
+            .GroupBy(m => new { m.AttributedTo, m.AttributionTrust })
+            .Select(g => new
+            {
+                AttributedTo = g.Key.AttributedTo,
+                Trust        = g.Key.AttributionTrust,
+                Count        = g.Count(),
+            })
             .ToListAsync(ct)
             .ConfigureAwait(false);
 
-        var byTrustRows = await db.Memories
-            .GroupBy(m => m.AttributionTrust)
-            .Select(g => new { Key = g.Key, Count = g.Count() })
-            .ToListAsync(ct)
-            .ConfigureAwait(false);
+        var byAttr = joint
+            .GroupBy(r => r.AttributedTo)
+            .ToDictionary(g => g.Key, g => g.Sum(r => r.Count));
 
-        var byAttr  = byAttrRows.ToDictionary(r => r.Key, r => r.Count);
-        var byTrust = byTrustRows.ToDictionary(r => r.Key ?? "unverified", r => r.Count);
-        var total   = byAttrRows.Sum(r => r.Count);
+        var byTrust = joint
+            .GroupBy(r => r.Trust ?? "unverified")
+            .ToDictionary(g => g.Key, g => g.Sum(r => r.Count));
+
+        var total = joint.Sum(r => r.Count);
 
         return new AttributionDistribution(byAttr, byTrust, total);
     }

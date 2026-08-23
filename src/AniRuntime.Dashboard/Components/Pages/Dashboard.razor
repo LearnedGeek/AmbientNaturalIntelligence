@@ -479,7 +479,7 @@
         catch { _diagnosticReport = null; }
 
         try { _attribution = await MemoryAnalytics.GetAttributionDistributionAsync(); }
-        catch { _attribution = null; }
+        catch (Exception) { _attribution = null; }
     }
 
     private async Task RunDiagnostic()
