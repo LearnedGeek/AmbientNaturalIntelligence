@@ -180,13 +180,21 @@ public sealed class ReactiveShareService : IReactiveShareService
         // Apr 29, 2026 (Theme E): record outbound in conversation thread.
         await _threadRecorder.RecordAsync(message, ct).ConfigureAwait(false);
 
+        // F-2 Phase 1 P6 (2026-08-22) — reactive share is Ani-authored, verified.
+        var shareTime = DateTimeOffset.UtcNow;
+        var shareAttribution = AttributionTriple.AniAt(shareTime);
         await _persist.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.Episodic,
             Content    = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})",
             Importance = 0.5f,
-            OccurredAt = DateTimeOffset.UtcNow,
+            OccurredAt = shareTime,
             Provenance = EpistemicTier.Episodic,
+            AttributedTo               = shareAttribution.AttributedTo,
+            AttributedAt               = shareAttribution.AttributedAt,
+            AttributedSourceRecordId   = shareAttribution.SourceRecordId,
+            AttributedSourceDescriptor = shareAttribution.SourceDescriptor,
+            AttributionTrust           = shareAttribution.Trust,
         }, ct).ConfigureAwait(false);
 
         return true;

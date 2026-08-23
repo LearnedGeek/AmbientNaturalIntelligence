@@ -25,16 +25,25 @@ public class MemoryWriteAction : IAniAction
     {
         if (string.IsNullOrWhiteSpace(decision.Message)) return false;
 
+        // F-2 Phase 1 P6 (2026-08-22) — MemoryWriteAction is Ani noting
+        // something internally, always Ani-authored + verified.
+        var noteTime = DateTimeOffset.UtcNow;
+        var noteAttribution = AniRuntime.Core.Models.AttributionTriple.AniAt(noteTime);
         await _memory.SaveAsync(new MemoryRecord
         {
             Type       = MemoryType.InnerThought,
             Content    = decision.Message,
             Importance = decision.Confidence,
-            OccurredAt = DateTimeOffset.UtcNow,
+            OccurredAt = noteTime,
             // Epistemic Grounding (Apr 10): MemoryWriteAction is used when Ani
             // chooses to note something internally rather than send a message.
             // Always Interior tier — this is her self-model being updated.
             Provenance = EpistemicTier.Interior,
+            AttributedTo               = noteAttribution.AttributedTo,
+            AttributedAt               = noteAttribution.AttributedAt,
+            AttributedSourceRecordId   = noteAttribution.SourceRecordId,
+            AttributedSourceDescriptor = noteAttribution.SourceDescriptor,
+            AttributionTrust           = noteAttribution.Trust,
         }, ct).ConfigureAwait(false);
 
         _log.LogDebug("MemoryWriteAction saved: {Content}", decision.Message[..Math.Min(80, decision.Message.Length)]);

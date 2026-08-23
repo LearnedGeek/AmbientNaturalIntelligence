@@ -237,6 +237,20 @@ public class SqliteConversationService : IConversationService, IDisposable
             var character = await _memory.GetCharacterStateAsync(ct).ConfigureAwait(false);
             var contactName = character.PrimaryContactName ?? "Mark";
 
+            // F-2 Phase 1 P6 (2026-08-22) — conversation-message Episodic
+            // records: attribution derived from role. Mark's turns are
+            // his verified utterances (came from Twilio inbound); Ani's
+            // turns are her verified composed replies. Descriptor points
+            // to the conversation source-name so audit can trace.
+            // Explicit role checks (rather than Mark-vs-else) so a future
+            // role addition doesn't silently attribute to Ani — unrecognized
+            // roles land as UnknownHistorical and surface in audit.
+            var convAttribution = message.Role switch
+            {
+                Roles.Mark => AniRuntime.Core.Models.AttributionTriple.MarkAt(message.SentAt, $"conversation:{message.Role}:{message.SentAt:O}"),
+                Roles.Ani  => AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt),
+                _          => AniRuntime.Core.Models.AttributionTriple.UnknownHistorical(),
+            };
             await _memory.SaveAsync(new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
@@ -251,6 +265,11 @@ public class SqliteConversationService : IConversationService, IDisposable
                 // Mark's assertions ALSO flow into Facts tier via the separate
                 // twilio-inbound perception source path.
                 Provenance     = EpistemicTier.Episodic,
+                AttributedTo               = convAttribution.AttributedTo,
+                AttributedAt               = convAttribution.AttributedAt,
+                AttributedSourceRecordId   = convAttribution.SourceRecordId,
+                AttributedSourceDescriptor = convAttribution.SourceDescriptor,
+                AttributionTrust           = convAttribution.Trust,
             }, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
