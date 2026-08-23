@@ -3,6 +3,7 @@ using System.Text;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.LLM;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using DispatchVerdict = AniRuntime.Core.Models.OutputGateVerdict;
@@ -309,6 +310,24 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
             KnownContacts:          knownContacts);
     }
 
+    /// <summary>
+    /// Render substrate records for the verifier prompt using the F-2 Phase 1
+    /// P4 attribution-tag shape (<c>[FROM: … | AUTHORED: … (| TRUST: …)]
+    /// (temporal) content</c>). Delegates to <see cref="PromptBuilder.FormatMemoryWithTime"/>
+    /// so the verifier sees the same tagged shape every other consumer of
+    /// tagged retrieval sees.
+    ///
+    /// <para>
+    /// F-2 Phase 2 W1 (2026-08-23) fix: pre-P4 this method emitted raw
+    /// <c>- {content}</c> bullets, so Sonnet reasoned over prose with
+    /// attribution invisible. That silently defeated the three-axis-rule
+    /// discipline that already runs in the verifier system prompt — the
+    /// prompt asks the model to weight Mark-asserted vs Ani-prior claims
+    /// but couldn't tell them apart because the substrate bullets carried
+    /// no author signal. Threading P4 tags gives that existing discipline
+    /// something to weigh.
+    /// </para>
+    /// </summary>
     private static string RenderRecords(IEnumerable<MemoryRecord>? records)
     {
         if (records is null) return string.Empty;
@@ -318,7 +337,7 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
             if (r is null) continue;
             var content = r.Content?.Trim();
             if (string.IsNullOrEmpty(content)) continue;
-            lines.Add($"- {content}");
+            lines.Add($"- {PromptBuilder.FormatMemoryWithTime(r)}");
         }
         return string.Join("\n", lines);
     }
