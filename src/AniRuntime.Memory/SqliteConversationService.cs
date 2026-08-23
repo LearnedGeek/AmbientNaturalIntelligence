@@ -242,9 +242,15 @@ public class SqliteConversationService : IConversationService, IDisposable
             // his verified utterances (came from Twilio inbound); Ani's
             // turns are her verified composed replies. Descriptor points
             // to the conversation source-name so audit can trace.
-            var convAttribution = message.Role == Roles.Mark
-                ? AniRuntime.Core.Models.AttributionTriple.MarkAt(message.SentAt, $"conversation:{message.Role}:{message.SentAt:O}")
-                : AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt);
+            // Explicit role checks (rather than Mark-vs-else) so a future
+            // role addition doesn't silently attribute to Ani — unrecognized
+            // roles land as UnknownHistorical and surface in audit.
+            var convAttribution = message.Role switch
+            {
+                Roles.Mark => AniRuntime.Core.Models.AttributionTriple.MarkAt(message.SentAt, $"conversation:{message.Role}:{message.SentAt:O}"),
+                Roles.Ani  => AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt),
+                _          => AniRuntime.Core.Models.AttributionTriple.UnknownHistorical(),
+            };
             await _memory.SaveAsync(new MemoryRecord
             {
                 Type           = MemoryType.Episodic,

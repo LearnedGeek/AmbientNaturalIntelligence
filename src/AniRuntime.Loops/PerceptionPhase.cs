@@ -104,8 +104,12 @@ public class PerceptionPhase
                 // F-2 Phase 1 P6 (2026-08-22) — perception attribution by
                 // source: twilio-inbound → Mark (his SMS), else → World
                 // (RSS/weather/environmental events with no utterer).
+                // Descriptor uses OriginChannelId (Twilio message SID) when
+                // present so downstream audit can trace to the exact inbound;
+                // falls back to OccurredAt for perception sources that don't
+                // set a channel id.
                 var perceptionAttribution = p.SourceName == "twilio-inbound"
-                    ? AttributionTriple.MarkAt(p.OccurredAt, $"twilio-inbound:{p.SourceName}:{p.OccurredAt:O}")
+                    ? AttributionTriple.MarkAt(p.OccurredAt, $"twilio-inbound:{p.OriginChannelId ?? p.OccurredAt.ToString("O")}")
                     : AttributionTriple.WorldAt(p.OccurredAt, $"{p.SourceName}:{p.OccurredAt:O}");
                 await _persist.SaveAsync(new MemoryRecord
                 {

@@ -76,19 +76,30 @@ public sealed class EfReflectionGistService : IReflectionGistService
         var linkRepo   = new MemoryLinkRepository(db);
 
         // 1. Add the gist record.
+        // F-2 Phase 1 P6 (2026-08-22) — reflection synthesis is Ani's own
+        // interpretive act (LLM-composed gist over her cognitive substrate),
+        // so attribution is Ani-verified. Mirrors ReflectionPhase.SaveLegacyAsync;
+        // this is the default primary path when UseEfReflectionGistService +
+        // CompressionEnabled are on.
+        var reflectionAttribution = AttributionTriple.AniAt(DateTimeOffset.UtcNow);
         var gistEntity = new MemoryEntity
         {
-            Id                  = gistId,
-            Type                = MemoryType.Semantic,
-            Content             = gistContent,
-            Importance          = 0.8f,
-            RelationalValence   = 0.5f,
-            SourceName          = "reflection",
-            OccurredAt          = DateTimeOffset.UtcNow,
-            CreatedAt           = DateTimeOffset.UtcNow,
-            Tier                = DecayTier.Standard,
-            Provenance          = provenance,
-            Embedding           = embedding,
+            Id                         = gistId,
+            Type                       = MemoryType.Semantic,
+            Content                    = gistContent,
+            Importance                 = 0.8f,
+            RelationalValence          = 0.5f,
+            SourceName                 = "reflection",
+            OccurredAt                 = DateTimeOffset.UtcNow,
+            CreatedAt                  = DateTimeOffset.UtcNow,
+            Tier                       = DecayTier.Standard,
+            Provenance                 = provenance,
+            Embedding                  = embedding,
+            AttributedTo               = reflectionAttribution.AttributedTo,
+            AttributedAt               = reflectionAttribution.AttributedAt,
+            AttributedSourceRecordId   = reflectionAttribution.SourceRecordId,
+            AttributedSourceDescriptor = reflectionAttribution.SourceDescriptor,
+            AttributionTrust           = reflectionAttribution.Trust,
         };
         memoryRepo.Add(gistEntity);
 
