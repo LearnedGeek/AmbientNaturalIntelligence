@@ -97,7 +97,7 @@ public sealed class PostReplyEmotionalProcessor : IPostReplyEmotionalProcessor
             // F-2 Phase 1 P6 (2026-08-22) — hurt-acknowledgment inner
             // thought is Ani-authored, verified.
             var hurtAttribution = AniRuntime.Core.Models.AttributionTriple.AniAt(DateTimeOffset.UtcNow);
-            await _persist.SaveAsync(new MemoryRecord
+            var hurtRecord = new MemoryRecord
             {
                 Type       = MemoryType.InnerThought,
                 Content    = "Something in that last message landed in a way that stung a little. I'm still here, just... quieter.",
@@ -110,7 +110,9 @@ public sealed class PostReplyEmotionalProcessor : IPostReplyEmotionalProcessor
                 AttributedSourceRecordId   = hurtAttribution.SourceRecordId,
                 AttributedSourceDescriptor = hurtAttribution.SourceDescriptor,
                 AttributionTrust           = hurtAttribution.Trust,
-            }, ct).ConfigureAwait(false);
+            };
+            await _persist.SaveAsync(hurtRecord, ct).ConfigureAwait(false);
+            hurtRecord.LogAttribution(_log);
         }
     }
 }

@@ -39,7 +39,7 @@ public sealed class SilenceChoiceRecorder : ISilenceChoiceRecorder
         // F-2 Phase 1 P6 (2026-08-22) — silence choice is Ani's own
         // reflection, verified.
         var silenceAttribution = AttributionTriple.AniAt(_lastRecordedAt);
-        await _persist.SaveAsync(new MemoryRecord
+        var silenceRecord = new MemoryRecord
         {
             Type       = MemoryType.InnerThought,
             Content    = narrative,
@@ -54,7 +54,9 @@ public sealed class SilenceChoiceRecorder : ISilenceChoiceRecorder
             AttributedSourceRecordId   = silenceAttribution.SourceRecordId,
             AttributedSourceDescriptor = silenceAttribution.SourceDescriptor,
             AttributionTrust           = silenceAttribution.Trust,
-        }, ct).ConfigureAwait(false);
+        };
+        await _persist.SaveAsync(silenceRecord, ct).ConfigureAwait(false);
+        silenceRecord.LogAttribution(_log);
 
         _log.LogInformation("Silence recorded (desire={Desire:F2}): chose not to reach out",
             desireState.DesireToConnect);

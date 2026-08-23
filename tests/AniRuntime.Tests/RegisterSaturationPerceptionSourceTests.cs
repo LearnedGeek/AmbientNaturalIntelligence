@@ -29,6 +29,9 @@ public class RegisterSaturationPerceptionSourceTests
         public Task<(int outreach, int inbound)> GetInitiativeBalanceAsync(int days, CancellationToken ct = default) => Task.FromResult((0, 0));
         public Task<List<EmotionalContribution>> GetContributionsSinceAsync(DateTimeOffset since, CancellationToken ct = default) => Task.FromResult(new List<EmotionalContribution>());
         public Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default) => Task.FromResult(new List<string>());
+        public Task<AttributionDistribution> GetAttributionDistributionAsync(CancellationToken ct = default)
+            => Task.FromResult(new AttributionDistribution(
+                new Dictionary<AttributedTo, int>(), new Dictionary<string, int>(), 0));
     }
 
     private sealed class FakeTimeProvider : TimeProvider

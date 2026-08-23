@@ -18,6 +18,7 @@ public static class DashboardExtensions
         app.MapContradictionEndpoints();
         app.MapEmergenceEndpoints();
         app.MapDiagnosticEndpoints();
+        app.MapAttributionEndpoints();
         // Issue #41 Path B (2026-05-21) — per-turn expression classifications
         // surfaced via REST. Replaces the JSON file-system path in Research.razor.
         app.MapExpressionClassificationEndpoints();

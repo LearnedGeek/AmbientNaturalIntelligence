@@ -172,6 +172,30 @@ public sealed class EfMemoryAnalyticsService : IMemoryAnalytics
         return themes;
     }
 
+    public async Task<AttributionDistribution> GetAttributionDistributionAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        // Single query, count-only projections — no record loading.
+        var byAttrRows = await db.Memories
+            .GroupBy(m => m.AttributedTo)
+            .Select(g => new { Key = g.Key, Count = g.Count() })
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var byTrustRows = await db.Memories
+            .GroupBy(m => m.AttributionTrust)
+            .Select(g => new { Key = g.Key, Count = g.Count() })
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var byAttr  = byAttrRows.ToDictionary(r => r.Key, r => r.Count);
+        var byTrust = byTrustRows.ToDictionary(r => r.Key ?? "unverified", r => r.Count);
+        var total   = byAttrRows.Sum(r => r.Count);
+
+        return new AttributionDistribution(byAttr, byTrust, total);
+    }
+
     private static EmotionalContribution MapContribution(EmotionalContributionEntity e) => new()
     {
         Id                = e.Id,

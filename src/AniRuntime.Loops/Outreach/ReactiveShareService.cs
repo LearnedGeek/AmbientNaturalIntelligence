@@ -183,7 +183,7 @@ public sealed class ReactiveShareService : IReactiveShareService
         // F-2 Phase 1 P6 (2026-08-22) — reactive share is Ani-authored, verified.
         var shareTime = DateTimeOffset.UtcNow;
         var shareAttribution = AttributionTriple.AniAt(shareTime);
-        await _persist.SaveAsync(new MemoryRecord
+        var shareRecord = new MemoryRecord
         {
             Type       = MemoryType.Episodic,
             Content    = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})",
@@ -195,7 +195,9 @@ public sealed class ReactiveShareService : IReactiveShareService
             AttributedSourceRecordId   = shareAttribution.SourceRecordId,
             AttributedSourceDescriptor = shareAttribution.SourceDescriptor,
             AttributionTrust           = shareAttribution.Trust,
-        }, ct).ConfigureAwait(false);
+        };
+        await _persist.SaveAsync(shareRecord, ct).ConfigureAwait(false);
+        shareRecord.LogAttribution(_log);
 
         return true;
     }
