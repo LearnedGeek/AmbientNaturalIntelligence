@@ -405,7 +405,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
         // verified (she just composed and dispatched the message).
         var outreachTime = DateTimeOffset.UtcNow;
         var outreachAttribution = AttributionTriple.AniAt(outreachTime);
-        await _persist.SaveAsync(new MemoryRecord
+        var outreachRecord = new MemoryRecord
         {
             Type       = MemoryType.Episodic,
             Content    = MemoryPrefixes.FormatOutreach(cs.PrimaryContactName ?? "Mark", decision.Message),
@@ -417,7 +417,9 @@ public sealed class OutreachPipeline : IOutreachPipeline
             AttributedSourceRecordId   = outreachAttribution.SourceRecordId,
             AttributedSourceDescriptor = outreachAttribution.SourceDescriptor,
             AttributionTrust           = outreachAttribution.Trust,
-        }, ct).ConfigureAwait(false);
+        };
+        await _persist.SaveAsync(outreachRecord, ct).ConfigureAwait(false);
+        outreachRecord.LogAttribution(_log);
     }
 
     // ─── J.5g extractors ───────────────────────────────────────────────────

@@ -251,7 +251,7 @@ public class SqliteConversationService : IConversationService, IDisposable
                 Roles.Ani  => AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt),
                 _          => AniRuntime.Core.Models.AttributionTriple.UnknownHistorical(),
             };
-            await _memory.SaveAsync(new MemoryRecord
+            var convRecord = new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
                 Content        = MemoryPrefixes.FormatSpeaker(message.Role, character.Name, contactName, content),
@@ -270,7 +270,9 @@ public class SqliteConversationService : IConversationService, IDisposable
                 AttributedSourceRecordId   = convAttribution.SourceRecordId,
                 AttributedSourceDescriptor = convAttribution.SourceDescriptor,
                 AttributionTrust           = convAttribution.Trust,
-            }, ct).ConfigureAwait(false);
+            };
+            await _memory.SaveAsync(convRecord, ct).ConfigureAwait(false);
+            convRecord.LogAttribution(_log);
         }
         catch (Exception ex)
         {

@@ -436,7 +436,7 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             // output-side constraints when that phase ships.
             var now = DateTimeOffset.UtcNow;
             var attribution = AttributionTriple.AniAt(now);
-            await _persist.SaveAsync(new MemoryRecord
+            var innerRecord = new MemoryRecord
             {
                 Type        = MemoryType.InnerThought,
                 Content     = contentForStorage,
@@ -459,7 +459,9 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 AttributedSourceRecordId   = attribution.SourceRecordId,
                 AttributedSourceDescriptor = attribution.SourceDescriptor,
                 AttributionTrust           = attribution.Trust,
-            }, ct).ConfigureAwait(false);
+            };
+            await _persist.SaveAsync(innerRecord, ct).ConfigureAwait(false);
+            innerRecord.LogAttribution(_log);
         }
 
         _log.LogInformation("{Type} (valence={Valence:F2}{Stored}): {Thought}",

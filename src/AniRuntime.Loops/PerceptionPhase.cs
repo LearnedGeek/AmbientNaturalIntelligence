@@ -111,7 +111,7 @@ public class PerceptionPhase
                 var perceptionAttribution = p.SourceName == "twilio-inbound"
                     ? AttributionTriple.MarkAt(p.OccurredAt, $"twilio-inbound:{p.OriginChannelId ?? p.OccurredAt.ToString("O")}")
                     : AttributionTriple.WorldAt(p.OccurredAt, $"{p.SourceName}:{p.OccurredAt:O}");
-                await _persist.SaveAsync(new MemoryRecord
+                var perceptionRecord = new MemoryRecord
                 {
                     Type = MemoryType.Perception,
                     Content = p.Summary,
@@ -127,7 +127,9 @@ public class PerceptionPhase
                     AttributedSourceRecordId   = perceptionAttribution.SourceRecordId,
                     AttributedSourceDescriptor = perceptionAttribution.SourceDescriptor,
                     AttributionTrust           = perceptionAttribution.Trust,
-                }, ct).ConfigureAwait(false);
+                };
+                await _persist.SaveAsync(perceptionRecord, ct).ConfigureAwait(false);
+                perceptionRecord.LogAttribution(_log);
 
                 _recentPerceptions[p.Summary] = now;
             }

@@ -29,7 +29,7 @@ public class MemoryWriteAction : IAniAction
         // something internally, always Ani-authored + verified.
         var noteTime = DateTimeOffset.UtcNow;
         var noteAttribution = AniRuntime.Core.Models.AttributionTriple.AniAt(noteTime);
-        await _memory.SaveAsync(new MemoryRecord
+        var noteRecord = new MemoryRecord
         {
             Type       = MemoryType.InnerThought,
             Content    = decision.Message,
@@ -44,7 +44,9 @@ public class MemoryWriteAction : IAniAction
             AttributedSourceRecordId   = noteAttribution.SourceRecordId,
             AttributedSourceDescriptor = noteAttribution.SourceDescriptor,
             AttributionTrust           = noteAttribution.Trust,
-        }, ct).ConfigureAwait(false);
+        };
+        await _memory.SaveAsync(noteRecord, ct).ConfigureAwait(false);
+        noteRecord.LogAttribution(_log);
 
         _log.LogDebug("MemoryWriteAction saved: {Content}", decision.Message[..Math.Min(80, decision.Message.Length)]);
         return true;

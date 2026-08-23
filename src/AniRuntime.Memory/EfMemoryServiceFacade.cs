@@ -168,6 +168,9 @@ public sealed class EfMemoryServiceFacade : IMemoryService
     public Task<List<string>> GetProcessedThemesAsync(int maxThemes = 5, CancellationToken ct = default)
         => _analytics.GetProcessedThemesAsync(maxThemes, ct);
 
+    public Task<AttributionDistribution> GetAttributionDistributionAsync(CancellationToken ct = default)
+        => _analytics.GetAttributionDistributionAsync(ct);
+
     // ── IMemoryMaintenance ─────────────────────────────────────────────
     public Task ResolveOpenLoopAsync(Guid id, CancellationToken ct = default)
         => _maintenance.ResolveOpenLoopAsync(id, ct);

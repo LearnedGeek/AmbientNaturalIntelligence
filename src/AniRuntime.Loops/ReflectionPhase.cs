@@ -410,6 +410,7 @@ public class ReflectionPhase
         try
         {
             await _persist.SaveAsync(record, ct).ConfigureAwait(false);
+            record.LogAttribution(_log);
         }
         catch (Exception ex)
         {

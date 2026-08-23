@@ -141,6 +141,21 @@ public sealed class EfReflectionGistService : IReflectionGistService
         // source UPDATEs + link INSERTs in one transaction.
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
+        // F-2 Phase 1 P8 (2026-08-23) — F2_ATTRIBUTION structured log for
+        // the reflection primary path. Mirrors the pattern at the nine
+        // other producer sites; MemoryEntity isn't itself IAttributedContent,
+        // so log via a lightweight MemoryRecord projection of the fields
+        // we just wrote (this avoids extending MemoryEntity's interface
+        // surface just for a log line).
+        new AniRuntime.Core.Models.MemoryRecord
+        {
+            AttributedTo               = gistEntity.AttributedTo,
+            AttributedAt               = gistEntity.AttributedAt,
+            AttributedSourceRecordId   = gistEntity.AttributedSourceRecordId,
+            AttributedSourceDescriptor = gistEntity.AttributedSourceDescriptor,
+            AttributionTrust           = gistEntity.AttributionTrust,
+        }.LogAttribution(_log);
+
         _log.LogInformation(
             "EfReflectionGistService: saved gist {GistId} + marked {Marked}/{Requested} sources as Compressed",
             gistId, markedCount, sourceIds.Count);

@@ -74,6 +74,37 @@
     </hgroup>
 </section>
 
+@if (_attribution is not null)
+{
+    <section>
+        <h3>Attribution Health</h3>
+        <small style="opacity: 0.6;">Substrate rows by author + trust (F-2 Phase 1 P8). Rising Unknown after a backfill run signals a producer emit-site regression; unverified-historical declines as fresh writes overwrite the backfill tail.</small>
+        <div class="grid" style="margin-top: 0.5rem;">
+            <article>
+                <strong>Author</strong>
+                <ul style="margin: 0.3rem 0 0; padding-left: 1rem; font-size: 0.9em;">
+                    @foreach (var kv in _attribution.ByAttributedTo.OrderByDescending(k => k.Value))
+                    {
+                        var pct = _attribution.TotalRows > 0 ? (kv.Value * 100.0 / _attribution.TotalRows) : 0;
+                        <li>@kv.Key: <strong>@kv.Value.ToString("N0")</strong> <span style="opacity: 0.6;">(@pct.ToString("F1")%)</span></li>
+                    }
+                </ul>
+            </article>
+            <article>
+                <strong>Trust</strong>
+                <ul style="margin: 0.3rem 0 0; padding-left: 1rem; font-size: 0.9em;">
+                    @foreach (var kv in _attribution.ByTrust.OrderByDescending(k => k.Value))
+                    {
+                        var pct = _attribution.TotalRows > 0 ? (kv.Value * 100.0 / _attribution.TotalRows) : 0;
+                        <li>@kv.Key: <strong>@kv.Value.ToString("N0")</strong> <span style="opacity: 0.6;">(@pct.ToString("F1")%)</span></li>
+                    }
+                </ul>
+            </article>
+        </div>
+        <small style="opacity: 0.5; display: block; margin-top: 0.3rem;">Total rows: @_attribution.TotalRows.ToString("N0")</small>
+    </section>
+}
+
 @if (_emotional is not null)
 {
     <section>
@@ -419,6 +450,7 @@
     private List<AuditEntry> _auditEntries = new();
     private Dictionary<string, int> _trainingCoverage = new();
     private int _maxTrainingCount;
+    private AttributionDistribution? _attribution;
 
     protected override async Task OnInitializedAsync()
     {
@@ -445,6 +477,9 @@
 
         try { _diagnosticReport = await DiagnosticService.RunDiagnosticAsync(); }
         catch { _diagnosticReport = null; }
+
+        try { _attribution = await MemoryAnalytics.GetAttributionDistributionAsync(); }
+        catch (Exception) { _attribution = null; }
     }
 
     private async Task RunDiagnostic()
