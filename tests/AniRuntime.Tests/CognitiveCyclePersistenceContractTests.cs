@@ -275,4 +275,66 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
             Times.AtLeastOnce,
             "the inner-thought persistence channel must run on the processor's IMemoryPersistence handle");
     }
+
+    /// <summary>
+    /// F-3 U3 (2026-08-24) — pins the migration of the inner-thought wrap
+    /// site from the pre-U3 <c>AttributionTriple.AniAt(now)</c> pattern to
+    /// the F-3 emission envelope + projection helper. Behavior is
+    /// structurally equivalent: the persisted record's attribution fields
+    /// must still be Ani-authored + verified with no source-record link
+    /// or descriptor.
+    ///
+    /// <para>
+    /// This is a defense-in-depth check on top of the migration equivalence
+    /// pin in ComposerEmissionProjectionTests (which pins that the two
+    /// paths — <c>AniEmission(...).ToAttributionTriple()</c> and
+    /// <c>AttributionTriple.AniAt(now)</c> — produce structurally equal
+    /// triples). This test verifies the equivalence still holds at the
+    /// actual production wrap site.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_InnerThought_WrappedRecordCarriesAniAuthorshipViaEmissionEnvelope()
+    {
+        MockOllama.Setup(o => o.InnerMonologueChatAsync(
+                      It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                      It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+                  .ReturnsAsync("U3-FIXTURE: an inner thought");
+        MockOllama.Setup(o => o.ChatJsonAsync(
+                      It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(),
+                      It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync("""{ "score": 0.7 }""");
+
+        var processor = BuildProcessor();
+
+        // Setup callback AFTER BuildProcessor — the general SaveAsync setup
+        // registered in BuildProcessor at line 88 would otherwise override
+        // this more-specific one (Moq later-Setup-wins semantics).
+        MemoryRecord? capturedInnerThought = null;
+        _processorPersist
+            .Setup(p => p.SaveAsync(
+                It.Is<MemoryRecord>(r => r.Type == MemoryType.InnerThought),
+                It.IsAny<CancellationToken>()))
+            .Callback<MemoryRecord, CancellationToken>((r, _) => capturedInnerThought = r)
+            .Returns(Task.CompletedTask);
+
+        await processor.RunAsync(CancellationToken.None);
+
+        capturedInnerThought.Should().NotBeNull(
+            "the inner-thought wrap site must have run the SaveAsync callback so we can assert the record's attribution shape");
+
+        // U3 migration equivalence — the emission-envelope path must produce
+        // the same attribution field values the pre-U3 AttributionTriple.AniAt(now)
+        // path produced. Ani-authored, verified, no source-record link, no
+        // descriptor.
+        capturedInnerThought!.AttributedTo.Should().Be(AttributedTo.Ani,
+            "inner-thought records are Ani-authored; the emission envelope carries this and projects into the triple identically to the pre-U3 factory call");
+        capturedInnerThought.AttributionTrust.Should().Be("verified");
+        capturedInnerThought.AttributedSourceRecordId.Should().BeNull(
+            "inner-thought composer doesn't link to a specific source record — the record IS the source");
+        capturedInnerThought.AttributedSourceDescriptor.Should().BeNull(
+            "the Devin PR #137 review-fix leaves the triple's SourceDescriptor null; the emission's scaffolding descriptor (if any) does NOT flow into content-attribution grounding");
+        capturedInnerThought.AttributedAt.Should().NotBeNull(
+            "AttributedAt is populated by the emission's EmittedAt");
+    }
 }
