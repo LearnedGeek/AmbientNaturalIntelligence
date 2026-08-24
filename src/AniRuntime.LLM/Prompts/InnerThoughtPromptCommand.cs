@@ -135,6 +135,16 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             // "never hardcode Mark" discipline). Heading uses the same
             // configured name so the render is consistent across
             // classification and prose.
+            //
+            // F-2 Phase 2 W3 (2026-08-23): per-line render now goes through
+            // PromptBuilder.FormatMemoryWithTime so anchored bullets carry
+            // the P4 attribution-tag shape ([FROM: … | AUTHORED: … (| TRUST: …)]).
+            // Anchored is the highest-trust tier — pre-W3 the voice-classifier
+            // heading grouped by author role but per-line attribution was
+            // invisible to the composer, so the inner-thought LLM had no
+            // per-line signal for the exact 12:04-shape misattribution class.
+            // The F-1 Phase 7 heading grouping is PRESERVED — this fix is
+            // additive: heading + per-line tags together.
             var anchoredContact = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? null : cs.PrimaryContactName;
             var byVoice = snapshot.AnchoredMemories
                 .GroupBy(m => AnchoredMemoryVoiceClassifier.Classify(m, anchoredContact))
@@ -143,7 +153,7 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             if (byVoice.TryGetValue(AnchoredMemoryVoice.AniSelfStatement, out var selfStatements))
             {
                 sections.Add("Part of who you are (always true, never forgotten):");
-                sections.AddRange(selfStatements.Select(m => $"  - {m.Content}"));
+                sections.AddRange(selfStatements.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m, snapshot.BuiltAt)}"));
             }
 
             // Contact-fact heading is only rendered when a contactName is
@@ -152,13 +162,13 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
              && byVoice.TryGetValue(AnchoredMemoryVoice.MarkFactAssertion, out var contactFacts))
             {
                 sections.Add($"Things you know about {anchoredContact}:");
-                sections.AddRange(contactFacts.Select(m => $"  - {m.Content}"));
+                sections.AddRange(contactFacts.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m, snapshot.BuiltAt)}"));
             }
 
             if (byVoice.TryGetValue(AnchoredMemoryVoice.SeedNarrative, out var seedNarrative))
             {
                 sections.Add("Background you can draw from:");
-                sections.AddRange(seedNarrative.Select(m => $"  - {m.Content}"));
+                sections.AddRange(seedNarrative.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m, snapshot.BuiltAt)}"));
             }
 
             // Unclassified-heading fallback DROPPED in PR #117 review-fix
