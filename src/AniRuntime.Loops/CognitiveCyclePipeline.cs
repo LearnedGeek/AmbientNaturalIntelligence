@@ -445,15 +445,32 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             // structurally equal triples for the Ani-authored common case
             // (pinned by ComposerEmissionProjectionTests.AniEmission_
             // RoundTripsToAttributionTriple_EquivalentToAttributionTripleAniAt),
-            // so behavior is identical to pre-U3. The migration is symbolic
-            // for U3 (composer + wrap co-located here) — the payoff arrives
-            // in later phases where the composer's emission crosses more
-            // pipeline layers before persisting.
+            // so behavior is identical to pre-U3.
+            //
+            // F-3 U4 (2026-08-24) — when InnerThoughtPhase's Qwen sidecar
+            // extracted per-quote attribution claims from the thought
+            // (innerResult.Claims non-null and non-empty), upgrade the
+            // emission to ClaimBearingEmission<string> so the claims flow
+            // through the envelope. Empty/null claims list means either
+            // the extractor found no embedded quotes (valid — self-
+            // reflection with no speaker-ascription) or the extractor
+            // failed (fail-open); either way the base ComposerEmission
+            // surface is sufficient. The record's own author attribution
+            // is identical in both cases; claims are additive metadata
+            // that downstream consumers can read if present.
             var now = DateTimeOffset.UtcNow;
-            var innerEmission = ComposerEmissionExtensions.AniEmission(
-                content:      contentForStorage,
-                composerRole: CognitiveProducerKind.InnerThought,
-                emittedAt:    now);
+            IComposerEmission<string> innerEmission = innerResult.Claims is { Count: > 0 } claims
+                ? new ClaimBearingEmission<string>(
+                    Content:          contentForStorage,
+                    ComposerRole:     CognitiveProducerKind.InnerThought,
+                    EmittedAt:        now,
+                    AttributedTo:     AttributedTo.Ani,
+                    AttributionTrust: "verified",
+                    Claims:           claims)
+                : ComposerEmissionExtensions.AniEmission(
+                    content:      contentForStorage,
+                    composerRole: CognitiveProducerKind.InnerThought,
+                    emittedAt:    now);
             var attribution = innerEmission.ToAttributionTriple();
             var innerRecord = new MemoryRecord
             {
