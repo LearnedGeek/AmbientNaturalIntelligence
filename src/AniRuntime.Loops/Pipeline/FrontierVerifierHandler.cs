@@ -275,13 +275,22 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
         // (foundation memories — character seeds, world layer canon) go
         // to CanonicalSubstrate; everything else goes to
         // MarkAssertedSubstrate.
+        //
+        // Substrate temporals are rendered relative to artifact.GeneratedAt
+        // (the same clock the verifier's CURRENT CONTEXT block uses at line
+        // 306 below). Ensures internal consistency between the substrate
+        // "3 hours ago" phrasing and the CurrentTime the verifier sees —
+        // Devin PR #133 review-fix. Production diverges by seconds; test/
+        // CI replay could diverge unboundedly without this pinning.
         var markAsserted = RenderRecords(
             factsHits.Where(h => h.Record.DecayTier != DecayTier.Anchored)
-                     .Select(h => h.Record));
+                     .Select(h => h.Record),
+            artifact.GeneratedAt);
 
         var canonical = RenderRecords(
             factsHits.Where(h => h.Record.DecayTier == DecayTier.Anchored)
-                     .Select(h => h.Record));
+                     .Select(h => h.Record),
+            artifact.GeneratedAt);
 
         var addressee = !string.IsNullOrWhiteSpace(character?.PrimaryContactName)
             ? character!.PrimaryContactName
@@ -328,7 +337,7 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
     /// something to weigh.
     /// </para>
     /// </summary>
-    private static string RenderRecords(IEnumerable<MemoryRecord>? records)
+    private static string RenderRecords(IEnumerable<MemoryRecord>? records, DateTimeOffset? now = null)
     {
         if (records is null) return string.Empty;
         var lines = new List<string>();
@@ -337,7 +346,7 @@ public sealed class FrontierVerifierHandler : ICognitivePipelineHandler
             if (r is null) continue;
             var content = r.Content?.Trim();
             if (string.IsNullOrEmpty(content)) continue;
-            lines.Add($"- {PromptBuilder.FormatMemoryWithTime(r)}");
+            lines.Add($"- {PromptBuilder.FormatMemoryWithTime(r, now)}");
         }
         return string.Join("\n", lines);
     }
