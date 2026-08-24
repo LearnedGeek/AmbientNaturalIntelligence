@@ -403,12 +403,26 @@ public sealed class OutreachPipeline : IOutreachPipeline
 
         // F-2 Phase 1 P6 (2026-08-22) — outreach Episodic is Ani-authored,
         // verified (she just composed and dispatched the message).
+        //
+        // F-3 U6 (2026-08-24) — construct the composer emission envelope
+        // first, then project the attribution triple from it (mirrors U3
+        // for inner-thought). Option A only for outreach: no per-quote
+        // claim extraction because outreach is a user-facing prose surface
+        // (structured wrapping would leak into wire text). The emission
+        // carries the composer identity + timestamp; downstream projection
+        // is structurally equivalent to the pre-U6 factory call via the
+        // migration equivalence pin in ComposerEmissionProjectionTests.
         var outreachTime = DateTimeOffset.UtcNow;
-        var outreachAttribution = AttributionTriple.AniAt(outreachTime);
+        var outreachContent = MemoryPrefixes.FormatOutreach(cs.PrimaryContactName ?? "Mark", decision.Message);
+        var outreachEmission = ComposerEmissionExtensions.AniEmission(
+            content:      outreachContent,
+            composerRole: CognitiveProducerKind.Outreach,
+            emittedAt:    outreachTime);
+        var outreachAttribution = outreachEmission.ToAttributionTriple();
         var outreachRecord = new MemoryRecord
         {
             Type       = MemoryType.Episodic,
-            Content    = MemoryPrefixes.FormatOutreach(cs.PrimaryContactName ?? "Mark", decision.Message),
+            Content    = outreachEmission.Content,
             Importance = 0.7f,
             OccurredAt = outreachTime,
             Provenance = EpistemicTier.Episodic,
