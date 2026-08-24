@@ -936,6 +936,7 @@ public class PromptBuilderTests
         {
             Content    = "Eleanor's middle name was Anne",
             Type       = MemoryType.Semantic,
+            DecayTier  = DecayTier.Anchored,
             OccurredAt = DateTimeOffset.Now.AddYears(-2),
         });
 
@@ -944,6 +945,101 @@ public class PromptBuilderTests
         user.Should().Contain("Eleanor's middle name was Anne");
         user.Should().NotContain("years ago) Eleanor",
             "Anchored memories are atemporal by design — adding temporal attribution would erode their foundational quality.");
+    }
+
+    // ─── F-2 Phase 2 W3 — anchored memory per-line attribution tags ──────
+
+    /// <summary>
+    /// F-2 Phase 2 W3 (2026-08-23) — anchored-memory bullets under the
+    /// voice-classifier headings must carry the F-2 Phase 1 P4 attribution-tag
+    /// shape so the composer has per-line author signal (not just heading-level
+    /// grouping). Anchored is the highest-trust tier — pre-W3 the per-line
+    /// render was raw content, so attribution was invisible to the inner-thought
+    /// composer for exactly the class of records most important to reason
+    /// honestly about.
+    /// </summary>
+    [Fact]
+    public void BuildInnerThoughtPrompt_W3_AnchoredMemories_RenderWithAttributionTags()
+    {
+        var snapshot = MinimalSnapshot();
+
+        // Ani-self-statement (Interior tier → classifies as AniSelfStatement).
+        var selfAttr = AttributionTriple.AniAt(DateTimeOffset.UtcNow.AddDays(-30));
+        snapshot.AnchoredMemories.Add(new MemoryRecord
+        {
+            Content                    = "W3-FIXTURE: I love the quiet corner of the mystery section",
+            Type                       = MemoryType.Semantic,
+            Provenance                 = EpistemicTier.Interior,
+            DecayTier                  = DecayTier.Anchored,
+            OccurredAt                 = DateTimeOffset.UtcNow.AddDays(-30),
+            AttributedTo               = selfAttr.AttributedTo,
+            AttributedAt               = selfAttr.AttributedAt,
+            AttributionTrust           = selfAttr.Trust,
+        });
+
+        // Mark-fact assertion (starts with contact name "Mark").
+        var markAttr = AttributionTriple.MarkCanonical("character-seed:mark.profile");
+        snapshot.AnchoredMemories.Add(new MemoryRecord
+        {
+            Content                    = "Mark teaches Spanish on Tuesday evenings",
+            Type                       = MemoryType.Semantic,
+            Provenance                 = EpistemicTier.Facts,
+            DecayTier                  = DecayTier.Anchored,
+            OccurredAt                 = DateTimeOffset.UtcNow.AddDays(-30),
+            AttributedTo               = markAttr.AttributedTo,
+            AttributionTrust           = markAttr.Trust,
+        });
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        // Per-line attribution tags now present alongside the heading grouping.
+        user.Should().Contain("Part of who you are",
+            "F-1 Phase 7 voice-classifier heading grouping preserved");
+        user.Should().Contain("Things you know about Mark",
+            "F-1 Phase 7 contact-fact heading preserved");
+        user.Should().Contain("AUTHORED: Ani",
+            "Ani-self-statement anchored records carry AUTHORED: Ani so the composer knows this is her own foundational content");
+        user.Should().Contain("AUTHORED: Mark",
+            "Mark-fact anchored records carry AUTHORED: Mark so the composer cannot pronoun-slip these into first-person");
+        user.Should().Contain("[FROM:",
+            "each anchored bullet opens with the P4 boundary tag");
+
+        // Content still present after the tag.
+        user.Should().Contain("W3-FIXTURE: I love the quiet corner");
+        user.Should().Contain("Mark teaches Spanish");
+    }
+
+    /// <summary>
+    /// F-2 Phase 2 W3 CONTROL — anchored records must render WITHOUT the
+    /// temporal parenthetical even though FormatMemoryWithTime is now used.
+    /// This is the J.3 atemporal invariant preserved through the W3 change:
+    /// FormatMemoryWithTime is tier-aware and omits (temporal) when
+    /// DecayTier == Anchored.
+    /// </summary>
+    [Fact]
+    public void BuildInnerThoughtPrompt_W3_AnchoredMemories_OmitTemporalParenthetical()
+    {
+        var snapshot = MinimalSnapshot();
+        var markAttr = AttributionTriple.MarkCanonical("character-seed:mark.profile");
+        snapshot.AnchoredMemories.Add(new MemoryRecord
+        {
+            Content                    = "Mark's favorite band is The National",
+            Type                       = MemoryType.Semantic,
+            Provenance                 = EpistemicTier.Facts,
+            DecayTier                  = DecayTier.Anchored,
+            OccurredAt                 = DateTimeOffset.UtcNow.AddYears(-3),
+            AttributedTo               = markAttr.AttributedTo,
+            AttributionTrust           = markAttr.Trust,
+        });
+
+        var (_, user) = PromptBuilder.BuildInnerThoughtPrompt(snapshot);
+
+        user.Should().Contain("AUTHORED: Mark",
+            "W3 adds the attribution tag");
+        user.Should().NotContain("weeks ago) Mark's favorite",
+            "J.3 invariant: anchored memories stay atemporal — no `(N weeks ago)` parenthetical");
+        user.Should().NotContain("years ago) Mark's favorite",
+            "J.3 invariant: anchored memories stay atemporal — no `(N years ago)` parenthetical");
     }
 
     [Fact]

@@ -135,4 +135,60 @@ public class AttributionRenderingTests
         rendered.Should().Contain("] (just now) hey babe, back from teaching",
             "attribution segment must live INSIDE the brackets; content and temporal shape unchanged");
     }
+
+    [Fact]
+    public void AnchoredRecord_OmitsTemporalParenthetical_ButKeepsAttributionTag()
+    {
+        // F-2 Phase 2 W3 (2026-08-23) — anchored (foundation) memories are
+        // atemporal by design (Theme J.3 invariant). FormatMemoryWithTime
+        // must omit the `(temporal)` parenthetical when DecayTier ==
+        // Anchored, but STILL render the P4 attribution tag inline. Without
+        // this tier-awareness, W3 (anchored bullets going through
+        // FormatMemoryWithTime) would break the J.3 atemporal invariant.
+        var record = new MemoryRecord
+        {
+            Content          = "Mark teaches Spanish on Tuesdays",
+            OccurredAt       = DateTimeOffset.UtcNow.AddYears(-2),
+            Provenance       = EpistemicTier.Facts,
+            SourceName       = "character-seed",
+            DecayTier        = DecayTier.Anchored,
+            AttributedTo     = AttributedTo.Mark,
+            AttributionTrust = "verified",
+        };
+
+        var rendered = PromptBuilder.FormatMemoryWithTime(record, DateTimeOffset.UtcNow);
+
+        rendered.Should().Contain("AUTHORED: Mark",
+            "W3: anchored records carry the P4 attribution tag");
+        rendered.Should().Contain("Mark teaches Spanish on Tuesdays",
+            "content still present after the boundary tag");
+        rendered.Should().NotContain("years ago)",
+            "J.3 invariant: anchored records must not render a temporal parenthetical (would erode foundational quality)");
+        rendered.Should().NotContain("weeks ago)",
+            "J.3 invariant: anchored records must not render any temporal parenthetical");
+    }
+
+    [Fact]
+    public void NonAnchoredRecord_StillRendersTemporalParenthetical()
+    {
+        // CONTROL: the DecayTier check in FormatMemoryWithTime must NOT
+        // regress the temporal rendering for non-anchored records. This
+        // pins that the tier-aware branch is anchored-specific.
+        var record = new MemoryRecord
+        {
+            Content          = "Mark said hi",
+            OccurredAt       = DateTimeOffset.UtcNow.AddMinutes(-5),
+            Provenance       = EpistemicTier.Episodic,
+            SourceName       = "conversation",
+            DecayTier        = DecayTier.Standard,
+            AttributedTo     = AttributedTo.Mark,
+            AttributionTrust = "verified",
+        };
+
+        var rendered = PromptBuilder.FormatMemoryWithTime(record, DateTimeOffset.UtcNow);
+
+        rendered.Should().Contain("(just now)",
+            "non-anchored records must still render the temporal parenthetical");
+        rendered.Should().Contain("AUTHORED: Mark");
+    }
 }

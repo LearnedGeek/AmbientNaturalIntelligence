@@ -585,6 +585,17 @@ public static class PromptBuilder
             ? string.Empty
             : $" | TRUST: {memory.AttributionTrust}";
 
+        // F-2 Phase 2 W3 (2026-08-23) — anchored (foundation) memories are
+        // atemporal by design (Theme J.3 invariant). Rendering "(2 years ago)
+        // Eleanor's middle name was Anne" would erode their foundational
+        // quality. Omit the parenthetical temporal segment for anchored
+        // records; the [FROM: … | AUTHORED: …] tag still renders so W3's
+        // attribution goal is preserved.
+        if (memory.DecayTier == DecayTier.Anchored)
+        {
+            return $"[FROM: {FormatMemorySource(memory, contactName)}{authoredSegment}{trustSegment}] {memory.Content}";
+        }
+
         return $"[FROM: {FormatMemorySource(memory, contactName)}{authoredSegment}{trustSegment}] ({temporal}) {memory.Content}";
     }
 
