@@ -40,9 +40,35 @@ public static class ComposerEmissionExtensions
     /// <summary>
     /// Project an emission's record-author attribution fields into an
     /// <see cref="AttributionTriple"/> ready to populate on a
-    /// <see cref="MemoryRecord"/>. The source-record-id is left null;
-    /// composers that need to link to a source record can set it on the
-    /// returned triple with a <c>with</c> expression.
+    /// <see cref="MemoryRecord"/>. The source-record-id AND the source
+    /// descriptor are both left null; composers that need to attach
+    /// content-source grounding (unusual — composers produce Ani-authored
+    /// content, they do not wrap inbound Mark-authored content) can set
+    /// them on the returned triple with a <c>with</c> expression.
+    ///
+    /// <para>
+    /// <b>Devin PR #137 review-fix (2026-08-24) — do NOT project the
+    /// emission's <see cref="IComposerEmission{T}.AttributedSourceDescriptor"/>
+    /// into the triple's <c>SourceDescriptor</c>.</b> The two fields share
+    /// a name but describe different concepts:
+    /// <list type="bullet">
+    ///   <item>The emission's field is emission-side scaffolding
+    ///         (prompt-template ID, model name, session identifier) —
+    ///         "how this got composed."</item>
+    ///   <item>The triple's field is F-2 content-source grounding
+    ///         (e.g. <c>twilio-inbound:SM&lt;sid&gt;</c>,
+    ///         <c>character-seed:mark.profile</c>) — "where the utterance
+    ///         actually came from" — and flows into the persisted
+    ///         <see cref="IAttributedContent{T}.AttributedSourceDescriptor"/>
+    ///         as content-attribution grounding.</item>
+    /// </list>
+    /// Copying scaffolding into grounding would let a composer that
+    /// records its model name silently persist that model name as the
+    /// record's content-source. Fixed by projecting <c>null</c> for the
+    /// triple's descriptor. If a future composer needs to carry a real
+    /// content-source link, add a dedicated field to the emission surface
+    /// instead of overloading the scaffolding field.
+    /// </para>
     ///
     /// <para>
     /// This is the replacement for the current
@@ -60,7 +86,7 @@ public static class ComposerEmissionExtensions
             AttributedTo:     emission.AttributedTo,
             AttributedAt:     emission.EmittedAt,
             SourceRecordId:   null,
-            SourceDescriptor: emission.AttributedSourceDescriptor,
+            SourceDescriptor: null,
             Trust:            emission.AttributionTrust);
     }
 

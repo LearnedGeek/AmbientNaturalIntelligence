@@ -133,19 +133,34 @@ public class ComposerEmissionProjectionTests
     }
 
     [Fact]
-    public void ToAttributionTriple_PropagatesDescriptorWhenPresent()
+    public void ToAttributionTriple_DoesNotProjectEmissionScaffoldingIntoContentGrounding()
     {
+        // Devin PR #137 review-fix (2026-08-24). The emission's
+        // AttributedSourceDescriptor and the triple's SourceDescriptor
+        // share a name but describe different concepts: the emission's
+        // field is emission-side scaffolding (model name / prompt-template
+        // id / session id — "how this got composed"), while the triple's
+        // field is F-2 content-source grounding ("where the utterance
+        // actually came from" — e.g. twilio-inbound:sid) that flows into
+        // the persisted record's content-attribution descriptor.
+        //
+        // The projection MUST leave the triple's SourceDescriptor null
+        // even when the emission carries scaffolding. Otherwise a composer
+        // that records its model name in the scaffolding field would
+        // silently persist that model name as the record's content-source
+        // grounding.
         var emission = new ComposerEmission<string>(
             Content:                    "U2-FIXTURE",
             ComposerRole:               CognitiveProducerKind.Reflection,
             EmittedAt:                  DateTimeOffset.UtcNow,
             AttributedTo:               AttributedTo.Ani,
             AttributionTrust:           "verified",
-            AttributedSourceDescriptor: "reflection:cycle-42");
+            AttributedSourceDescriptor: "model:qwen-14b");
 
         var triple = emission.ToAttributionTriple();
 
-        triple.SourceDescriptor.Should().Be("reflection:cycle-42");
+        triple.SourceDescriptor.Should().BeNull(
+            "the emission's scaffolding descriptor must not be projected into the triple's content-source grounding field; leaving null is the fix for the Devin-caught concept-conflation bug");
     }
 
     [Fact]
