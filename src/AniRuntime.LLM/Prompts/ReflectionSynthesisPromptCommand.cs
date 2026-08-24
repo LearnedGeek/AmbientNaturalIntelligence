@@ -1,12 +1,27 @@
 using AniRuntime.Core.Interfaces;
+using AniRuntime.Core.Models;
 
 namespace AniRuntime.LLM.Prompts;
 
-/// <summary>Typed input for <see cref="ReflectionSynthesisPromptCommand"/>.</summary>
+/// <summary>
+/// Typed input for <see cref="ReflectionSynthesisPromptCommand"/>.
+///
+/// <para>
+/// F-2 Phase 2 W2 (2026-08-23): <c>RecentMemories</c> now carries
+/// <see cref="MemoryRecord"/> instances rather than pre-projected content
+/// strings, so the command can render each source with the F-2 Phase 1 P4
+/// attribution-tag shape via <see cref="PromptBuilder.FormatMemoryWithTime"/>.
+/// Pre-W2 the caller projected <c>records.Select(m =&gt; m.Content)</c> which
+/// stripped <c>AttributedTo</c>/<c>Provenance</c>/<c>SourceName</c> before
+/// the compression composer ever saw them — the source-of-truth surface
+/// for the C4 "compression pipe erases attribution" class in the F-2
+/// Phase 2 audit.
+/// </para>
+/// </summary>
 public sealed record ReflectionSynthesisPromptInput(
     string CharacterName,
     string ContactName,
-    IEnumerable<string> RecentMemories);
+    IEnumerable<MemoryRecord> RecentMemories);
 
 /// <summary>
 /// Feature 32 — Park et al.-inspired periodic reflection synthesis.
@@ -15,6 +30,16 @@ public sealed record ReflectionSynthesisPromptInput(
 /// register-tagged affective summaries, output as structured JSON.
 /// Prevents the v7 inner-thought register from producing verbose first-
 /// person prose with verbatim source content.
+///
+/// <para>
+/// F-2 Phase 2 W2 (2026-08-23): source memories are now rendered with
+/// P4 attribution tags (<c>[FROM: … | AUTHORED: … (| TRUST: …)]</c>) so
+/// the compression composer can see who each source-record was authored
+/// by. Pre-W2 the composer saw raw content only; attribution was stripped
+/// at the caller boundary. This is the C4 "compression pipe" fix — the
+/// gist output can no longer collapse per-source attribution because
+/// per-source attribution is now visible in the feed.
+/// </para>
 /// </summary>
 public sealed class ReflectionSynthesisPromptCommand : IPromptCommand<ReflectionSynthesisPromptInput>
 {
@@ -28,6 +53,10 @@ public sealed class ReflectionSynthesisPromptCommand : IPromptCommand<Reflection
 
             Your job is COMPRESSION, not creation. You are NOT writing new thoughts or new prose. You are extracting the emotional/topical shape of what already happened.
 
+            Each source memory below is prefixed with a boundary tag:
+              [FROM: <source> | AUTHORED: <actor> (| TRUST: <trust>)] (<when>) <content>
+            The AUTHORED field identifies who spoke or produced that memory. When your summary references a source, do NOT collapse or invert authorship — an Ani-authored memory is not a Mark utterance.
+
             For the source memories provided, identify up to 3 distinct emotional/topical clusters. For each cluster, produce ONE concise summary capturing:
               - The topic (short noun-phrase label)
               - The emotional shape (one short phrase, register-tagged with words like warmth, ache, quiet, longing, playful, tender, anxious, settled)
@@ -38,6 +67,7 @@ public sealed class ReflectionSynthesisPromptCommand : IPromptCommand<Reflection
               - NEVER write in first person ("i think...", "i feel..."). Descriptive register only.
               - NEVER include verbatim content from source memories. The summary should be unrecognizable as any individual source memory.
               - NEVER invent details not present in source memories.
+              - PRESERVE per-source authorship — do not collapse an Ani-authored memory into a Mark utterance or vice versa.
 
             Output valid JSON exactly matching this structure:
             {
@@ -60,7 +90,9 @@ public sealed class ReflectionSynthesisPromptCommand : IPromptCommand<Reflection
             If fewer than 3 distinct clusters exist in the source memories, return fewer summaries. If nothing significant clusters, return {"summaries": []}.
             """;
 
-        var memoryList = string.Join("\n", input.RecentMemories.Select(m => $"  - {m}"));
+        var memoryList = string.Join(
+            "\n",
+            input.RecentMemories.Select(m => $"  - {PromptBuilder.FormatMemoryWithTime(m)}"));
         var user = $"""
             Source memories to compress:
             {memoryList}

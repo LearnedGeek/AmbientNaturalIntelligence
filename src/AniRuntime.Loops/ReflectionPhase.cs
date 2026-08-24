@@ -174,10 +174,16 @@ public class ReflectionPhase
         }
 
         var contact = characterState.PrimaryContactName ?? "Mark";
-        var memoryContents = recentMemories.Select(m => m.Content).ToList();
 
+        // F-2 Phase 2 W2 (2026-08-23): pass MemoryRecord instances directly
+        // instead of projecting through .Content. Pre-W2 the caller stripped
+        // AttributedTo/Provenance/SourceName before the reflection composer
+        // saw the sources — the C4 "compression pipe erases attribution"
+        // finding from the F-2 Phase 2 audit. The command renders each
+        // source with the P4 attribution-tag shape so the composer can
+        // preserve per-source authorship in its gist output.
         var (system, user) = PromptBuilder.BuildReflectionSynthesisPrompt(
-            characterState.Name, contact, memoryContents);
+            characterState.Name, contact, recentMemories);
 
         // Phase 6 v1.2 R3 (May 17, 2026) — JSON-mode synthesis.
         //

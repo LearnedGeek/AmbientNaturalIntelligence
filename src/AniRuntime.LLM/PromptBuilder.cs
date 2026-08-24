@@ -501,7 +501,7 @@ public static class PromptBuilder
     /// Synthesizes recent memories into higher-order relational observations.
     /// </summary>
     public static (string System, string User) BuildReflectionSynthesisPrompt(
-        string characterName, string contactName, IEnumerable<string> recentMemories)
+        string characterName, string contactName, IEnumerable<AniRuntime.Core.Models.MemoryRecord> recentMemories)
         => new Prompts.ReflectionSynthesisPromptCommand()
             .Build(new Prompts.ReflectionSynthesisPromptInput(characterName, contactName, recentMemories));
 
