@@ -41,7 +41,7 @@ public sealed class EfReflectionGistService : IReflectionGistService
 
     public async Task<Guid> SaveReflectionGistAndCompressAsync(
         string gistContent,
-        IReadOnlyList<Guid> sourceIds,
+        IReadOnlyList<MemoryRecord> sources,
         EpistemicTier provenance,
         CancellationToken ct = default)
     {
@@ -49,6 +49,8 @@ public sealed class EfReflectionGistService : IReflectionGistService
             throw new ArgumentException("Gist content cannot be empty.", nameof(gistContent));
 
         var gistId = Guid.NewGuid();
+        var sourceIds = sources?.Where(m => m is not null).Select(m => m.Id).ToList()
+                        ?? new List<Guid>();
 
         // Embed the gist content if Ollama is available. Failures here
         // do NOT block the save — gist persists without embedding (the
@@ -76,22 +78,48 @@ public sealed class EfReflectionGistService : IReflectionGistService
         var linkRepo   = new MemoryLinkRepository(db);
 
         // 1. Add the gist record.
+        //
         // F-2 Phase 1 P6 (2026-08-22) — reflection synthesis is Ani's own
         // interpretive act (LLM-composed gist over her cognitive substrate),
-        // so attribution is Ani-verified. Mirrors ReflectionPhase.SaveLegacyAsync;
-        // this is the default primary path when UseEfReflectionGistService +
-        // CompressionEnabled are on.
-        var reflectionAttribution = AttributionTriple.AniAt(DateTimeOffset.UtcNow);
+        // so record-author attribution is Ani-verified.
+        //
+        // F-3 U5 (2026-08-24) — construct the composer emission first, then
+        // project the attribution triple from it (mirrors U3 for inner-
+        // thought). When source records are present, upgrade to
+        // ClaimBearingEmission<string> so per-source attribution flows
+        // through the envelope alongside the gist. Each source becomes one
+        // ContentClaim carrying that source's own AttributedTo + trust +
+        // record id — this is the "compression preserves per-source
+        // attribution structurally" property from the F-3 plan's Option B.
+        // Downstream consumers can read the claims to see which sources
+        // fed the gist and what each one's attribution was, without joining
+        // memory_links back to source records.
+        var now = DateTimeOffset.UtcNow;
+        var perSourceClaims = ComposerEmissionExtensions.BuildPerSourceClaims(sources);
+        IComposerEmission<string> gistEmission = perSourceClaims.Count > 0
+            ? new ClaimBearingEmission<string>(
+                Content:          gistContent,
+                ComposerRole:     CognitiveProducerKind.Reflection,
+                EmittedAt:        now,
+                AttributedTo:     AttributedTo.Ani,
+                AttributionTrust: "verified",
+                Claims:           perSourceClaims)
+            : ComposerEmissionExtensions.AniEmission(
+                content:      gistContent,
+                composerRole: CognitiveProducerKind.Reflection,
+                emittedAt:    now);
+        var reflectionAttribution = gistEmission.ToAttributionTriple();
+
         var gistEntity = new MemoryEntity
         {
             Id                         = gistId,
             Type                       = MemoryType.Semantic,
-            Content                    = gistContent,
+            Content                    = gistEmission.Content,
             Importance                 = 0.8f,
             RelationalValence          = 0.5f,
             SourceName                 = "reflection",
-            OccurredAt                 = DateTimeOffset.UtcNow,
-            CreatedAt                  = DateTimeOffset.UtcNow,
+            OccurredAt                 = now,
+            CreatedAt                  = now,
             Tier                       = DecayTier.Standard,
             Provenance                 = provenance,
             Embedding                  = embedding,
@@ -124,7 +152,7 @@ public sealed class EfReflectionGistService : IReflectionGistService
                 .ToListAsync(ct)
                 .ConfigureAwait(false);
 
-            var now = DateTimeOffset.UtcNow;
+            var linkTime = DateTimeOffset.UtcNow;
             foreach (var sourceId in compressedIds)
             {
                 linkRepo.Add(new MemoryLinkEntity
@@ -132,7 +160,7 @@ public sealed class EfReflectionGistService : IReflectionGistService
                     SourceId     = gistId,
                     TargetId     = sourceId,
                     Relationship = "compressed_into",
-                    CreatedAt    = now,
+                    CreatedAt    = linkTime,
                 });
             }
         }
@@ -156,10 +184,21 @@ public sealed class EfReflectionGistService : IReflectionGistService
             AttributionTrust           = gistEntity.AttributionTrust,
         }.LogAttribution(_log);
 
+        // F-3 U5 (2026-08-24) — per-source claims observability. Count
+        // + attribution breakdown per gist, so post-deploy we can see
+        // what mix of author-attributions the compression is preserving.
+        if (perSourceClaims.Count > 0)
+        {
+            _log.LogInformation(
+                "F3_CLAIM_EMITTED producer=Reflection gistId={GistId} claimsCount={Count}",
+                gistId, perSourceClaims.Count);
+        }
+
         _log.LogInformation(
             "EfReflectionGistService: saved gist {GistId} + marked {Marked}/{Requested} sources as Compressed",
             gistId, markedCount, sourceIds.Count);
 
         return gistId;
     }
+
 }

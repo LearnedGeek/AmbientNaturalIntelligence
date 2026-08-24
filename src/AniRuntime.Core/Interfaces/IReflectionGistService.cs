@@ -29,18 +29,32 @@ public interface IReflectionGistService
     /// records as Compressed. Creates <c>compressed_into</c> provenance
     /// links from gist → each source. All operations happen in one
     /// transaction; failure anywhere rolls back the whole batch.
+    ///
+    /// <para>
+    /// <b>F-3 U5 (2026-08-24) — signature takes full source records
+    /// rather than just IDs.</b> The implementation extracts the IDs it
+    /// needs for the compression marking + provenance-link writes; the
+    /// full records let it build per-source attribution claims that flow
+    /// through the composer emission envelope alongside the gist. Empty
+    /// or null source list is legal (some reflection cycles compress
+    /// nothing) — the gist still saves without claims and without
+    /// compression marking.
+    /// </para>
     /// </summary>
     /// <param name="gistContent">The synthesized gist content (typically the
     /// <c>"[topic: X] Y"</c> shape produced by ReflectionPhase's Qwen call).</param>
-    /// <param name="sourceIds">IDs of the source records being compressed into
-    /// this gist. These will be marked <see cref="DecayTier.Compressed"/>.</param>
+    /// <param name="sources">The source records being compressed into this
+    /// gist. Their IDs will be marked <see cref="DecayTier.Compressed"/> and
+    /// their attribution snapshots feed the gist's per-source claim envelope
+    /// (F-3 Option B). Pass the full records rather than IDs so per-source
+    /// attribution is available at the wrap site.</param>
     /// <param name="provenance">EpistemicTier for the new gist. Defaults to
     /// Interior for reflection-source content.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The Id of the saved gist record.</returns>
     Task<Guid> SaveReflectionGistAndCompressAsync(
         string gistContent,
-        IReadOnlyList<Guid> sourceIds,
+        IReadOnlyList<MemoryRecord> sources,
         EpistemicTier provenance,
         CancellationToken ct = default);
 }

@@ -114,4 +114,46 @@ public static class ComposerEmissionExtensions
             EmittedAt:        emittedAt,
             AttributedTo:     AttributedTo.Ani,
             AttributionTrust: "verified");
+
+    /// <summary>
+    /// F-3 U5 (2026-08-24) — build one <see cref="ContentClaim"/> per
+    /// source record for a compression-style composer emission (reflection
+    /// gist, thread-close summary, etc.). Each claim carries the source's
+    /// own attribution snapshot + a truncated preview of the source content
+    /// as Text. Empty or null input returns an empty list.
+    ///
+    /// <para>
+    /// Distinct semantic from the inner-thought U4 shape: those claims are
+    /// Qwen-extracted per-quote attribution within the emission's prose;
+    /// these claims are mechanically-derived per-source attribution over
+    /// records that FED the compression. Same underlying
+    /// <see cref="ContentClaim"/> shape, different production path.
+    /// </para>
+    ///
+    /// <para>
+    /// Preview length: 120 chars. Balances audit-usefulness (enough to
+    /// identify the source in logs / dashboards) against envelope-size
+    /// growth on large compressions. The <see cref="ContentClaim.SourceRecordId"/>
+    /// is the canonical pointer; Text is for reader convenience.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<ContentClaim> BuildPerSourceClaims(
+        IReadOnlyList<MemoryRecord>? sources)
+    {
+        if (sources is null || sources.Count == 0) return Array.Empty<ContentClaim>();
+
+        var claims = new List<ContentClaim>(sources.Count);
+        foreach (var source in sources)
+        {
+            if (source is null) continue;
+            var content = source.Content ?? string.Empty;
+            var preview = content.Length > 120 ? content[..120] : content;
+            claims.Add(new ContentClaim(
+                Text:             preview,
+                AttributedTo:     source.AttributedTo,
+                SourceRecordId:   source.Id,
+                AttributionTrust: source.AttributionTrust ?? "unverified"));
+        }
+        return claims;
+    }
 }

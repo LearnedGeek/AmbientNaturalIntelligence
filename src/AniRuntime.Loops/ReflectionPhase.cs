@@ -326,7 +326,11 @@ public class ReflectionPhase
             //
             // Legacy path preserved as fallback while the new pattern
             // proves out in production.
-            var sourceGuidsForBatch = recentMemories.Select(m => m.Id).ToList();
+            // F-3 U5 (2026-08-24) — pass the source records themselves
+            // rather than just their IDs. Both gist-save paths now build
+            // per-source ContentClaims from these records and wire them
+            // through the ClaimBearingEmission envelope at the wrap site.
+            var sourceRecordsForBatch = (IReadOnlyList<MemoryRecord>)recentMemories;
             Guid? savedGistId = null;
             var useEfPath = _options.UseEfReflectionGistService
                             && _gistService is not null
@@ -337,7 +341,7 @@ public class ReflectionPhase
                 try
                 {
                     savedGistId = await _gistService!.SaveReflectionGistAndCompressAsync(
-                        observation, sourceGuidsForBatch, EpistemicTier.Interior, ct)
+                        observation, sourceRecordsForBatch, EpistemicTier.Interior, ct)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
@@ -349,7 +353,7 @@ public class ReflectionPhase
 
             if (savedGistId is null)
             {
-                savedGistId = await SaveLegacyAsync(observation, sourceGuidsForBatch, ct)
+                savedGistId = await SaveLegacyAsync(observation, sourceRecordsForBatch, ct)
                     .ConfigureAwait(false);
             }
 
@@ -388,20 +392,44 @@ public class ReflectionPhase
     /// </summary>
     private async Task<Guid?> SaveLegacyAsync(
         string observation,
-        IReadOnlyList<Guid> sourceGuids,
+        IReadOnlyList<MemoryRecord> sources,
         CancellationToken ct)
     {
         var gistId = Guid.NewGuid();
+        var sourceGuids = sources.Where(m => m is not null).Select(m => m.Id).ToList();
+
         // F-2 Phase 1 P6 (2026-08-22) — reflection synthesis is Ani-composed
         // over source records; author verified, source descriptor points at
         // the reflection process (source-links to the underlying gists live
         // in the memory_links table separately).
-        var reflectionAttribution = AniRuntime.Core.Models.AttributionTriple.AniAt(DateTimeOffset.UtcNow);
+        //
+        // F-3 U5 (2026-08-24) — construct the composer emission first, then
+        // project the attribution triple from it. When source records are
+        // present, upgrade to ClaimBearingEmission so per-source attribution
+        // flows through the envelope. Mirrors the EF path (see
+        // EfReflectionGistService.BuildPerSourceClaims for the mechanical
+        // claim-construction rationale).
+        var now = DateTimeOffset.UtcNow;
+        var perSourceClaims = ComposerEmissionExtensions.BuildPerSourceClaims(sources);
+        IComposerEmission<string> gistEmission = perSourceClaims.Count > 0
+            ? new ClaimBearingEmission<string>(
+                Content:          observation,
+                ComposerRole:     CognitiveProducerKind.Reflection,
+                EmittedAt:        now,
+                AttributedTo:     AttributedTo.Ani,
+                AttributionTrust: "verified",
+                Claims:           perSourceClaims)
+            : ComposerEmissionExtensions.AniEmission(
+                content:      observation,
+                composerRole: CognitiveProducerKind.Reflection,
+                emittedAt:    now);
+        var reflectionAttribution = gistEmission.ToAttributionTriple();
+
         var record = new MemoryRecord
         {
             Id                = gistId,
             Type              = MemoryType.Semantic,
-            Content           = observation,
+            Content           = gistEmission.Content,
             Importance        = 0.8f,
             RelationalValence = 0.5f,
             SourceName        = "reflection",
@@ -417,6 +445,12 @@ public class ReflectionPhase
         {
             await _persist.SaveAsync(record, ct).ConfigureAwait(false);
             record.LogAttribution(_log);
+            if (perSourceClaims.Count > 0)
+            {
+                _log.LogInformation(
+                    "F3_CLAIM_EMITTED producer=Reflection.Legacy gistId={GistId} claimsCount={Count}",
+                    gistId, perSourceClaims.Count);
+            }
         }
         catch (Exception ex)
         {
