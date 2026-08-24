@@ -70,7 +70,13 @@ public sealed class OllamaInnerThoughtClaimExtractor : IInnerThoughtClaimExtract
                 _extractionModel, system, Array.Empty<ChatMessage>(), user, ct)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex)
+        // Preserve cancellation semantics per project discipline: cooperative
+        // cancellation must propagate to the caller, not be swallowed as a
+        // "failed extraction." Filter OperationCanceledException OUT of the
+        // fail-open branch so it flows up to the cognitive cycle's OCE handler.
+        // Every other failure class (transport, parse-in-caller, timeout with
+        // no OCE) continues to hit the fail-open path and returns empty claims.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _log.LogWarning(ex,
                 "F3_CLAIM_EXTRACT_FAIL model={Model} phase=call — returning empty claims list (composer flows through base emission surface).",

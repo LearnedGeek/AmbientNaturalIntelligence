@@ -163,12 +163,21 @@ public class InnerThoughtPhase
         if (_hybridCycleEnabled)
         {
             var runClaimExtraction = _claimExtractionEnabled && _claimExtractor is not null;
+            // CharacterStateDoc.Name and PrimaryContactName are non-nullable
+            // strings that default to string.Empty (not null), so `?? "Ani"`
+            // and `?? "Mark"` would never fire and the extractor would receive
+            // empty strings — which its prompt template then maps to "she" /
+            // "the caregiver" instead of the intended defaults. Devin PR #139
+            // review-fix (2026-08-24): use IsNullOrWhiteSpace, mirroring the
+            // pattern in InnerThoughtMetadataPromptCommand.cs:45-46.
+            var characterName = string.IsNullOrWhiteSpace(snapshot.CharacterState.Name)
+                ? "Ani"
+                : snapshot.CharacterState.Name;
+            var contactName = string.IsNullOrWhiteSpace(snapshot.CharacterState.PrimaryContactName)
+                ? "Mark"
+                : snapshot.CharacterState.PrimaryContactName;
             var claimsTask = runClaimExtraction
-                ? _claimExtractor!.ExtractAsync(
-                    thought,
-                    snapshot.CharacterState.Name ?? "Ani",
-                    snapshot.CharacterState.PrimaryContactName ?? "Mark",
-                    ct)
+                ? _claimExtractor!.ExtractAsync(thought, characterName, contactName, ct)
                 : Task.FromResult<IReadOnlyList<ContentClaim>>(Array.Empty<ContentClaim>());
 
             var metadata = await RecognizeMetadataAsync(thought, snapshot, ct)
