@@ -733,4 +733,134 @@ public class FrontierVerifierHandlerTests
         captured.CanonicalSubstrate.Should().BeEmpty(
             "threshold-filtered-empty pool → empty CanonicalSubstrate (anchored records share the same Facts-tier retrieval surface)");
     }
+
+    // ─── 17. F-2 Phase 2 W1 — verifier substrate carries P4 attribution tags ─
+
+    /// <summary>
+    /// F-2 Phase 2 W1 (2026-08-23) — pre-W1, <c>RenderRecords</c> emitted raw
+    /// <c>- {content}</c> bullets. Sonnet's three-axis-rule prompt discipline
+    /// couldn't distinguish Mark-asserted from Ani-prior lines because the
+    /// substrate carried no author signal.
+    ///
+    /// W1 threads the F-2 Phase 1 P4 attribution-tag shape through
+    /// <see cref="FrontierVerifierHandler"/>'s substrate rendering via
+    /// <see cref="AniRuntime.LLM.PromptBuilder.FormatMemoryWithTime"/>.
+    /// This test pins the tag shape on both substrate fields
+    /// (<c>MarkAssertedSubstrate</c> for regular Facts + <c>CanonicalSubstrate</c>
+    /// for anchored) so the verifier's existing discipline actually has
+    /// author signal to weight.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_SubstrateCarriesP4AttributionTags()
+    {
+        FrontierVerifierRequest? captured = null;
+        var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
+        client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
+              .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
+              .ReturnsAsync(NoViolations());
+
+        var markInboundAttr = AttributionTriple.MarkAt(
+            DateTimeOffset.UtcNow.AddMinutes(-30), "twilio-inbound:SM_test");
+        var markAssertedRecord = new MemoryRecord
+        {
+            Content                    = "W1-FIXTURE: tough day yesterday",
+            Provenance                 = EpistemicTier.Facts,
+            SourceName                 = "twilio-inbound",
+            OccurredAt                 = DateTimeOffset.UtcNow.AddMinutes(-30),
+            AttributedTo               = markInboundAttr.AttributedTo,
+            AttributedAt               = markInboundAttr.AttributedAt,
+            AttributedSourceRecordId   = markInboundAttr.SourceRecordId,
+            AttributedSourceDescriptor = markInboundAttr.SourceDescriptor,
+            AttributionTrust           = markInboundAttr.Trust,
+        };
+
+        var canonicalAttr = AttributionTriple.MarkCanonical("character-seed:mark.profile");
+        var anchoredRecord = new MemoryRecord
+        {
+            Content                    = "W1-FIXTURE: Mark lives in Wisconsin",
+            Provenance                 = EpistemicTier.Facts,
+            SourceName                 = "character-seed",
+            DecayTier                  = DecayTier.Anchored,
+            OccurredAt                 = DateTimeOffset.UtcNow.AddDays(-30),
+            AttributedTo               = canonicalAttr.AttributedTo,
+            AttributedAt               = canonicalAttr.AttributedAt,
+            AttributedSourceRecordId   = canonicalAttr.SourceRecordId,
+            AttributedSourceDescriptor = canonicalAttr.SourceDescriptor,
+            AttributionTrust           = canonicalAttr.Trust,
+        };
+
+        var search = SearchMock(new[]
+        {
+            Hit(markAssertedRecord),
+            Hit(anchoredRecord),
+        });
+
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
+
+        await handler.HandleAsync(CtxFor(), CancellationToken.None);
+
+        captured.Should().NotBeNull();
+
+        // Non-anchored Mark-asserted record must render with the F-2 P4
+        // attribution-tag shape. Verified trust → TRUST segment omitted.
+        captured!.MarkAssertedSubstrate.Should().Contain("AUTHORED: Mark",
+            "verifier substrate must expose per-line author signal — the whole point of W1");
+        captured.MarkAssertedSubstrate.Should().Contain("W1-FIXTURE: tough day yesterday",
+            "content must still be present (P4 tag prepended, not replaced)");
+        captured.MarkAssertedSubstrate.Should().Contain("[FROM:",
+            "P4 boundary tag must open the line so Sonnet parses the frame");
+
+        // Anchored (canonical) record likewise carries the tag on the
+        // CanonicalSubstrate side.
+        captured.CanonicalSubstrate.Should().Contain("AUTHORED: Mark");
+        captured.CanonicalSubstrate.Should().Contain("W1-FIXTURE: Mark lives in Wisconsin");
+        captured.CanonicalSubstrate.Should().Contain("[FROM:");
+    }
+
+    /// <summary>
+    /// F-2 Phase 2 W1 CONTROL — an Ani-authored record retrieved into the
+    /// verifier substrate must render with <c>AUTHORED: Ani</c>, not Mark.
+    /// This is the specific defense the pre-W1 verifier could not deliver
+    /// against: a "you said X" claim in the composed reply that actually
+    /// traces back to an Ani-prior record would previously have been
+    /// invisible to the three-axis-rule check.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_SubstrateAniAuthoredRecord_RendersAuthoredAni()
+    {
+        FrontierVerifierRequest? captured = null;
+        var client = new Mock<IFrontierVerifierClient>(MockBehavior.Strict);
+        client.Setup(c => c.VerifyAsync(It.IsAny<FrontierVerifierRequest>(), It.IsAny<CancellationToken>()))
+              .Callback<FrontierVerifierRequest, CancellationToken>((req, _) => captured = req)
+              .ReturnsAsync(NoViolations());
+
+        // Ani-authored Facts-tier record (e.g. reflection synthesized about
+        // Mark's world that landed in the Facts pool — rare but possible).
+        var aniAttr = AttributionTriple.AniAt(DateTimeOffset.UtcNow.AddMinutes(-10));
+        var aniAuthored = new MemoryRecord
+        {
+            Content                    = "W1-FIXTURE: Ani-composed observation",
+            Provenance                 = EpistemicTier.Facts,
+            SourceName                 = "reflection",
+            OccurredAt                 = DateTimeOffset.UtcNow.AddMinutes(-10),
+            AttributedTo               = aniAttr.AttributedTo,
+            AttributedAt               = aniAttr.AttributedAt,
+            AttributedSourceRecordId   = aniAttr.SourceRecordId,
+            AttributedSourceDescriptor = aniAttr.SourceDescriptor,
+            AttributionTrust           = aniAttr.Trust,
+        };
+
+        var search = SearchMock(new[] { Hit(aniAuthored) });
+        var handler = new FrontierVerifierHandler(
+            client.Object, search.Object, Options(), new CapturingLogger());
+
+        await handler.HandleAsync(CtxFor(), CancellationToken.None);
+
+        captured.Should().NotBeNull();
+        captured!.MarkAssertedSubstrate.Should().Contain("AUTHORED: Ani",
+            "the pre-W1 verifier could not see this signal; the three-axis-rule needs it to weight the line correctly");
+        captured.MarkAssertedSubstrate.Should().NotContain("AUTHORED: Mark",
+            "misattribution here would be the exact 12:04-shape failure at the verifier surface");
+    }
 }

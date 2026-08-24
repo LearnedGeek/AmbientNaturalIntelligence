@@ -235,6 +235,17 @@ public sealed class AnthropicVerifierClient : IFrontierVerifierClient
     {
         // Only per-call variable content lives here. See BuildSystemPrompt
         // header for the full structural rationale.
+        //
+        // F-2 Phase 2 W1 (2026-08-23): the substrate strings the caller
+        // hands us (MarkAssertedSubstrate + CanonicalSubstrate) are now
+        // rendered by FrontierVerifierHandler.RenderRecords via
+        // PromptBuilder.FormatMemoryWithTime, so each line carries the
+        // F-2 Phase 1 P4 attribution-tag shape:
+        //   [FROM: … | AUTHORED: … (| TRUST: …)] (temporal) content
+        // Sonnet's three-axis-rule prompt discipline can now actually
+        // weight Mark-asserted vs Ani-prior claims by reading the
+        // AUTHORED tag inline rather than inferring authorship from
+        // prose alone.
         var sb = new StringBuilder();
 
         sb.Append("[COMPOSED MESSAGE]\n");
