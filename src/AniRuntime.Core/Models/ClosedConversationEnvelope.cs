@@ -5,7 +5,8 @@ namespace AniRuntime.Core.Models;
 /// <summary>
 /// Canonical <see cref="IClosedConversationEnvelope"/> implementation
 /// wrapping the pre-existing <see cref="ClosedConversationRecord"/>
-/// class with F-1 producer-boundary provenance (Phase 8c, P3 wrap).
+/// class with F-1 producer-boundary provenance (Phase 8c, P3 wrap) and
+/// F-3 composer-emission attribution (U8, 2026-08-24).
 ///
 /// <para>
 /// The <see cref="Record"/> property is the construction-shorthand
@@ -23,9 +24,26 @@ namespace AniRuntime.Core.Models;
 /// valid ones at the boundary tag without unwrapping. Kebab-case per
 /// the sibling-envelope naming convention (Phase 8a/8b).
 /// </para>
+///
+/// <para>
+/// <b>F-3 U8 timestamp sharing:</b> the F-1 <c>CreatedAt</c> and F-3
+/// <c>EmittedAt</c> are backed by a single field captured at construction.
+/// The two surfaces describe the same instant (envelope-emit time is
+/// composer-emit time for this producer — the summarizer builds the
+/// envelope immediately after the LLM returns), so one capture serves
+/// both contracts.
+/// </para>
 /// </summary>
 public sealed class ClosedConversationEnvelope : IClosedConversationEnvelope
 {
+    /// <summary>
+    /// F-3 U8 shared timestamp backing both F-1 <c>CreatedAt</c> and F-3
+    /// <c>EmittedAt</c>. Captured once at construction — the two surfaces
+    /// describe the same instant for this producer so a single field
+    /// satisfies both contracts and prevents the surfaces from drifting.
+    /// </summary>
+    private readonly DateTimeOffset _timestamp = DateTimeOffset.UtcNow;
+
     /// <summary>
     /// The wrapped record. Construction-only surface: production readers
     /// should access the wrapped payload through the envelope interface
@@ -43,9 +61,20 @@ public sealed class ClosedConversationEnvelope : IClosedConversationEnvelope
     /// <inheritdoc />
     public string Validity => Record.Validity;
 
-    // ── IProvenancedContent<ClosedConversationRecord> ─────────────────
+    // ── Content (F-1 IProvenancedContent + F-3 IComposerEmission) ────
+    //
+    // Single public implementation satisfies three interface members
+    // that all describe the same payload:
+    //   - IClosedConversationEnvelope.Content (promoted via `new` to
+    //     disambiguate the two inherited members)
+    //   - IProvenancedContent<ClosedConversationRecord>.Content (F-1)
+    //   - IComposerEmission<ClosedConversationRecord>.Content (F-3 U8)
+    //
+    // Points at the same object as Record — the construction shorthand
+    // and the interface read path are two names for the same instance.
+
     /// <inheritdoc />
-    ClosedConversationRecord IProvenancedContent<ClosedConversationRecord>.Content => Record;
+    public ClosedConversationRecord Content => Record;
 
     /// <inheritdoc />
     /// <remarks>
@@ -77,11 +106,13 @@ public sealed class ClosedConversationEnvelope : IClosedConversationEnvelope
 
     /// <inheritdoc />
     /// <remarks>
-    /// Captured once at construction per <c>IProvenancedContent&lt;T&gt;.CreatedAt</c>
-    /// contract (sibling-impl discipline from PR #112). Class not record
-    /// so this doesn't affect equality.
+    /// Backed by the shared <c>_timestamp</c> field captured once at
+    /// construction per <c>IProvenancedContent&lt;T&gt;.CreatedAt</c>
+    /// contract (sibling-impl discipline from PR #112). F-3 U8 shares
+    /// this instant with <c>IComposerEmission&lt;T&gt;.EmittedAt</c>.
+    /// Class not record so this doesn't affect equality.
     /// </remarks>
-    DateTimeOffset IProvenancedContent<ClosedConversationRecord>.CreatedAt { get; } = DateTimeOffset.UtcNow;
+    DateTimeOffset IProvenancedContent<ClosedConversationRecord>.CreatedAt => _timestamp;
 
     /// <inheritdoc />
     /// <remarks>
@@ -95,4 +126,59 @@ public sealed class ClosedConversationEnvelope : IClosedConversationEnvelope
     /// <c>ClosedConversationSummarizer</c> catch/log).
     /// </remarks>
     float[]? IProvenancedContent<ClosedConversationRecord>.SemanticKey => Record.Embedding;
+
+    // ── IComposerEmission<ClosedConversationRecord> (F-3 U8) ──────────
+    //
+    // The Content member is satisfied by the public property above (one
+    // impl for all three inherited/promoted Content members). The
+    // remaining IComposerEmission members are explicit — they don't
+    // collide with F-1 and there's no consumer-side benefit to exposing
+    // them publicly, so keep them behind the interface to reserve the
+    // public class surface for construction (Record).
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The thread-close summarizer is the <c>ClosedThreadSummary</c>
+    /// composer per <see cref="CognitiveProducerKind"/>. This identifies
+    /// the producer to downstream consumers reading the emission surface
+    /// (attribution logging, dashboard producer breakdowns) without
+    /// re-parsing the F-1 <c>Producer</c> string tag.
+    /// </remarks>
+    CognitiveProducerKind IComposerEmission<ClosedConversationRecord>.ComposerRole =>
+        CognitiveProducerKind.ClosedThreadSummary;
+
+    /// <inheritdoc />
+    DateTimeOffset IComposerEmission<ClosedConversationRecord>.EmittedAt => _timestamp;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The summarizer is an Ani-authored composer — Ani's LLM produces
+    /// the paraphrased gist over her own thread-history substrate.
+    /// Matches the ten other composer wrap sites migrated in F-3 U3–U7.
+    /// </remarks>
+    AttributedTo IComposerEmission<ClosedConversationRecord>.AttributedTo => AttributedTo.Ani;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Verified: the composer knows it authored the content (the LLM call
+    /// is the emission point). Fallback paths that reconstruct an envelope
+    /// from a raw string with defensive defaults would use
+    /// <c>"unverified"</c>, but this producer has no such path — the
+    /// envelope construction site sits immediately after the successful
+    /// LLM call (or, on LLM failure, after the heuristic gist which is
+    /// also composer-authored).
+    /// </remarks>
+    string IComposerEmission<ClosedConversationRecord>.AttributionTrust => "verified";
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Null — the emission-side scaffolding descriptor (prompt-template
+    /// ID, model name, session identifier) is not tracked at this wrap
+    /// site. Downstream consumers reading composer attribution rely on
+    /// <see cref="IComposerEmission{T}.ComposerRole"/> and the F-1
+    /// <c>Producer</c> tag for identity; the descriptor field is reserved
+    /// for future emission-scaffolding grounding without back-filling
+    /// every historical envelope.
+    /// </remarks>
+    string? IComposerEmission<ClosedConversationRecord>.AttributedSourceDescriptor => null;
 }
