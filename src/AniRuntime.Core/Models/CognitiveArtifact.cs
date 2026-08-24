@@ -161,6 +161,17 @@ public enum CognitiveProducerKind
     MemoryMerge             = 6,
     ClosedThreadSummary     = 7,
     Voice                   = 8,
+
+    /// <summary>
+    /// F-3 U1 (2026-08-24) — reactive-share composer (RSS-driven / perception-
+    /// triggered unprompted share messages). Added so the F-3 composer-emission
+    /// envelope can identify reactive-share output without introducing a
+    /// parallel <c>ComposerRole</c> enum. Existing consumers of this enum
+    /// (invariant AppliesTo checks, etc.) should treat this value as
+    /// unrecognized until they opt into it, matching the pattern used when
+    /// prior values (Voice=8) were added.
+    /// </summary>
+    ReactiveShare           = 9,
 }
 
 /// <summary>
