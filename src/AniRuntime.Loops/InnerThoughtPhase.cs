@@ -47,10 +47,12 @@ public class InnerThoughtPhase
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IEpistemicSubstrateRenderer? _epistemicRenderer;
     private readonly IThoughtShapeClassifier? _shapeClassifier;
+    private readonly IInnerThoughtClaimExtractor? _claimExtractor;
     private readonly bool _epistemicFramingEnabled;
     private readonly bool _hybridCycleEnabled;
     private readonly string _hybridMetadataModel;
     private readonly bool _thoughtShapeClassificationEnabled;
+    private readonly bool _claimExtractionEnabled;
 
     /// <summary>
     /// F-1 Phase 3 (2026-08-18): <paramref name="shapeClassifier"/> is
@@ -60,6 +62,16 @@ public class InnerThoughtPhase
     /// and the result is written to <see cref="InnerThoughtResult.Shape"/>.
     /// Failure is fail-open — the cycle proceeds using the raw thought text
     /// as-is with <see cref="ThoughtShape.Unclassified"/>.
+    ///
+    /// <para>
+    /// F-3 U4 (2026-08-24): <paramref name="claimExtractor"/> is optional.
+    /// When non-null AND <see cref="AniOptions.InnerThoughtClaimExtractionEnabled"/>
+    /// is true AND the hybrid cycle is on, a Qwen-14B sidecar pass runs
+    /// after composition to extract per-quote attribution claims. Extracted
+    /// claims are attached to <see cref="InnerThoughtResult.Claims"/>. Same
+    /// fail-open discipline as the metadata recognizer — extractor failure
+    /// leaves Claims null and the cycle proceeds normally.
+    /// </para>
     /// </summary>
     public InnerThoughtPhase(
         IOllamaClient ollama,
@@ -68,7 +80,8 @@ public class InnerThoughtPhase
         ICognitiveOutputGate? outputGate = null,
         Microsoft.Extensions.Options.IOptions<AniOptions>? aniOptions = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
-        IThoughtShapeClassifier? shapeClassifier = null)
+        IThoughtShapeClassifier? shapeClassifier = null,
+        IInnerThoughtClaimExtractor? claimExtractor = null)
     {
         _ollama = ollama;
         _registerClassifier = registerClassifier;
@@ -76,10 +89,12 @@ public class InnerThoughtPhase
         _outputGate = outputGate;
         _epistemicRenderer = epistemicRenderer;
         _shapeClassifier = shapeClassifier;
+        _claimExtractor = claimExtractor;
         _epistemicFramingEnabled = aniOptions?.Value.EpistemicFramingEnabled ?? false;
         _hybridCycleEnabled = aniOptions?.Value.UseHybridInnerThoughtCycle ?? false;
         _hybridMetadataModel = aniOptions?.Value.HybridInnerThoughtMetadataModel ?? "qwen3:14b";
         _thoughtShapeClassificationEnabled = aniOptions?.Value.ThoughtShapeClassificationEnabled ?? true;
+        _claimExtractionEnabled = aniOptions?.Value.InnerThoughtClaimExtractionEnabled ?? true;
     }
 
     /// <summary>
@@ -135,11 +150,31 @@ public class InnerThoughtPhase
         // valence, importance, and associative-anchor from the thought v7
         // already produced. Drops the separate reflection call (May 17
         // empirical finding: two-part structure trains continual loops).
+        //
+        // F-3 U4 (2026-08-24) — added a second Qwen sidecar pass that
+        // extracts per-quote attribution claims from the thought. Runs
+        // in parallel with the metadata recognizer so it adds no serial
+        // latency (subject to Ollama's concurrency configuration —
+        // OLLAMA_NUM_PARALLEL controls whether the two Qwen calls actually
+        // run concurrently). Fail-open: extractor failure returns empty
+        // claims list; the emission then flows through the base
+        // IComposerEmission<string> surface at the wrap site instead of
+        // the extended IClaimBearingEmission<string>.
         if (_hybridCycleEnabled)
         {
+            var runClaimExtraction = _claimExtractionEnabled && _claimExtractor is not null;
+            var claimsTask = runClaimExtraction
+                ? _claimExtractor!.ExtractAsync(
+                    thought,
+                    snapshot.CharacterState.Name ?? "Ani",
+                    snapshot.CharacterState.PrimaryContactName ?? "Mark",
+                    ct)
+                : Task.FromResult<IReadOnlyList<ContentClaim>>(Array.Empty<ContentClaim>());
+
             var metadata = await RecognizeMetadataAsync(thought, snapshot, ct)
                 .ConfigureAwait(false);
             var shape = await shapeTask.ConfigureAwait(false);
+            var claims = await claimsTask.ConfigureAwait(false);
             _log.LogInformation(
                 "F1_THOUGHT_SHAPE producer=InnerThoughtPhase shape={Shape} chars={Chars} path=hybrid",
                 shape, thought.Length);
@@ -150,7 +185,8 @@ public class InnerThoughtPhase
                 Register:          metadata.Register,
                 Importance:        metadata.Importance,
                 AssociativeAnchor: metadata.AssociativeAnchor,
-                Shape:             shape);
+                Shape:             shape,
+                Claims:            claims.Count > 0 ? claims : null);
         }
 
         // Legacy three-call path. Kept callable for safe rollout and so

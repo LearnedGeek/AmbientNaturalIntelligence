@@ -659,6 +659,28 @@ public class AniOptions
     /// </summary>
     public string HybridInnerThoughtMetadataModel { get; set; } = "qwen3:14b";
 
+    /// <summary>
+    /// Foundation Unified Surface (F-3) U4 (2026-08-24) — when true, the
+    /// inner-thought phase runs a Qwen-14B sidecar pass after composition
+    /// that extracts per-quote attribution claims as structured JSON. Claims
+    /// are attached to the resulting <c>InnerThoughtResult.Claims</c> field
+    /// and flow into the composer emission as an
+    /// <c>IClaimBearingEmission&lt;string&gt;</c> at the wrap site.
+    /// <para>
+    /// Fail-open contract: any extractor failure returns empty claims list
+    /// and the composer emission flows through the base
+    /// <c>IComposerEmission&lt;string&gt;</c> surface — same behavior as
+    /// pre-U4. No user-facing composition risk; can ship flag ON.
+    /// </para>
+    /// <para>
+    /// Only takes effect on the hybrid path (<see cref="UseHybridInnerThoughtCycle"/>);
+    /// legacy path is out of F-3 scope. Uses the same model as
+    /// <see cref="HybridInnerThoughtMetadataModel"/> so the model load is
+    /// shared across metadata + claim extraction.
+    /// </para>
+    /// </summary>
+    public bool InnerThoughtClaimExtractionEnabled { get; set; } = true;
+
     // Reactive sharing — RSS items relevant enough to share directly with Mark
     public double ReactiveShareThreshold       { get; set; } = 0.6;
     public int    MaxReactiveSharesPerDay      { get; set; } = 2;

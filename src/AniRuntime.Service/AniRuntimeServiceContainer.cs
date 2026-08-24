@@ -176,6 +176,17 @@ public static class AniRuntimeServiceContainer
         // See IThoughtShapeClassifier XML doc for scope + acceptance.
         services.AddSingleton<IThoughtShapeClassifier, QwenThoughtShapeClassifier>();
 
+        // F-3 U4 (2026-08-24) — Qwen-sidecar per-quote attribution
+        // extractor. Runs post-composition on the inner-thought composer
+        // output to identify embedded attribution claims ("you said X",
+        // "Mark told me Y") as structured JSON. Mirrors the metadata
+        // recognizer's compose-with-Ani + extract-with-Qwen split;
+        // motivated by the reflection composer's May 2026 empirical
+        // finding that Ani fine-tunes fight structured emission shape.
+        // See IInnerThoughtClaimExtractor XML doc + F-3 design plan
+        // (ANI-Unified-Attribution-Surface-Plan.md) U4 phase.
+        services.AddSingleton<IInnerThoughtClaimExtractor, OllamaInnerThoughtClaimExtractor>();
+
         // Issue #93 Phase 3 (2026-07-06) — Ani's self-audit classifier. Reads
         // one Interior record's content against confirmed substrate and
         // returns contradicts / grounded / neutral / unknown. Consumed by:

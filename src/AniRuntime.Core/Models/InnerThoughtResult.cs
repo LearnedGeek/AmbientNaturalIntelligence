@@ -36,13 +36,14 @@ namespace AniRuntime.Core.Models;
 /// </para>
 /// </summary>
 public sealed record InnerThoughtResult(
-    string       Thought,
-    string?      Reflection,
-    float        Valence,
-    string?      Register          = null,
-    float?       Importance        = null,
-    string?      AssociativeAnchor = null,
-    ThoughtShape Shape             = ThoughtShape.Unclassified) : IThoughtEnvelope
+    string                        Thought,
+    string?                       Reflection,
+    float                         Valence,
+    string?                       Register          = null,
+    float?                        Importance        = null,
+    string?                       AssociativeAnchor = null,
+    ThoughtShape                  Shape             = ThoughtShape.Unclassified,
+    IReadOnlyList<ContentClaim>?  Claims            = null) : IThoughtEnvelope
 {
     // ── IThoughtEnvelope / IProvenancedContent<string> ─────────────────────
     // Computed accessors — no additional persisted fields required.
