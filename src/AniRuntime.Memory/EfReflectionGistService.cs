@@ -91,9 +91,18 @@ public sealed class EfReflectionGistService : IReflectionGistService
         // ContentClaim carrying that source's own AttributedTo + trust +
         // record id — this is the "compression preserves per-source
         // attribution structurally" property from the F-3 plan's Option B.
-        // Downstream consumers can read the claims to see which sources
-        // fed the gist and what each one's attribution was, without joining
-        // memory_links back to source records.
+        //
+        // CURRENT SCOPE (2026-08-24): claims flow through the in-flight
+        // envelope + emit as the F3_CLAIM_EMITTED log line for observability,
+        // but are NOT persisted to the memory-record schema. Schema shape
+        // for claims (JSON column vs linked table) is a design decision
+        // deferred per the F-3 plan's Q3 until empirical evidence from
+        // the log signal justifies it. Once claims persist, downstream
+        // consumers will be able to read them without joining memory_links
+        // back to source records — for now, memory_links + per-source
+        // attribution lookups remain the retrieval path. Devin PR #140
+        // review-fix corrected an earlier draft of this comment that
+        // overstated current capability.
         var now = DateTimeOffset.UtcNow;
         var perSourceClaims = ComposerEmissionExtensions.BuildPerSourceClaims(sources);
         IComposerEmission<string> gistEmission = perSourceClaims.Count > 0

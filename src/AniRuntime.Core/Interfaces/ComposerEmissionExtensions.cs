@@ -1,3 +1,4 @@
+using System.Linq;
 using AniRuntime.Core.Models;
 
 namespace AniRuntime.Core.Interfaces;
@@ -142,10 +143,13 @@ public static class ComposerEmissionExtensions
     {
         if (sources is null || sources.Count == 0) return Array.Empty<ContentClaim>();
 
+        // Devin PR #140 review-fix (2026-08-24): filter nulls with Where
+        // rather than an in-loop `if continue` guard. Simple predicate
+        // (null-check only) so no re-lookup complexity — the loop body's
+        // property access happens against the non-null instance regardless.
         var claims = new List<ContentClaim>(sources.Count);
-        foreach (var source in sources)
+        foreach (var source in sources.Where(s => s is not null))
         {
-            if (source is null) continue;
             var content = source.Content ?? string.Empty;
             var preview = content.Length > 120 ? content[..120] : content;
             claims.Add(new ContentClaim(
