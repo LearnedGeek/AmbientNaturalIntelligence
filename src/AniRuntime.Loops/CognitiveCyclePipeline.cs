@@ -432,14 +432,33 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             // Ani's self-model content). Record author is trivially
             // verified; internal content claims (embedded "you said X"
             // quotes from the LLM composition) may still contain
-            // attribution slips — those get caught by F-2 Phase 2
-            // output-side constraints when that phase ships.
+            // attribution slips — those get caught by later F-3 phases
+            // that add structured content-claim emission (Option B for
+            // the inner-thought composer in U4).
+            //
+            // F-3 U3 (2026-08-24) — first live use of the composer-
+            // emission envelope surface. The inner-thought composer's
+            // output is wrapped into an IComposerEmission<string> at
+            // this boundary; the wrap site pulls the attribution triple
+            // via emission.ToAttributionTriple() instead of reconstructing
+            // it via AttributionTriple.AniAt(now). The two paths produce
+            // structurally equal triples for the Ani-authored common case
+            // (pinned by ComposerEmissionProjectionTests.AniEmission_
+            // RoundTripsToAttributionTriple_EquivalentToAttributionTripleAniAt),
+            // so behavior is identical to pre-U3. The migration is symbolic
+            // for U3 (composer + wrap co-located here) — the payoff arrives
+            // in later phases where the composer's emission crosses more
+            // pipeline layers before persisting.
             var now = DateTimeOffset.UtcNow;
-            var attribution = AttributionTriple.AniAt(now);
+            var innerEmission = ComposerEmissionExtensions.AniEmission(
+                content:      contentForStorage,
+                composerRole: CognitiveProducerKind.InnerThought,
+                emittedAt:    now);
+            var attribution = innerEmission.ToAttributionTriple();
             var innerRecord = new MemoryRecord
             {
                 Type        = MemoryType.InnerThought,
-                Content     = contentForStorage,
+                Content     = innerEmission.Content,
                 RelationalValence = valence,
                 Importance  = importance,
                 SourceName  = isWorldCycle ? SourceNames.WorldExperience : null,
