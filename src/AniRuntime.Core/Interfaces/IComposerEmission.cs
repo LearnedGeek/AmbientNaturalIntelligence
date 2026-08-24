@@ -86,9 +86,22 @@ public interface IComposerEmission<out T>
     /// <summary>
     /// Optional descriptor identifying the composition-side source (e.g.,
     /// prompt-template ID, model name, session identifier). Null for
-    /// composers that don't carry one. Not to be confused with the F-2
-    /// content-source descriptor — this is emission-side scaffolding, not
-    /// content-attribution grounding.
+    /// composers that don't carry one.
+    ///
+    /// <para>
+    /// <b>DO NOT confuse with the F-2 content-source descriptor</b>
+    /// (<see cref="IAttributedContent{T}.AttributedSourceDescriptor"/>).
+    /// This field is <b>emission-side scaffolding</b> — "how the content
+    /// got composed" (model name, template ID, session). The F-2 field is
+    /// <b>content-source grounding</b> — "where the utterance actually
+    /// came from" (e.g. <c>twilio-inbound:SM&lt;sid&gt;</c>,
+    /// <c>character-seed:mark.profile</c>). These share a name but are
+    /// different concepts and must NOT be projected into each other.
+    /// <see cref="ComposerEmissionExtensions.ToAttributionTriple"/>
+    /// enforces this by leaving the triple's <c>SourceDescriptor</c>
+    /// null — pinned by Devin PR #137 review-fix (2026-08-24) after an
+    /// earlier draft of the projection helper conflated the two.
+    /// </para>
     /// </summary>
     string? AttributedSourceDescriptor { get; }
 }
