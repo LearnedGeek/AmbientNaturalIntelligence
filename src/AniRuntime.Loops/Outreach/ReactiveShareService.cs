@@ -181,12 +181,25 @@ public sealed class ReactiveShareService : IReactiveShareService
         await _threadRecorder.RecordAsync(message, ct).ConfigureAwait(false);
 
         // F-2 Phase 1 P6 (2026-08-22) — reactive share is Ani-authored, verified.
+        //
+        // F-3 U7 (2026-08-24) — construct the composer emission envelope
+        // first, then project the attribution triple from it. Mirrors U6
+        // for outreach: Option A only (user-facing prose surface, so no
+        // structured claim emission that would leak into wire text). The
+        // emission carries the composer identity (ReactiveShare) +
+        // timestamp; downstream projection is structurally equivalent to
+        // the pre-U7 factory call per the U2 migration equivalence pin.
         var shareTime = DateTimeOffset.UtcNow;
-        var shareAttribution = AttributionTriple.AniAt(shareTime);
+        var shareContent = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})";
+        var shareEmission = ComposerEmissionExtensions.AniEmission(
+            content:      shareContent,
+            composerRole: CognitiveProducerKind.ReactiveShare,
+            emittedAt:    shareTime);
+        var shareAttribution = shareEmission.ToAttributionTriple();
         var shareRecord = new MemoryRecord
         {
             Type       = MemoryType.Episodic,
-            Content    = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})",
+            Content    = shareEmission.Content,
             Importance = 0.5f,
             OccurredAt = shareTime,
             Provenance = EpistemicTier.Episodic,
