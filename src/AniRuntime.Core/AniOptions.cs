@@ -453,6 +453,35 @@ public class AniOptions
     // with confidence >= this value. Start conservative, tighten if needed.
     public float ConfabulationClassificationThreshold { get; set; } = 0.60f;
 
+    // Issue #94 (2026-08-25) — SubstrateConsistencyInvariant on the
+    // CognitiveOutputGate for InnerThought / Reflection / WorldExperience.
+    // Reads top-K Facts + Episodic neighbours for the artifact, calls
+    // IContentContradictionClassifier, drops the artifact from substrate
+    // when the classifier returns Contradicts at or above the confidence
+    // threshold below.
+    //
+    // Default ON per Mark's ship-live discipline (2026-08-24 conversation).
+    // Flag exists as a rollback lever because this fires on the write path;
+    // if the fire rate on genuine content is too high in production, flip
+    // the flag off, tune the threshold, redeploy.
+    public bool  SubstrateConsistencyInvariantEnabled { get; set; } = true;
+    public float SubstrateContradictionThreshold       { get; set; } = 0.60f;
+
+    // PR #147 Devin review-fix (2026-08-25): cosine floor for the
+    // Facts + Episodic top-K retrieval that feeds the contradiction
+    // classifier. Devin caught that SearchByTierAsync without a floor
+    // defaults to 0.0f and always returns the nearest top-K regardless
+    // of relevance — a populated substrate then feeds loosely-related
+    // records to the classifier, causing false-positive contradiction
+    // drops on legitimate content AND making the "empty substrate"
+    // Pass short-circuit unreachable. Peer consumers (FrontierVerifier,
+    // EpistemicContextBuilder) pass a floor here; this invariant now
+    // has its own knob because the write-path stakes differ from the
+    // read-path stakes. Default 0.30 is conservative — semantically
+    // relevant enough to be worth grounding-check, loose enough to not
+    // miss the load-bearing near-neighbours.
+    public float SubstrateConsistencyMinCosineThreshold { get; set; } = 0.30f;
+
     // Conversation mode — active back-and-forth with Mark
     public int    ConversationHistoryWindowSize { get; set; } = 6;
     public double ConversationHeartbeatSeconds  { get; set; } = 45.0;

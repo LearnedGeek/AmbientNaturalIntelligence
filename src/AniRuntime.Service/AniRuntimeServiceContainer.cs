@@ -248,6 +248,17 @@ public static class AniRuntimeServiceContainer
             .UsePostInvariant<PromptTemplateLeakInvariant>()
             // Theme J Phase J.5b (Apr 30, 2026) — confabulation invariant via LMKit.
             .UsePostInvariant<ConfabulationInvariant>()
+            // Issue #94 (2026-08-25) — write-side self-audit: substrate
+            // consistency check for InnerThought / Reflection / WorldExperience
+            // artifacts. Uses IContentContradictionClassifier against top-K
+            // Facts + Episodic neighbours. Fails the gate on Contradicts >=
+            // configured confidence threshold; the producer's existing gate-
+            // fail path drops the artifact from substrate (breaks the
+            // compounding class where a contradicted inner-thought becomes
+            // retrieval substrate for subsequent cycles). Self-gates via
+            // AniOptions.SubstrateConsistencyInvariantEnabled (default ON;
+            // flag is the rollback lever). See SubstrateConsistencyInvariant.cs.
+            .UsePostInvariant<SubstrateConsistencyInvariant>()
             // Theme J Phase J.5g (May 2, 2026) — Door C universalised from
             // OutreachPhase.EvaluateCoherenceAsync. Catches contact-facing
             // outputs that only make sense if the reader had access to the
