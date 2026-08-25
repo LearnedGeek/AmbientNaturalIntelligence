@@ -72,13 +72,13 @@ try
         // review-fix corrected an earlier version of this comment that
         // attributed CycleId coverage to FromLogContext.
         .Enrich.With(new AniRuntime.Service.DefaultCycleIdEnricher())
-        .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}/{Phase}] {Message:lj}{NewLine}")
+        .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}/{CyclePhase}] {Message:lj}{NewLine}")
         // Journal — inner thoughts, outreach decisions, messages sent (queryable story)
         // No {Exception} — stack traces go to debug log only, journal stays readable
         .WriteTo.File(Path.Combine(logDir, "ani-.log"),
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
-            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}/{Phase}] {Message:lj}{NewLine}",
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}/{CyclePhase}] {Message:lj}{NewLine}",
             retainedFileCountLimit: 30)
         // Diagnostic — everything, for debugging.
         // 2026-05-18: sink minimum lowered from Debug to Verbose so the
@@ -90,7 +90,7 @@ try
         .WriteTo.File(Path.Combine(logDir, "ani-debug-.log"),
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose,
-            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}/{Phase}] {Message:lj}{NewLine}{Exception}",
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}/{CyclePhase}] {Message:lj}{NewLine}{Exception}",
             retainedFileCountLimit: 7));
 
     // ── Service registration ──────────────────────────────────────────────────

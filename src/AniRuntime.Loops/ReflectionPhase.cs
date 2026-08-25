@@ -74,7 +74,7 @@ public class ReflectionPhase
         // inside reflection synthesis + compression render as
         // [cid:.../Reflection] and are filterable by phase across cycles.
         using var phaseScope = _log.BeginScope(
-            new Dictionary<string, object> { ["Phase"] = "Reflection" });
+            new Dictionary<string, object> { ["CyclePhase"] = "Reflection" });
 
         if (!_options.ReflectionEnabled) return false;
 

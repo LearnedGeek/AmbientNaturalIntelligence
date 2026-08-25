@@ -115,7 +115,7 @@ public class InnerThoughtPhase
         // inside inner-thought generation render as [cid:.../InnerThought]
         // and are filterable by phase across cycles.
         using var phaseScope = _log.BeginScope(
-            new Dictionary<string, object> { ["Phase"] = "InnerThought" });
+            new Dictionary<string, object> { ["CyclePhase"] = "InnerThought" });
 
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);

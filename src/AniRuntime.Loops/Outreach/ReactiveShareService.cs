@@ -67,7 +67,7 @@ public sealed class ReactiveShareService : IReactiveShareService
         // inside reactive-share evaluation + composition render as
         // [cid:.../ReactiveShare] and are filterable by phase across cycles.
         using var phaseScope = _log.BeginScope(
-            new Dictionary<string, object> { ["Phase"] = "ReactiveShare" });
+            new Dictionary<string, object> { ["CyclePhase"] = "ReactiveShare" });
 
         var threshold = (float)_aniOptions.ReactiveShareThreshold;
         var shareable = perceptions

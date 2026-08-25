@@ -161,7 +161,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // [cid:.../ConversationReply] and are filterable by phase across
         // cycles.
         using var phaseScope = _log.BeginScope(
-            new Dictionary<string, object> { ["Phase"] = "ConversationReply" });
+            new Dictionary<string, object> { ["CyclePhase"] = "ConversationReply" });
 
         var lastMessage = thread.Messages[^1].Content;
 

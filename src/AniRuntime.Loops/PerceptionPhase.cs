@@ -53,7 +53,7 @@ public class PerceptionPhase
         // inside perception polling render as [cid:.../Perception] and are
         // filterable by phase across cycles.
         using var phaseScope = _log.BeginScope(
-            new Dictionary<string, object> { ["Phase"] = "Perception" });
+            new Dictionary<string, object> { ["CyclePhase"] = "Perception" });
 
         var events = new List<PerceptionEvent>();
 

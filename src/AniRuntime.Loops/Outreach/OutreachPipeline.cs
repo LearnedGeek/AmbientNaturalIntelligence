@@ -99,7 +99,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
         // inside outreach decision + composition render as
         // [cid:.../Outreach] and are filterable by phase across cycles.
         using var phaseScope = _log.BeginScope(
-            new Dictionary<string, object> { ["Phase"] = "Outreach" });
+            new Dictionary<string, object> { ["CyclePhase"] = "Outreach" });
 
         // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
         // structured F1_INJECTION per composer entry so Phase 1 can measure:
