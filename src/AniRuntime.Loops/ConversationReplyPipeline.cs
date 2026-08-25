@@ -786,11 +786,26 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // guard couldn't detect self-repetition within the same cycle because
         // thread.Messages didn't include replies generated earlier in the cycle.
         // (DB persist happens after dispatch at Step 5.)
+        //
+        // F-3 U9 (2026-08-24) — construct the composer-emission envelope
+        // at the composer boundary and attach it to the reply message. The
+        // persistence layer (SqliteConversationService.AddMessageAsync)
+        // projects the Episodic record's attribution from this emission via
+        // ToAttributionTriple, closing the last role-switch reconstruction
+        // site in the SMS conversation composer path. SentAt shares the
+        // emission's timestamp so the message's wall-clock and the
+        // record's AttributedAt cannot drift.
+        var replyEmittedAt = DateTimeOffset.UtcNow;
+        var replyEmission = ComposerEmissionExtensions.AniEmission(
+            content:      reply,
+            composerRole: CognitiveProducerKind.ConversationReply,
+            emittedAt:    replyEmittedAt);
         var replyMessage = new ConversationMessage
         {
-            Role    = Roles.Ani,
-            Content = reply,
-            SentAt  = DateTimeOffset.UtcNow,
+            Role             = Roles.Ani,
+            Content          = reply,
+            SentAt           = replyEmittedAt,
+            ComposerEmission = replyEmission,
         };
         thread.Messages.Add(replyMessage);
 
