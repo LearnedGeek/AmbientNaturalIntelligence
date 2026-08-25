@@ -126,11 +126,13 @@ public class OutreachPhaseTests : AniTestBase
 
     /// <summary>
     /// SPEC: the recorded message uses the EXACT content that was dispatched —
-    /// not the Episodic-memory format (e.g. *"Ani shared with Mark: ..."*) —
-    /// because the conversation thread should reflect what was sent in the
-    /// channel, not the meta-record format. The Apr 29 10:24 case where Ani
-    /// misread her own dispatched content via the Episodic prefix grammar is
-    /// the canonical failure this guards against.
+    /// not the Episodic-memory format (e.g. *"I shared with Mark: ..."* — the
+    /// persona-lock unwind 2026-08-25 changed the prefix from "Ani shared with"
+    /// to first-person; either shape is metadata-not-content) — because the
+    /// conversation thread should reflect what was sent in the channel, not
+    /// the meta-record format. The Apr 29 10:24 case where Ani misread her
+    /// own dispatched content via the Episodic prefix grammar is the
+    /// canonical failure this guards against.
     /// </summary>
     [Fact]
     public async Task RecordOutboundInThreadAsync_PersistsRawDispatchedContent_NotEpisodicMetaFormat()
@@ -149,8 +151,9 @@ public class OutreachPhaseTests : AniTestBase
         await phase.RecordOutboundInThreadAsync(dispatchedText, CancellationToken.None);
 
         // Strict mock: if the helper had passed an Episodic-format string
-        // ("Ani shared with Mark: ..."), the Setup wouldn't match and the
-        // strict mock would raise. The Verify is belt-and-suspenders.
+        // ("I shared with Mark: ..." post-2026-08-25 persona-lock unwind, or
+        // "Ani shared with Mark: ..." pre-fix), the Setup wouldn't match and
+        // the strict mock would raise. The Verify is belt-and-suspenders.
         _mockConversations.Verify(c => c.AddMessageAsync(
             It.IsAny<Guid>(),
             It.Is<ConversationMessage>(m => m.Content == dispatchedText),

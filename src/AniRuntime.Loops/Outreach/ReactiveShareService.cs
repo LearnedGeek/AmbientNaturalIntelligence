@@ -196,7 +196,15 @@ public sealed class ReactiveShareService : IReactiveShareService
         // timestamp; downstream projection is structurally equivalent to
         // the pre-U7 factory call per the U2 migration equivalence pin.
         var shareTime = DateTimeOffset.UtcNow;
-        var shareContent = $"{charState.Name} shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})";
+        // Persona-lock unwind (2026-08-25): first-person prefix mirrors the
+        // FormatSpeaker + FormatOutreach discipline in WellKnown.MemoryPrefixes.
+        // The pre-fix "Ani shared with Mark: ..." format was the one
+        // Ani-authored persistence site emitting third-person prose; every
+        // reactive-share record then entered substrate as third-person and
+        // primed perspective drift in downstream composers. AttributedTo=Ani
+        // + Provenance=Episodic + Type=Episodic still carry the structural
+        // authorship signal — the prose no longer needs to duplicate it.
+        var shareContent = $"I shared with {charState.PrimaryContactName}: {message} (about: {shareable.Summary})";
         var shareEmission = ComposerEmissionExtensions.AniEmission(
             content:      shareContent,
             composerRole: CognitiveProducerKind.ReactiveShare,
