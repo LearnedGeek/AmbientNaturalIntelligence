@@ -255,20 +255,17 @@ public class SqliteConversationService : IConversationService, IDisposable
             // known (composer emission point), not from a persist-time
             // re-derivation. Mark-inbound path stays on the role-switch
             // fallback — Mark isn't a composer, so no emission is attached.
-            AniRuntime.Core.Models.AttributionTriple convAttribution;
-            if (message.ComposerEmission is not null)
-            {
-                convAttribution = message.ComposerEmission.ToAttributionTriple();
-            }
-            else
-            {
-                convAttribution = message.Role switch
+            //
+            // PR #144 review-fix (github-code-quality): ternary rather than
+            // if/else since both branches write to the same variable.
+            var convAttribution = message.ComposerEmission is not null
+                ? message.ComposerEmission.ToAttributionTriple()
+                : message.Role switch
                 {
                     Roles.Mark => AniRuntime.Core.Models.AttributionTriple.MarkAt(message.SentAt, $"conversation:{message.Role}:{message.SentAt:O}"),
                     Roles.Ani  => AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt),
                     _          => AniRuntime.Core.Models.AttributionTriple.UnknownHistorical(),
                 };
-            }
             var convRecord = new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
