@@ -21,12 +21,13 @@ public class SubstrateConsistencyInvariantTests
     private readonly Mock<IMemorySearch>                    _memory     = new(MockBehavior.Strict);
 
     private SubstrateConsistencyInvariant Build(
-        bool enabled = true, float threshold = 0.60f)
+        bool enabled = true, float threshold = 0.60f, float minCosine = 0.30f)
     {
         var opts = Options.Create(new AniOptions
         {
-            SubstrateConsistencyInvariantEnabled = enabled,
-            SubstrateContradictionThreshold      = threshold,
+            SubstrateConsistencyInvariantEnabled    = enabled,
+            SubstrateContradictionThreshold         = threshold,
+            SubstrateConsistencyMinCosineThreshold  = minCosine,
         });
         return new SubstrateConsistencyInvariant(
             _classifier.Object, _memory.Object, opts,
@@ -79,7 +80,11 @@ public class SubstrateConsistencyInvariantTests
     [Theory]
     [InlineData(CognitiveProducerKind.InnerThought,        true)]
     [InlineData(CognitiveProducerKind.Reflection,          true)]
-    [InlineData(CognitiveProducerKind.WorldExperience,     true)]
+    // WorldExperience deliberately absent from AppliesTo — no producer
+    // emits a CognitiveArtifact with that kind today (PR #147 Devin
+    // review-fix 2026-08-25). World-experience thoughts arrive via
+    // InnerThought.
+    [InlineData(CognitiveProducerKind.WorldExperience,     false)]
     [InlineData(CognitiveProducerKind.ConversationReply,   false)]
     [InlineData(CognitiveProducerKind.Outreach,            false)]
     [InlineData(CognitiveProducerKind.Voice,               false)]
@@ -102,8 +107,6 @@ public class SubstrateConsistencyInvariantTests
         inv.AppliesTo(Artifact(producer: CognitiveProducerKind.InnerThought))
            .Should().BeFalse();
         inv.AppliesTo(Artifact(producer: CognitiveProducerKind.Reflection))
-           .Should().BeFalse();
-        inv.AppliesTo(Artifact(producer: CognitiveProducerKind.WorldExperience))
            .Should().BeFalse();
     }
 
@@ -196,7 +199,7 @@ public class SubstrateConsistencyInvariantTests
     }
 
     [Fact]
-    public async Task Evaluate_ContradictsAtOrAboveThreshold_Fails_WithSubstrateQuoteInHint()
+    public async Task Evaluate_ContradictsAtOrAboveThreshold_HardFails_WithSubstrateQuoteInHint()
     {
         SetupSubstrate("Mark drinks tea in the morning, not coffee.");
         _classifier
@@ -211,7 +214,43 @@ public class SubstrateConsistencyInvariantTests
             Artifact(), CancellationToken.None);
 
         result.Passed.Should().BeFalse();
+        // PR #147 Devin review-fix: contradiction always hard-fails —
+        // regen doesn't help when the substrate is unchanged.
+        result.IsHardFail.Should().BeTrue();
         result.RemediationHint.Should().Contain("Mark drinks tea in the morning");
+    }
+
+    [Fact]
+    public async Task Evaluate_ForwardsMinCosineFloorFromOptions_ToBothTierSearches()
+    {
+        var capturedFactsCosine    = float.NaN;
+        var capturedEpisodicCosine = float.NaN;
+
+        _memory
+            .Setup(m => m.SearchByTierAsync(
+                It.IsAny<string>(),
+                It.Is<EpistemicTier>(t => t == EpistemicTier.Facts),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
+            .Callback<string, EpistemicTier, int, CancellationToken, float>(
+                (_, _, _, _, floor) => capturedFactsCosine = floor)
+            .ReturnsAsync(Array.Empty<ScoredMemory>());
+        _memory
+            .Setup(m => m.SearchByTierAsync(
+                It.IsAny<string>(),
+                It.Is<EpistemicTier>(t => t == EpistemicTier.Episodic),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float>()))
+            .Callback<string, EpistemicTier, int, CancellationToken, float>(
+                (_, _, _, _, floor) => capturedEpisodicCosine = floor)
+            .ReturnsAsync(Array.Empty<ScoredMemory>());
+
+        _ = await Build(minCosine: 0.42f).EvaluateAsync(Artifact(), CancellationToken.None);
+
+        capturedFactsCosine.Should().Be(0.42f);
+        capturedEpisodicCosine.Should().Be(0.42f);
     }
 
     [Fact]

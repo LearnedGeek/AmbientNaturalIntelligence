@@ -31,27 +31,37 @@ namespace AniRuntime.Loops.Invariants;
 /// </para>
 ///
 /// <para>
-/// <b>Producer scope.</b> InnerThought / Reflection / WorldExperience —
-/// the three substrate-writing artifact classes. ConversationReply /
-/// Outreach / Voice / ClosedThreadSummary go through
-/// <c>FrontierVerifier</c> instead (contact-facing outputs get a
-/// different guard shape). ReactiveShare is a compose-then-dispatch
-/// producer, not a substrate write, and is not in scope for this
-/// invariant.
+/// <b>Producer scope.</b> InnerThought / Reflection — the two
+/// substrate-writing producer kinds actually emitted today.
+/// ConversationReply / Outreach / Voice / ClosedThreadSummary go
+/// through <c>FrontierVerifier</c> instead (contact-facing outputs
+/// get a different guard shape). ReactiveShare is a compose-then-
+/// dispatch producer, not a substrate write, and is not in scope for
+/// this invariant. <c>WorldExperience</c> exists in the enum but no
+/// producer currently builds an artifact with that kind — world-
+/// experience thoughts arrive through the <c>InnerThought</c> producer
+/// path today (PR #147 Devin review-fix, 2026-08-25 — Devin verified
+/// no wiring site). If a dedicated WorldExperience producer is added
+/// later, extend AppliesTo in that PR.
 /// </para>
 ///
 /// <para>
-/// <b>Behaviour on fire.</b> Returns <see cref="InvariantResult.Fail"/>
-/// with a hint identifying the specific substrate quote the classifier
-/// flagged as contradicted. The current gate discipline for
-/// InnerThought (<c>InnerThoughtPhase.EvaluateAsync</c>) and Reflection
-/// (<c>ReflectionPhase.TryRunAsync</c>) is: on gate Fail, drop the
-/// artifact from substrate (no persist). This matches the existing
-/// <see cref="ConfabulationInvariant"/> pattern and directly stops the
-/// contradiction from becoming retrieval substrate. #94's design
-/// document proposes an enhancement — persist WITH
-/// <c>Validity='invalid_contradiction'</c> so records are preserved for
-/// research — which becomes a follow-up if wanted.
+/// <b>Behaviour on fire.</b> Returns
+/// <c>InvariantResult.Fail(hint, hard: true)</c> — hard fail, mapping
+/// to <see cref="OutputGateVerdict.Fail"/> at the gate. Regenerating on
+/// a substrate-contradiction verdict rarely helps because the
+/// underlying grounding conflict is unchanged (same substrate, same
+/// conflict); hard fail signals "drop, don't regen." The current gate
+/// discipline for InnerThought (<c>InnerThoughtPhase.EvaluateAsync</c>)
+/// and Reflection (<c>ReflectionPhase.TryRunAsync</c>) drops on any
+/// non-Pass verdict, so today the soft-vs-hard distinction is
+/// invisible in behaviour — but PR #147 Devin review-fix (2026-08-25)
+/// flagged that the semantic intent should still be encoded
+/// explicitly so a future consumer that regenerates on Remediate
+/// doesn't accidentally re-roll a contradicted artifact. #94's
+/// original design document proposes an enhancement — persist WITH
+/// <c>Validity='invalid_contradiction'</c> so records are preserved
+/// for research — which becomes a follow-up if wanted.
 /// </para>
 ///
 /// <para>
@@ -124,10 +134,15 @@ public sealed class SubstrateConsistencyInvariant : ICognitiveOutputInvariant
         if (!_options.SubstrateConsistencyInvariantEnabled)
             return false;
 
+        // WorldExperience deliberately absent: no producer builds an
+        // artifact with that kind today (PR #147 Devin review-fix
+        // 2026-08-25). World-experience thoughts arrive via the
+        // InnerThought producer path and are covered by the branch
+        // below. If a dedicated WorldExperience producer lands later,
+        // that PR extends this set.
         return artifact.ProducerKind is
             CognitiveProducerKind.InnerThought
-         or CognitiveProducerKind.Reflection
-         or CognitiveProducerKind.WorldExperience;
+         or CognitiveProducerKind.Reflection;
     }
 
     public async Task<InvariantResult> EvaluateAsync(
@@ -141,11 +156,23 @@ public sealed class SubstrateConsistencyInvariant : ICognitiveOutputInvariant
         // are checking whether the new artifact contradicts CONFIRMED
         // substrate (Mark-validated facts + verbatim conversation), not
         // whether it contradicts other interior monologue.
+        //
+        // PR #147 Devin review-fix (2026-08-25): pass an explicit cosine
+        // floor. Without it, SearchByTierAsync returns top-K regardless
+        // of relevance against a populated substrate, which fed loosely-
+        // related records to the classifier and made the empty-substrate
+        // short-circuit below unreachable in production. Peer consumers
+        // (FrontierVerifierHandler, EpistemicContextBuilder) pass their
+        // own floors; this invariant has its own knob because the write-
+        // path stakes differ from the read-path stakes.
+        var minCosine = _options.SubstrateConsistencyMinCosineThreshold;
         var factsNeighbours = await _memory.SearchByTierAsync(
-                artifact.Content, EpistemicTier.Facts, SubstrateTopK, ct)
+                artifact.Content, EpistemicTier.Facts, SubstrateTopK, ct,
+                minCosine: minCosine)
             .ConfigureAwait(false);
         var episodicNeighbours = await _memory.SearchByTierAsync(
-                artifact.Content, EpistemicTier.Episodic, SubstrateTopK, ct)
+                artifact.Content, EpistemicTier.Episodic, SubstrateTopK, ct,
+                minCosine: minCosine)
             .ConfigureAwait(false);
 
         var substrateLines = factsNeighbours
@@ -202,6 +229,12 @@ public sealed class SubstrateConsistencyInvariant : ICognitiveOutputInvariant
             artifact.ProducerKind, verdict.Confidence, threshold, quote, reason);
 
         var hint = $"contradicts confirmed substrate: \"{quote}\"";
-        return InvariantResult.Fail(hint);
+        // PR #147 Devin review-fix (2026-08-25): hard fail. Regenerating
+        // rarely helps for grounding conflicts — the substrate is
+        // unchanged so a regen tends to reproduce the same conflict.
+        // Hard fail encodes "drop, don't regen" so a future consumer
+        // that respects the Remediate vs Fail distinction doesn't re-
+        // roll a contradicted artifact.
+        return InvariantResult.Fail(hint, hard: true);
     }
 }
