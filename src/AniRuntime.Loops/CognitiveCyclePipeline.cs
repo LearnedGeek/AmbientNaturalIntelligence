@@ -119,6 +119,24 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
 
     public async Task RunAsync(CancellationToken ct)
     {
+        // Foundation Observability (F-5) Phase 1 (2026-08-24) — push a short
+        // cycle-correlation identifier onto the logger scope. Every log line
+        // emitted during this cycle (this pipeline, every phase it calls into,
+        // ConversationReplyPipeline, OutreachPipeline, ReactiveShareService,
+        // ReflectionPhase, etc.) inherits the ID via Serilog's FromLogContext
+        // enrichment. Non-cycle log lines get "-" from DefaultCycleIdEnricher
+        // so the [cid:...] slot in the output template renders cleanly on
+        // every line. Grep pattern: `grep 'cid:abc12345' ani-*.log` returns
+        // the full cycle end-to-end.
+        //
+        // 8-char slice of a Guid.N is enough entropy at Ani's cycle frequency
+        // (~one per few seconds); collisions across a 30-day log-retention
+        // window are astronomically unlikely and false-grouping a cycle after
+        // the fact is not a correctness concern (it's a diagnostic aid).
+        var cycleId = Guid.NewGuid().ToString("N")[..8];
+        using var cycleScope = _log.BeginScope(
+            new Dictionary<string, object> { ["CycleId"] = cycleId });
+
         _log.LogDebug("Cognitive cycle starting");
 
         // CS3: Emergence observation builder — replaces 17 scattered local variables.
