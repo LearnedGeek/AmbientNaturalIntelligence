@@ -56,13 +56,22 @@ try
         .ReadFrom.Configuration(builder.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
-        .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}")
+        // Foundation Observability (F-5) Phase 1 (2026-08-24) — cycle-scoped
+        // correlation ID pushed at CognitiveCyclePipeline.RunAsync via
+        // ILogger.BeginScope; enricher below fills in a "-" marker for log
+        // lines that fire outside any cycle scope (webhook ingress, dashboard,
+        // background sweeps, service startup) so the [cid:...] slot renders
+        // cleanly on every line and `grep 'cid:<8-char>' journal.log` pulls a
+        // full cycle end-to-end. Order matters: FromLogContext feeds pushed
+        // values; DefaultCycleIdEnricher fills gaps AFTER.
+        .Enrich.With(new AniRuntime.Service.DefaultCycleIdEnricher())
+        .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}] {Message:lj}{NewLine}")
         // Journal — inner thoughts, outreach decisions, messages sent (queryable story)
         // No {Exception} — stack traces go to debug log only, journal stays readable
         .WriteTo.File(Path.Combine(logDir, "ani-.log"),
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
-            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}",
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}] {Message:lj}{NewLine}",
             retainedFileCountLimit: 30)
         // Diagnostic — everything, for debugging.
         // 2026-05-18: sink minimum lowered from Debug to Verbose so the
@@ -74,7 +83,7 @@ try
         .WriteTo.File(Path.Combine(logDir, "ani-debug-.log"),
             rollingInterval: RollingInterval.Day,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose,
-            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+            outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [cid:{CycleId}] {Message:lj}{NewLine}{Exception}",
             retainedFileCountLimit: 7));
 
     // ── Service registration ──────────────────────────────────────────────────
