@@ -111,6 +111,12 @@ public class InnerThoughtPhase
     public async Task<InnerThoughtResult> RunAsync(
         ContextSnapshot snapshot, CancellationToken ct)
     {
+        // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
+        // inside inner-thought generation render as [cid:.../InnerThought]
+        // and are filterable by phase across cycles.
+        using var phaseScope = _log.BeginScope(
+            new Dictionary<string, object> { ["CyclePhase"] = "InnerThought" });
+
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);
         // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
