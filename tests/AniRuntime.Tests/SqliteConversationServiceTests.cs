@@ -377,4 +377,146 @@ public class SqliteConversationServiceTests : IDisposable
           + "that would re-open the V1.3 leak surface");
         _closedStore.VerifyNoOtherCalls();
     }
+
+    // ─── F-3 U9 (2026-08-24) — composer-emission attribution projection ───
+    //
+    // When ConversationReplyPipeline attaches a composer-emission envelope
+    // to the Ani reply message, AddMessageAsync must project the Episodic
+    // record's attribution from that emission via ToAttributionTriple
+    // rather than reconstructing from role. When no emission is attached
+    // (Mark-inbound, legacy Ani reply paths, voice pipeline), the pre-U9
+    // role-switch fallback remains in effect so persistence stays honest
+    // about who authored what.
+
+    [Fact]
+    public async Task AddMessageAsync_AniReplyWithComposerEmission_UsesEmissionAttribution()
+    {
+        var thread = await NewActiveThreadAsync();
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+
+        MemoryRecord? capturedRecord = null;
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Callback<MemoryRecord, CancellationToken>((r, _) => capturedRecord = r)
+               .Returns(Task.CompletedTask);
+
+        var emissionTime = DateTimeOffset.UtcNow;
+        var emission = ComposerEmissionExtensions.AniEmission(
+            content:      "warm reply text",
+            composerRole: CognitiveProducerKind.ConversationReply,
+            emittedAt:    emissionTime);
+
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role             = Roles.Ani,
+            Content          = "warm reply text",
+            SentAt           = emissionTime,
+            ComposerEmission = emission,
+        });
+
+        capturedRecord.Should().NotBeNull(
+            "an Episodic memory record must still be written for the Ani reply");
+        capturedRecord!.AttributedTo.Should().Be(AttributedTo.Ani,
+            "the composer emission's AttributedTo flows to the persisted record");
+        capturedRecord.AttributionTrust.Should().Be("verified",
+            "AniEmission emits verified trust; the projection preserves it");
+        capturedRecord.AttributedAt.Should().Be(emissionTime,
+            "AttributedAt on the persisted record matches the composer's EmittedAt");
+        capturedRecord.AttributedSourceDescriptor.Should().BeNull(
+            "the emission projection leaves source-descriptor null (Devin PR #137 pin) "
+          + "rather than synthesizing a 'conversation:ani:<sentAt>' string like the pre-U9 role fallback did");
+    }
+
+    [Fact]
+    public async Task AddMessageAsync_AniReplyWithoutEmission_FallsBackToRoleSwitch()
+    {
+        // Legacy Ani-reply paths (voice pipeline, tests, dashboard direct-
+        // write) that don't yet construct an emission still get honest
+        // attribution via the role-switch fallback. AniAt(sentAt) with
+        // null source descriptor — matches pre-U9 behavior byte-for-byte.
+        var thread = await NewActiveThreadAsync();
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+
+        MemoryRecord? capturedRecord = null;
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Callback<MemoryRecord, CancellationToken>((r, _) => capturedRecord = r)
+               .Returns(Task.CompletedTask);
+
+        var sentAt = DateTimeOffset.UtcNow;
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role             = Roles.Ani,
+            Content          = "legacy reply from a path that didn't build an emission",
+            SentAt           = sentAt,
+            ComposerEmission = null,  // explicit — no emission attached
+        });
+
+        capturedRecord.Should().NotBeNull();
+        capturedRecord!.AttributedTo.Should().Be(AttributedTo.Ani);
+        capturedRecord.AttributionTrust.Should().Be("verified");
+        capturedRecord.AttributedAt.Should().Be(sentAt);
+        capturedRecord.AttributedSourceDescriptor.Should().BeNull(
+            "the pre-U9 Ani role-switch entry returned a descriptor-less triple");
+    }
+
+    [Fact]
+    public async Task AddMessageAsync_MarkInboundMessage_StillUsesRoleSwitch()
+    {
+        // Mark-inbound path is unaffected by U9 — no composer, no emission.
+        // The role-switch produces MarkAt with a 'conversation:mark:<sentAt>'
+        // descriptor so audit can trace inbound messages by their SMS-side
+        // timing without cross-referencing perception logs.
+        var thread = await NewActiveThreadAsync();
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+
+        MemoryRecord? capturedRecord = null;
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Callback<MemoryRecord, CancellationToken>((r, _) => capturedRecord = r)
+               .Returns(Task.CompletedTask);
+
+        var sentAt = DateTimeOffset.UtcNow;
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role    = Roles.Mark,
+            Content = "hey are you around?",
+            SentAt  = sentAt,
+        });
+
+        capturedRecord.Should().NotBeNull();
+        capturedRecord!.AttributedTo.Should().Be(AttributedTo.Mark);
+        capturedRecord.AttributionTrust.Should().Be("verified");
+        capturedRecord.AttributedAt.Should().Be(sentAt);
+        capturedRecord.AttributedSourceDescriptor.Should().StartWith("conversation:mark:",
+            "Mark-inbound path still tags the descriptor for audit tracing");
+    }
+
+    [Fact]
+    public async Task AddMessageAsync_UnknownRoleWithoutEmission_UsesUnknownHistorical()
+    {
+        // Belt-and-suspenders — if a future role is introduced and no
+        // emission is provided, the switch defaults to UnknownHistorical
+        // so unrecognized roles surface as untrustworthy rather than
+        // silently landing as Ani or Mark.
+        var thread = await NewActiveThreadAsync();
+        _memory.Setup(m => m.GetCharacterStateAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new CharacterStateDoc { Name = "Ani", PrimaryContactName = "Mark" });
+
+        MemoryRecord? capturedRecord = null;
+        _memory.Setup(m => m.SaveAsync(It.IsAny<MemoryRecord>(), It.IsAny<CancellationToken>()))
+               .Callback<MemoryRecord, CancellationToken>((r, _) => capturedRecord = r)
+               .Returns(Task.CompletedTask);
+
+        await _svc.AddMessageAsync(thread.Id, new ConversationMessage
+        {
+            Role    = "future-role",
+            Content = "message from an unrecognized role",
+            SentAt  = DateTimeOffset.UtcNow,
+        });
+
+        capturedRecord.Should().NotBeNull();
+        capturedRecord!.AttributedTo.Should().Be(AttributedTo.Unknown);
+        capturedRecord.AttributionTrust.Should().Be("unverified-historical");
+    }
 }

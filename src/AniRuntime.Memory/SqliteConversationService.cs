@@ -245,12 +245,27 @@ public class SqliteConversationService : IConversationService, IDisposable
             // Explicit role checks (rather than Mark-vs-else) so a future
             // role addition doesn't silently attribute to Ani — unrecognized
             // roles land as UnknownHistorical and surface in audit.
-            var convAttribution = message.Role switch
-            {
-                Roles.Mark => AniRuntime.Core.Models.AttributionTriple.MarkAt(message.SentAt, $"conversation:{message.Role}:{message.SentAt:O}"),
-                Roles.Ani  => AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt),
-                _          => AniRuntime.Core.Models.AttributionTriple.UnknownHistorical(),
-            };
+            //
+            // F-3 U9 (2026-08-24) — when the composer attached an emission
+            // envelope, project attribution from it instead of re-deriving
+            // from role. The SMS reply composer (ConversationReplyPipeline)
+            // constructs the emission at its LLM-call boundary and hands
+            // it through on the ConversationMessage; the composer's
+            // identity + trust marker come from where they were actually
+            // known (composer emission point), not from a persist-time
+            // re-derivation. Mark-inbound path stays on the role-switch
+            // fallback — Mark isn't a composer, so no emission is attached.
+            //
+            // PR #144 review-fix (github-code-quality): ternary rather than
+            // if/else since both branches write to the same variable.
+            var convAttribution = message.ComposerEmission is not null
+                ? message.ComposerEmission.ToAttributionTriple()
+                : message.Role switch
+                {
+                    Roles.Mark => AniRuntime.Core.Models.AttributionTriple.MarkAt(message.SentAt, $"conversation:{message.Role}:{message.SentAt:O}"),
+                    Roles.Ani  => AniRuntime.Core.Models.AttributionTriple.AniAt(message.SentAt),
+                    _          => AniRuntime.Core.Models.AttributionTriple.UnknownHistorical(),
+                };
             var convRecord = new MemoryRecord
             {
                 Type           = MemoryType.Episodic,
