@@ -4,21 +4,24 @@ using Serilog.Events;
 namespace AniRuntime.Service;
 
 /// <summary>
-/// Foundation Observability (F-5) Phase 1 (2026-08-24) — Serilog enricher
-/// that ensures every log event carries a <c>CycleId</c> property so the
-/// output template can reference it unconditionally.
+/// Foundation Observability (F-5) Phases 1 &amp; 2 (2026-08-24) — Serilog
+/// enricher that ensures every log event carries the two correlation
+/// properties (<c>CycleId</c> and <c>Phase</c>) so the output template
+/// can reference them unconditionally.
 ///
 /// <para>
 /// <b>Why this exists.</b> Mark's stated pain (2026-08-24) is that logs have
 /// become impossible to parse — a single cognitive cycle spreads across
 /// many phases, each writing its own log lines with its own prefix, and
-/// there is no easy way to grep just the lines that belong to one cycle.
-/// The fix is a cycle-scoped correlation identifier attached via
-/// <see cref="Microsoft.Extensions.Logging.ILogger.BeginScope"/> at the top
-/// of <c>CognitiveCyclePipeline.RunAsync</c>. The Serilog provider's
-/// built-in scope-to-property mapping (Serilog.Extensions.Logging) unpacks
-/// the scope dictionary entries into log event properties, so every log
-/// line emitted inside the scope carries <c>CycleId</c>. This is a distinct
+/// there is no easy way to grep just the lines that belong to one cycle
+/// (or to one phase inside that cycle). The fix is two correlation
+/// identifiers attached via <see cref="Microsoft.Extensions.Logging.ILogger.BeginScope"/>:
+/// <c>CycleId</c> pushed at <c>CognitiveCyclePipeline.RunAsync</c>, and
+/// <c>Phase</c> pushed at each phase entry point (perception, inner-thought,
+/// conversation-reply, outreach, reactive-share, reflection). The Serilog
+/// provider's built-in scope-to-property mapping (Serilog.Extensions.Logging)
+/// unpacks the scope dictionary entries into log event properties, so every
+/// log line emitted inside the scope carries both. This is a distinct
 /// mechanism from <c>Enrich.FromLogContext</c> (which handles
 /// <c>LogContext.PushProperty</c> calls, an AsyncLocal-scoped alternative
 /// we don't use here — Devin PR #145 review-fix corrected an earlier
@@ -26,15 +29,17 @@ namespace AniRuntime.Service;
 /// </para>
 ///
 /// <para>
-/// <b>Why the default is needed.</b> Serilog output templates that reference
+/// <b>Why the defaults are needed.</b> Serilog output templates that reference
 /// a missing property render the placeholder literally
-/// (e.g., <c>[cid:{CycleId}]</c>) instead of eliding it. Non-cycle log
-/// lines (Twilio webhook ingress, dashboard requests, background sweeps,
-/// service startup) run outside any cycle scope and would produce that
-/// ugly literal placeholder. This enricher fills in a short marker
-/// (<c>-</c>) when no cycle scope pushed a real value, so non-cycle lines
-/// render cleanly as <c>[cid:-]</c> — visually distinct from real cycle IDs
-/// but never a broken placeholder.
+/// (e.g., <c>[cid:{CycleId}/{Phase}]</c>) instead of eliding it. Non-cycle
+/// log lines (Twilio webhook ingress, dashboard requests, background sweeps,
+/// service startup) run outside any cycle scope; cycle-level lines outside
+/// any phase scope (cycle start/end, cycle-scoped orchestration) run inside
+/// a cycle but outside every phase. Both cases would produce ugly literal
+/// placeholders without defaults. This enricher fills in a short marker
+/// (<c>-</c>) for whichever field wasn't pushed, so ambient lines render
+/// cleanly as <c>[cid:-/-]</c>, cycle-scoped lines as <c>[cid:abc12345/-]</c>,
+/// and fully-scoped lines as <c>[cid:abc12345/InnerThought]</c>.
 /// </para>
 ///
 /// <para>
@@ -47,12 +52,15 @@ namespace AniRuntime.Service;
 public sealed class DefaultCycleIdEnricher : ILogEventEnricher
 {
     /// <summary>
-    /// Marker rendered by non-cycle log lines. Short + visually distinct
-    /// from any real cycle-id (which is 8-char hex derived from a Guid),
-    /// so <c>grep 'cid:-' ani-*.log</c> filters the ambient noise and
-    /// <c>grep 'cid:abc12345' ani-*.log</c> pulls a specific cycle end-to-end.
+    /// Marker rendered by log lines outside any cycle or phase scope. Short
+    /// + visually distinct from any real cycle-id (which is 8-char hex
+    /// derived from a Guid) or phase name, so
+    /// <c>grep 'cid:-/-' ani-*.log</c> filters the ambient noise,
+    /// <c>grep 'cid:abc12345' ani-*.log</c> pulls a specific cycle end-to-end,
+    /// and <c>grep '/InnerThought]' ani-*.log</c> pulls every inner-thought
+    /// log line across every cycle.
     /// </summary>
-    public const string NoCycleMarker = "-";
+    public const string NoScopeMarker = "-";
 
     /// <inheritdoc />
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
@@ -63,7 +71,13 @@ public sealed class DefaultCycleIdEnricher : ILogEventEnricher
         if (!logEvent.Properties.ContainsKey("CycleId"))
         {
             logEvent.AddPropertyIfAbsent(
-                propertyFactory.CreateProperty("CycleId", NoCycleMarker));
+                propertyFactory.CreateProperty("CycleId", NoScopeMarker));
+        }
+
+        if (!logEvent.Properties.ContainsKey("Phase"))
+        {
+            logEvent.AddPropertyIfAbsent(
+                propertyFactory.CreateProperty("Phase", NoScopeMarker));
         }
     }
 }

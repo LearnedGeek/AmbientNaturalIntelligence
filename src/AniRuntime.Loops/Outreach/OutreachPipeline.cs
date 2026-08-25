@@ -95,6 +95,12 @@ public sealed class OutreachPipeline : IOutreachPipeline
 
     public async Task RunAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
+        // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
+        // inside outreach decision + composition render as
+        // [cid:.../Outreach] and are filterable by phase across cycles.
+        using var phaseScope = _log.BeginScope(
+            new Dictionary<string, object> { ["Phase"] = "Outreach" });
+
         // Foundation Input Phase 1 baseline telemetry (2026-08-13). Emits
         // structured F1_INJECTION per composer entry so Phase 1 can measure:
         // - recentThought char count (P1 → T1 "Your most recent thought:" — L1)

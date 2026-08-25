@@ -70,6 +70,12 @@ public class ReflectionPhase
     public async Task<bool> TryRunAsync(
         CharacterStateDoc characterState, CancellationToken ct)
     {
+        // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
+        // inside reflection synthesis + compression render as
+        // [cid:.../Reflection] and are filterable by phase across cycles.
+        using var phaseScope = _log.BeginScope(
+            new Dictionary<string, object> { ["Phase"] = "Reflection" });
+
         if (!_options.ReflectionEnabled) return false;
 
         if (!_options.CompressionEnabled)

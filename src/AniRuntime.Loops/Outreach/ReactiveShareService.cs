@@ -63,6 +63,12 @@ public sealed class ReactiveShareService : IReactiveShareService
     public async Task<bool> TryShareAsync(
         List<PerceptionEvent> perceptions, CharacterStateDoc charState, CancellationToken ct)
     {
+        // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
+        // inside reactive-share evaluation + composition render as
+        // [cid:.../ReactiveShare] and are filterable by phase across cycles.
+        using var phaseScope = _log.BeginScope(
+            new Dictionary<string, object> { ["Phase"] = "ReactiveShare" });
+
         var threshold = (float)_aniOptions.ReactiveShareThreshold;
         var shareable = perceptions
             .Where(p => p.SourceName == "rss" && p.ContactRelevance >= threshold)

@@ -156,6 +156,13 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         ConversationThread thread, List<PerceptionEvent> perceptions, CancellationToken ct,
         EmotionalState? emotionalState = null, bool isReconsideration = false)
     {
+        // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
+        // inside conversation-reply generation render as
+        // [cid:.../ConversationReply] and are filterable by phase across
+        // cycles.
+        using var phaseScope = _log.BeginScope(
+            new Dictionary<string, object> { ["Phase"] = "ConversationReply" });
+
         var lastMessage = thread.Messages[^1].Content;
 
         // Check 0: is this a continuation prompt ("yes?", "go on", "what?", "tell me")?

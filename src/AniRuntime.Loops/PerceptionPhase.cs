@@ -49,6 +49,12 @@ public class PerceptionPhase
     /// </summary>
     public async Task<List<PerceptionEvent>> PollAsync(CancellationToken ct)
     {
+        // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
+        // inside perception polling render as [cid:.../Perception] and are
+        // filterable by phase across cycles.
+        using var phaseScope = _log.BeginScope(
+            new Dictionary<string, object> { ["Phase"] = "Perception" });
+
         var events = new List<PerceptionEvent>();
 
         foreach (var source in _sources.Where(s => s.IsEnabled))
