@@ -15,9 +15,14 @@ namespace AniRuntime.Service;
 /// there is no easy way to grep just the lines that belong to one cycle.
 /// The fix is a cycle-scoped correlation identifier attached via
 /// <see cref="Microsoft.Extensions.Logging.ILogger.BeginScope"/> at the top
-/// of <c>CognitiveCyclePipeline.RunAsync</c>; every log line emitted inside
-/// that scope automatically picks up the ID via the
-/// <c>Enrich.FromLogContext</c> enricher already wired in Program.cs.
+/// of <c>CognitiveCyclePipeline.RunAsync</c>. The Serilog provider's
+/// built-in scope-to-property mapping (Serilog.Extensions.Logging) unpacks
+/// the scope dictionary entries into log event properties, so every log
+/// line emitted inside the scope carries <c>CycleId</c>. This is a distinct
+/// mechanism from <c>Enrich.FromLogContext</c> (which handles
+/// <c>LogContext.PushProperty</c> calls, an AsyncLocal-scoped alternative
+/// we don't use here — Devin PR #145 review-fix corrected an earlier
+/// version of this comment that conflated the two mechanisms).
 /// </para>
 ///
 /// <para>
