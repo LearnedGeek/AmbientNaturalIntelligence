@@ -453,6 +453,20 @@ public class AniOptions
     // with confidence >= this value. Start conservative, tighten if needed.
     public float ConfabulationClassificationThreshold { get; set; } = 0.60f;
 
+    // Issue #94 (2026-08-25) — SubstrateConsistencyInvariant on the
+    // CognitiveOutputGate for InnerThought / Reflection / WorldExperience.
+    // Reads top-K Facts + Episodic neighbours for the artifact, calls
+    // IContentContradictionClassifier, drops the artifact from substrate
+    // when the classifier returns Contradicts at or above the confidence
+    // threshold below.
+    //
+    // Default ON per Mark's ship-live discipline (2026-08-24 conversation).
+    // Flag exists as a rollback lever because this fires on the write path;
+    // if the fire rate on genuine content is too high in production, flip
+    // the flag off, tune the threshold, redeploy.
+    public bool  SubstrateConsistencyInvariantEnabled { get; set; } = true;
+    public float SubstrateContradictionThreshold       { get; set; } = 0.60f;
+
     // Conversation mode — active back-and-forth with Mark
     public int    ConversationHistoryWindowSize { get; set; } = 6;
     public double ConversationHeartbeatSeconds  { get; set; } = 45.0;
