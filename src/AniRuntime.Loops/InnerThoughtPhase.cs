@@ -279,7 +279,7 @@ public class InnerThoughtPhase
 
         try
         {
-            var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
+            using var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
 
             var valence    = root.TryGetProperty("valence", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -437,7 +437,7 @@ public class InnerThoughtPhase
     {
         try
         {
-            var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
+            using var doc = System.Text.Json.JsonDocument.Parse(raw.Trim());
             var score = doc.RootElement.GetProperty("score").GetDouble();
             return (float)Math.Clamp(score, 0.0, 1.0);
         }

@@ -64,7 +64,7 @@ public sealed class QwenRegisterClassifier : IRegisterClassifier
 
         try
         {
-            var doc = JsonDocument.Parse(raw.Trim());
+            using var doc = JsonDocument.Parse(raw.Trim());
             var root = doc.RootElement;
             if (root.TryGetProperty("register", out var r)
                 && r.ValueKind == JsonValueKind.String)

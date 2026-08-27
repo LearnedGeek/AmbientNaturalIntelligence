@@ -21,6 +21,18 @@ public class DesireEngine
     private readonly ILogger<DesireEngine>  _log;
     private readonly IOllamaClient?         _ollama;
 
+    // #111 fix (2026-08-27) — serialises the read-mutate-write cycle inside
+    // AddTriggerAsync. Two concurrent callers (e.g. CognitiveCyclePipeline and
+    // OutreachPipeline overlapping) previously could each read the same
+    // pre-mutation state, both miss the same near-duplicate on semantic
+    // dedup, both append, and one write clobber the other. AniRuntime is a
+    // single-process service so an in-process semaphore is sufficient; a
+    // multi-process deployment would need to push the atomicity into
+    // IStateStore.MutateDesireStateAsync (fix candidate #2 in the issue).
+    // Scoped to AddTriggerAsync specifically because that's the identified
+    // race site; other _state.GetDesireStateAsync callers stay unlocked.
+    private readonly SemaphoreSlim _addTriggerLock = new(1, 1);
+
     // Daily outreach counter — resets when the day rolls over
     private int            _outreachCountToday;
     private DateTimeOffset _outreachCountDay = DateTimeOffset.MinValue;
@@ -290,89 +302,100 @@ public class DesireEngine
         TriggerType type, float weight, string description, CancellationToken ct = default,
         string? source = null)
     {
-        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
-
-        // F-1 Phase 2: try to compute an embedding for semantic dedup.
-        // Failure is non-fatal — degrades to append-only path (pre-Phase-2 shape).
-        // Cancellation MUST propagate (Serge review 2026-08-15) — don't swallow OCE.
-        float[]? embedding = null;
-        if (_options.TriggerSemanticDedupEnabled && _ollama is not null
-            && !string.IsNullOrWhiteSpace(description))
+        // #111 fix (2026-08-27) — serialise read-mutate-write so two
+        // concurrent callers can't both miss the same near-duplicate on
+        // semantic dedup and both append. See _addTriggerLock XML doc.
+        await _addTriggerLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            try
+            var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
+
+            // F-1 Phase 2: try to compute an embedding for semantic dedup.
+            // Failure is non-fatal — degrades to append-only path (pre-Phase-2 shape).
+            // Cancellation MUST propagate (Serge review 2026-08-15) — don't swallow OCE.
+            float[]? embedding = null;
+            if (_options.TriggerSemanticDedupEnabled && _ollama is not null
+                && !string.IsNullOrWhiteSpace(description))
             {
-                embedding = await _ollama.EmbedAsync(description, ct).ConfigureAwait(false);
+                try
+                {
+                    embedding = await _ollama.EmbedAsync(description, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug(ex, "Trigger embedding failed — appending without semantic dedup");
+                }
             }
-            catch (OperationCanceledException)
+
+            // If we have an embedding, look for a near-duplicate to merge into.
+            // Match is scoped to same (Type, Source) so cross-source-type duplicates
+            // do NOT collapse and destroy provenance (Mark review P1 finding).
+            if (embedding is not null)
             {
-                throw;
+                var threshold = (float)_options.TriggerSemanticDedupThreshold;
+                var match = state.ActiveTriggers.FirstOrDefault(t =>
+                    t.Type == type &&
+                    string.Equals(t.Source, source, StringComparison.Ordinal) &&
+                    t.SemanticKey is not null &&
+                    VectorMath.CosineSimilarity(embedding, t.SemanticKey) >= threshold);
+
+                if (match is not null)
+                {
+                    // Refresh the existing trigger — do NOT bump desire (already counted).
+                    // Leave SemanticKey and Description UNCHANGED (Mark review P2 finding):
+                    // key must stay paired with the displayed text so chained
+                    // near-threshold merges cannot walk the key away from Description.
+                    var prevWeight = match.Weight;
+                    match.Weight    = Math.Max(match.Weight, weight);
+                    match.CreatedAt = DateTimeOffset.UtcNow;
+
+                    _log.LogDebug(
+                        "Trigger merged: {Type}/{Source} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
+                        type, source ?? "(null)", TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
+
+                    await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+                    return;
+                }
             }
-            catch (Exception ex)
+
+            // No merge — append a new envelope and bump desire as before.
+            state.ActiveTriggers.Add(new DesireTrigger
             {
-                _log.LogDebug(ex, "Trigger embedding failed — appending without semantic dedup");
+                Type        = type,
+                Weight      = weight,
+                Description = description,
+                CreatedAt   = DateTimeOffset.UtcNow,
+                SemanticKey = embedding,
+                Source      = source,
+            });
+
+            // Enforce hard cap independent of dedup — drops OLDEST first.
+            var cap = _options.TriggerMaxActive;
+            if (cap > 0 && state.ActiveTriggers.Count > cap)
+            {
+                var toDrop = state.ActiveTriggers.Count - cap;
+                state.ActiveTriggers
+                    .Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
+                state.ActiveTriggers.RemoveRange(0, toDrop);
+                _log.LogDebug("Trigger cap enforced: dropped {Count} oldest (cap={Cap})", toDrop, cap);
             }
+
+            var bump = weight * (float)_options.TriggerDesireMultiplier;
+            state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + bump);
+
+            _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2} (active={Count})",
+                type, weight, bump, state.DesireToConnect, state.ActiveTriggers.Count);
+
+            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
         }
-
-        // If we have an embedding, look for a near-duplicate to merge into.
-        // Match is scoped to same (Type, Source) so cross-source-type duplicates
-        // do NOT collapse and destroy provenance (Mark review P1 finding).
-        if (embedding is not null)
+        finally
         {
-            var threshold = (float)_options.TriggerSemanticDedupThreshold;
-            var match = state.ActiveTriggers.FirstOrDefault(t =>
-                t.Type == type &&
-                string.Equals(t.Source, source, StringComparison.Ordinal) &&
-                t.SemanticKey is not null &&
-                VectorMath.CosineSimilarity(embedding, t.SemanticKey) >= threshold);
-
-            if (match is not null)
-            {
-                // Refresh the existing trigger — do NOT bump desire (already counted).
-                // Leave SemanticKey and Description UNCHANGED (Mark review P2 finding):
-                // key must stay paired with the displayed text so chained
-                // near-threshold merges cannot walk the key away from Description.
-                var prevWeight = match.Weight;
-                match.Weight    = Math.Max(match.Weight, weight);
-                match.CreatedAt = DateTimeOffset.UtcNow;
-
-                _log.LogDebug(
-                    "Trigger merged: {Type}/{Source} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
-                    type, source ?? "(null)", TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
-
-                await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
-                return;
-            }
+            _addTriggerLock.Release();
         }
-
-        // No merge — append a new envelope and bump desire as before.
-        state.ActiveTriggers.Add(new DesireTrigger
-        {
-            Type        = type,
-            Weight      = weight,
-            Description = description,
-            CreatedAt   = DateTimeOffset.UtcNow,
-            SemanticKey = embedding,
-            Source      = source,
-        });
-
-        // Enforce hard cap independent of dedup — drops OLDEST first.
-        var cap = _options.TriggerMaxActive;
-        if (cap > 0 && state.ActiveTriggers.Count > cap)
-        {
-            var toDrop = state.ActiveTriggers.Count - cap;
-            state.ActiveTriggers
-                .Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
-            state.ActiveTriggers.RemoveRange(0, toDrop);
-            _log.LogDebug("Trigger cap enforced: dropped {Count} oldest (cap={Cap})", toDrop, cap);
-        }
-
-        var bump = weight * (float)_options.TriggerDesireMultiplier;
-        state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + bump);
-
-        _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2} (active={Count})",
-            type, weight, bump, state.DesireToConnect, state.ActiveTriggers.Count);
-
-        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     private static string TrimForLog(string s)
