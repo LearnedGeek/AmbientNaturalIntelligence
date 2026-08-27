@@ -92,6 +92,30 @@ public class ConfirmationBoostTests
         };
     }
 
+    // Issue #97 (2026-08-27) — legacy-formula tests need EpistemicTier.Interior
+    // to hit the recency-decay branch. Default MakeRecord uses Episodic which
+    // now skips recency under #97's stable-substrate rule.
+    private static MemoryRecord MakeInteriorRecord(
+        DateTimeOffset? confirmedAt,
+        string?         confirmedBy,
+        float           importance = 0.5f)
+    {
+        var (_, rec) = IdenticalUnitEmbeddings();
+        return new MemoryRecord
+        {
+            Id          = Guid.NewGuid(),
+            Type        = MemoryType.InnerThought,
+            Content     = "test",
+            Importance  = importance,
+            DecayTier   = DecayTier.Standard,
+            Provenance  = EpistemicTier.Interior,
+            OccurredAt  = DateTimeOffset.UtcNow.AddHours(-1),
+            ConfirmedAt = confirmedAt,
+            ConfirmedBy = confirmedBy,
+            Embedding   = rec,
+        };
+    }
+
     [Fact]
     public void ConfirmedRecord_ReceivesMultiplicativeBoostOverUnconfirmedTwin()
     {
@@ -110,13 +134,21 @@ public class ConfirmationBoostTests
     }
 
     [Fact]
-    public void ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance()
+    public void ConfirmedEpisodic_BeatsUnconfirmedEpisodicWithHigherImportance()
     {
-        // The empirical anchor: an Interior record with importance 0.8 (laundered
-        // over months) beats an Episodic record with importance 0.3 (real
-        // conversation) under the additive formula. Once the Episodic record is
-        // marked confirmed via canonical backfill, it wins even at half the
-        // importance.
+        // Confirmation-boost math: a canonical-confirmed record with
+        // importance 0.3 outranks an unconfirmed record with importance 0.8
+        // at the same cosine, because the multiplicative boost applied to
+        // the confirmed record dominates the importance-only delta.
+        //
+        // PR #153 Devin review-fix (2026-08-27): renamed from
+        // ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance —
+        // the pre-existing name said "Interior" but MakeRecord defaults to
+        // Provenance=Episodic. Post-#97 both records take the stable-
+        // substrate recency=1.0 path, so this test now covers the Episodic
+        // boost path. Interior-tier coverage lives in the sibling test
+        // ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance
+        // below, which uses MakeInteriorRecord explicitly.
         var composer = Composer();
         var (query, _) = IdenticalUnitEmbeddings();
 
@@ -130,25 +162,94 @@ public class ConfirmationBoostTests
         var scoreReal      = composer.ComputeRetrievalScore(query, realConfirmed, includeRecency: true);
 
         scoreReal.Should().BeGreaterThan(scoreLaundered,
-            because: "canonical-confirmed real content should outrank importance-inflated laundered content at the same cosine");
+            because: "canonical-confirmed real Episodic content should outrank importance-inflated laundered Episodic content at the same cosine");
     }
 
     [Fact]
-    public void UnconfirmedRecord_NoBoost_MatchesLegacyFormula()
+    public void ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance()
+    {
+        // PR #153 Devin review-fix (2026-08-27): added to restore honest
+        // Interior-tier coverage of the confirmation-boost math after the
+        // sibling test above became Episodic-only under the #97 stable-
+        // substrate recency-off rule. Same math shape as the sibling but
+        // both records are Interior tier, so the recency-decay branch is
+        // exercised (not the recency=1.0 short-circuit).
+        var composer = Composer();
+        var (query, _) = IdenticalUnitEmbeddings();
+
+        var laundered   = MakeInteriorRecord(confirmedAt: null, confirmedBy: null, importance: 0.8f);
+        var realConfirmed = MakeInteriorRecord(
+            confirmedAt: DateTimeOffset.UtcNow.AddDays(-30),
+            confirmedBy: "canonical",
+            importance: 0.3f);
+
+        var scoreLaundered = composer.ComputeRetrievalScore(query, laundered,     includeRecency: true);
+        var scoreReal      = composer.ComputeRetrievalScore(query, realConfirmed, includeRecency: true);
+
+        scoreReal.Should().BeGreaterThan(scoreLaundered,
+            because: "canonical-confirmed Interior content should outrank importance-inflated laundered Interior content at the same cosine, even under recency-decay");
+    }
+
+    [Fact]
+    public void UnconfirmedInteriorRecord_NoBoost_MatchesLegacyFormula()
     {
         var composer = Composer();
         var (query, _) = IdenticalUnitEmbeddings();
 
-        var record = MakeRecord(confirmedAt: null, confirmedBy: null, importance: 0.5f);
+        // Issue #97 (2026-08-27) — after the stable-substrate recency-off
+        // change, only EpistemicTier.Interior retains the legacy recency-
+        // decay formula. Interior is where "staleness IS a legitimate
+        // signal" per the issue's Mark quote. Facts and Episodic records
+        // now skip recency (see UnconfirmedEpisodicRecord_Issue97 below).
+        var record = MakeInteriorRecord(confirmedAt: null, confirmedBy: null, importance: 0.5f);
 
         var actual = composer.ComputeRetrievalScore(query, record, includeRecency: true);
 
         // Legacy formula: 0.65 * cosine(1.0) + 0.10 * importance(0.5) + 0.25 * recency.
-        // Recency: type=Episodic → multiplier 2.0; hoursSince ≈ 1; lambda = 48*2 = 96.
-        // recency = e^(-1/96) ≈ 0.9896.
-        var expected = 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * Math.Exp(-1.0 / 96.0);
+        // Recency: type=InnerThought → GetDecayMultiplier returns 1.0;
+        // hoursSince ≈ 1; lambda = 48*1 = 48; recency = e^(-1/48) ≈ 0.9794.
+        var expected = 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * Math.Exp(-1.0 / 48.0);
         actual.Should().BeApproximately((float)expected, precision: 0.001f,
-            because: "unconfirmed records follow the pre-Issue-93 formula unchanged");
+            because: "unconfirmed Interior records follow the pre-Issue-93 recency-decay formula unchanged");
+    }
+
+    [Fact]
+    public void UnconfirmedEpisodicRecord_Issue97_SkipsRecency()
+    {
+        // Issue #97 (2026-08-27) — stable-substrate recency-off. Episodic
+        // records are biographical / verbatim-conversational; time-passage
+        // doesn't invalidate them, only Feature 30 canonical supersession
+        // does. Recency is treated as 1.0 for scoring (same magnitude as
+        // Anchored) so the α·cosine + β·importance + γ·1 blend keeps the
+        // full-weight shape without decay penalty.
+        var composer = Composer();
+        var (query, _) = IdenticalUnitEmbeddings();
+
+        // Default MakeRecord uses type=Episodic + Provenance=Episodic (the
+        // MemoryRecord default). Age is ~1h; under legacy formula this
+        // was recency ≈ 0.9896. Under the #97 fix it should be exactly 1.0.
+        var youngRecord = MakeRecord(confirmedAt: null, confirmedBy: null, importance: 0.5f);
+        var oldRecord   = new MemoryRecord
+        {
+            Id          = Guid.NewGuid(),
+            Type        = MemoryType.Episodic,
+            Content     = "test",
+            Importance  = 0.5f,
+            DecayTier   = DecayTier.Standard,
+            Provenance  = EpistemicTier.Episodic,
+            OccurredAt  = DateTimeOffset.UtcNow.AddDays(-90), // ~90d old
+            Embedding   = IdenticalUnitEmbeddings().Item2,
+        };
+
+        var scoreYoung = composer.ComputeRetrievalScore(query, youngRecord, includeRecency: true);
+        var scoreOld   = composer.ComputeRetrievalScore(query, oldRecord,   includeRecency: true);
+
+        // Both should produce the same score post-fix: 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * 1.0.
+        var expected = 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * 1.0;
+        scoreYoung.Should().BeApproximately((float)expected, precision: 0.001f,
+            because: "young Episodic records score with recency=1.0 (stable substrate) post-#97");
+        scoreOld.Should().BeApproximately((float)expected, precision: 0.001f,
+            because: "old Episodic records score identically to young ones post-#97 — time passage doesn't invalidate biographical content");
     }
 
     [Fact]
