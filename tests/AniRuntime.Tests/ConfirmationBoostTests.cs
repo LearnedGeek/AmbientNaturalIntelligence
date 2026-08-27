@@ -134,13 +134,21 @@ public class ConfirmationBoostTests
     }
 
     [Fact]
-    public void ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance()
+    public void ConfirmedEpisodic_BeatsUnconfirmedEpisodicWithHigherImportance()
     {
-        // The empirical anchor: an Interior record with importance 0.8 (laundered
-        // over months) beats an Episodic record with importance 0.3 (real
-        // conversation) under the additive formula. Once the Episodic record is
-        // marked confirmed via canonical backfill, it wins even at half the
-        // importance.
+        // Confirmation-boost math: a canonical-confirmed record with
+        // importance 0.3 outranks an unconfirmed record with importance 0.8
+        // at the same cosine, because the multiplicative boost applied to
+        // the confirmed record dominates the importance-only delta.
+        //
+        // PR #153 Devin review-fix (2026-08-27): renamed from
+        // ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance —
+        // the pre-existing name said "Interior" but MakeRecord defaults to
+        // Provenance=Episodic. Post-#97 both records take the stable-
+        // substrate recency=1.0 path, so this test now covers the Episodic
+        // boost path. Interior-tier coverage lives in the sibling test
+        // ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance
+        // below, which uses MakeInteriorRecord explicitly.
         var composer = Composer();
         var (query, _) = IdenticalUnitEmbeddings();
 
@@ -154,7 +162,32 @@ public class ConfirmationBoostTests
         var scoreReal      = composer.ComputeRetrievalScore(query, realConfirmed, includeRecency: true);
 
         scoreReal.Should().BeGreaterThan(scoreLaundered,
-            because: "canonical-confirmed real content should outrank importance-inflated laundered content at the same cosine");
+            because: "canonical-confirmed real Episodic content should outrank importance-inflated laundered Episodic content at the same cosine");
+    }
+
+    [Fact]
+    public void ConfirmedInterior_BeatsUnconfirmedInteriorWithHigherImportance()
+    {
+        // PR #153 Devin review-fix (2026-08-27): added to restore honest
+        // Interior-tier coverage of the confirmation-boost math after the
+        // sibling test above became Episodic-only under the #97 stable-
+        // substrate recency-off rule. Same math shape as the sibling but
+        // both records are Interior tier, so the recency-decay branch is
+        // exercised (not the recency=1.0 short-circuit).
+        var composer = Composer();
+        var (query, _) = IdenticalUnitEmbeddings();
+
+        var laundered   = MakeInteriorRecord(confirmedAt: null, confirmedBy: null, importance: 0.8f);
+        var realConfirmed = MakeInteriorRecord(
+            confirmedAt: DateTimeOffset.UtcNow.AddDays(-30),
+            confirmedBy: "canonical",
+            importance: 0.3f);
+
+        var scoreLaundered = composer.ComputeRetrievalScore(query, laundered,     includeRecency: true);
+        var scoreReal      = composer.ComputeRetrievalScore(query, realConfirmed, includeRecency: true);
+
+        scoreReal.Should().BeGreaterThan(scoreLaundered,
+            because: "canonical-confirmed Interior content should outrank importance-inflated laundered Interior content at the same cosine, even under recency-decay");
     }
 
     [Fact]
