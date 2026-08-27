@@ -92,6 +92,30 @@ public class ConfirmationBoostTests
         };
     }
 
+    // Issue #97 (2026-08-27) — legacy-formula tests need EpistemicTier.Interior
+    // to hit the recency-decay branch. Default MakeRecord uses Episodic which
+    // now skips recency under #97's stable-substrate rule.
+    private static MemoryRecord MakeInteriorRecord(
+        DateTimeOffset? confirmedAt,
+        string?         confirmedBy,
+        float           importance = 0.5f)
+    {
+        var (_, rec) = IdenticalUnitEmbeddings();
+        return new MemoryRecord
+        {
+            Id          = Guid.NewGuid(),
+            Type        = MemoryType.InnerThought,
+            Content     = "test",
+            Importance  = importance,
+            DecayTier   = DecayTier.Standard,
+            Provenance  = EpistemicTier.Interior,
+            OccurredAt  = DateTimeOffset.UtcNow.AddHours(-1),
+            ConfirmedAt = confirmedAt,
+            ConfirmedBy = confirmedBy,
+            Embedding   = rec,
+        };
+    }
+
     [Fact]
     public void ConfirmedRecord_ReceivesMultiplicativeBoostOverUnconfirmedTwin()
     {
@@ -134,21 +158,65 @@ public class ConfirmationBoostTests
     }
 
     [Fact]
-    public void UnconfirmedRecord_NoBoost_MatchesLegacyFormula()
+    public void UnconfirmedInteriorRecord_NoBoost_MatchesLegacyFormula()
     {
         var composer = Composer();
         var (query, _) = IdenticalUnitEmbeddings();
 
-        var record = MakeRecord(confirmedAt: null, confirmedBy: null, importance: 0.5f);
+        // Issue #97 (2026-08-27) — after the stable-substrate recency-off
+        // change, only EpistemicTier.Interior retains the legacy recency-
+        // decay formula. Interior is where "staleness IS a legitimate
+        // signal" per the issue's Mark quote. Facts and Episodic records
+        // now skip recency (see UnconfirmedEpisodicRecord_Issue97 below).
+        var record = MakeInteriorRecord(confirmedAt: null, confirmedBy: null, importance: 0.5f);
 
         var actual = composer.ComputeRetrievalScore(query, record, includeRecency: true);
 
         // Legacy formula: 0.65 * cosine(1.0) + 0.10 * importance(0.5) + 0.25 * recency.
-        // Recency: type=Episodic → multiplier 2.0; hoursSince ≈ 1; lambda = 48*2 = 96.
-        // recency = e^(-1/96) ≈ 0.9896.
-        var expected = 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * Math.Exp(-1.0 / 96.0);
+        // Recency: type=InnerThought → GetDecayMultiplier returns 1.0;
+        // hoursSince ≈ 1; lambda = 48*1 = 48; recency = e^(-1/48) ≈ 0.9794.
+        var expected = 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * Math.Exp(-1.0 / 48.0);
         actual.Should().BeApproximately((float)expected, precision: 0.001f,
-            because: "unconfirmed records follow the pre-Issue-93 formula unchanged");
+            because: "unconfirmed Interior records follow the pre-Issue-93 recency-decay formula unchanged");
+    }
+
+    [Fact]
+    public void UnconfirmedEpisodicRecord_Issue97_SkipsRecency()
+    {
+        // Issue #97 (2026-08-27) — stable-substrate recency-off. Episodic
+        // records are biographical / verbatim-conversational; time-passage
+        // doesn't invalidate them, only Feature 30 canonical supersession
+        // does. Recency is treated as 1.0 for scoring (same magnitude as
+        // Anchored) so the α·cosine + β·importance + γ·1 blend keeps the
+        // full-weight shape without decay penalty.
+        var composer = Composer();
+        var (query, _) = IdenticalUnitEmbeddings();
+
+        // Default MakeRecord uses type=Episodic + Provenance=Episodic (the
+        // MemoryRecord default). Age is ~1h; under legacy formula this
+        // was recency ≈ 0.9896. Under the #97 fix it should be exactly 1.0.
+        var youngRecord = MakeRecord(confirmedAt: null, confirmedBy: null, importance: 0.5f);
+        var oldRecord   = new MemoryRecord
+        {
+            Id          = Guid.NewGuid(),
+            Type        = MemoryType.Episodic,
+            Content     = "test",
+            Importance  = 0.5f,
+            DecayTier   = DecayTier.Standard,
+            Provenance  = EpistemicTier.Episodic,
+            OccurredAt  = DateTimeOffset.UtcNow.AddDays(-90), // ~90d old
+            Embedding   = IdenticalUnitEmbeddings().Item2,
+        };
+
+        var scoreYoung = composer.ComputeRetrievalScore(query, youngRecord, includeRecency: true);
+        var scoreOld   = composer.ComputeRetrievalScore(query, oldRecord,   includeRecency: true);
+
+        // Both should produce the same score post-fix: 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * 1.0.
+        var expected = 0.65 * 1.0 + 0.10 * 0.5 + 0.25 * 1.0;
+        scoreYoung.Should().BeApproximately((float)expected, precision: 0.001f,
+            because: "young Episodic records score with recency=1.0 (stable substrate) post-#97");
+        scoreOld.Should().BeApproximately((float)expected, precision: 0.001f,
+            because: "old Episodic records score identically to young ones post-#97 — time passage doesn't invalidate biographical content");
     }
 
     [Fact]

@@ -569,11 +569,36 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
     /// <summary>
     /// Feature 20 + Feature 24 + Apr 30 tier-aware: composite retrieval
     /// score = α·cosine + β·importance + γ·recency_decay. When
-    /// <paramref name="includeRecency"/> is false (Facts tier), the γ
-    /// weight is redistributed proportionally onto α and β so the
+    /// <paramref name="includeRecency"/> is false (Facts tier callers),
+    /// the γ weight is redistributed proportionally onto α and β so the
     /// magnitude stays comparable.
     ///
-    /// **Issue #93 (2026-07-06) — confirmation bias.** After the base
+    /// <para>
+    /// <b>Issue #97 (2026-08-27) — stable-substrate recency-off.</b> Even
+    /// when the caller passes <paramref name="includeRecency"/>=true (the
+    /// wide-search paths that don't know a target tier upfront), the
+    /// recency term is now suppressed per-record for stable substrate.
+    /// Only <c>EpistemicTier.Interior</c> records (mood, reflection,
+    /// inner-thought) retain recency-decay — for that content, staleness
+    /// IS a legitimate signal that a mood or ephemeral thought is less
+    /// currently-relevant. For <c>Facts</c> and <c>Episodic</c> content
+    /// (biographical facts about Mark, verbatim conversation history)
+    /// the passage of time doesn't reduce the record's relevance to a
+    /// query about its content; only its confidence that the fact is
+    /// still <em>current</em>, which is a different concern with a
+    /// different fix (Feature 30 canonical supersession). Empirical
+    /// anchor: 2026-07-15 20:27:42 WCTC query returned composite ≈ 0.016
+    /// on a months-old Episodic Mark inbound because recency ≈ 0.001
+    /// killed the score; post-fix that record scores by cosine +
+    /// importance alone, with confirmation-boost multiplier still applied.
+    /// Suppression is done inside the <paramref name="includeRecency"/>
+    /// branch by treating non-Interior records the same as Anchored
+    /// (recency = 1.0) so the α·cosine + β·importance + γ·1 blend still
+    /// has the full-weight magnitude the ranking pool expects.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Issue #93 (2026-07-06) — confirmation bias.</b> After the base
     /// composite is computed, records with <see cref="MemoryRecord.ConfirmedAt"/>
     /// set (Facts + Episodic canonical + Mark ///tag-confirmed Interior)
     /// receive a multiplicative bump: <c>score *= (1 + boost)</c>. Applied
@@ -581,6 +606,7 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
     /// same boost factor. The goal is that real (Episodic) Kevin content
     /// outranks importance-inflated (Interior) Kevin fabrications on
     /// Kevin-thread queries without hard-excluding Interior from the pool.
+    /// </para>
     /// </summary>
     internal float ComputeRetrievalScore(float[] queryEmbedding, MemoryRecord record, bool includeRecency)
     {
@@ -601,6 +627,19 @@ public sealed class EfSemanticSearchComposer : ISemanticSearchComposer
             float recency;
             if (record.DecayTier == DecayTier.Anchored)
             {
+                // Anchored (foundation) memories are atemporal by design —
+                // recency=1.0 keeps the ranking magnitude consistent with
+                // non-Anchored records that got their recency computed.
+                recency = 1.0f;
+            }
+            else if (record.Provenance != EpistemicTier.Interior)
+            {
+                // Issue #97 (2026-08-27) — stable-substrate recency-off.
+                // Facts and Episodic records are biographical / verbatim-
+                // conversational; time-passage doesn't invalidate them
+                // (only Feature 30 canonical supersession does). Treat
+                // them like Anchored for recency-scoring purposes so the
+                // α·cosine + β·importance + γ·1 blend has full magnitude.
                 recency = 1.0f;
             }
             else
