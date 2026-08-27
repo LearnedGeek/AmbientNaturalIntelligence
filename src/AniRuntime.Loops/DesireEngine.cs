@@ -21,6 +21,22 @@ public class DesireEngine
     private readonly ILogger<DesireEngine>  _log;
     private readonly IOllamaClient?         _ollama;
 
+    // #111 fix (2026-08-27) — serialises the read-mutate-write cycle across
+    // EVERY DesireState writer in this class. Devin PR #152 review-fix
+    // extended coverage from just AddTriggerAsync (the original issue title)
+    // to include ApplyDriftAsync, ResetAfterOutreachAsync, DecayDesireAsync,
+    // and the cooldown-expiry save path inside ShouldReachOutAsync — all of
+    // which do read-mutate-write on the same shared state and could clobber
+    // one another (or clobber AddTriggerAsync) under concurrent invocation.
+    //
+    // AniRuntime is a single-process service so an in-process semaphore is
+    // sufficient; a multi-process deployment would need the atomicity
+    // pushed into IStateStore.MutateDesireStateAsync (fix candidate #2 in
+    // the issue). Read-only callers (GetStateAsync, plain GetDesireStateAsync
+    // consumers, ShouldReachOutAsync's read-only decision path after the
+    // cooldown-expiry save) do not need to hold the lock — only mutators.
+    private readonly SemaphoreSlim _desireStateWriteLock = new(1, 1);
+
     // Daily outreach counter — resets when the day rolls over
     private int            _outreachCountToday;
     private DateTimeOffset _outreachCountDay = DateTimeOffset.MinValue;
@@ -95,12 +111,30 @@ public class DesireEngine
     {
         var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
-        // Auto-expire cooldown
+        // Auto-expire cooldown. Devin PR #152 review-fix (2026-08-27) —
+        // the mutation + save is guarded by _desireStateWriteLock to avoid
+        // clobbering a concurrent AddTriggerAsync / ApplyDriftAsync. Uses
+        // double-checked locking: the outer if quick-exits when cooldown
+        // isn't actually expired; the inner re-read under lock guards
+        // against a race where another writer already lifted it between
+        // our first read and lock acquisition.
         if (state.CooldownActive && DateTimeOffset.UtcNow >= state.CooldownUntil)
         {
-            state.CooldownActive = false;
-            _log.LogDebug("Cooldown expired — lifting");
-            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+            await _desireStateWriteLock.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
+                if (state.CooldownActive && DateTimeOffset.UtcNow >= state.CooldownUntil)
+                {
+                    state.CooldownActive = false;
+                    _log.LogDebug("Cooldown expired — lifting");
+                    await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _desireStateWriteLock.Release();
+            }
         }
 
         if (state.CooldownActive)
@@ -198,46 +232,56 @@ public class DesireEngine
     /// </summary>
     public async Task ApplyDriftAsync(float motivationMultiplier = 1.0f, CancellationToken ct = default)
     {
-        var state   = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
+        // Devin PR #152 review-fix (2026-08-27) — extend _desireStateWriteLock
+        // coverage from just AddTriggerAsync to all DesireState writers.
+        await _desireStateWriteLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var state   = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
-        // Use the more recent of LastContactInbound or LastOutreach — Ani's own messages
-        // partially satisfy her connection need, so drift should slow after she texts too
-        var lastConnection = state.LastContactInbound > state.LastOutreach
-            ? state.LastContactInbound : state.LastOutreach;
-        var elapsed = DateTimeOffset.UtcNow - lastConnection;
+            // Use the more recent of LastContactInbound or LastOutreach — Ani's own messages
+            // partially satisfy her connection need, so drift should slow after she texts too
+            var lastConnection = state.LastContactInbound > state.LastOutreach
+                ? state.LastContactInbound : state.LastOutreach;
+            var elapsed = DateTimeOffset.UtcNow - lastConnection;
 
-        // Compute satisfaction from available signals
-        var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
-        var satisfaction = ComputeSatisfaction(state, emotionalState, elapsed);
+            // Compute satisfaction from available signals
+            var emotionalState = await _state.GetEmotionalStateAsync(ct).ConfigureAwait(false);
+            var satisfaction = ComputeSatisfaction(state, emotionalState, elapsed);
 
-        var previousDesire = state.DesireToConnect;
-        var baseDrift = (float)Math.Min(elapsed.TotalHours * _options.DriftPerHour, _options.DriftCapPerCycle);
+            var previousDesire = state.DesireToConnect;
+            var baseDrift = (float)Math.Min(elapsed.TotalHours * _options.DriftPerHour, _options.DriftCapPerCycle);
 
-        // Dampen drift by satisfaction — high satisfaction = less upward pressure
-        var dampening = 1.0f - (float)(satisfaction * _options.SatisfactionDampeningFactor);
-        var drift = baseDrift * dampening;
+            // Dampen drift by satisfaction — high satisfaction = less upward pressure
+            var dampening = 1.0f - (float)(satisfaction * _options.SatisfactionDampeningFactor);
+            var drift = baseDrift * dampening;
 
-        // Feature 35 (Borotschnig): Emotion→desire modulation
-        // High worry accelerates drift (concern makes her want to check in)
-        // Low energy suppresses drift (subdued state reduces outreach impulse)
-        var emotionModifier = ComputeEmotionDesireModifier(emotionalState);
-        drift *= emotionModifier;
+            // Feature 35 (Borotschnig): Emotion→desire modulation
+            // High worry accelerates drift (concern makes her want to check in)
+            // Low energy suppresses drift (subdued state reduces outreach impulse)
+            var emotionModifier = ComputeEmotionDesireModifier(emotionalState);
+            drift *= emotionModifier;
 
-        // Feature 33 (Liu et al.): Motivation scoring — high-quality thoughts
-        // accelerate desire, routine thoughts contribute less
-        drift *= motivationMultiplier;
+            // Feature 33 (Liu et al.): Motivation scoring — high-quality thoughts
+            // accelerate desire, routine thoughts contribute less
+            drift *= motivationMultiplier;
 
-        state.DesireToConnect   = Math.Min(1.0f, state.DesireToConnect + drift);
-        state.LastInnerThought  = DateTimeOffset.UtcNow;
+            state.DesireToConnect   = Math.Min(1.0f, state.DesireToConnect + drift);
+            state.LastInnerThought  = DateTimeOffset.UtcNow;
 
-        // Circadian hour uses local time intentionally — we want Ani's clock, not UTC
-        state.CircadianModifier = ComputeCircadianModifier();
+            // Circadian hour uses local time intentionally — we want Ani's clock, not UTC
+            state.CircadianModifier = ComputeCircadianModifier();
 
-        _log.LogInformation(
-            "Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (base={BaseDrift:F2}, satisfaction={Satisfaction:F2}, dampening={Dampening:F2}, emotion={EmotionMod:F2}, motivation={MotivationMod:F2}, elapsed={Hours:F1}h, circadian={Circadian:F2})",
-            previousDesire, drift, state.DesireToConnect, baseDrift, satisfaction, dampening, emotionModifier, motivationMultiplier, elapsed.TotalHours, state.CircadianModifier);
+            _log.LogInformation(
+                "Desire drift: {Previous:F2} + {Drift:F2} → {New:F2} (base={BaseDrift:F2}, satisfaction={Satisfaction:F2}, dampening={Dampening:F2}, emotion={EmotionMod:F2}, motivation={MotivationMod:F2}, elapsed={Hours:F1}h, circadian={Circadian:F2})",
+                previousDesire, drift, state.DesireToConnect, baseDrift, satisfaction, dampening, emotionModifier, motivationMultiplier, elapsed.TotalHours, state.CircadianModifier);
 
-        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _desireStateWriteLock.Release();
+        }
     }
 
     /// <summary>
@@ -290,11 +334,26 @@ public class DesireEngine
         TriggerType type, float weight, string description, CancellationToken ct = default,
         string? source = null)
     {
-        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
-
-        // F-1 Phase 2: try to compute an embedding for semantic dedup.
-        // Failure is non-fatal — degrades to append-only path (pre-Phase-2 shape).
-        // Cancellation MUST propagate (Serge review 2026-08-15) — don't swallow OCE.
+        // Devin PR #152 review-fix (2026-08-27) — compute the embedding
+        // BEFORE acquiring the write lock. Embedding is a pure function of
+        // description + model; it needs no locked state. Serialising the
+        // network call under the lock would cap concurrent trigger-adds at
+        // one in-flight embed per process, which is unnecessary and
+        // wasteful. Cost of this ordering: a concurrent add could insert a
+        // semantic-match between our embed and our lock acquisition; we'd
+        // then append rather than merge on that specific race window. The
+        // next call catches the duplicate on its own scan — dedup becomes
+        // "eventual" rather than "immediate", but the write race is fully
+        // closed.
+        //
+        // Cancellation MUST propagate (Serge review 2026-08-15) — don't
+        // swallow OCE. All non-cancel embedding failures are non-fatal:
+        // fail-open degrades to append-only (pre-F-1-Phase-2 behavior)
+        // rather than blocking the cognitive cycle on an auxiliary call.
+        // The catch-all is deliberately broad here; narrowing to specific
+        // exception types would risk propagating an unexpected client-side
+        // error and failing the cognitive cycle, which is worse than
+        // missing a single semantic-dedup opportunity.
         float[]? embedding = null;
         if (_options.TriggerSemanticDedupEnabled && _ollama is not null
             && !string.IsNullOrWhiteSpace(description))
@@ -313,66 +372,81 @@ public class DesireEngine
             }
         }
 
-        // If we have an embedding, look for a near-duplicate to merge into.
-        // Match is scoped to same (Type, Source) so cross-source-type duplicates
-        // do NOT collapse and destroy provenance (Mark review P1 finding).
-        if (embedding is not null)
+        // #111 fix (2026-08-27) — serialise read-mutate-write. Extended by
+        // Devin PR #152 review-fix to a class-wide _desireStateWriteLock
+        // covering ApplyDriftAsync, ResetAfterOutreachAsync, DecayDesireAsync,
+        // and the cooldown-expiry save path in ShouldReachOutAsync. See
+        // _desireStateWriteLock XML doc for the full rationale.
+        await _desireStateWriteLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var threshold = (float)_options.TriggerSemanticDedupThreshold;
-            var match = state.ActiveTriggers.FirstOrDefault(t =>
-                t.Type == type &&
-                string.Equals(t.Source, source, StringComparison.Ordinal) &&
-                t.SemanticKey is not null &&
-                VectorMath.CosineSimilarity(embedding, t.SemanticKey) >= threshold);
+            var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
 
-            if (match is not null)
+            // If we have an embedding, look for a near-duplicate to merge into.
+            // Match is scoped to same (Type, Source) so cross-source-type duplicates
+            // do NOT collapse and destroy provenance (Mark review P1 finding).
+            if (embedding is not null)
             {
-                // Refresh the existing trigger — do NOT bump desire (already counted).
-                // Leave SemanticKey and Description UNCHANGED (Mark review P2 finding):
-                // key must stay paired with the displayed text so chained
-                // near-threshold merges cannot walk the key away from Description.
-                var prevWeight = match.Weight;
-                match.Weight    = Math.Max(match.Weight, weight);
-                match.CreatedAt = DateTimeOffset.UtcNow;
+                var threshold = (float)_options.TriggerSemanticDedupThreshold;
+                var match = state.ActiveTriggers.FirstOrDefault(t =>
+                    t.Type == type &&
+                    string.Equals(t.Source, source, StringComparison.Ordinal) &&
+                    t.SemanticKey is not null &&
+                    VectorMath.CosineSimilarity(embedding, t.SemanticKey) >= threshold);
 
-                _log.LogDebug(
-                    "Trigger merged: {Type}/{Source} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
-                    type, source ?? "(null)", TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
+                if (match is not null)
+                {
+                    // Refresh the existing trigger — do NOT bump desire (already counted).
+                    // Leave SemanticKey and Description UNCHANGED (Mark review P2 finding):
+                    // key must stay paired with the displayed text so chained
+                    // near-threshold merges cannot walk the key away from Description.
+                    var prevWeight = match.Weight;
+                    match.Weight    = Math.Max(match.Weight, weight);
+                    match.CreatedAt = DateTimeOffset.UtcNow;
 
-                await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
-                return;
+                    _log.LogDebug(
+                        "Trigger merged: {Type}/{Source} desc='{Desc}' weight={PrevWeight:F2}→{NewWeight:F2} (semantic match with '{ExistingDesc}')",
+                        type, source ?? "(null)", TrimForLog(description), prevWeight, match.Weight, TrimForLog(match.Description));
+
+                    await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+                    return;
+                }
             }
+
+            // No merge — append a new envelope and bump desire as before.
+            state.ActiveTriggers.Add(new DesireTrigger
+            {
+                Type        = type,
+                Weight      = weight,
+                Description = description,
+                CreatedAt   = DateTimeOffset.UtcNow,
+                SemanticKey = embedding,
+                Source      = source,
+            });
+
+            // Enforce hard cap independent of dedup — drops OLDEST first.
+            var cap = _options.TriggerMaxActive;
+            if (cap > 0 && state.ActiveTriggers.Count > cap)
+            {
+                var toDrop = state.ActiveTriggers.Count - cap;
+                state.ActiveTriggers
+                    .Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
+                state.ActiveTriggers.RemoveRange(0, toDrop);
+                _log.LogDebug("Trigger cap enforced: dropped {Count} oldest (cap={Cap})", toDrop, cap);
+            }
+
+            var bump = weight * (float)_options.TriggerDesireMultiplier;
+            state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + bump);
+
+            _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2} (active={Count})",
+                type, weight, bump, state.DesireToConnect, state.ActiveTriggers.Count);
+
+            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
         }
-
-        // No merge — append a new envelope and bump desire as before.
-        state.ActiveTriggers.Add(new DesireTrigger
+        finally
         {
-            Type        = type,
-            Weight      = weight,
-            Description = description,
-            CreatedAt   = DateTimeOffset.UtcNow,
-            SemanticKey = embedding,
-            Source      = source,
-        });
-
-        // Enforce hard cap independent of dedup — drops OLDEST first.
-        var cap = _options.TriggerMaxActive;
-        if (cap > 0 && state.ActiveTriggers.Count > cap)
-        {
-            var toDrop = state.ActiveTriggers.Count - cap;
-            state.ActiveTriggers
-                .Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
-            state.ActiveTriggers.RemoveRange(0, toDrop);
-            _log.LogDebug("Trigger cap enforced: dropped {Count} oldest (cap={Cap})", toDrop, cap);
+            _desireStateWriteLock.Release();
         }
-
-        var bump = weight * (float)_options.TriggerDesireMultiplier;
-        state.DesireToConnect = Math.Min(1.0f, state.DesireToConnect + bump);
-
-        _log.LogDebug("Trigger added: {Type} weight={Weight:F2} bump={Bump:F2} → desire={Desire:F2} (active={Count})",
-            type, weight, bump, state.DesireToConnect, state.ActiveTriggers.Count);
-
-        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
     }
 
     private static string TrimForLog(string s)
@@ -435,25 +509,35 @@ public class DesireEngine
     /// </summary>
     public async Task ResetAfterOutreachAsync(CancellationToken ct = default)
     {
-        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
-        _log.LogInformation("Outreach reset: desire {Previous:F2} → 0.00, clearing {TriggerCount} triggers",
-            state.DesireToConnect, state.ActiveTriggers.Count);
-        state.DesireToConnect = 0.0f;
-        state.LastOutreach    = DateTimeOffset.UtcNow;
-        state.ActiveTriggers.Clear();
+        // Devin PR #152 review-fix (2026-08-27) — extend _desireStateWriteLock
+        // coverage from just AddTriggerAsync to all DesireState writers.
+        await _desireStateWriteLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
+            _log.LogInformation("Outreach reset: desire {Previous:F2} → 0.00, clearing {TriggerCount} triggers",
+                state.DesireToConnect, state.ActiveTriggers.Count);
+            state.DesireToConnect = 0.0f;
+            state.LastOutreach    = DateTimeOffset.UtcNow;
+            state.ActiveTriggers.Clear();
 
-        // Track daily, night, and morning outreach counts — only for unprompted outreach
-        _outreachCountToday++;
-        if (IsNightHours()) _nightOutreachCount++;
-        if (IsMorningWindow()) _morningSendCount++;
+            // Track daily, night, and morning outreach counts — only for unprompted outreach
+            _outreachCountToday++;
+            if (IsNightHours()) _nightOutreachCount++;
+            if (IsMorningWindow()) _morningSendCount++;
 
-        // Activate cooldown — prevents rapid-fire messages
-        state.CooldownActive = true;
-        state.CooldownUntil  = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(_options.MinOutreachGapMinutes);
-        _log.LogInformation("Cooldown activated until {Until} ({Minutes} min)",
-            state.CooldownUntil, _options.MinOutreachGapMinutes);
+            // Activate cooldown — prevents rapid-fire messages
+            state.CooldownActive = true;
+            state.CooldownUntil  = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(_options.MinOutreachGapMinutes);
+            _log.LogInformation("Cooldown activated until {Until} ({Minutes} min)",
+                state.CooldownUntil, _options.MinOutreachGapMinutes);
 
-        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _desireStateWriteLock.Release();
+        }
     }
 
     /// <summary>
@@ -463,12 +547,22 @@ public class DesireEngine
     /// </summary>
     public async Task DecayDesireAsync(float fraction, string reason, CancellationToken ct = default)
     {
-        var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
-        var previous = state.DesireToConnect;
-        state.DesireToConnect *= (1.0f - fraction);
-        _log.LogInformation("Desire decay: {Previous:F2} → {New:F2} ({Fraction:P0} reduction) — {Reason}",
-            previous, state.DesireToConnect, fraction, reason);
-        await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        // Devin PR #152 review-fix (2026-08-27) — extend _desireStateWriteLock
+        // coverage from just AddTriggerAsync to all DesireState writers.
+        await _desireStateWriteLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var state = await _state.GetDesireStateAsync(ct).ConfigureAwait(false);
+            var previous = state.DesireToConnect;
+            state.DesireToConnect *= (1.0f - fraction);
+            _log.LogInformation("Desire decay: {Previous:F2} → {New:F2} ({Fraction:P0} reduction) — {Reason}",
+                previous, state.DesireToConnect, fraction, reason);
+            await _persist.SaveDesireStateAsync(state, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _desireStateWriteLock.Release();
+        }
     }
 
     // ── Private ───────────────────────────────────────────────────────────────
