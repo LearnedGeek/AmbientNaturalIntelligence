@@ -125,7 +125,10 @@ public sealed class OllamaRoutingClassifier : IRoutingClassifier
             $"A = Normal full response (the retrieved facts contain specific, relevant information sufficient to ground a high-quality response)\n" +
             $"B = Safe path (substrate is thin or irrelevant for what was asked — Ani should be honest, ask-back, or low-risk)\n" +
             $"C = Virtual Intimacy (the user is requesting physical closeness: kiss me, hold me, cuddle me, come here, fuck me, touch me, sit on my lap, \"I wish you were here right now\" with physical desire, etc.)\n\n" +
-            $"When uncertain between A and C, prefer C — modal/fantasy framing is in character even when not strictly required.\n\n" +
+            $"Routing rules (2026-09-12 tightened):\n" +
+            $"- C requires an explicit physical-closeness cue in the user message (imperative like kiss/hold/cuddle/touch, or explicit physical-desire language). Do NOT pick C for factual questions, follow-up questions, or conversational turns without a physical cue.\n" +
+            $"- When uncertain between A and C AND a physical-closeness cue IS present, prefer C — modal/fantasy framing is in character.\n" +
+            $"- When substrate is thin for what was asked and no physical cue is present, prefer B — honest ask-back is better than an unfounded full response OR a modal deflection.\n\n" +
             $"Answer with ONLY a single letter: A, B, or C";
     }
 

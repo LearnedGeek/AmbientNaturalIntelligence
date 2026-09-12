@@ -154,14 +154,40 @@ public sealed class RssPerceptionSource : IPerceptionSource
                 }
             }
 
-            events.Add(new PerceptionEvent
+            // 2026-09-12 — capture the RSS item link into Metadata so
+            // downstream ReactiveShareService can persist it as a Fact-
+            // tier record. Before this, RSS silently dropped every <link>
+            // element, so even the reactive-share record had no URL Mark
+            // could ever get back — asking "where did you see that
+            // article?" returned nothing usable because the source was
+            // never captured upstream in the first place. RSS 2.0 uses
+            // <link>text</link>; Atom uses <link href="..."/> (attribute).
+            var link = GetChildText(item, "link");
+            if (string.IsNullOrWhiteSpace(link))
+            {
+                // Atom-style: <link href="..."/> — read the href attribute.
+                var linkNode = item["link"];
+                link = linkNode?.Attributes?["href"]?.Value?.Trim();
+            }
+
+            var perception = new PerceptionEvent
             {
                 SourceName    = SourceName,
                 Category      = Category,
                 Summary       = summary,
                 ContactRelevance = relevance,
                 OccurredAt    = pubDate ?? DateTimeOffset.UtcNow,
-            });
+            };
+            if (!string.IsNullOrWhiteSpace(link))
+            {
+                perception.Metadata["url"] = link;
+            }
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                perception.Metadata["title"] = title;
+            }
+            perception.Metadata["outlet"] = feed.Name;
+            events.Add(perception);
 
             if (pubDate.HasValue && pubDate.Value > newestSeen)
                 newestSeen = pubDate.Value;

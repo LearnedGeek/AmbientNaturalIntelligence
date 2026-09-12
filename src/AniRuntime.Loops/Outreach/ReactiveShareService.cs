@@ -226,6 +226,103 @@ public sealed class ReactiveShareService : IReactiveShareService
         await _persist.SaveAsync(shareRecord, ct).ConfigureAwait(false);
         shareRecord.LogAttribution(_log);
 
+        // 2026-09-12 — also persist the underlying source as a Facts-tier
+        // record so Ani can cite the URL/outlet/headline when Mark asks
+        // "where did you see that article?" later. Before this, the source
+        // metadata (URL, outlet name, headline) was in the transient
+        // PerceptionEvent at compose time but got dropped after dispatch,
+        // leaving Ani unable to answer follow-up questions about her own
+        // reactive shares. The Facts record's Content is written with an
+        // unambiguous "URL: <url>" pattern so the composer will include
+        // it verbatim in a reply. Follow-up issue #155 tracks the transient-
+        // fact accumulation concern (post-#97 recency-off means these
+        // don't age out via time-decay; cosine gating is the natural filter).
+        await PersistShareableSourceAsFactAsync(shareable, charState, shareTime, ct)
+            .ConfigureAwait(false);
+
         return true;
+    }
+
+    /// <summary>
+    /// Persists a Facts-tier record capturing the source of a reactive share
+    /// (URL from PerceptionEvent.Metadata if RSS captured it, outlet name,
+    /// headline, summary). Fail-open: exceptions are logged and swallowed
+    /// so a source-persistence problem never blocks the share dispatch,
+    /// which has already succeeded.
+    /// </summary>
+    private async Task PersistShareableSourceAsFactAsync(
+        PerceptionEvent shareable,
+        CharacterStateDoc charState,
+        DateTimeOffset shareTime,
+        CancellationToken ct)
+    {
+        try
+        {
+            string? url    = null;
+            string? title  = null;
+            string? outlet = null;
+            if (shareable.Metadata is { Count: > 0 })
+            {
+                if (shareable.Metadata.TryGetValue("url", out var u)) url    = u as string;
+                if (shareable.Metadata.TryGetValue("title", out var t)) title  = t as string;
+                if (shareable.Metadata.TryGetValue("outlet", out var o)) outlet = o as string;
+            }
+
+            // Compose content with an unambiguous "URL: <url>" pattern so
+            // the composer will lift it verbatim when Mark asks for the
+            // source. Fallback pieces used when RSS metadata was thin.
+            var contentBuilder = new System.Text.StringBuilder();
+            contentBuilder.Append("Article Ani shared with ")
+                          .Append(charState.PrimaryContactName)
+                          .Append(" on ")
+                          .Append(shareTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))
+                          .Append(": ");
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                contentBuilder.Append('"').Append(title).Append('"');
+            }
+            else
+            {
+                contentBuilder.Append(shareable.Summary);
+            }
+            if (!string.IsNullOrWhiteSpace(outlet))
+            {
+                contentBuilder.Append(" (from ").Append(outlet).Append(')');
+            }
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                contentBuilder.Append(". URL: ").Append(url);
+            }
+            if (!string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(shareable.Summary))
+            {
+                contentBuilder.Append(". Summary: ").Append(shareable.Summary);
+            }
+            var sourceContent = contentBuilder.ToString();
+
+            var sourceRecord = new MemoryRecord
+            {
+                Type       = MemoryType.Semantic,
+                Content    = sourceContent,
+                Importance = 0.5f,
+                OccurredAt = shareTime,
+                Provenance = EpistemicTier.Facts,
+                SourceName = "reactive-share-source",
+                AttributedTo               = AttributedTo.World,
+                AttributedAt               = shareTime,
+                AttributionTrust           = "verified",
+            };
+            await _persist.SaveAsync(sourceRecord, ct).ConfigureAwait(false);
+            _log.LogInformation(
+                "REACTIVE_SHARE_SOURCE persisted: outlet={Outlet} hasUrl={HasUrl} contentChars={Chars}",
+                outlet ?? "(none)", !string.IsNullOrWhiteSpace(url), sourceContent.Length);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Reactive-share source-persistence failed — dispatch already succeeded");
+        }
     }
 }
