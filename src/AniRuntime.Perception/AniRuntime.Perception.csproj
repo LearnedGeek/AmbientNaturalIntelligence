@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AniRuntime.Core\AniRuntime.Core.csproj" />
+    <InternalsVisibleTo Include="AniRuntime.Tests" />
   </ItemGroup>
 
   <ItemGroup>

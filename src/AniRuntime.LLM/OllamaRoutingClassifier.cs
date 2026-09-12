@@ -16,14 +16,15 @@ namespace AniRuntime.LLM;
 /// a single-letter answer. The strict format minimizes parsing ambiguity
 /// and forces the model to commit rather than hedge.
 ///
-/// **Bias direction:** the prompt-anchored category descriptions are
-/// written to bias slightly TOWARD VirtualIntimacy on ambiguous turns.
-/// Defense-in-depth catches under-classification (a turn that should
-/// have been C but went to A): the frontier-verifier catches Mark-domain
-/// present-tense claims and H.8 routes remediation to safe-path. The
-/// other direction (turn that should have been A but went to C) is mild
-/// over-fire — user gets a modal-framed reply instead of a normal one,
-/// still in character.
+/// **Routing bias (2026-09-12 tightened):** empirical observation
+/// showed the classifier over-firing C on plain factual follow-ups
+/// (e.g. "Where did you see that article?"), which surfaced as byte-
+/// identical modal replies to distinct questions. The prompt now
+/// requires an explicit physical-closeness cue before picking C, and
+/// routes substrate-thin factual turns to B (honest ask-back) rather
+/// than C (modal deflection). C is still preferred when a physical cue
+/// IS present and the choice is between A and C; the change narrows
+/// C, it does not remove it.
 ///
 /// **Failure mode:** any transport / parse / timeout exception is caught
 /// and returns <see cref="RoutingVerdict.Unknown"/>, which the pipeline

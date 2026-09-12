@@ -161,6 +161,85 @@ public class RoutingClassifierAndComposerTests
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    // OllamaRoutingClassifier — prompt-capture regression coverage
+    //
+    // 2026-09-12: the H.9 routing prompt was tightened to reject C for
+    // factual/no-cue turns and prefer B when substrate is thin. The above
+    // A/B/C mock-return tests would still pass if a future edit accidentally
+    // reverted those rules — the tests only assert that the classifier maps
+    // the model's letter to the right verdict. These tests instead capture
+    // the actual user prompt sent to ChatAsync and assert the tightened
+    // routing-rule text is present, so a regression that removes those
+    // constraints (and reintroduces C for factual follow-ups — the byte-
+    // identical modal-reply failure on 2026-09-09) fails the suite.
+    // ──────────────────────────────────────────────────────────────────────
+
+    private static (Mock<IOllamaClient> Mock, Func<string> Captured) SetupOllamaCapturingPrompt(string response)
+    {
+        string capturedUser = string.Empty;
+        var ollama = new Mock<IOllamaClient>(MockBehavior.Strict);
+        ollama.Setup(o => o.ChatAsync(
+                It.IsAny<string>(),
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<float?>()))
+            .Callback<string, IEnumerable<ChatMessage>, string, CancellationToken, float?>(
+                (_, _, userMessage, _, _) => capturedUser = userMessage)
+            .ReturnsAsync(response);
+        return (ollama, () => capturedUser);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_FactualFollowUp_PromptRejectsCForFactualTurns()
+    {
+        // 2026-09-12 regression pin — the tightened routing prompt MUST tell
+        // the model explicitly to NOT pick C for factual follow-up questions
+        // without a physical cue. The empirical anchor is the 2026-09-09
+        // "Where did you see that article?" turn that routed C twice and
+        // produced byte-identical modal replies.
+        var (ollama, getPrompt) = SetupOllamaCapturingPrompt("A");
+        var classifier = new OllamaRoutingClassifier(ollama.Object,
+            NullLogger<OllamaRoutingClassifier>.Instance);
+
+        await classifier.ClassifyAsync(
+            userMessage: "Where did you see that article?",
+            facts:       new List<MemoryRecord>(),
+            ct:          CancellationToken.None);
+
+        var prompt = getPrompt();
+        prompt.Should().Contain("physical-closeness cue",
+            "the tightened rule names the required signal for C explicitly");
+        prompt.Should().Contain("Do NOT pick C for factual questions",
+            "the tightened rule names the failure mode (factual follow-up → C) directly");
+        prompt.Should().Contain("prefer B",
+            "substrate-thin factual turns should route to safe-path (B), not modal deflection (C)");
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_PhysicalClosenessRequest_PromptPreservesCPreferenceOnCue()
+    {
+        // Complementary pin — narrowing C for factual turns must NOT delete
+        // the A-vs-C bias in the case where a physical cue IS present. The
+        // prompt must still tell the model to prefer C over A when a
+        // physical-closeness cue exists and the choice is ambiguous.
+        var (ollama, getPrompt) = SetupOllamaCapturingPrompt("C");
+        var classifier = new OllamaRoutingClassifier(ollama.Object,
+            NullLogger<OllamaRoutingClassifier>.Instance);
+
+        await classifier.ClassifyAsync(
+            userMessage: "come over here and kiss me",
+            facts:       new List<MemoryRecord>(),
+            ct:          CancellationToken.None);
+
+        var prompt = getPrompt();
+        prompt.Should().Contain("physical-closeness cue IS present",
+            "the retained bias fires only when the cue is present");
+        prompt.Should().Contain("prefer C",
+            "modal/fantasy framing is still in character when the cue is present");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // SafePathConversationPromptCommand — structural contract
     // ──────────────────────────────────────────────────────────────────────
 

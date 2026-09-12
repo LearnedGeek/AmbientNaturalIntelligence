@@ -301,7 +301,17 @@ public sealed class ReactiveShareService : IReactiveShareService
 
             var sourceRecord = new MemoryRecord
             {
-                Type       = MemoryType.Semantic,
+                // MemoryType.Perception (not Semantic): Semantic goes through
+                // EfMemoryPersistenceService dedup + LLM merge — a later similar
+                // article could merge into this record and REPLACE its content,
+                // dropping the URL, which is the exact field this record exists
+                // to preserve. Perception is intentionally exempt from the
+                // dedupable-types set (see EfMemoryMergePolicy.DedupableTypes).
+                // RetrievalOriginClassifier also correctly routes Perception to
+                // External (RSS is external material), not Caregiver. Tier
+                // scoping is by Provenance (Facts), which is orthogonal to
+                // MemoryType, so Facts-tier retrieval still finds this record.
+                Type       = MemoryType.Perception,
                 Content    = sourceContent,
                 Importance = 0.5f,
                 OccurredAt = shareTime,
@@ -320,8 +330,13 @@ public sealed class ReactiveShareService : IReactiveShareService
         {
             throw;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
+            // Narrowed from generic catch: the only fallible side effect here
+            // is _persist.SaveAsync, which surfaces persistence errors as
+            // InvalidOperationException (EF Core save-changes wrap). Fail-open:
+            // dispatch has already succeeded so a failure to persist the source
+            // record must not surface as an outreach-loop error.
             _log.LogWarning(ex, "Reactive-share source-persistence failed — dispatch already succeeded");
         }
     }
