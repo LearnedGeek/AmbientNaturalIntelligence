@@ -499,23 +499,53 @@ try
     {
         var memory   = scope.ServiceProvider.GetRequiredService<IMemoryService>();
         var existing = await memory.GetCharacterStateAsync();
-        if (existing.CoreTraits.Count == 0)
+
+        // Load the seed doc once. Two consumers below: (1) first-run
+        // CharacterState seed when nothing is persisted; (2) version-gated
+        // reseed + backfill when seed's PersonaVersion is newer than the
+        // persisted one. Second path (added 2026-09-12 with Kathy anchor)
+        // exists because the original guard `existing.CoreTraits.Count == 0`
+        // fired only on fresh installs — any content edit to character-seed.json
+        // was invisible to production instances that had already seeded once.
+        var seedPath = Path.Combine(AppContext.BaseDirectory, "data", "character-seed.json");
+        CharacterStateDoc? seedDoc = null;
+        if (File.Exists(seedPath))
         {
-            var seedPath = Path.Combine(AppContext.BaseDirectory, "data", "character-seed.json");
-            if (File.Exists(seedPath))
+            try
             {
                 var json = await File.ReadAllTextAsync(seedPath);
-                var doc  = JsonSerializer.Deserialize<CharacterStateDoc>(json, JsonDefaults.CaseInsensitive);
-                if (doc is not null)
-                {
-                    await memory.SaveCharacterStateAsync(doc);
-                    Log.Information("Character state seeded from {Path}", seedPath);
-                }
+                seedDoc  = JsonSerializer.Deserialize<CharacterStateDoc>(json, JsonDefaults.CaseInsensitive);
             }
-            else
+            catch (Exception ex)
             {
-                Log.Warning("No character-seed.json found at {Path} — starting with empty character state", seedPath);
+                Log.Warning(ex, "Failed to parse character-seed.json at {Path} — skipping seed load", seedPath);
             }
+        }
+        else
+        {
+            Log.Warning("No character-seed.json found at {Path} — starting with empty character state", seedPath);
+        }
+
+        // First-run path: no CoreTraits persisted yet, so this is a brand-new
+        // instance. Save the full seed as the initial CharacterState.
+        if (existing.CoreTraits.Count == 0 && seedDoc is not null)
+        {
+            await memory.SaveCharacterStateAsync(seedDoc);
+            Log.Information("Character state seeded from {Path}", seedPath);
+        }
+        // Reseed path (2026-09-12): CoreTraits already persisted, but the
+        // seed file carries a newer PersonaVersion. Overwrite the persisted
+        // CharacterState so downstream consumers (persona cache, prompt
+        // builders) see the newer content. Backfill of the CharacterSeed
+        // Facts records happens in the block below, guarded by a per-record
+        // dedup check so we don't duplicate anything already stored.
+        else if (existing.CoreTraits.Count > 0 && seedDoc is not null
+                 && IsSeedNewer(existing.PersonaVersion, seedDoc.PersonaVersion))
+        {
+            await memory.SaveCharacterStateAsync(seedDoc);
+            Log.Information(
+                "Character state upgraded from persisted persona v{Persisted} to seed v{Seed}",
+                existing.PersonaVersion, seedDoc.PersonaVersion);
         }
 
         // ── Seed backstory facts as searchable memory records (idempotent) ──
@@ -524,52 +554,53 @@ try
         // Semantic memories makes them discoverable via semantic search — so when the
         // contact mentions Duck Norris, Ani's memory search finds the backstory.
         var charState = await memory.GetCharacterStateAsync();
-        // Check enough records to reliably detect seed presence — previous limit of 1
-        // missed seeds buried behind non-seed Semantic memories, causing re-seeding on every restart.
-        var existingSemantics = await memory.GetByTypeAsync(MemoryType.Semantic, 100);
-        var alreadySeeded = existingSemantics.Any(m => m.SourceName == SourceNames.CharacterSeed);
+        // Two-phase guard: initial-seed detection AND per-content dedup.
+        // The first-run detection matches the historical shape (any existing
+        // CharacterSeed record → skip the bulk-seed). The per-content dedup
+        // (2026-09-12) then adds any NEW facts introduced by a seed-version
+        // bump — e.g. the Kathy anchor added in seed v2.1. Without dedup a
+        // version bump would either duplicate everything or require a
+        // destructive purge.
+        var existingSemantics = await memory.GetByTypeAsync(MemoryType.Semantic, 500);
+        var existingSeedContents = existingSemantics
+            .Where(m => m.SourceName == SourceNames.CharacterSeed)
+            .Select(m => m.Content)
+            .ToHashSet(StringComparer.Ordinal);
+        var alreadySeeded = existingSeedContents.Count > 0;
 
-        if (!alreadySeeded && charState.CoreTraits.Count > 0)
+        if (charState.CoreTraits.Count > 0)
         {
-            var contactName = charState.PrimaryContactName;
-            var facts = new List<(string content, float importance, float relationalValence)>();
+            var facts = BuildCharacterSeedFacts(charState);
 
-            // Importance tiered by category — details should not dominate retrieval.
-            // Foundation facts (family, self) higher than contextual details (interests, communication).
-            foreach (var item in charState.LearnedAboutContact)
-                facts.Add(($"About {contactName}: {item}", 0.4f, 0.7f));
-            foreach (var item in charState.SharedExperiences)
-                facts.Add(($"Shared experience: {item}", 0.5f, 0.9f));
-            foreach (var item in charState.ThingsContactCares)
-                facts.Add(($"{contactName} cares about: {item}", 0.4f, 0.8f));
-            foreach (var item in charState.FamilyContext)
-                facts.Add(($"Family: {item}", 0.6f, 0.5f));
-            foreach (var item in charState.SelfConcept)
-                facts.Add(($"Self: {item}", 0.5f, 0.3f));
-            foreach (var item in charState.Interests)
-                facts.Add(($"Interest: {item}", 0.3f, 0.4f));
-            foreach (var item in charState.CommunicationNotes)
-                facts.Add(($"Communication: {item}", 0.3f, 0.6f));
-
-            Log.Information("Seeding {Count} backstory facts as searchable memories", facts.Count);
-            foreach (var (content, importance, relationalValence) in facts)
+            if (!alreadySeeded)
             {
-                await memory.SaveAsync(new MemoryRecord
+                Log.Information("Seeding {Count} backstory facts as searchable memories", facts.Count);
+                foreach (var (content, importance, relationalValence) in facts)
                 {
-                    Type           = MemoryType.Semantic,
-                    Content        = content,
-                    Importance     = importance,
-                    RelationalValence = relationalValence,
-                    SourceName     = SourceNames.CharacterSeed,
-                    OccurredAt     = DateTimeOffset.UtcNow,
-                    // Epistemic Grounding (Apr 10): Character seeds are the
-                    // highest-trust factual substrate about Mark and Ani's world.
-                    // Always Facts tier — this is where Mark-about-himself and
-                    // foundational relationship facts live.
-                    Provenance     = EpistemicTier.Facts,
-                });
+                    await memory.SaveAsync(BuildCharacterSeedRecord(content, importance, relationalValence));
+                }
+                Log.Information("Backstory seeding complete");
             }
-            Log.Information("Backstory seeding complete");
+            else
+            {
+                // Backfill: add any expected fact whose exact Content is not
+                // already stored as a CharacterSeed record. Zero writes on
+                // steady state; non-zero writes only on the first startup
+                // after a seed-content edit.
+                var toBackfill = facts
+                    .Where(f => !existingSeedContents.Contains(f.content))
+                    .ToList();
+                if (toBackfill.Count > 0)
+                {
+                    Log.Information(
+                        "Character-seed backfill: adding {Count} new fact(s) introduced by seed update",
+                        toBackfill.Count);
+                    foreach (var (content, importance, relationalValence) in toBackfill)
+                    {
+                        await memory.SaveAsync(BuildCharacterSeedRecord(content, importance, relationalValence));
+                    }
+                }
+            }
         }
     }
 
@@ -675,6 +706,63 @@ try
     });
 
     await app.RunAsync();
+
+    // ── Local helpers for character-seed loading + version-gated reseed ─────
+    // Declared here so top-level scope can capture them; C# hoists local
+    // functions so callers above compile correctly. Kept together for the
+    // reader — all three are used only by the seed-load block above.
+
+    static bool IsSeedNewer(string persistedVersion, string seedVersion)
+    {
+        // Version comparison is intentionally lenient: both operands come
+        // from user-editable JSON and could be "1.0", "2.1", or "2.1.0".
+        // Version.TryParse handles any dotted numeric form; if either side
+        // is malformed, treat as "not newer" (fail closed on the reseed
+        // path — we'd rather miss a reseed than accidentally overwrite
+        // Mark's persisted character state with an unparseable seed).
+        if (!Version.TryParse(persistedVersion, out var persisted)) return false;
+        if (!Version.TryParse(seedVersion,      out var seed))      return false;
+        return seed > persisted;
+    }
+
+    static List<(string content, float importance, float relationalValence)>
+        BuildCharacterSeedFacts(CharacterStateDoc charState)
+    {
+        // Importance tiered by category — details should not dominate retrieval.
+        // Foundation facts (family, self) higher than contextual details (interests, communication).
+        var contactName = charState.PrimaryContactName;
+        var facts = new List<(string content, float importance, float relationalValence)>();
+        foreach (var item in charState.LearnedAboutContact)
+            facts.Add(($"About {contactName}: {item}", 0.4f, 0.7f));
+        foreach (var item in charState.SharedExperiences)
+            facts.Add(($"Shared experience: {item}", 0.5f, 0.9f));
+        foreach (var item in charState.ThingsContactCares)
+            facts.Add(($"{contactName} cares about: {item}", 0.4f, 0.8f));
+        foreach (var item in charState.FamilyContext)
+            facts.Add(($"Family: {item}", 0.6f, 0.5f));
+        foreach (var item in charState.SelfConcept)
+            facts.Add(($"Self: {item}", 0.5f, 0.3f));
+        foreach (var item in charState.Interests)
+            facts.Add(($"Interest: {item}", 0.3f, 0.4f));
+        foreach (var item in charState.CommunicationNotes)
+            facts.Add(($"Communication: {item}", 0.3f, 0.6f));
+        return facts;
+    }
+
+    static MemoryRecord BuildCharacterSeedRecord(string content, float importance, float relationalValence) =>
+        new()
+        {
+            Type              = MemoryType.Semantic,
+            Content           = content,
+            Importance        = importance,
+            RelationalValence = relationalValence,
+            SourceName        = SourceNames.CharacterSeed,
+            OccurredAt        = DateTimeOffset.UtcNow,
+            // Epistemic Grounding (Apr 10): Character seeds are the highest-trust
+            // factual substrate about Mark and Ani's world. Always Facts tier —
+            // where Mark-about-himself and foundational relationship facts live.
+            Provenance        = EpistemicTier.Facts,
+        };
 }
 catch (Exception ex)
 {
