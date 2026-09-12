@@ -507,7 +507,12 @@ try
         // exists because the original guard `existing.CoreTraits.Count == 0`
         // fired only on fresh installs — any content edit to character-seed.json
         // was invisible to production instances that had already seeded once.
-        var seedPath = Path.Combine(AppContext.BaseDirectory, "data", "character-seed.json");
+        // Path.Join (not Path.Combine): Path.Combine silently drops earlier
+        // segments if any later segment is rooted, and CodeQL flags that risk
+        // class even when the segments here are string literals. Path.Join
+        // concatenates without the rooted-reset behavior — same output for
+        // these literals, no future foot-gun if a segment becomes a variable.
+        var seedPath = Path.Join(AppContext.BaseDirectory, "data", "character-seed.json");
         CharacterStateDoc? seedDoc = null;
         if (File.Exists(seedPath))
         {
