@@ -154,14 +154,42 @@ public sealed class RssPerceptionSource : IPerceptionSource
                 }
             }
 
-            events.Add(new PerceptionEvent
+            // 2026-09-12 — capture the RSS item link into Metadata so
+            // downstream ReactiveShareService can persist it as a Fact-
+            // tier record. Before this, RSS silently dropped every <link>
+            // element, so even the reactive-share record had no URL Mark
+            // could ever get back — asking "where did you see that
+            // article?" returned nothing usable because the source was
+            // never captured upstream in the first place. RSS 2.0 uses
+            // <link>text</link>; Atom uses <link href="..."/> (attribute).
+            //
+            // Atom precedence: an <entry> can carry MULTIPLE <link> children
+            // distinguished by rel — "self" (feed API URL), "enclosure"
+            // (media asset), "alternate" (the article URL, per RFC 4287 §4.2.7
+            // the default when rel is omitted). We must prefer rel="alternate"
+            // (or an unqualified link) over the first-child fallback; taking
+            // the first sibling can otherwise store a feed self-link or a
+            // media enclosure instead of the article URL.
+            var link = ExtractPreferredLink(item);
+
+            var perception = new PerceptionEvent
             {
                 SourceName    = SourceName,
                 Category      = Category,
                 Summary       = summary,
                 ContactRelevance = relevance,
                 OccurredAt    = pubDate ?? DateTimeOffset.UtcNow,
-            });
+            };
+            if (!string.IsNullOrWhiteSpace(link))
+            {
+                perception.Metadata["url"] = link;
+            }
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                perception.Metadata["title"] = title;
+            }
+            perception.Metadata["outlet"] = feed.Name;
+            events.Add(perception);
 
             if (pubDate.HasValue && pubDate.Value > newestSeen)
                 newestSeen = pubDate.Value;
@@ -177,6 +205,63 @@ public sealed class RssPerceptionSource : IPerceptionSource
     {
         var child = parent[childName];
         return child?.InnerText?.Trim();
+    }
+
+    /// <summary>
+    /// Extracts the preferred article URL from an RSS 2.0 &lt;item&gt; or Atom
+    /// &lt;entry&gt;. RSS 2.0 uses element text (&lt;link&gt;URL&lt;/link&gt;);
+    /// Atom uses an href attribute (&lt;link href="URL"/&gt;) and MAY provide
+    /// several links distinguished by rel (self / enclosure / alternate).
+    ///
+    /// Precedence (highest to lowest):
+    ///   1. Atom &lt;link&gt; with rel="alternate" (article URL per RFC 4287 §4.2.7)
+    ///   2. Atom &lt;link&gt; with no rel attribute (default = alternate)
+    ///   3. Any other Atom &lt;link&gt; with an href (fallback for feeds that
+    ///      only publish rel="self" or non-standard rel values)
+    ///   4. RSS 2.0 &lt;link&gt; element text
+    /// Returns null if no link element yields a non-empty URL.
+    /// </summary>
+    internal static string? ExtractPreferredLink(XmlNode item)
+    {
+        string? rssText = null;
+        string? atomAlternate = null;
+        string? atomUnqualified = null;
+        string? atomAnyHref = null;
+
+        foreach (XmlNode child in item.ChildNodes)
+        {
+            if (child.NodeType != XmlNodeType.Element) continue;
+            if (!string.Equals(child.LocalName, "link", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var href = child.Attributes?["href"]?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(href))
+            {
+                var rel = child.Attributes?["rel"]?.Value?.Trim();
+                if (string.Equals(rel, "alternate", StringComparison.OrdinalIgnoreCase))
+                {
+                    atomAlternate ??= href;
+                }
+                else if (string.IsNullOrEmpty(rel))
+                {
+                    atomUnqualified ??= href;
+                }
+                else
+                {
+                    atomAnyHref ??= href;
+                }
+            }
+            else
+            {
+                // RSS 2.0-style: URL is element text, no href attribute.
+                var text = child.InnerText?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    rssText ??= text;
+                }
+            }
+        }
+
+        return atomAlternate ?? atomUnqualified ?? atomAnyHref ?? rssText;
     }
 
     private static DateTimeOffset? ParsePubDate(XmlNode item)

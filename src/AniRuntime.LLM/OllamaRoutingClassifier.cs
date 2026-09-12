@@ -16,14 +16,15 @@ namespace AniRuntime.LLM;
 /// a single-letter answer. The strict format minimizes parsing ambiguity
 /// and forces the model to commit rather than hedge.
 ///
-/// **Bias direction:** the prompt-anchored category descriptions are
-/// written to bias slightly TOWARD VirtualIntimacy on ambiguous turns.
-/// Defense-in-depth catches under-classification (a turn that should
-/// have been C but went to A): the frontier-verifier catches Mark-domain
-/// present-tense claims and H.8 routes remediation to safe-path. The
-/// other direction (turn that should have been A but went to C) is mild
-/// over-fire — user gets a modal-framed reply instead of a normal one,
-/// still in character.
+/// **Routing bias (2026-09-12 tightened):** empirical observation
+/// showed the classifier over-firing C on plain factual follow-ups
+/// (e.g. "Where did you see that article?"), which surfaced as byte-
+/// identical modal replies to distinct questions. The prompt now
+/// requires an explicit physical-closeness cue before picking C, and
+/// routes substrate-thin factual turns to B (honest ask-back) rather
+/// than C (modal deflection). C is still preferred when a physical cue
+/// IS present and the choice is between A and C; the change narrows
+/// C, it does not remove it.
 ///
 /// **Failure mode:** any transport / parse / timeout exception is caught
 /// and returns <see cref="RoutingVerdict.Unknown"/>, which the pipeline
@@ -125,7 +126,10 @@ public sealed class OllamaRoutingClassifier : IRoutingClassifier
             $"A = Normal full response (the retrieved facts contain specific, relevant information sufficient to ground a high-quality response)\n" +
             $"B = Safe path (substrate is thin or irrelevant for what was asked — Ani should be honest, ask-back, or low-risk)\n" +
             $"C = Virtual Intimacy (the user is requesting physical closeness: kiss me, hold me, cuddle me, come here, fuck me, touch me, sit on my lap, \"I wish you were here right now\" with physical desire, etc.)\n\n" +
-            $"When uncertain between A and C, prefer C — modal/fantasy framing is in character even when not strictly required.\n\n" +
+            $"Routing rules (2026-09-12 tightened):\n" +
+            $"- C requires an explicit physical-closeness cue in the user message (imperative like kiss/hold/cuddle/touch, or explicit physical-desire language). Do NOT pick C for factual questions, follow-up questions, or conversational turns without a physical cue.\n" +
+            $"- When uncertain between A and C AND a physical-closeness cue IS present, prefer C — modal/fantasy framing is in character.\n" +
+            $"- When substrate is thin for what was asked and no physical cue is present, prefer B — honest ask-back is better than an unfounded full response OR a modal deflection.\n\n" +
             $"Answer with ONLY a single letter: A, B, or C";
     }
 
