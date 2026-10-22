@@ -22,4 +22,5 @@ public sealed record RetrievalContextResult(
     List<MemoryRecord>  RecentMemory,
     List<MemoryRecord>  AnchoredMemories,
     List<MemoryRecord>  RelevantMemory,
-    List<MemoryRecord>  SimilarRecentThoughts);
+    List<MemoryRecord>  SimilarRecentThoughts,
+    List<MemoryRecord>? RecentWorldEvents = null);

@@ -42,6 +42,10 @@ public class ContextBuilder
     // Theme R.4 (#64) — most-recent Layer 2 motivation vector, populated
     // into snapshot.MotivationVector for composer-side branching.
     private readonly IMotivationVectorTracker?   _motivationTracker;
+    // F-4 Phase 4a.1a (2026-10-22) — direct search handle so we can run the
+    // Perception retrieval AFTER state loads (needs TopicValence from
+    // CharacterState). Nullable so existing test fixtures work without wiring.
+    private readonly IMemorySearch?              _search;
     private readonly AniOptions                  _aniOptions;
     private readonly ILogger<ContextBuilder>     _log;
 
@@ -55,7 +59,8 @@ public class ContextBuilder
         ILogger<ContextBuilder>     log,
         IRetrievalOriginTracker?    originTracker = null,
         IDominantRegisterTracker?   registerTracker = null,
-        IMotivationVectorTracker?   motivationTracker = null)
+        IMotivationVectorTracker?   motivationTracker = null,
+        IMemorySearch?              search = null)
     {
         _stateCtx          = stateCtx;
         _retrieval         = retrieval;
@@ -67,6 +72,7 @@ public class ContextBuilder
         _originTracker     = originTracker;
         _registerTracker   = registerTracker;
         _motivationTracker = motivationTracker;
+        _search            = search;
     }
 
     public async Task<ContextSnapshot> BuildContextSnapshotAsync(
@@ -99,6 +105,52 @@ public class ContextBuilder
             state.CharacterState.Name, state.EmotionalState, ct).ConfigureAwait(false);
         var emotional         = emotionalEnvelope.Content;
 
+        // F-4 Phase 4a.1a (2026-10-22) — Perception retrieval ordered by
+        // Importance × TopicValence lookup. The retrieval must run AFTER state
+        // loads because it needs TopicValence from CharacterState (which the
+        // retrieval sub-builder doesn't carry). See the Content-Coverage Audit
+        // §Recommendation: Life Audit §Dim 1 found MemoryType.Perception had
+        // near-zero inner-thought footprint because RecentMemory only pulled
+        // Episodic + InnerThought. This block fills that gap for the
+        // inner-thought composer specifically (reactive-reply paths still
+        // compose from conversation state, not perception memory).
+        //
+        // Allow-list: rss + weather. Excludes twilio-inbound (already surfaces
+        // as Mark's inbound) and reactive-share-source (Ani's own prior
+        // outreach substrate). Fail-open on retrieval errors — the inner
+        // thought cycle has survived without this field for 7 months, so a
+        // transient failure never degrades substrate below pre-F-4a.1a.
+        var recentWorldEvents = new List<MemoryRecord>();
+        if (_aniOptions.WorldEventSurfacingEnabled && _search is not null)
+        {
+            try
+            {
+                var topicValence = state.CharacterState.TopicValence
+                    ?? new Dictionary<string, float>();
+                var topK = Math.Max(1, _aniOptions.WorldEventSurfacingTopK);
+                var allowedSources = new[] { "rss", "weather" };
+                var result = await _search.GetPerceptionsOrderedAsync(
+                    topicValence, topK, allowedSources, ct).ConfigureAwait(false);
+                recentWorldEvents = result.ToList();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Fail-open: EF SaveChanges / DbContext state faults surface as
+                // IOE at the IMemorySearch boundary. Narrower than Exception
+                // per global pre-push checklist §4. AniRuntime.Loops doesn't
+                // depend on EF directly (that's AniRuntime.Memory); a
+                // DbUpdateException from EF would propagate rather than get
+                // swallowed, which is the right call for shape failures the
+                // Memory layer couldn't contain.
+                _log.LogWarning(ex,
+                    "F4_WORLD_EVENT_SURFACING failed — inner thought continues without world-events substrate");
+            }
+        }
+
         // Agentic Lens Layer 1 Phase 1a — orchestrator-level retrieval-origin
         // distribution logging. Spans pool outputs from multiple sub-builders
         // (relevantMem, recentMem, groundedFacts, interiorContext, anchoredMemories),
@@ -121,6 +173,7 @@ public class ContextBuilder
             SimilarRecentThoughts         = retrieval.SimilarRecentThoughts,
             OutreachContext               = state.OutreachContext,
             AnchoredMemories              = retrieval.AnchoredMemories,
+            RecentWorldEvents             = recentWorldEvents,
             RelationshipHealth            = emotional.RelationshipHealth,
             EmotionalDrift                = emotional.EmotionalDrift,
             PatternAwareness              = emotional.PatternAwareness,

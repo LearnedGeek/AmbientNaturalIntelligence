@@ -566,6 +566,15 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 4a.1a (2026-10-22) — World-events (Perception) surfacing into
+    // inner-thought composer. Life Audit §Dim 1 found Perception type excluded
+    // from RecentMemory retrieval entirely — 7 months of RSS perception had
+    // near-zero inner-thought footprint. This flag enables the dedicated
+    // retrieval path ordered by Importance × TopicValence lookup (fuzzy
+    // substring match on content). See ANI-Content-Coverage-Audit-2026-10-22.md.
+    public bool  WorldEventSurfacingEnabled      { get; set; } = true;
+    public int   WorldEventSurfacingTopK         { get; set; } = 3;  // mirrors RecentMemory/RelevantMemory render-cap
+
     // F-4 Phase 2 (2026-10-22) — Named-substrate rotation anchor.
     // Life Audit §Dim 1 found named substrate (Lila, Fleetwood Mac, Sarah,
     // Kevin, Nathan, Frick, Kathy) at essentially 0% in production inner

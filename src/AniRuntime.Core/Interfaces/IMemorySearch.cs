@@ -67,4 +67,53 @@ public interface IMemorySearch
     /// </summary>
     Task<IEnumerable<MemoryRecord>> GetByTierAsync(
         EpistemicTier tier, int limit = 20, CancellationToken ct = default);
+
+    /// <summary>
+    /// F-4 Phase 4a.1a (2026-10-22) — Perception-only retrieval ordered by
+    /// the three-dimension importance model named in the Content-Coverage
+    /// Audit: <c>effective_weight = Importance × TopicValence_lookup × fatigue_decay</c>.
+    /// This phase ships axis 2 (preference, via <paramref name="topicValence"/>);
+    /// axis 1 (significance) uses the record's existing <c>Importance</c>
+    /// as placeholder until Phase 4a.1b lands; axis 3 (fatigue) hardcodes to
+    /// 1.0 until Phase 4a.1c lands.
+    ///
+    /// <para>
+    /// <b>Why this method exists:</b> the Life Audit §Dim 1 found that
+    /// <see cref="MemoryType.Perception"/> is excluded from
+    /// <c>RetrievalContextBuilder</c>'s RecentMemory composition — 7 months
+    /// of RSS perception events (1,092 persisted) with near-zero footprint
+    /// in 19k inner thoughts. Fix is a dedicated retrieval path for
+    /// Perception that respects the project's existing importance / recency /
+    /// provenance / decay machinery rather than raw-recency ordering.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Fuzzy TopicValence lookup:</b> for each candidate memory,
+    /// implementations walk the <paramref name="topicValence"/> keys and
+    /// pick the highest-weighted key whose text appears (case-insensitive
+    /// substring) in <see cref="MemoryRecord.Content"/>. If no key matches,
+    /// a neutral default (0.5f) is used so unmatched items are neither
+    /// amplified nor zeroed-out. Simple heuristic matches the pre-Phase 1
+    /// state of TopicValence keys as curated prose descriptions.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Source filtering:</b> callers typically pass
+    /// <paramref name="allowedSourceNames"/> = {"rss", "weather"} to exclude
+    /// <c>twilio-inbound</c> (which already surfaces via Mark's inbound
+    /// channel) and <c>reactive-share-source</c> (which is Ani's own prior
+    /// outreach substrate). Null allowedSourceNames means include all
+    /// Perception source types.
+    /// </para>
+    ///
+    /// <para>
+    /// See <c>ani-docs/research/ANI-Content-Coverage-Audit-2026-10-22.md</c>
+    /// §Recommendation and plan doc §Phase 4a.1a.
+    /// </para>
+    /// </summary>
+    Task<IEnumerable<MemoryRecord>> GetPerceptionsOrderedAsync(
+        IReadOnlyDictionary<string, float> topicValence,
+        int limit = 5,
+        IReadOnlyCollection<string>? allowedSourceNames = null,
+        CancellationToken ct = default);
 }
