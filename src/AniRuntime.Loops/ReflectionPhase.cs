@@ -28,6 +28,7 @@ public class ReflectionPhase
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IReflectionGistService? _gistService;
     private readonly IGrowthEdgeMutator? _growthEdges;
+    private readonly IMemoryAnalytics? _analytics;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
 
@@ -39,7 +40,8 @@ public class ReflectionPhase
         ILogger<ReflectionPhase> log,
         ICognitiveOutputGate? outputGate = null,
         IReflectionGistService? gistService = null,
-        IGrowthEdgeMutator? growthEdges = null)
+        IGrowthEdgeMutator? growthEdges = null,
+        IMemoryAnalytics? analytics = null)
     {
         _ollama = ollama;
         _persist = persist;
@@ -48,6 +50,7 @@ public class ReflectionPhase
         _outputGate = outputGate;
         _gistService = gistService;
         _growthEdges = growthEdges;
+        _analytics = analytics;
         _log = log;
     }
 
@@ -400,8 +403,32 @@ public class ReflectionPhase
         {
             try
             {
+                // F-4 Phase 4a.2c (2026-10-22) — hand the mutator the recent
+                // anchor stream alongside recent thoughts. Analytics is optional
+                // (test fixtures and legacy wirings may not have it); when
+                // absent or disabled, falls through to LLM-only pathway.
+                IReadOnlyList<string>? recentAnchors = null;
+                if (_options.AnchorPromotionEnabled && _analytics is not null)
+                {
+                    try
+                    {
+                        recentAnchors = await _analytics
+                            .GetRecentAssociativeAnchorsAsync(
+                                Math.Max(1, _options.AnchorPromotionWindowSize), ct)
+                            .ConfigureAwait(false);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        // Fail-open: anchor retrieval failure leaves recentAnchors
+                        // null; the LLM pathway still runs. Same discipline as
+                        // the ContextBuilder anchor-chain retrieval block.
+                        _log.LogWarning(ex,
+                            "F4_GROWTH_EDGE_UPDATE anchor retrieval failed — falling back to LLM-only pathway");
+                    }
+                }
+
                 var result = await _growthEdges
-                    .UpdateTopicValenceAsync(characterState, recentMemories, ct)
+                    .UpdateTopicValenceAsync(characterState, recentMemories, ct, recentAnchors)
                     .ConfigureAwait(false);
 
                 if (result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0)

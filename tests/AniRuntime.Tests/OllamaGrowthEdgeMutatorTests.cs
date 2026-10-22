@@ -103,6 +103,108 @@ public class OllamaGrowthEdgeMutatorTests
         cs.TopicValence["Mia"].Should().Be(0.9f);
     }
 
+    // ── Anchor promotion (Phase 4a.2c) ─────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateTopicValenceAsync_AnchorAboveThreshold_PromotedAsNewKey()
+    {
+        // LLM returns no topics; anchor pathway alone drives the mutation.
+        var mutator = BuildMutator("{\"topics\":[]}", new AniOptions
+        {
+            GrowthEdgesEnabled              = true,
+            GrowthEdgeMaxDeltaPerCycle      = 0.05f,
+            GrowthEdgeNewKeyBaseWeight      = 0.3f,
+            GrowthEdgeNewKeyThreshold       = 0.4f,
+            GrowthEdgePruneThreshold        = 0.0f,
+            GrowthEdgeMaxKeys               = 50,
+            AnchorPromotionEnabled          = true,
+            AnchorPromotionMinOccurrences   = 3,
+            AnchorPromotionSalience         = 0.7f,
+        });
+
+        var cs = new CharacterStateDoc();
+        var anchors = new[] { "the shelf", "the shelf", "the shelf", "lila", "cooking" };
+
+        var result = await mutator.UpdateTopicValenceAsync(
+            cs, AnyThoughts(), CancellationToken.None, anchors);
+
+        cs.TopicValence.Should().ContainKey("the shelf");
+        cs.TopicValence["the shelf"].Should().BeApproximately(0.21f, 0.001f,
+            "salience 0.7 × base 0.3 = 0.21 for a brand-new anchor-promoted key");
+        result.NewKeysAdded.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateTopicValenceAsync_AnchorMatchesExistingKey_BoundedDeltaApplied()
+    {
+        var mutator = BuildMutator("{\"topics\":[]}", new AniOptions
+        {
+            GrowthEdgesEnabled              = true,
+            GrowthEdgeMaxDeltaPerCycle      = 0.05f,
+            GrowthEdgePruneThreshold        = 0.0f,
+            GrowthEdgeMaxKeys               = 50,
+            AnchorPromotionEnabled          = true,
+            AnchorPromotionMinOccurrences   = 3,
+            AnchorPromotionSalience         = 0.8f,
+        });
+
+        var cs = StateWith(("Mia", 0.5f));
+        var anchors = new[] { "mia", "MIA", "Mia" };  // case-insensitive match to existing "Mia"
+
+        var result = await mutator.UpdateTopicValenceAsync(
+            cs, AnyThoughts(), CancellationToken.None, anchors);
+
+        // salience 0.8 × max-delta 0.05 = 0.04
+        cs.TopicValence["Mia"].Should().BeApproximately(0.54f, 0.001f);
+        result.KeysUpdated.Should().Be(1);
+        result.NewKeysAdded.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateTopicValenceAsync_AnchorFlagOff_IgnoresAnchors()
+    {
+        var mutator = BuildMutator("{\"topics\":[]}", new AniOptions
+        {
+            GrowthEdgesEnabled              = true,
+            GrowthEdgePruneThreshold        = 0.0f,
+            GrowthEdgeMaxKeys               = 50,
+            AnchorPromotionEnabled          = false,  // disabled
+            AnchorPromotionMinOccurrences   = 3,
+        });
+
+        var cs = new CharacterStateDoc();
+        var anchors = new[] { "the shelf", "the shelf", "the shelf", "the shelf" };
+
+        var result = await mutator.UpdateTopicValenceAsync(
+            cs, AnyThoughts(), CancellationToken.None, anchors);
+
+        cs.TopicValence.Should().BeEmpty();
+        result.NewKeysAdded.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateTopicValenceAsync_AnchorBelowThreshold_NotPromoted()
+    {
+        var mutator = BuildMutator("{\"topics\":[]}", new AniOptions
+        {
+            GrowthEdgesEnabled              = true,
+            GrowthEdgePruneThreshold        = 0.0f,
+            GrowthEdgeMaxKeys               = 50,
+            AnchorPromotionEnabled          = true,
+            AnchorPromotionMinOccurrences   = 3,
+            AnchorPromotionSalience         = 0.7f,
+        });
+
+        var cs = new CharacterStateDoc();
+        var anchors = new[] { "the shelf", "the shelf" };  // only 2 occurrences, below 3
+
+        var result = await mutator.UpdateTopicValenceAsync(
+            cs, AnyThoughts(), CancellationToken.None, anchors);
+
+        cs.TopicValence.Should().BeEmpty();
+        result.NewKeysAdded.Should().Be(0);
+    }
+
     // ── ApplyUpdates ───────────────────────────────────────────────────────
     // These tests exercise the mutation math directly via the internal
     // ApplyUpdates method, so the discipline (bounded delta, new-key
