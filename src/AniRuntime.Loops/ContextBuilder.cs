@@ -133,8 +133,19 @@ public class ContextBuilder
                     topicValence, topK, allowedSources, ct).ConfigureAwait(false);
                 recentWorldEvents = result.ToList();
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Fail-open: EF SaveChanges / DbContext state faults surface as
+                // IOE at the IMemorySearch boundary. Narrower than Exception
+                // per global pre-push checklist §4. AniRuntime.Loops doesn't
+                // depend on EF directly (that's AniRuntime.Memory); a
+                // DbUpdateException from EF would propagate rather than get
+                // swallowed, which is the right call for shape failures the
+                // Memory layer couldn't contain.
                 _log.LogWarning(ex,
                     "F4_WORLD_EVENT_SURFACING failed — inner thought continues without world-events substrate");
             }

@@ -62,9 +62,10 @@ public static class PerceptionScoring
         {
             var key = kv.Key;
             if (string.IsNullOrWhiteSpace(key) || key.Length < 3) continue;
-            if (contentLower.Contains(key.ToLowerInvariant(), StringComparison.Ordinal))
+            if (contentLower.Contains(key.ToLowerInvariant(), StringComparison.Ordinal)
+                && kv.Value > best)
             {
-                if (kv.Value > best) best = kv.Value;
+                best = kv.Value;
             }
         }
 
