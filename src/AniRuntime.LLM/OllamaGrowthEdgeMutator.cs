@@ -145,13 +145,13 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
         // so prune mostly serves future expansion when decay is added, plus
         // tidying any key that was seeded very low.
         var pruned = new List<string>();
-        foreach (var kv in characterState.TopicValence.ToList())
+        var toPrune = characterState.TopicValence
+            .Where(kv => kv.Value < pruneThreshold)
+            .ToList();
+        foreach (var kv in toPrune)
         {
-            if (kv.Value < pruneThreshold)
-            {
-                characterState.TopicValence.Remove(kv.Key);
-                pruned.Add(kv.Key);
-            }
+            characterState.TopicValence.Remove(kv.Key);
+            pruned.Add(kv.Key);
         }
 
         // Soft cap: if we exceeded MaxKeys after this cycle's inserts,
@@ -248,10 +248,8 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
                 return result;
             }
 
-            foreach (var el in topics.EnumerateArray())
+            foreach (var el in topics.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.Object))
             {
-                if (el.ValueKind != JsonValueKind.Object) continue;
-
                 var topic = el.TryGetProperty("topic", out var t) && t.ValueKind == JsonValueKind.String
                     ? (t.GetString() ?? string.Empty).Trim()
                     : string.Empty;
@@ -262,13 +260,11 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
                     : 0f;
 
                 string? match = null;
-                if (el.TryGetProperty("existing_key_match", out var m))
+                if (el.TryGetProperty("existing_key_match", out var m)
+                    && m.ValueKind == JsonValueKind.String)
                 {
-                    if (m.ValueKind == JsonValueKind.String)
-                    {
-                        var v = (m.GetString() ?? string.Empty).Trim();
-                        if (v.Length > 0) match = v;
-                    }
+                    var v = (m.GetString() ?? string.Empty).Trim();
+                    if (v.Length > 0) match = v;
                 }
 
                 if (!string.IsNullOrWhiteSpace(topic) || match is not null)

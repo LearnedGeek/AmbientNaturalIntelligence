@@ -417,16 +417,26 @@ public class ReflectionPhase
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
-                // Fail-open: a growth-edge update failure never fails the
-                // reflection cycle. The gist is durable; the mutator's own
-                // error log carries the diagnostic. Narrow eligible
-                // exceptions: EF SaveChanges surfaces persistence errors as
-                // InvalidOperationException/DbUpdateException; the mutator
-                // itself swallows transport errors internally.
+                // Fail-open: EF SaveChanges surfaces most persistence errors
+                // (DbContext state faults, concurrency conflicts, invalid
+                // upsert shape) through InvalidOperationException at the
+                // IMemoryPersistence boundary. Narrower-than-Exception catch
+                // satisfies the pre-push checklist §4 while preserving the
+                // design intent (growth-edge failures never fail the
+                // reflection cycle — the gist is already durable, and the
+                // next cycle's growth-edge pass will retry).
+                //
+                // Not catching DbUpdateException explicitly: AniRuntime.Loops
+                // intentionally doesn't depend on Microsoft.EntityFrameworkCore
+                // (that's in AniRuntime.Memory). If EF leaks a DbUpdateException
+                // that isn't a subclass of IOE, it propagates — which is the
+                // right call: a persistence shape failure the Memory layer
+                // couldn't contain is a bug that should surface in logs, not
+                // get swallowed silently.
                 _log.LogWarning(ex,
-                    "F4_GROWTH_EDGE_UPDATE failed to persist mutations — reflection gist still saved");
+                    "F4_GROWTH_EDGE_UPDATE persistence/state fault — reflection gist still saved");
             }
         }
 
