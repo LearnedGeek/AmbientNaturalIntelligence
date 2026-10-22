@@ -33,6 +33,11 @@ public class OutreachPhase
     private readonly ISilenceChoiceRecorder _silenceRecorder;
     private readonly IOutboundThreadRecorder _threadRecorder;
     private readonly AniOptions _aniOptions;
+    // F-4 Phase 2.1 (2026-10-22) — anchor-bearing seed selector. Optional
+    // ctor arg so existing fixtures work without wiring; when null, seed
+    // selection skips and the just-generated thought is passed through
+    // unchanged (pre-Phase-2.1 behaviour).
+    private readonly IOutreachSeedSelector? _seedSelector;
     private readonly ILogger<OutreachPhase> _log;
 
     public OutreachPhase(
@@ -41,17 +46,19 @@ public class OutreachPhase
         ISilenceChoiceRecorder silenceRecorder,
         IOutboundThreadRecorder threadRecorder,
         IOptions<AniOptions> aniOptions,
-        ILogger<OutreachPhase> log)
+        ILogger<OutreachPhase> log,
+        IOutreachSeedSelector? seedSelector = null)
     {
         _pipeline        = pipeline        ?? throw new ArgumentNullException(nameof(pipeline));
         _reactiveShare   = reactiveShare   ?? throw new ArgumentNullException(nameof(reactiveShare));
         _silenceRecorder = silenceRecorder ?? throw new ArgumentNullException(nameof(silenceRecorder));
         _threadRecorder  = threadRecorder  ?? throw new ArgumentNullException(nameof(threadRecorder));
         _aniOptions      = aniOptions.Value;
+        _seedSelector    = seedSelector;
         _log             = log             ?? throw new ArgumentNullException(nameof(log));
     }
 
-    public Task RunOutreachAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
+    public async Task RunOutreachAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
         // Apr 21, 2026 — OutreachEnabled flag (Option C, commit 2). When
         // false, the proactive outreach path short-circuits at entry. Inbound
@@ -60,10 +67,21 @@ public class OutreachPhase
         {
             _log.LogInformation(
                 "Outreach disabled: OutreachEnabled=false in config — skipping proactive outreach composition and dispatch");
-            return Task.CompletedTask;
+            return;
         }
 
-        return _pipeline.RunAsync(snapshot, recentThought, ct);
+        // F-4 Phase 2.1 — anchor-bearing seed selection. The lean composer
+        // sends `userMessage: seed` with empty system prompt (per K.3), so
+        // the seed choice is the leverage point for named-substrate reaching
+        // the outreach surface. See IOutreachSeedSelector XML doc.
+        var seed = recentThought;
+        if (_seedSelector is not null)
+        {
+            seed = await _seedSelector.SelectAsync(recentThought, snapshot.CharacterState, ct)
+                .ConfigureAwait(false);
+        }
+
+        await _pipeline.RunAsync(snapshot, seed, ct).ConfigureAwait(false);
     }
 
     public Task<bool> TryReactiveShareAsync(
