@@ -176,6 +176,15 @@ public static class AniRuntimeServiceContainer
         // See IThoughtShapeClassifier XML doc for scope + acceptance.
         services.AddSingleton<IThoughtShapeClassifier, QwenThoughtShapeClassifier>();
 
+        // 2026-10-22 — F-4 Phase 1 growth-edge mutator.
+        // Life Audit §Dim 4 found TopicValence/ToneValence identical to seed
+        // values after 7+ months because no runtime path mutated them AND no
+        // composer read them. OllamaGrowthEdgeMutator writes bounded deltas
+        // (hooked into ReflectionPhase post-synthesis); InnerThoughtPhase
+        // reads top-K back as rotation anchor. See IGrowthEdgeMutator XML
+        // doc + ANI-Foundation-Life-Refactor-Plan.md §Phase 1.
+        services.AddSingleton<IGrowthEdgeMutator, OllamaGrowthEdgeMutator>();
+
         // F-3 U4 (2026-08-24) — Qwen-sidecar per-quote attribution
         // extractor. Runs post-composition on the inner-thought composer
         // output to identify embedded attribution claims ("you said X",

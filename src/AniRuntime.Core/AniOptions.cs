@@ -550,6 +550,22 @@ public class AniOptions
     public bool ReflectionEnabled       { get; set; } = true;
     public int  ReflectionCycleInterval { get; set; } = 12;  // every ~6 hours at 30-min cycles
 
+    // ── F-4 Phase 1 (2026-10-22): Growth-edge mutation ─────────────────────
+    // Life Audit §Dim 4 found TopicValence/ToneValence identical to seed
+    // values after 7+ months because no runtime path mutates them. Phase 1
+    // adds that path and wires top-K TopicValence back into inner-thought
+    // composer as rotation anchors (feedback loop making dictionary mutation
+    // drive content, not just values). See
+    // ani-docs/spec/ANI-Foundation-Life-Refactor-Plan.md §Phase 1.
+    public bool  GrowthEdgesEnabled               { get; set; } = true;
+    public float GrowthEdgeMaxDeltaPerCycle       { get; set; } = 0.05f;  // bounded delta so dict evolves gradually
+    public float GrowthEdgeNewKeyBaseWeight       { get; set; } = 0.3f;   // new keys enter at base × salience
+    public float GrowthEdgeNewKeyThreshold        { get; set; } = 0.4f;   // salience ≥ this to add new key
+    public float GrowthEdgePruneThreshold         { get; set; } = 0.05f;  // weight < this → drop on prune pass
+    public int   GrowthEdgeMaxKeys                { get; set; } = 50;     // soft cap; mutator trims to this on each cycle
+    public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
+    public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
+
     // Phase 6 v1.2 (May 17, 2026): decay-driven compression on reflection.
     // When CompressionEnabled, ReflectionPhase selects decay-eligible records
     // (via IMemoryPersistence.GetDecayEligibleAsync) instead of the v1

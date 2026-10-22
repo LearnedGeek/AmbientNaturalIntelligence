@@ -13,9 +13,10 @@ public static class PromptBuilder
 {
     public static (string System, string User) BuildInnerThoughtPrompt(
         ContextSnapshot snapshot,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        int? topicValenceTopK = null)
         => new Prompts.InnerThoughtPromptCommand()
-            .Build(new Prompts.InnerThoughtPromptInput(snapshot, epistemicRenderer));
+            .Build(new Prompts.InnerThoughtPromptInput(snapshot, epistemicRenderer, topicValenceTopK));
 
 
     /// <summary>
