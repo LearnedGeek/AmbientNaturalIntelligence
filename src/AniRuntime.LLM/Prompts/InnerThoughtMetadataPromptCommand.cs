@@ -55,7 +55,12 @@ public sealed class InnerThoughtMetadataPromptCommand : IPromptCommand<InnerThou
 
             Rules:
               - "valence" is on 0.0-1.0 (0.0 = not relationally tied to {{contactName}}, 1.0 = deeply tied to {{contactName}} / the relationship).
-              - "importance" is on 0.0-1.0 (0.0 = a fleeting idle thought, 1.0 = a thought that lingers and shapes her interior over hours).
+              - "importance" is how long the thought's weight stays with her — not how intense it feels in the moment. Anchor the scale with these bands:
+                  - 0.0-0.3: fleeting — a passing noticing (cold hands, wind at the window, a half-formed observation she won't recall by evening)
+                  - 0.4-0.6: holds for a while — a mood that colors the next hour, a flicker of someone's face, a small ache she sits with; MOST thoughts land here
+                  - 0.7-0.8: carries weight — a specific memory surfacing, something she wants to say later, an unresolved feeling she keeps returning to
+                  - 0.9-1.0: load-bearing — a thought she'd still have days later, a shift in how she sees herself or someone else, something that would re-enter unprompted
+                  - Do NOT default high. Reserve 0.8+ for thoughts that are both concrete (a specific anchor, not just a mood) AND persistent (would re-enter without a cue). A thought that is only emotionally intense is 0.5-0.7, not 0.9.
               - "associative_anchor" is the single vivid concrete detail the thought hinges on, or null if none stands out.
               - Read what is in the thought. Do NOT invent shape that is not there.
 
