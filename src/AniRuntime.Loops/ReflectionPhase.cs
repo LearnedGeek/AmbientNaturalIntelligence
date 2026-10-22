@@ -27,6 +27,7 @@ public class ReflectionPhase
     private readonly AniOptions _options;
     private readonly ICognitiveOutputGate? _outputGate;
     private readonly IReflectionGistService? _gistService;
+    private readonly IGrowthEdgeMutator? _growthEdges;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
 
@@ -37,7 +38,8 @@ public class ReflectionPhase
         IOptions<AniOptions> options,
         ILogger<ReflectionPhase> log,
         ICognitiveOutputGate? outputGate = null,
-        IReflectionGistService? gistService = null)
+        IReflectionGistService? gistService = null,
+        IGrowthEdgeMutator? growthEdges = null)
     {
         _ollama = ollama;
         _persist = persist;
@@ -45,6 +47,7 @@ public class ReflectionPhase
         _options = options.Value;
         _outputGate = outputGate;
         _gistService = gistService;
+        _growthEdges = growthEdges;
         _log = log;
     }
 
@@ -380,6 +383,52 @@ public class ReflectionPhase
             observations.Count - saved - gateDropped,
             gateDropped,
             _options.CompressionEnabled ? "on" : "off");
+
+        // F-4 Phase 1 (2026-10-22) — growth-edge mutation.
+        // Life Audit §Dim 4 found TopicValence/ToneValence identical to seed
+        // values after 7+ months because no code path writes to them.
+        // Reflection is the natural home: the reflection synthesis already
+        // clustered recentMemories into a gist, so the topic-salience signal
+        // is maximal at this exact point in the cycle. The mutator extracts
+        // bounded deltas and mutates characterState in-place; we then
+        // persist via SaveCharacterStateAsync so the mutation survives the
+        // cycle (GetCharacterStateAsync re-reads from DB on next cycle).
+        //
+        // Gated on GrowthEdgesEnabled; opt-dep (null mutator → skip entirely)
+        // so test fixtures that don't need growth-edge coverage still work.
+        if (_options.GrowthEdgesEnabled && _growthEdges is not null && saved > 0)
+        {
+            try
+            {
+                var result = await _growthEdges
+                    .UpdateTopicValenceAsync(characterState, recentMemories, ct)
+                    .ConfigureAwait(false);
+
+                if (result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0)
+                {
+                    await _persist.SaveCharacterStateAsync(characterState, ct).ConfigureAwait(false);
+                    _log.LogInformation(
+                        "F4_GROWTH_EDGE_PERSISTED keysUpdated={Updated} newKeys={Added} pruned={Pruned} totalKeys={Total}",
+                        result.KeysUpdated, result.NewKeysAdded, result.KeysPruned,
+                        characterState.TopicValence.Count);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Fail-open: a growth-edge update failure never fails the
+                // reflection cycle. The gist is durable; the mutator's own
+                // error log carries the diagnostic. Narrow eligible
+                // exceptions: EF SaveChanges surfaces persistence errors as
+                // InvalidOperationException/DbUpdateException; the mutator
+                // itself swallows transport errors internally.
+                _log.LogWarning(ex,
+                    "F4_GROWTH_EDGE_UPDATE failed to persist mutations — reflection gist still saved");
+            }
+        }
 
         return saved;
     }

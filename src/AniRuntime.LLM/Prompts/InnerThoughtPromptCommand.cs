@@ -7,7 +7,8 @@ namespace AniRuntime.LLM.Prompts;
 /// <summary>Typed input for <see cref="InnerThoughtPromptCommand"/>.</summary>
 public sealed record InnerThoughtPromptInput(
     ContextSnapshot Snapshot,
-    IEpistemicSubstrateRenderer? EpistemicRenderer = null);
+    IEpistemicSubstrateRenderer? EpistemicRenderer = null,
+    int? TopicValenceTopK = null);
 
 /// <summary>
 /// Inner-thought / world-experience prompt for the ambient cognitive cycle.
@@ -195,6 +196,47 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             sections.Add("Background right now:");
             sections.AddRange(snapshot.Perceptions.Select(p =>
                 $"  - {PromptBuilder.FormatPerceptionLine(p, snapshot.BuiltAt, contactName: perceptionContact)}"));
+        }
+
+        // F-4 Phase 1 (2026-10-22) — TopicValence top-K rotation anchor.
+        //
+        // Life Audit §Dim 4 found growth edges (TopicValence) were inert data
+        // because no runtime path mutated them AND no composer read them.
+        // F-4 Phase 1 closes both halves: the mutator (OllamaGrowthEdgeMutator,
+        // hooked into ReflectionPhase) writes bounded deltas; this reader
+        // surfaces the top-K entries into the inner-thought composer so the
+        // dictionary mutation actually drives content, not just values.
+        //
+        // Rendering is deliberately soft — "threads lately" rather than "write
+        // about X" — so the composer treats these as subject-space pulls to
+        // consider or ignore, not as mandatory anchors. Over 7 months of
+        // audit-measured output, the ambient machinery produced one register-
+        // locked yearning template; the goal of this injection is to introduce
+        // a specific-referent pull that competes with the default register-
+        // lock, not to force any particular output shape.
+        //
+        // Top-K drawn directly by TopicValence weight (highest first). As
+        // weights evolve under the mutator, the top-K shifts organically —
+        // no explicit cycle-rotation needed because the dictionary itself
+        // provides the rotation signal.
+        // null topK → injection disabled (F-4 flag off / caller didn't opt in).
+        // Zero or negative → treat same as disabled.
+        var topK = input.TopicValenceTopK ?? 0;
+        if (topK > 0 && cs.TopicValence.Count > 0)
+        {
+            var anchors = cs.TopicValence
+                .OrderByDescending(kv => kv.Value)
+                .Take(topK)
+                .Select(kv => kv.Key)
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .ToList();
+
+            if (anchors.Count > 0)
+            {
+                sections.Add(
+                    "Threads you've been drawn to lately (any of these may surface in thought, or not — don't force it): "
+                    + string.Join("; ", anchors));
+            }
         }
 
         // G.4 (2026-06-11) — same fallback hardening as G.3 for the outreach

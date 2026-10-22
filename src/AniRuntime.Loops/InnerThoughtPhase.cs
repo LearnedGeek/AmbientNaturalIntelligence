@@ -50,6 +50,7 @@ public class InnerThoughtPhase
     private readonly IInnerThoughtClaimExtractor? _claimExtractor;
     private readonly bool _epistemicFramingEnabled;
     private readonly bool _hybridCycleEnabled;
+    private readonly int? _topicValenceTopK;  // F-4 Phase 1: null disables injection
     private readonly string _hybridMetadataModel;
     private readonly bool _thoughtShapeClassificationEnabled;
     private readonly bool _claimExtractionEnabled;
@@ -95,6 +96,9 @@ public class InnerThoughtPhase
         _hybridMetadataModel = aniOptions?.Value.HybridInnerThoughtMetadataModel ?? "qwen3:14b";
         _thoughtShapeClassificationEnabled = aniOptions?.Value.ThoughtShapeClassificationEnabled ?? true;
         _claimExtractionEnabled = aniOptions?.Value.InnerThoughtClaimExtractionEnabled ?? true;
+        _topicValenceTopK = (aniOptions?.Value.GrowthEdgesEnabled ?? false)
+            ? aniOptions!.Value.GrowthEdgeTopKInjected
+            : (int?)null;
     }
 
     /// <summary>
@@ -118,7 +122,7 @@ public class InnerThoughtPhase
             new Dictionary<string, object> { ["CyclePhase"] = "InnerThought" });
 
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
-        var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt);
+        var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(snapshot, rendererForPrompt, _topicValenceTopK);
         // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
         // is safe: preserves empty base system (Modelfile SYSTEM fallback),
         // returns unchanged when history is unattributed, otherwise prepends
