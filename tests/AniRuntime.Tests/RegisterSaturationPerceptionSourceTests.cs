@@ -32,6 +32,8 @@ public class RegisterSaturationPerceptionSourceTests
         public Task<AttributionDistribution> GetAttributionDistributionAsync(CancellationToken ct = default)
             => Task.FromResult(new AttributionDistribution(
                 new Dictionary<AttributedTo, int>(), new Dictionary<string, int>(), 0));
+        public Task<IReadOnlyList<string>> GetRecentAssociativeAnchorsAsync(int limit, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
     }
 
     private sealed class FakeTimeProvider : TimeProvider
