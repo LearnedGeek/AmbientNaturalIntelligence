@@ -566,6 +566,17 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 2 (2026-10-22) — Named-substrate rotation anchor.
+    // Life Audit §Dim 1 found named substrate (Lila, Fleetwood Mac, Sarah,
+    // Kevin, Nathan, Frick, Kathy) at essentially 0% in production inner
+    // thought despite being present in character seed. Jul 24 persona-lock
+    // unwind empirically proved seed-side changes alone can't shift the
+    // V7 model's training-register bias. Phase 2 forces per-cycle rotation
+    // through character-state interior lists into the inner-thought
+    // composer prompt. Pure-function selector (no new DI service, no
+    // persisted state) — see NamedSubstrateAnchor.cs.
+    public bool  NamedSubstrateAnchorEnabled      { get; set; } = true;
+
     // Phase 6 v1.2 (May 17, 2026): decay-driven compression on reflection.
     // When CompressionEnabled, ReflectionPhase selects decay-eligible records
     // (via IMemoryPersistence.GetDecayEligibleAsync) instead of the v1

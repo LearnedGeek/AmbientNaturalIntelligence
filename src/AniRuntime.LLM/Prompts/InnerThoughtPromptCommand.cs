@@ -8,7 +8,8 @@ namespace AniRuntime.LLM.Prompts;
 public sealed record InnerThoughtPromptInput(
     ContextSnapshot Snapshot,
     IEpistemicSubstrateRenderer? EpistemicRenderer = null,
-    int? TopicValenceTopK = null);
+    int? TopicValenceTopK = null,
+    bool NamedSubstrateAnchorEnabled = false);
 
 /// <summary>
 /// Inner-thought / world-experience prompt for the ambient cognitive cycle.
@@ -196,6 +197,38 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             sections.Add("Background right now:");
             sections.AddRange(snapshot.Perceptions.Select(p =>
                 $"  - {PromptBuilder.FormatPerceptionLine(p, snapshot.BuiltAt, contactName: perceptionContact)}"));
+        }
+
+        // F-4 Phase 2 (2026-10-22) — Named-substrate rotation anchor.
+        //
+        // Life Audit §Dim 1 found named substrate (Lila, Fleetwood Mac,
+        // Sarah, Kevin, Nathan, Frick, Kathy) at essentially 0% in production
+        // inner thought despite being present in character seed. The V7
+        // fine-tune's training bias overrides seed-side substrate (Jul 24
+        // persona-lock unwind empirical anchor: bookstore mentions stayed at
+        // 1,304 in August after bookstore was fully removed from the seed).
+        //
+        // Phase 2 forces per-cycle rotation through character-state interior
+        // lists (FamilyContext, Interests, SharedExperiences, SelfConcept) —
+        // Mark-facing lists excluded. Soft framing matches Phase 1: the
+        // thought doesn't have to be about the anchor, but the anchor is
+        // available if the mind drifts there. Composes with Phase 1:
+        // TopicValence top-K provides weighted drift as the dictionary
+        // evolves; Phase 2 provides coverage even when the dictionary is
+        // thin or seed-locked.
+        //
+        // Rotation seed: minute of BuiltAt. Each cycle advances the index
+        // by whatever elapsed time passed (cycles are ~minutes apart).
+        if (input.NamedSubstrateAnchorEnabled)
+        {
+            var rotationIndex = snapshot.BuiltAt.Ticks / TimeSpan.TicksPerMinute;
+            var anchor = NamedSubstrateAnchor.Select(cs, rotationIndex);
+            if (!string.IsNullOrWhiteSpace(anchor))
+            {
+                sections.Add(
+                    "Something specific from your life that's available if your thought drifts there (optional, not required): "
+                    + anchor);
+            }
         }
 
         // F-4 Phase 1 (2026-10-22) — TopicValence top-K rotation anchor.
