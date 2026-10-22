@@ -127,6 +127,13 @@ public sealed class EfMemoryServiceFacade : IMemoryService
     public Task<IEnumerable<MemoryRecord>> GetByTierAsync(EpistemicTier tier, int limit = 20, CancellationToken ct = default)
         => _search.GetByTierAsync(tier, limit, ct);
 
+    public Task<IEnumerable<MemoryRecord>> GetPerceptionsOrderedAsync(
+        IReadOnlyDictionary<string, float> topicValence,
+        int limit = 5,
+        IReadOnlyCollection<string>? allowedSourceNames = null,
+        CancellationToken ct = default)
+        => _search.GetPerceptionsOrderedAsync(topicValence, limit, allowedSourceNames, ct);
+
     // ── IStateStore ────────────────────────────────────────────────────
     public Task<CharacterStateDoc> GetCharacterStateAsync(CancellationToken ct = default)
         => _state.GetCharacterStateAsync(ct);
