@@ -86,15 +86,15 @@ public sealed class AnchorBearingOutreachSeedSelector : IOutreachSeedSelector
             characterState,
             bonus);
 
-        foreach (var record in candidates)
-        {
-            if (string.IsNullOrWhiteSpace(record.Content)) continue;
-            if (string.Equals(record.Content, justGeneratedThought, StringComparison.Ordinal))
-            {
-                // Already scored above as the fallback candidate.
-                continue;
-            }
+        // Filter at the enumerable so the loop focuses on scoring:
+        // skip blank-content records (defensive) and the just-generated
+        // thought (already scored above as the fallback candidate).
+        var scoreable = candidates
+            .Where(r => !string.IsNullOrWhiteSpace(r.Content))
+            .Where(r => !string.Equals(r.Content, justGeneratedThought, StringComparison.Ordinal));
 
+        foreach (var record in scoreable)
+        {
             var score = OutreachSeedScoring.Score(
                 record.Content, record.Importance, characterState, bonus);
 
