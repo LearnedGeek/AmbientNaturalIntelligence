@@ -586,6 +586,16 @@ public class AniOptions
     // persisted state) — see NamedSubstrateAnchor.cs.
     public bool  NamedSubstrateAnchorEnabled      { get; set; } = true;
 
+    // F-4 Phase 4a.2 (2026-10-22) — Associative-anchor chain surfacing.
+    // Mark's observation on the dashboard "Associative Drift" view: the
+    // anchor chain is being produced + persisted every cycle (1,694 anchors
+    // in production over 7 months) but only the single most-recent is kept
+    // in-memory on CognitiveCyclePipeline. This phase hydrates the last N
+    // from emotional_contributions so service restart preserves the chain,
+    // and surfaces the chain as a composer section. Umbrella issue #171.
+    public bool  AssociativeAnchorChainSurfacingEnabled { get; set; } = true;
+    public int   AssociativeAnchorChainDepth            { get; set; } = 5;
+
     // Phase 6 v1.2 (May 17, 2026): decay-driven compression on reflection.
     // When CompressionEnabled, ReflectionPhase selects decay-eligible records
     // (via IMemoryPersistence.GetDecayEligibleAsync) instead of the v1

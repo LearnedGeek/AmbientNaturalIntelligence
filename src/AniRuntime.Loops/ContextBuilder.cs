@@ -46,6 +46,10 @@ public class ContextBuilder
     // Perception retrieval AFTER state loads (needs TopicValence from
     // CharacterState). Nullable so existing test fixtures work without wiring.
     private readonly IMemorySearch?              _search;
+    // F-4 Phase 4a.2 (2026-10-22) — analytics handle for recent associative
+    // anchor chain retrieval. Nullable so existing test fixtures that don't
+    // need the chain-surfacing path still work.
+    private readonly IMemoryAnalytics?           _analytics;
     private readonly AniOptions                  _aniOptions;
     private readonly ILogger<ContextBuilder>     _log;
 
@@ -60,7 +64,8 @@ public class ContextBuilder
         IRetrievalOriginTracker?    originTracker = null,
         IDominantRegisterTracker?   registerTracker = null,
         IMotivationVectorTracker?   motivationTracker = null,
-        IMemorySearch?              search = null)
+        IMemorySearch?              search = null,
+        IMemoryAnalytics?           analytics = null)
     {
         _stateCtx          = stateCtx;
         _retrieval         = retrieval;
@@ -73,6 +78,7 @@ public class ContextBuilder
         _registerTracker   = registerTracker;
         _motivationTracker = motivationTracker;
         _search            = search;
+        _analytics         = analytics;
     }
 
     public async Task<ContextSnapshot> BuildContextSnapshotAsync(
@@ -151,6 +157,46 @@ public class ContextBuilder
             }
         }
 
+        // F-4 Phase 4a.2 (2026-10-22) — hydrate associative-anchor chain.
+        // Pre-F-4a.2: CognitiveCyclePipeline kept only the single most-recent
+        // anchor in an in-memory field, lost on service restart (1,694 anchors
+        // persisted in production, never read back). This block pulls the
+        // last N from emotional_contributions so each cycle's composer sees
+        // the chain of recent thought-threads.
+        //
+        // DB cost: one small SELECT TOP N on an indexed table per cycle.
+        // Negligible compared to the LLM calls that follow.
+        //
+        // Gated on AssociativeAnchorChainSurfacingEnabled + analytics
+        // availability. Fail-open: if the query fails, the composer continues
+        // without the chain substrate (pre-F-4a.2 baseline).
+        var recentAnchorChain = new List<string>();
+        if (_aniOptions.AssociativeAnchorChainSurfacingEnabled && _analytics is not null)
+        {
+            try
+            {
+                var depth = Math.Max(1, _aniOptions.AssociativeAnchorChainDepth);
+                var anchors = await _analytics.GetRecentAssociativeAnchorsAsync(depth, ct).ConfigureAwait(false);
+                recentAnchorChain = anchors.ToList();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Fail-open: EF SaveChanges / DbContext state faults surface
+                // as IOE at the IMemoryAnalytics boundary. Narrower than
+                // Exception per global pre-push checklist §4. Same discipline
+                // as PR #170's narrowing — Loops doesn't depend on EF
+                // directly, so a DbUpdateException leaking out would
+                // propagate (correct for shape failures Memory couldn't
+                // contain).
+                _log.LogWarning(ex,
+                    "F4_ANCHOR_CHAIN_HYDRATE failed — composer continues without chain substrate");
+            }
+        }
+
         // Agentic Lens Layer 1 Phase 1a — orchestrator-level retrieval-origin
         // distribution logging. Spans pool outputs from multiple sub-builders
         // (relevantMem, recentMem, groundedFacts, interiorContext, anchoredMemories),
@@ -174,6 +220,7 @@ public class ContextBuilder
             OutreachContext               = state.OutreachContext,
             AnchoredMemories              = retrieval.AnchoredMemories,
             RecentWorldEvents             = recentWorldEvents,
+            RecentAnchorChain             = recentAnchorChain,
             RelationshipHealth            = emotional.RelationshipHealth,
             EmotionalDrift                = emotional.EmotionalDrift,
             PatternAwareness              = emotional.PatternAwareness,

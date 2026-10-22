@@ -192,6 +192,22 @@ public class ContextSnapshot
     public List<MemoryRecord> RecentWorldEvents { get; set; } = new();
 
     /// <summary>
+    /// F-4 Phase 4a.2b (2026-10-22) — recent associative-anchor chain.
+    /// Mark's observation on the dashboard "Associative Drift" view: each
+    /// inner-thought cycle produces an anchor ("the shelf i built", "radiator
+    /// doing its thump-thump-thump") and the chain is visible on the
+    /// dashboard but was only one-link-deep in the composer (just the
+    /// previous cycle's anchor as a WorldSeed). This field carries the last
+    /// N anchors so the composer can show the chain as "threads of thought
+    /// you've been following lately." Hydrated from
+    /// <see cref="IMemoryAnalytics.GetRecentAssociativeAnchorsAsync"/> on
+    /// first use so service restart doesn't lose the chain.
+    ///
+    /// Order: newest-first. Empty on fresh install (no persisted anchors yet).
+    /// </summary>
+    public List<string> RecentAnchorChain { get; set; } = new();
+
+    /// <summary>
     /// F-1 Phase 8a (2026-08-19) — producer-boundary envelope for the
     /// world-seed / associative-anchor content. Two semantically-distinct
     /// producers write this field:

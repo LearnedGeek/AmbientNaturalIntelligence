@@ -178,6 +178,10 @@ public sealed class EfMemoryServiceFacade : IMemoryService
     public Task<AttributionDistribution> GetAttributionDistributionAsync(CancellationToken ct = default)
         => _analytics.GetAttributionDistributionAsync(ct);
 
+    public Task<IReadOnlyList<string>> GetRecentAssociativeAnchorsAsync(
+        int limit, CancellationToken ct = default)
+        => _analytics.GetRecentAssociativeAnchorsAsync(limit, ct);
+
     // ── IMemoryMaintenance ─────────────────────────────────────────────
     public Task ResolveOpenLoopAsync(Guid id, CancellationToken ct = default)
         => _maintenance.ResolveOpenLoopAsync(id, ct);

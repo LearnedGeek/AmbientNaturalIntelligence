@@ -208,6 +208,28 @@ public sealed class EfMemoryAnalyticsService : IMemoryAnalytics
         return new AttributionDistribution(byAttr, byTrust, total);
     }
 
+    public async Task<IReadOnlyList<string>> GetRecentAssociativeAnchorsAsync(
+        int limit, CancellationToken ct = default)
+    {
+        if (limit <= 0) return Array.Empty<string>();
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+
+        // Order by CreatedAt desc so the newest anchors are first (consistent
+        // with how CognitiveCyclePipeline's in-process chain shape expects:
+        // most-recent-first). Caller trims to its own chain depth.
+        //
+        // AssociativeAnchor is nullable on EmotionalContribution; filter out
+        // nulls at the DB layer so limit represents actual returned rows.
+        return await db.EmotionalContributions
+            .Where(e => e.AssociativeAnchor != null)
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(limit)
+            .Select(e => e.AssociativeAnchor!)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+    }
+
     private static EmotionalContribution MapContribution(EmotionalContributionEntity e) => new()
     {
         Id                = e.Id,

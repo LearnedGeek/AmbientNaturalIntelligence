@@ -290,6 +290,38 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             }
         }
 
+        // F-4 Phase 4a.2b (2026-10-22) — Associative-anchor chain.
+        //
+        // Dashboard "Associative Drift" view shows anchors chained across
+        // cycles ("the shelf i built" → "radiator doing its thump-thump-thump"
+        // → "my chest is still healing"). The mechanism to produce anchors has
+        // been running since early days (1,694 anchors in production by
+        // 2026-10-22), but only the single most-recent was ever surfaced
+        // back into substrate — and only in-memory, so service restart lost
+        // the chain. Phase 4a.2a hydrates from emotional_contributions; this
+        // section renders them.
+        //
+        // Composition with the Phase 1 TopicValence top-K above: that's
+        // "preference-weighted topics." This section is "specific thought-
+        // fragments she's been having." Different grain — topics vs
+        // thought-anchors. Both compete for the same cognitive attention
+        // but each anchors a different kind of continuity: TopicValence is
+        // slow drift (what she cares about); the anchor chain is short-term
+        // (what she just thought). Rendered side by side.
+        if (snapshot.RecentAnchorChain is { Count: > 0 })
+        {
+            var chain = snapshot.RecentAnchorChain
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Take(5)
+                .ToList();
+            if (chain.Count > 0)
+            {
+                sections.Add(
+                    "Threads of thought you've been following (any of these may surface again or lead somewhere new — don't force it): "
+                    + string.Join("; ", chain));
+            }
+        }
+
         // G.4 (2026-06-11) — same fallback hardening as G.3 for the outreach
         // path. When epistemicRenderer is null, surface a direction-shape
         // count line rather than the verbatim turn dump (StructuredConversationSummary)
