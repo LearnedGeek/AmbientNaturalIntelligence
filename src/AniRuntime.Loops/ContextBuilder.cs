@@ -127,8 +127,19 @@ public class ContextBuilder
                 var anchors = await _analytics.GetRecentAssociativeAnchorsAsync(depth, ct).ConfigureAwait(false);
                 recentAnchorChain = anchors.ToList();
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Fail-open: EF SaveChanges / DbContext state faults surface
+                // as IOE at the IMemoryAnalytics boundary. Narrower than
+                // Exception per global pre-push checklist §4. Same discipline
+                // as PR #170's narrowing — Loops doesn't depend on EF
+                // directly, so a DbUpdateException leaking out would
+                // propagate (correct for shape failures Memory couldn't
+                // contain).
                 _log.LogWarning(ex,
                     "F4_ANCHOR_CHAIN_HYDRATE failed — composer continues without chain substrate");
             }
