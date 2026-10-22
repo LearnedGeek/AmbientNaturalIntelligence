@@ -171,6 +171,27 @@ public class ContextSnapshot
     public List<MemoryRecord> RecentWorldExperiences { get; set; } = new();
 
     /// <summary>
+    /// F-4 Phase 4a.1a (2026-10-22) — Perception events ordered by the
+    /// three-dimension importance model (significance × preference × fatigue).
+    /// Life Audit §Dim 1 found MemoryType.Perception was excluded from
+    /// retrieval entirely; this field surfaces persisted RSS / weather
+    /// perceptions back into inner-thought composer substrate so world-events
+    /// Ani observed are available to her thought beyond the single cycle
+    /// in which they arrived via snapshot.Perceptions.
+    ///
+    /// Distinct from <see cref="Perceptions"/> which is current-cycle poll
+    /// output only (ambient events arriving right now). This list is
+    /// retrieval-sourced from persisted Perception memory and ranked by
+    /// IMemorySearch.GetPerceptionsOrderedAsync.
+    ///
+    /// Rendered in InnerThoughtPromptCommand as a dedicated "Things that
+    /// happened in the world recently" section — separate from Perceptions
+    /// and from RecentWorldExperiences (Ani's own-world events) to preserve
+    /// provenance clarity.
+    /// </summary>
+    public List<MemoryRecord> RecentWorldEvents { get; set; } = new();
+
+    /// <summary>
     /// F-4 Phase 4a.2b (2026-10-22) — recent associative-anchor chain.
     /// Mark's observation on the dashboard "Associative Drift" view: each
     /// inner-thought cycle produces an anchor ("the shelf i built", "radiator

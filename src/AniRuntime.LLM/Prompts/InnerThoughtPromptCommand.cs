@@ -181,6 +181,24 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             // there's nothing to say about them.
         }
 
+        // F-4 Phase 4a.1a (2026-10-22) — persisted Perception events ordered
+        // by Importance × TopicValence lookup. Life Audit §Dim 1 found
+        // MemoryType.Perception had near-zero inner-thought footprint because
+        // RecentMemory only pulled Episodic + InnerThought — world-events
+        // reached the composer only on the one cycle they arrived.
+        //
+        // Separate render-section from snapshot.Perceptions (current-cycle
+        // poll output) because the provenance differs: Perceptions is "what's
+        // arriving right now"; RecentWorldEvents is "what the world has been
+        // doing lately." Rendering them under distinct headings preserves
+        // the F-1 Phase 6 attribution clarity.
+        if (snapshot.RecentWorldEvents.Count > 0)
+        {
+            sections.Add("Things that have happened in the world recently (reflect on what's there — do not quote phrases verbatim):");
+            sections.AddRange(snapshot.RecentWorldEvents.Select(m =>
+                $"  - {PromptBuilder.FormatMemoryWithTime(m, snapshot.BuiltAt)}"));
+        }
+
         if (snapshot.Perceptions.Count > 0)
         {
             // F-1 Phase 6 (2026-08-19) — split the pre-Phase-6 semicolon-joined
