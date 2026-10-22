@@ -586,6 +586,20 @@ public class AniOptions
     // persisted state) — see NamedSubstrateAnchor.cs.
     public bool  NamedSubstrateAnchorEnabled      { get; set; } = true;
 
+    // F-4 Phase 2.1 (2026-10-22) — Anchor-bearing outreach-seed selection.
+    // Pre-Phase-2.1: outreach always used the just-generated inner thought
+    // as the seed. This phase picks from the last N recent InnerThought
+    // records by `Importance × (1 + AnchorBonus)` and uses the top-scored
+    // thought's content as the lean composer's userMessage. See
+    // IOutreachSeedSelector XML doc + umbrella issue #159.
+    //
+    // IMPORTANT: this does NOT inject substrate into the composer prompt
+    // (that would reverse K.3 2026-07-06 "retire substrate-inject fallback
+    // paths" decision). Only the seed changes.
+    public bool  OutreachSeedAnchorBearingSelectionEnabled { get; set; } = true;
+    public int   OutreachSeedCandidatePoolSize             { get; set; } = 10;    // ~last ~10 inner thoughts (~5-10 min window at typical cycle rate)
+    public float OutreachSeedAnchorBonus                   { get; set; } = 0.3f;  // multiplier applied to Importance when a thought references a named entity
+
     // F-4 Phase 4a.2 (2026-10-22) — Associative-anchor chain surfacing.
     // Mark's observation on the dashboard "Associative Drift" view: the
     // anchor chain is being produced + persisted every cycle (1,694 anchors

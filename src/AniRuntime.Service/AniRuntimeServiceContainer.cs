@@ -615,6 +615,12 @@ public static class AniRuntimeServiceContainer
         services.AddSingleton<IOutreachPipeline, AniRuntime.Loops.Outreach.OutreachPipeline>();
         services.AddSingleton<IReactiveShareService, AniRuntime.Loops.Outreach.ReactiveShareService>();
         services.AddSingleton<ISilenceChoiceRecorder, AniRuntime.Loops.Outreach.SilenceChoiceRecorder>();
+        // F-4 Phase 2.1 (2026-10-22) — anchor-bearing outreach-seed selector.
+        // Picks from last N recent InnerThoughts by Importance × (1 + AnchorBonus)
+        // so register-locked default thoughts don't become the outreach seed when
+        // anchor-bearing thoughts exist in the recent pool. See
+        // IOutreachSeedSelector XML doc + plan doc §Phase 2.1.
+        services.AddSingleton<IOutreachSeedSelector, AniRuntime.Loops.Outreach.AnchorBearingOutreachSeedSelector>();
         services.AddSingleton<OutreachPhase>();
         services.AddSingleton<ReflectionPhase>();
         // §5.5 — cycle body lives in CognitiveCyclePipeline. SINGLETON because
