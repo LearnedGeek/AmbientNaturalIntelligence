@@ -71,6 +71,10 @@ public sealed class EfMemoryServiceFacade : IMemoryService
     public Task AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default)
         => _persistence.AdjustImportanceAsync(id, delta, ct);
 
+    public Task IncrementExposureAsync(
+        IReadOnlyList<Guid> recordIds, DateTimeOffset exposedAt, CancellationToken ct = default)
+        => _persistence.IncrementExposureAsync(recordIds, exposedAt, ct);
+
     public Task AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default)
         => _persistence.AnchorMemoryAsync(id, reason, ct);
 

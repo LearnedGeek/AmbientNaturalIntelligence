@@ -123,6 +123,23 @@ public class MemoryEntity
     [Column("significance")]
     public float Significance { get; set; } = 0.5f;
 
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — fatigue axis. Incremented by
+    /// <c>IMemoryPersistence.IncrementExposureAsync</c> each time this
+    /// record surfaces to the composer. See
+    /// <see cref="AniRuntime.Core.Models.MemoryRecord.ExposureCount"/>.
+    /// </summary>
+    [Column("exposure_count")]
+    public int ExposureCount { get; set; }
+
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — timestamp of most recent exposure.
+    /// Null = never surfaced. See
+    /// <see cref="AniRuntime.Core.Models.MemoryRecord.LastExposedAt"/>.
+    /// </summary>
+    [Column("last_exposed_at")]
+    public DateTimeOffset? LastExposedAt { get; set; }
+
     // ── F-2 Phase 1 P2 (2026-08-21) — attribution columns ─────────────────
     // Five new fields making attribution first-class per the F-2 Phase 1
     // design plan. Populated at ingest by P6 producer wiring; existing

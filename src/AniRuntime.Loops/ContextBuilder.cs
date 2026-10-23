@@ -50,6 +50,10 @@ public class ContextBuilder
     // anchor chain retrieval. Nullable so existing test fixtures that don't
     // need the chain-surfacing path still work.
     private readonly IMemoryAnalytics?           _analytics;
+    // F-4 Phase 4a.1c (2026-10-23) — persistence handle to bump
+    // exposure_count + last_exposed_at on surfaced Perception records.
+    // Nullable so test fixtures that don't exercise the fatigue path work.
+    private readonly IMemoryPersistence?         _persist;
     private readonly AniOptions                  _aniOptions;
     private readonly ILogger<ContextBuilder>     _log;
 
@@ -65,7 +69,8 @@ public class ContextBuilder
         IDominantRegisterTracker?   registerTracker = null,
         IMotivationVectorTracker?   motivationTracker = null,
         IMemorySearch?              search = null,
-        IMemoryAnalytics?           analytics = null)
+        IMemoryAnalytics?           analytics = null,
+        IMemoryPersistence?         persist = null)
     {
         _stateCtx          = stateCtx;
         _retrieval         = retrieval;
@@ -79,6 +84,7 @@ public class ContextBuilder
         _motivationTracker = motivationTracker;
         _search            = search;
         _analytics         = analytics;
+        _persist           = persist;
     }
 
     public async Task<ContextSnapshot> BuildContextSnapshotAsync(
@@ -138,6 +144,29 @@ public class ContextBuilder
                 var result = await _search.GetPerceptionsOrderedAsync(
                     topicValence, topK, allowedSources, ct).ConfigureAwait(false);
                 recentWorldEvents = result.ToList();
+
+                // F-4 Phase 4a.1c (2026-10-23) — bump exposure counters on
+                // the records we're about to surface. Batched (one call per
+                // cycle, not per record) so write amplification stays bounded.
+                // Fail-open: a failed bump leaves counters stale but doesn't
+                // prevent the composer from seeing the records.
+                if (_aniOptions.FatigueDecayEnabled
+                    && _persist is not null
+                    && recentWorldEvents.Count > 0)
+                {
+                    var ids = recentWorldEvents.Select(r => r.Id).ToList();
+                    try
+                    {
+                        await _persist.IncrementExposureAsync(
+                            ids, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
+                    }
+                    catch (InvalidOperationException bumpEx)
+                    {
+                        _log.LogWarning(bumpEx,
+                            "F4_FATIGUE_BUMP failed for {Count} records — surfacing continues",
+                            ids.Count);
+                    }
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

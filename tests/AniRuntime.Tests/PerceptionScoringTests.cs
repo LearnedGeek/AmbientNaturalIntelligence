@@ -159,4 +159,110 @@ public class PerceptionScoringTests
         // 0.6 × 0.5 × 0.5 (default) = 0.15
         w.Should().BeApproximately(0.15f, 0.001f);
     }
+
+    // ── F-4 Phase 4a.1c fatigue ────────────────────────────────────────────
+
+    [Fact]
+    public void FatigueDecay_ZeroExposure_ReturnsOne()
+    {
+        PerceptionScoring.FatigueDecay(
+            exposureCount: 0, lastExposedAt: null, now: DateTimeOffset.UtcNow)
+            .Should().Be(1f);
+    }
+
+    [Fact]
+    public void FatigueDecay_NullLastExposedAt_ReturnsOne()
+    {
+        PerceptionScoring.FatigueDecay(
+            exposureCount: 5, lastExposedAt: null, now: DateTimeOffset.UtcNow)
+            .Should().Be(1f, "null LastExposedAt means never surfaced — fresh");
+    }
+
+    [Fact]
+    public void FatigueDecay_OneExposureImmediate_DecaysToExpected()
+    {
+        var now = DateTimeOffset.UtcNow;
+        // exp(-1/3) ≈ 0.7165
+        PerceptionScoring.FatigueDecay(
+            exposureCount: 1, lastExposedAt: now, now: now)
+            .Should().BeApproximately(0.7165f, 0.001f);
+    }
+
+    [Fact]
+    public void FatigueDecay_FiveExposuresImmediate_DecaysSharp()
+    {
+        var now = DateTimeOffset.UtcNow;
+        // exp(-5/3) ≈ 0.1889
+        PerceptionScoring.FatigueDecay(
+            exposureCount: 5, lastExposedAt: now, now: now)
+            .Should().BeApproximately(0.1889f, 0.001f);
+    }
+
+    [Fact]
+    public void FatigueDecay_TimeRecovery_HalfLifeHoursPasses_PartialRecovery()
+    {
+        // At 48h since last exposure, time_decay = exp(-1) ≈ 0.37
+        // effective_exposure = 5 × 0.37 ≈ 1.85
+        // fatigue = exp(-1.85/3) ≈ 0.538
+        var now = DateTimeOffset.UtcNow;
+        var fatigue = PerceptionScoring.FatigueDecay(
+            exposureCount: 5, lastExposedAt: now.AddHours(-48), now: now);
+        fatigue.Should().BeApproximately(0.538f, 0.01f,
+            "48h since last exposure partially recovers from 5-exposure fatigue");
+    }
+
+    [Fact]
+    public void FatigueDecay_TimeRecovery_WeekPasses_NearlyFullRecovery()
+    {
+        // At 168h (1 week), time_decay = exp(-168/48) ≈ 0.030
+        // effective = 5 × 0.030 ≈ 0.15; fatigue ≈ exp(-0.05) ≈ 0.95
+        var now = DateTimeOffset.UtcNow;
+        var fatigue = PerceptionScoring.FatigueDecay(
+            exposureCount: 5, lastExposedAt: now.AddHours(-168), now: now);
+        fatigue.Should().BeGreaterThan(0.9f,
+            "a week since last exposure substantially recovers fatigue");
+    }
+
+    [Fact]
+    public void FatigueDecay_MonotonicInExposureAtSameTime()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var one   = PerceptionScoring.FatigueDecay(1, now, now);
+        var three = PerceptionScoring.FatigueDecay(3, now, now);
+        var five  = PerceptionScoring.FatigueDecay(5, now, now);
+        one.Should().BeGreaterThan(three);
+        three.Should().BeGreaterThan(five);
+    }
+
+    [Fact]
+    public void FatigueDecay_MonotonicInTimeSinceAtSameExposure()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var immediate = PerceptionScoring.FatigueDecay(5, now, now);
+        var later1    = PerceptionScoring.FatigueDecay(5, now.AddHours(-24), now);
+        var later2    = PerceptionScoring.FatigueDecay(5, now.AddHours(-72), now);
+        immediate.Should().BeLessThan(later1,
+            "time passes, exposure 'wears off,' fatigue decreases");
+        later1.Should().BeLessThan(later2);
+    }
+
+    [Fact]
+    public void PerceptionEffectiveWeight_FreshBeatsStaleRepeat()
+    {
+        // Issue #169 acceptance scenario: fresh news (never surfaced)
+        // outranks a 5× surfaced same-topic story at same significance.
+        var dict = new Dictionary<string, float> { ["news"] = 0.8f };
+        var now = DateTimeOffset.UtcNow;
+
+        var fresh = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.7f, importance: 0.6f, content: "news item A",
+            topicValence: dict, exposureCount: 0, lastExposedAt: null, now: now);
+
+        var stale = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.7f, importance: 0.6f, content: "news item B",
+            topicValence: dict, exposureCount: 5, lastExposedAt: now, now: now);
+
+        fresh.Should().BeGreaterThan(stale,
+            "a 5×-exposed story loses to a fresh one at the same base weight");
+    }
 }

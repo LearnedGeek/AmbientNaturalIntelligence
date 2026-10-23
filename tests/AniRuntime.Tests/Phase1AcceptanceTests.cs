@@ -69,6 +69,8 @@ public class Phase1AcceptanceTests
             // F-4 Phase 4a.1b (2026-10-23) — significance column; same
             // rationale.
             await migrateCtx.EnsureSignificanceSchemaAsync().ConfigureAwait(false);
+            // F-4 Phase 4a.1c (2026-10-23) — fatigue columns; same rationale.
+            await migrateCtx.EnsureFatigueSchemaAsync().ConfigureAwait(false);
         }
 
         return tempPath;

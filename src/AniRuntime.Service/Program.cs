@@ -462,6 +462,15 @@ try
             await ctx.EnsureSignificanceSchemaAsync();
             sw.Stop();
             Log.Information("F-4 significance schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
+
+            // F-4 Phase 4a.1c (2026-10-23) — fatigue columns on memories.
+            // Two columns: exposure_count INTEGER DEFAULT 0, last_exposed_at
+            // TEXT NULL. Same metadata-only ALTER pattern. Pre-existing
+            // records get 0/null which means "never exposed → full weight."
+            sw.Restart();
+            await ctx.EnsureFatigueSchemaAsync();
+            sw.Stop();
+            Log.Information("F-4 fatigue schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {

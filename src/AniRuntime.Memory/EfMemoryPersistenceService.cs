@@ -233,6 +233,8 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
             existing.ConfirmedBy       = record.ConfirmedBy;
             existing.Register          = record.Register;
             existing.Significance      = record.Significance;
+            existing.ExposureCount     = record.ExposureCount;
+            existing.LastExposedAt     = record.LastExposedAt;
             // F-2 Phase 1 P2 (2026-08-21) — attribution
             existing.AttributedTo               = record.AttributedTo;
             existing.AttributedAt               = record.AttributedAt;
@@ -264,6 +266,8 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
                 ConfirmedBy       = record.ConfirmedBy,
                 Register          = record.Register,
                 Significance      = record.Significance,
+                ExposureCount     = record.ExposureCount,
+                LastExposedAt     = record.LastExposedAt,
                 // F-2 Phase 1 P2 (2026-08-21) — attribution
                 AttributedTo               = record.AttributedTo,
                 AttributedAt               = record.AttributedAt,
@@ -457,6 +461,24 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
         }
 
         entity.Importance = Math.Clamp(entity.Importance + delta, 0f, 1f);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task IncrementExposureAsync(
+        IReadOnlyList<Guid> recordIds, DateTimeOffset exposedAt, CancellationToken ct = default)
+    {
+        if (recordIds is null || recordIds.Count == 0) return;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var entities = await db.Memories
+            .Where(m => recordIds.Contains(m.Id))
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        foreach (var entity in entities)
+        {
+            entity.ExposureCount++;
+            entity.LastExposedAt = exposedAt;
+        }
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
