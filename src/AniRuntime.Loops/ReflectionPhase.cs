@@ -700,10 +700,8 @@ public class ReflectionPhase
         if (mentions is null || mentions.Count == 0) return false;
 
         var changed = false;
-        foreach (var m in mentions)
+        foreach (var m in mentions.Where(m => !string.IsNullOrWhiteSpace(m.Name)))
         {
-            if (string.IsNullOrWhiteSpace(m.Name)) continue;
-
             // Match discipline: prefer explicit existing_match claim,
             // fall back to case-insensitive name match. Avoids near-dup
             // slots when the extractor varies casing or minor phrasing.
@@ -755,14 +753,14 @@ public class ReflectionPhase
     {
         var changed = false;
 
-        // Stall pass.
-        foreach (var a in characterState.OngoingArcs)
+        // Stall pass. .Where() keeps the loop body pure mutation.
+        var stallCandidates = characterState.OngoingArcs
+            .Where(a => a.Status == ArcStatus.Active
+                     && (now - a.LastTouchedAt) > stallThreshold);
+        foreach (var a in stallCandidates)
         {
-            if (a.Status == ArcStatus.Active && (now - a.LastTouchedAt) > stallThreshold)
-            {
-                a.Status = ArcStatus.Stalled;
-                changed = true;
-            }
+            a.Status = ArcStatus.Stalled;
+            changed = true;
         }
 
         // Soft cap on active-arc count. Oldest-touched active arcs stall
