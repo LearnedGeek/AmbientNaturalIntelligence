@@ -75,6 +75,15 @@ public class CharacterStateDoc
     public Dictionary<string, float> TopicValence { get; set; } = new();
     public Dictionary<string, float> ToneValence  { get; set; } = new();
 
+    /// <summary>
+    /// F-4 Phase 7 (2026-10-23) — multi-week narrative threads Ani is
+    /// inside of (projects, books-in-progress, pending conversations).
+    /// Mutated by <c>IArcExtractor</c> at reflection time; read back as a
+    /// composer top-K section in the inner-thought prompt. See
+    /// <see cref="ArcState"/> for the shape and lifecycle discipline.
+    /// </summary>
+    public List<ArcState>            OngoingArcs  { get; set; } = new();
+
     // Feature 19: Relationship-specific words that carry outsized emotional weight
     public List<LexicalAnchor> LexicalAnchors { get; set; } = new();
 
