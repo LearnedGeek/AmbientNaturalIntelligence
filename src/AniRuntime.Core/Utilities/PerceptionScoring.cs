@@ -48,6 +48,27 @@ public static class PerceptionScoring
     /// seed TopicValence has no such keys as of 2026-10-22.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// F-4 Phase 4a.1b (2026-10-23) — Perception retrieval composite:
+    /// <c>significance × importance × topic_valence_lookup</c>. Pure function
+    /// so the formula is pinnable by unit tests; EF service calls this
+    /// instead of inlining the LINQ projection, so a future axis addition
+    /// (fatigue, Phase 4a.1c) edits one place.
+    ///
+    /// <para>
+    /// Each factor is independently clamped at the field level
+    /// (<c>Significance</c> clamp at ingest, <c>Importance</c> clamp at
+    /// recognizer, <see cref="FuzzyTopicValenceLookup"/> defaults). The
+    /// product is in [0, 1] by construction when inputs are well-behaved.
+    /// </para>
+    /// </summary>
+    public static float PerceptionEffectiveWeight(
+        float significance,
+        float importance,
+        string? content,
+        IReadOnlyDictionary<string, float> topicValence)
+        => significance * importance * FuzzyTopicValenceLookup(content, topicValence);
+
     public static float FuzzyTopicValenceLookup(
         string? content,
         IReadOnlyDictionary<string, float> topicValence)

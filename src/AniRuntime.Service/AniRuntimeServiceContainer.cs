@@ -185,6 +185,16 @@ public static class AniRuntimeServiceContainer
         // doc + ANI-Foundation-Life-Refactor-Plan.md §Phase 1.
         services.AddSingleton<IGrowthEdgeMutator, OllamaGrowthEdgeMutator>();
 
+        // 2026-10-23 — F-4 Phase 4a.1b objective-significance classifier.
+        // Scores RSS items (and other Perception events) on an objective
+        // world-events axis independent of Mark-interest match. Life Audit
+        // §Dim 1 anchor: "Peru recipe scored 0.85 beating Ukraine war at 0.4"
+        // under Mark-interest-only scoring. Consumer: RssPerceptionSource at
+        // ingest; result lands on MemoryRecord.Significance and feeds the
+        // Phase 4a.1 Perception composite. See ISignificanceClassifier XML
+        // doc + ANI-Foundation-Life-Refactor-Plan.md §Phase 4a.1b.
+        services.AddSingleton<ISignificanceClassifier, QwenSignificanceClassifier>();
+
         // F-3 U4 (2026-08-24) — Qwen-sidecar per-quote attribution
         // extractor. Runs post-composition on the inner-thought composer
         // output to identify embedded attribution claims ("you said X",

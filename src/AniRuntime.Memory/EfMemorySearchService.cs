@@ -141,14 +141,19 @@ public sealed class EfMemorySearchService : IMemorySearch
 
         var records = candidates.Select(EfMemoryMappings.MapToRecord).ToList();
 
-        // Score + sort in memory. Score = Importance × TopicValenceLookup.
+        // F-4 Phase 4a.1b (2026-10-23) — score = Significance × Importance ×
+        // TopicValenceLookup. Phase 4a.1b decouples axis 1 (objective
+        // world-events significance, set by ISignificanceClassifier at RSS
+        // ingest) from Importance which stays as the Mark-interest-match axis.
+        // Phase 4a.1c will fold in fatigue as a fourth multiplier.
         // See PerceptionScoring.FuzzyTopicValenceLookup for the lookup rule
         // (highest-weighted matching key, 0.5 default when no match).
         var scored = records
             .Select(r => new
             {
                 Record = r,
-                Score  = r.Importance * PerceptionScoring.FuzzyTopicValenceLookup(r.Content, topicValence),
+                Score  = PerceptionScoring.PerceptionEffectiveWeight(
+                    r.Significance, r.Importance, r.Content, topicValence),
             })
             .OrderByDescending(x => x.Score)
             .Take(limit)

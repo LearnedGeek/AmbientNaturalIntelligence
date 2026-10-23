@@ -111,6 +111,18 @@ public class MemoryEntity
     [Column("register")]
     public string? Register { get; set; }
 
+    /// <summary>
+    /// F-4 Phase 4a.1b (2026-10-23) — objective-significance axis for
+    /// Perception records. Set by <c>ISignificanceClassifier</c> at RSS
+    /// ingest. Default 0.5 — existing records that pre-date the column add
+    /// get 0.5 by column-default so retrieval ranking stays stable until
+    /// Perception records are re-classified or new ones ingested.
+    /// See <see cref="AniRuntime.Core.Models.MemoryRecord.Significance"/>
+    /// XML doc for semantics.
+    /// </summary>
+    [Column("significance")]
+    public float Significance { get; set; } = 0.5f;
+
     // ── F-2 Phase 1 P2 (2026-08-21) — attribution columns ─────────────────
     // Five new fields making attribution first-class per the F-2 Phase 1
     // design plan. Populated at ingest by P6 producer wiring; existing

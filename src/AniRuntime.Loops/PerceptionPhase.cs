@@ -123,6 +123,12 @@ public class PerceptionPhase
                     Content = p.Summary,
                     RelationalValence = p.ContactRelevance,
                     Importance = p.ContactRelevance,
+                    // F-4 Phase 4a.1b (2026-10-23) — objective significance
+                    // flows through the persistence boundary alongside the
+                    // Mark-interest Importance. Default 0.5 on the
+                    // PerceptionEvent constructor, overwritten by
+                    // ISignificanceClassifier at RSS ingest when enabled.
+                    Significance = p.Significance,
                     SourceName = p.SourceName,
                     OccurredAt = p.OccurredAt,
                     // Epistemic Grounding (Apr 10): Perception events are observations

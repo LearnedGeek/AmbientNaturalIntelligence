@@ -566,6 +566,14 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 4a.1b (2026-10-23) — objective-significance classifier for
+    // Perception records. ISignificanceClassifier runs at RSS ingest; the
+    // result lives on MemoryRecord.Significance and feeds the Perception
+    // retrieval composite (significance × preference × fatigue).
+    public bool   SignificanceClassifierEnabled { get; set; } = true;
+    public string SignificanceClassifierModel   { get; set; } = "qwen3:14b";
+    public float  SignificanceDefault           { get; set; } = 0.5f;
+
     // F-4 Phase 4a.2c (2026-10-22) — anchor-promotion feedback loop.
     // Phase 4a.2a persists an associative anchor per inner thought; this
     // path promotes high-recurrence anchors directly to TopicValence

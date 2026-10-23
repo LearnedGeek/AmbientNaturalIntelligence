@@ -18,6 +18,8 @@ public sealed class RssPerceptionSource : IPerceptionSource
     private readonly IMemoryService                 _memory;
     private readonly IIntentExtractor               _intent;
     private readonly RssOptions                     _options;
+    private readonly AniOptions                     _aniOptions;
+    private readonly ISignificanceClassifier?       _significance;
     private readonly ILogger<RssPerceptionSource>   _log;
 
     // Track last-seen publish date per feed to avoid re-emitting old items
@@ -38,13 +40,17 @@ public sealed class RssPerceptionSource : IPerceptionSource
         IMemoryService memory,
         IIntentExtractor intent,
         IOptions<RssOptions> options,
-        ILogger<RssPerceptionSource> log)
+        IOptions<AniOptions> aniOptions,
+        ILogger<RssPerceptionSource> log,
+        ISignificanceClassifier? significance = null)
     {
-        _httpFactory = httpFactory;
-        _memory      = memory;
-        _intent      = intent;
-        _options     = options.Value;
-        _log         = log;
+        _httpFactory  = httpFactory;
+        _memory       = memory;
+        _intent       = intent;
+        _options      = options.Value;
+        _aniOptions   = aniOptions.Value;
+        _significance = significance;
+        _log          = log;
     }
 
     public async Task<IEnumerable<PerceptionEvent>> PollAsync(
@@ -172,12 +178,33 @@ public sealed class RssPerceptionSource : IPerceptionSource
             // media enclosure instead of the article URL.
             var link = ExtractPreferredLink(item);
 
+            // F-4 Phase 4a.1b (2026-10-23) — objective-significance axis.
+            // Independent of Mark-interest match: a Peru recipe (strong
+            // keyword match) scores low here; a Ukraine war headline (weak
+            // keyword match) scores high. Phase 4a.1a's retrieval composite
+            // multiplies this with Importance (Mark-interest) and
+            // TopicValence (learned preference).
+            //
+            // ISignificanceClassifier contract is fail-open: implementations
+            // catch transport/parse/timeout internally and return the
+            // configured default on failure. No outer try/catch here — a
+            // broken-impl exception should surface via the feed-level catch
+            // (line ~77) so we can fix the implementation, not silently
+            // default on every item.
+            var significance = Math.Clamp(_aniOptions.SignificanceDefault, 0f, 1f);
+            if (_aniOptions.SignificanceClassifierEnabled && _significance is not null)
+            {
+                significance = await _significance
+                    .ClassifyAsync(summary, ct).ConfigureAwait(false);
+            }
+
             var perception = new PerceptionEvent
             {
                 SourceName    = SourceName,
                 Category      = Category,
                 Summary       = summary,
                 ContactRelevance = relevance,
+                Significance  = significance,
                 OccurredAt    = pubDate ?? DateTimeOffset.UtcNow,
             };
             if (!string.IsNullOrWhiteSpace(link))

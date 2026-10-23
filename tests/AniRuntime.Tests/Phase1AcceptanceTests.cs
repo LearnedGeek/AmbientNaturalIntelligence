@@ -66,6 +66,9 @@ public class Phase1AcceptanceTests
             // rationale as EnsureIssue93SchemaAsync (EF queries against a
             // snapshot pre-dating the new columns crash with "no such column").
             await migrateCtx.EnsureAttributionSchemaAsync().ConfigureAwait(false);
+            // F-4 Phase 4a.1b (2026-10-23) — significance column; same
+            // rationale.
+            await migrateCtx.EnsureSignificanceSchemaAsync().ConfigureAwait(false);
         }
 
         return tempPath;

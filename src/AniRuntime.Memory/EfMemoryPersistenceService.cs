@@ -232,6 +232,7 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
             existing.ConfirmedAt       = record.ConfirmedAt;
             existing.ConfirmedBy       = record.ConfirmedBy;
             existing.Register          = record.Register;
+            existing.Significance      = record.Significance;
             // F-2 Phase 1 P2 (2026-08-21) — attribution
             existing.AttributedTo               = record.AttributedTo;
             existing.AttributedAt               = record.AttributedAt;
@@ -262,6 +263,7 @@ public sealed class EfMemoryPersistenceService : IMemoryPersistence
                 ConfirmedAt       = record.ConfirmedAt,
                 ConfirmedBy       = record.ConfirmedBy,
                 Register          = record.Register,
+                Significance      = record.Significance,
                 // F-2 Phase 1 P2 (2026-08-21) — attribution
                 AttributedTo               = record.AttributedTo,
                 AttributedAt               = record.AttributedAt,
