@@ -566,6 +566,15 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 1.1 (2026-10-23) — ToneValence sibling of Phase 1 TopicValence.
+    // Mark-reply register classified via IRegisterClassifier maps to tone
+    // descriptors (register-family) that mutate ToneValence under the same
+    // bounded-delta discipline as TopicValence. Reader surfaces top-K
+    // descriptors into inner-thought composer rotation anchor.
+    public bool  ToneGrowthEdgesEnabled           { get; set; } = true;
+    public int   ToneGrowthEdgeMarkReplyWindow    { get; set; } = 20;    // most-recent N Mark replies classified per reflection cycle
+    public int   ToneValenceTopKInjected          { get; set; } = 3;     // top-K ToneValence descriptors read back into inner-thought composer
+
     // F-4 Phase 4a.1c (2026-10-23) — fatigue axis of Perception composite.
     // Each surface to the composer bumps ExposureCount and stamps
     // LastExposedAt. Fatigue weight = exp(-ExposureCount × time_decay / HalfLife);

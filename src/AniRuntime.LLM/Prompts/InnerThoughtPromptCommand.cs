@@ -9,7 +9,8 @@ public sealed record InnerThoughtPromptInput(
     ContextSnapshot Snapshot,
     IEpistemicSubstrateRenderer? EpistemicRenderer = null,
     int? TopicValenceTopK = null,
-    bool NamedSubstrateAnchorEnabled = false);
+    bool NamedSubstrateAnchorEnabled = false,
+    int? ToneValenceTopK = null);
 
 /// <summary>
 /// Inner-thought / world-experience prompt for the ambient cognitive cycle.
@@ -287,6 +288,31 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
                 sections.Add(
                     "Threads you've been drawn to lately (any of these may surface in thought, or not — don't force it): "
                     + string.Join("; ", anchors));
+            }
+        }
+
+        // F-4 Phase 1.1 (2026-10-23) — ToneValence top-K rotation anchor.
+        // Sibling of the TopicValence block above: that renders *subjects*
+        // she's been drawn to; this renders *tone* she's been coming from.
+        // Driven by Mark-reply register — if his recent replies lean warm,
+        // "warmth" climbs here and the composer sees a soft pull toward
+        // that register. Same deliberately-soft framing: available but not
+        // mandatory. null/zero topK → disabled.
+        var toneTopK = input.ToneValenceTopK ?? 0;
+        if (toneTopK > 0 && cs.ToneValence.Count > 0)
+        {
+            var toneAnchors = cs.ToneValence
+                .OrderByDescending(kv => kv.Value)
+                .Take(toneTopK)
+                .Select(kv => kv.Key)
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .ToList();
+
+            if (toneAnchors.Count > 0)
+            {
+                sections.Add(
+                    "Tones you've been meeting lately (feel free to lean into or away from any of these): "
+                    + string.Join("; ", toneAnchors));
             }
         }
 
