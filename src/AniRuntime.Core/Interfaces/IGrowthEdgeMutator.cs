@@ -62,6 +62,17 @@ public interface IGrowthEdgeMutator
     /// a gist from) and applies bounded deltas to
     /// <paramref name="characterState"/>'s <see cref="CharacterStateDoc.TopicValence"/>
     /// in-place.
+    ///
+    /// <para>
+    /// F-4 Phase 4a.2c (2026-10-22) — <paramref name="recentAnchors"/>
+    /// optionally feeds the mutator the condensed anchor stream alongside
+    /// recent-thought prose. Anchors appearing at or above
+    /// <see cref="AniRuntime.Core.AniOptions.AnchorPromotionMinOccurrences"/>
+    /// are promoted to candidate TopicValence keys directly (no LLM round-
+    /// trip for the counting path). Gated by
+    /// <see cref="AniRuntime.Core.AniOptions.AnchorPromotionEnabled"/>; null
+    /// or empty leaves the LLM-only pathway unchanged.
+    /// </para>
     /// </summary>
     /// <returns>
     /// A <see cref="GrowthEdgeUpdateResult"/> summarizing what changed. On
@@ -74,7 +85,8 @@ public interface IGrowthEdgeMutator
     Task<GrowthEdgeUpdateResult> UpdateTopicValenceAsync(
         CharacterStateDoc characterState,
         IReadOnlyList<MemoryRecord> recentThoughts,
-        CancellationToken ct);
+        CancellationToken ct,
+        IReadOnlyList<string>? recentAnchors = null);
 }
 
 /// <summary>

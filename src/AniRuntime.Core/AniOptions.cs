@@ -566,6 +566,16 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 4a.2c (2026-10-22) — anchor-promotion feedback loop.
+    // Phase 4a.2a persists an associative anchor per inner thought; this
+    // path promotes high-recurrence anchors directly to TopicValence
+    // candidate keys (no LLM, no new seams — counting over the existing
+    // persisted anchor stream). Issue #174 preferred shape.
+    public bool  AnchorPromotionEnabled           { get; set; } = true;
+    public int   AnchorPromotionWindowSize        { get; set; } = 50;    // last N anchors scored each cycle
+    public int   AnchorPromotionMinOccurrences    { get; set; } = 3;     // ≥ this → promotion candidate
+    public float AnchorPromotionSalience          { get; set; } = 0.7f;  // salience passed to ApplyUpdates
+
     // F-4 Phase 4a.1a (2026-10-22) — World-events (Perception) surfacing into
     // inner-thought composer. Life Audit §Dim 1 found Perception type excluded
     // from RecentMemory retrieval entirely — 7 months of RSS perception had

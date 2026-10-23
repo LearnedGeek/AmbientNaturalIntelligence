@@ -3,6 +3,7 @@ using System.Text.Json;
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -42,7 +43,8 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
     public async Task<GrowthEdgeUpdateResult> UpdateTopicValenceAsync(
         CharacterStateDoc characterState,
         IReadOnlyList<MemoryRecord> recentThoughts,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<string>? recentAnchors = null)
     {
         if (characterState is null) throw new ArgumentNullException(nameof(characterState));
         if (recentThoughts is null || recentThoughts.Count == 0)
@@ -75,9 +77,46 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
         }
 
         var extracted = ParseExtractedTopics(raw);
+
+        // F-4 Phase 4a.2c: merge anchor-promoted candidates into the extracted
+        // list before ApplyUpdates. Anchors passed in from ReflectionPhase
+        // reflect what she's actually been returning to over the recent
+        // window; the LLM pathway rounds out with topic-salience from
+        // free-form thought content. If both pathways name the same key,
+        // bounded-delta discipline in ApplyUpdates still caps the total
+        // per-cycle change (iterations compose, no double-scoring guard
+        // needed — the max-delta is per-call-to-ApplyUpdates).
+        var anchorCount = 0;
+        if (_options.AnchorPromotionEnabled
+            && recentAnchors is not null
+            && recentAnchors.Count > 0)
+        {
+            var promoted = AnchorPromotionScoring.Score(
+                recentAnchors:   recentAnchors,
+                existingKeys:    existingKeys,
+                minOccurrences:  _options.AnchorPromotionMinOccurrences);
+
+            if (promoted.Count > 0)
+            {
+                var salience = Math.Clamp(_options.AnchorPromotionSalience, 0f, 1f);
+                var merged   = new List<ExtractedTopic>(extracted);
+                foreach (var p in promoted)
+                {
+                    merged.Add(new ExtractedTopic(p.Topic, salience, p.ExistingKeyMatch));
+                }
+                extracted = merged;
+                anchorCount = promoted.Count;
+                _log.LogInformation(
+                    "F4_ANCHOR_PROMOTION promoted={Count} windowSize={Window} minOccur={Min}",
+                    promoted.Count, recentAnchors.Count, _options.AnchorPromotionMinOccurrences);
+            }
+        }
+
         if (extracted.Count == 0)
         {
-            _log.LogDebug("F4_GROWTH_EDGE_UPDATE no topics extracted (empty or malformed JSON)");
+            _log.LogDebug(
+                "F4_GROWTH_EDGE_UPDATE no topics extracted (empty or malformed JSON; anchors promoted={Anchor})",
+                anchorCount);
             return GrowthEdgeUpdateResult.Empty;
         }
 
