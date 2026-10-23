@@ -106,4 +106,57 @@ public class PerceptionScoringTests
             .FuzzyTopicValenceLookup("Miami weather today", dict)
             .Should().Be(0.9f, "substring matching is intentional per the XML doc; may tighten in a later phase");
     }
+
+    // ── F-4 Phase 4a.1b composite ──────────────────────────────────────────
+
+    [Fact]
+    public void PerceptionEffectiveWeight_ProductOfThreeAxes()
+    {
+        var dict = new Dictionary<string, float> { ["Mia"] = 0.8f };
+        var w = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.9f, importance: 0.5f, content: "Mia came by", topicValence: dict);
+        // 0.9 × 0.5 × 0.8 = 0.36
+        w.Should().BeApproximately(0.36f, 0.001f);
+    }
+
+    [Fact]
+    public void PerceptionEffectiveWeight_HighSignificanceWinsOverHighInterestOnly()
+    {
+        // The Life Audit anchor: Peru recipe scored higher than Ukraine war
+        // under Mark-interest-only. Phase 4a.1b inverts the ordering by
+        // multiplying Significance into the composite.
+        var dict = new Dictionary<string, float>
+        {
+            ["recipe"] = 0.9f,       // Mark has engaged with cooking content
+            ["politics"] = 0.3f,     // Mark hasn't deeply engaged with politics
+        };
+
+        // Mark-interest-only would prefer Peru recipe (high keyword match).
+        var peruRecipe = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.1f, importance: 0.85f, content: "Peru recipe", topicValence: dict);
+        var ukraineWar = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.9f, importance: 0.4f, content: "Ukraine politics escalates", topicValence: dict);
+
+        ukraineWar.Should().BeGreaterThan(peruRecipe,
+            "Phase 4a.1b: Significance 0.9 overrides Mark-interest ordering");
+    }
+
+    [Fact]
+    public void PerceptionEffectiveWeight_ZeroSignificance_ZerosComposite()
+    {
+        var dict = new Dictionary<string, float> { ["x"] = 0.9f };
+        var w = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.0f, importance: 1.0f, content: "x", topicValence: dict);
+        w.Should().Be(0f);
+    }
+
+    [Fact]
+    public void PerceptionEffectiveWeight_NoTopicMatch_StillComposes()
+    {
+        var dict = new Dictionary<string, float> { ["Mia"] = 0.8f };
+        var w = PerceptionScoring.PerceptionEffectiveWeight(
+            significance: 0.6f, importance: 0.5f, content: "some unrelated content", topicValence: dict);
+        // 0.6 × 0.5 × 0.5 (default) = 0.15
+        w.Should().BeApproximately(0.15f, 0.001f);
+    }
 }

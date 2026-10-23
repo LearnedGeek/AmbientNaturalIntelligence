@@ -79,6 +79,27 @@ public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope, IAttrib
     /// </summary>
     public string?        Register { get; set; }
 
+    /// <summary>
+    /// F-4 Phase 4a.1b (2026-10-23) — objective-significance axis for
+    /// Perception records (axis 1 of the three-dimension importance model
+    /// significance × preference × fatigue). Set by
+    /// <see cref="Interfaces.ISignificanceClassifier"/> at RSS ingest time;
+    /// 0.5 default for non-Perception records and for Perception records
+    /// persisted before this field shipped. See issue #168 and
+    /// <c>ani-docs/research/ANI-Content-Coverage-Audit-2026-10-22.md</c>.
+    ///
+    /// <para>
+    /// Semantics: "how significant is this news item on an objective-
+    /// world-events axis, independent of any user's interests?" War /
+    /// mass violence / major political transition rank high; recipes /
+    /// celebrity gossip rank low. Decoupled from
+    /// <see cref="Importance"/> (which is a Mark-interest-match axis for
+    /// Perception). Consumed by <see cref="PerceptionScoring"/> in the
+    /// composite <c>Significance × Importance × TopicValenceLookup</c>.
+    /// </para>
+    /// </summary>
+    public float          Significance { get; set; } = 0.5f;
+
     // ── F-2 Phase 1 P2 (2026-08-21) — attribution fields ────────────────
     // Public read/write for producer wiring in P6. Interface members below
     // expose them via IAttributedContent<MemoryRecord> for consumer access.

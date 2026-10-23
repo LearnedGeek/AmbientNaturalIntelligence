@@ -420,6 +420,36 @@ public class AniDbContext : DbContext
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// F-4 Phase 4a.1b (2026-10-23) — idempotent additive ALTER TABLE for
+    /// the <c>significance</c> column on <c>memories</c>. Zero-risk shape
+    /// matching Issue #93 Phase 1 and F-2 Phase 1 P2: metadata-only
+    /// ALTER with a REAL DEFAULT 0.5 so existing rows get a neutral
+    /// score and new Perception records are classified at ingest. Called
+    /// at startup from Program.cs alongside the sibling schema methods.
+    /// </summary>
+    public async Task EnsureSignificanceSchemaAsync(CancellationToken ct = default)
+    {
+        var conn = Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        await using var check = conn.CreateCommand();
+        check.CommandText = "SELECT name FROM pragma_table_info('memories') WHERE name = 'significance'";
+        var hasSignificance = false;
+        await using (var reader = await check.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            if (await reader.ReadAsync(ct).ConfigureAwait(false)) hasSignificance = true;
+        }
+
+        if (!hasSignificance)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN significance REAL NOT NULL DEFAULT 0.5";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+    }
+
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)
     {
         await using var cmd = Database.GetDbConnection().CreateCommand();

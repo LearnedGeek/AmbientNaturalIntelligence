@@ -8,6 +8,15 @@ public class PerceptionEvent : IPerceptionEnvelope
     public PerceptionCategory Category      { get; set; }
     public string             Summary       { get; set; } = string.Empty;
     public float              ContactRelevance { get; set; }
+
+    /// <summary>
+    /// F-4 Phase 4a.1b (2026-10-23) — objective-significance axis
+    /// (independent of Mark-interest match). 0.5 default when
+    /// unclassified. Set by <see cref="Interfaces.ISignificanceClassifier"/>
+    /// at RSS ingest; flows through <c>PerceptionPhase.PersistNotableAsync</c>
+    /// to <see cref="MemoryRecord.Significance"/>. See issue #168.
+    /// </summary>
+    public float              Significance { get; set; } = 0.5f;
     public DateTimeOffset     OccurredAt    { get; set; } = DateTimeOffset.UtcNow;
     public Dictionary<string, object> Metadata { get; set; } = new();
 

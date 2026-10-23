@@ -454,6 +454,14 @@ try
             await ctx.EnsureAttributionSchemaAsync();
             sw.Stop();
             Log.Information("F-2 attribution schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
+
+            // F-4 Phase 4a.1b (2026-10-23) — significance column on memories.
+            // Same fast metadata-only ALTER pattern as #93 and F-2. REAL NOT
+            // NULL DEFAULT 0.5 so pre-existing records get a neutral score.
+            sw.Restart();
+            await ctx.EnsureSignificanceSchemaAsync();
+            sw.Stop();
+            Log.Information("F-4 significance schema ready ({Elapsed} ms)", sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
