@@ -184,24 +184,18 @@ public sealed class RssPerceptionSource : IPerceptionSource
             // keyword match) scores high. Phase 4a.1a's retrieval composite
             // multiplies this with Importance (Mark-interest) and
             // TopicValence (learned preference).
+            //
+            // ISignificanceClassifier contract is fail-open: implementations
+            // catch transport/parse/timeout internally and return the
+            // configured default on failure. No outer try/catch here — a
+            // broken-impl exception should surface via the feed-level catch
+            // (line ~77) so we can fix the implementation, not silently
+            // default on every item.
             var significance = Math.Clamp(_aniOptions.SignificanceDefault, 0f, 1f);
             if (_aniOptions.SignificanceClassifierEnabled && _significance is not null)
             {
-                try
-                {
-                    significance = await _significance
-                        .ClassifyAsync(summary, ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _log.LogDebug(ex,
-                        "RSS significance classify failed — defaulting to {Default:F2}",
-                        significance);
-                }
+                significance = await _significance
+                    .ClassifyAsync(summary, ct).ConfigureAwait(false);
             }
 
             var perception = new PerceptionEvent
