@@ -148,12 +148,18 @@ public sealed class EfMemorySearchService : IMemorySearch
         // Phase 4a.1c will fold in fatigue as a fourth multiplier.
         // See PerceptionScoring.FuzzyTopicValenceLookup for the lookup rule
         // (highest-weighted matching key, 0.5 default when no match).
+        // F-4 Phase 4a.1c (2026-10-23) — fatigue folded in as fourth axis.
+        // Composite is now Significance × Importance × TopicValence × FatigueDecay.
+        // ExposureCount + LastExposedAt feed FatigueDecay; "now" is the
+        // scoring moment so time-recovery is current.
+        var scoringNow = DateTimeOffset.UtcNow;
         var scored = records
             .Select(r => new
             {
                 Record = r,
                 Score  = PerceptionScoring.PerceptionEffectiveWeight(
-                    r.Significance, r.Importance, r.Content, topicValence),
+                    r.Significance, r.Importance, r.Content, topicValence,
+                    r.ExposureCount, r.LastExposedAt, scoringNow),
             })
             .OrderByDescending(x => x.Score)
             .Take(limit)

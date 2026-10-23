@@ -450,6 +450,41 @@ public class AniDbContext : DbContext
         }
     }
 
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — idempotent additive ALTER TABLE for
+    /// the fatigue columns (<c>exposure_count</c> + <c>last_exposed_at</c>)
+    /// on <c>memories</c>. Metadata-only, same shape as Issue #93 and
+    /// Phase 4a.1b. Called at startup from Program.cs alongside the sibling
+    /// schema methods.
+    /// </summary>
+    public async Task EnsureFatigueSchemaAsync(CancellationToken ct = default)
+    {
+        var conn = Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+        await using var check = conn.CreateCommand();
+        check.CommandText = "SELECT name FROM pragma_table_info('memories') WHERE name IN ('exposure_count','last_exposed_at')";
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var reader = await check.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                existing.Add(reader.GetString(0));
+        }
+
+        await using var cmd = conn.CreateCommand();
+        if (!existing.Contains("exposure_count"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN exposure_count INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        if (!existing.Contains("last_exposed_at"))
+        {
+            cmd.CommandText = "ALTER TABLE memories ADD COLUMN last_exposed_at TEXT NULL";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+    }
+
     public async Task EnsureFtsIndexAsync(CancellationToken ct = default)
     {
         await using var cmd = Database.GetDbConnection().CreateCommand();

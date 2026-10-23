@@ -100,6 +100,27 @@ public class MemoryRecord : IRetrievalEnvelope, IAnchoredMemoryEnvelope, IAttrib
     /// </summary>
     public float          Significance { get; set; } = 0.5f;
 
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — exposure counter for the fatigue
+    /// axis (axis 3 of the three-dimension importance model). Incremented
+    /// each time this record is surfaced to the inner-thought composer by
+    /// <c>ContextBuilder</c>'s world-events block. Consumed by
+    /// <see cref="PerceptionScoring.FatigueDecay"/> to decay effective
+    /// weight so Ani doesn't dwell on the same story day after day.
+    /// Default 0 — never-surfaced records get full weight.
+    /// </summary>
+    public int            ExposureCount { get; set; }
+
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — timestamp of the most recent
+    /// surface to the composer. Null = never surfaced (full weight).
+    /// Paired with <see cref="ExposureCount"/> in
+    /// <see cref="PerceptionScoring.FatigueDecay"/>: fatigue partially
+    /// recovers as hours since last exposure grow, so a story not
+    /// surfaced recently can resurface (news comes back).
+    /// </summary>
+    public DateTimeOffset? LastExposedAt { get; set; }
+
     // ── F-2 Phase 1 P2 (2026-08-21) — attribution fields ────────────────
     // Public read/write for producer wiring in P6. Interface members below
     // expose them via IAttributedContent<MemoryRecord> for consumer access.

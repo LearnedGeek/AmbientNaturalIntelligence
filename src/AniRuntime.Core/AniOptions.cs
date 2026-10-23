@@ -566,6 +566,14 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 4a.1c (2026-10-23) — fatigue axis of Perception composite.
+    // Each surface to the composer bumps ExposureCount and stamps
+    // LastExposedAt. Fatigue weight = exp(-ExposureCount × time_decay / HalfLife);
+    // time_decay = exp(-hoursSinceLast / RecoveryHours).
+    public bool  FatigueDecayEnabled      { get; set; } = true;
+    public float FatigueHalfLife          { get; set; } = 3f;    // 0.37× at this many exposures (fresh)
+    public float FatigueRecoveryHours     { get; set; } = 48f;   // exposure "wears off" over this many hours
+
     // F-4 Phase 4a.1b (2026-10-23) — objective-significance classifier for
     // Perception records. ISignificanceClassifier runs at RSS ingest; the
     // result lives on MemoryRecord.Significance and feeds the Perception

@@ -16,6 +16,18 @@ public interface IMemoryPersistence
     Task SaveEmotionalContributionAsync(EmotionalContribution contribution, CancellationToken ct = default);
     Task SaveRelationshipHealthAsync(RelationshipHealth health, CancellationToken ct = default);
     Task AdjustImportanceAsync(Guid id, float delta, CancellationToken ct = default);
+
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — batch exposure bump for fatigue
+    /// decay. For each id in <paramref name="recordIds"/>, increments
+    /// <c>exposure_count</c> by 1 and sets <c>last_exposed_at</c> to
+    /// <paramref name="exposedAt"/>. Called by <c>ContextBuilder</c>
+    /// after Perception records are surfaced to the inner-thought
+    /// composer. Batched (one UPDATE per cycle, not per record) to
+    /// contain write amplification.
+    /// </summary>
+    Task IncrementExposureAsync(
+        IReadOnlyList<Guid> recordIds, DateTimeOffset exposedAt, CancellationToken ct = default);
     Task AnchorMemoryAsync(Guid id, string reason, CancellationToken ct = default);
 
     /// <summary>

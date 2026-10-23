@@ -50,24 +50,70 @@ public static class PerceptionScoring
     /// </summary>
     /// <summary>
     /// F-4 Phase 4a.1b (2026-10-23) — Perception retrieval composite:
-    /// <c>significance × importance × topic_valence_lookup</c>. Pure function
-    /// so the formula is pinnable by unit tests; EF service calls this
-    /// instead of inlining the LINQ projection, so a future axis addition
-    /// (fatigue, Phase 4a.1c) edits one place.
+    /// <c>significance × importance × topic_valence_lookup × fatigue_decay</c>.
+    /// Pure function so the formula is pinnable by unit tests; EF service
+    /// calls this instead of inlining the LINQ projection.
     ///
     /// <para>
-    /// Each factor is independently clamped at the field level
-    /// (<c>Significance</c> clamp at ingest, <c>Importance</c> clamp at
-    /// recognizer, <see cref="FuzzyTopicValenceLookup"/> defaults). The
+    /// Each factor is independently clamped at the field level and the
     /// product is in [0, 1] by construction when inputs are well-behaved.
+    /// Phase 4a.1c added fatigue as the fourth multiplicative factor.
     /// </para>
     /// </summary>
     public static float PerceptionEffectiveWeight(
         float significance,
         float importance,
         string? content,
-        IReadOnlyDictionary<string, float> topicValence)
-        => significance * importance * FuzzyTopicValenceLookup(content, topicValence);
+        IReadOnlyDictionary<string, float> topicValence,
+        int exposureCount = 0,
+        DateTimeOffset? lastExposedAt = null,
+        DateTimeOffset? now = null)
+        => significance
+         * importance
+         * FuzzyTopicValenceLookup(content, topicValence)
+         * FatigueDecay(exposureCount, lastExposedAt, now ?? DateTimeOffset.UtcNow);
+
+    /// <summary>Default exposure-count half-life — ~0.37× weight at this many surfaces.</summary>
+    public const float DefaultFatigueHalfLife = 3f;
+
+    /// <summary>Default time-scale over which exposure "wears off."</summary>
+    public const float DefaultFatigueRecoveryHours = 48f;
+
+    /// <summary>
+    /// F-4 Phase 4a.1c (2026-10-23) — fatigue axis of the Perception
+    /// composite. Returns a weight in (0, 1] that decays with exposure
+    /// count and recovers with time since last exposure.
+    ///
+    /// <para>
+    /// Formula: let <c>effective_exposure = exposureCount × exp(-hoursSinceLast / recoveryHours)</c>,
+    /// then <c>fatigue = exp(-effective_exposure / halfLife)</c>. At
+    /// zero exposure → 1.0 (no fatigue). After N exposures right away →
+    /// <c>exp(-N / halfLife)</c>. After N exposures with time passed →
+    /// partial recovery (effective_exposure shrinks exponentially with time).
+    /// </para>
+    ///
+    /// <para>
+    /// Null <paramref name="lastExposedAt"/> or zero
+    /// <paramref name="exposureCount"/> → returns 1.0 (fresh record).
+    /// Negative values on either input clamp to zero.
+    /// </para>
+    /// </summary>
+    public static float FatigueDecay(
+        int exposureCount,
+        DateTimeOffset? lastExposedAt,
+        DateTimeOffset now,
+        float halfLife = DefaultFatigueHalfLife,
+        float recoveryHours = DefaultFatigueRecoveryHours)
+    {
+        if (exposureCount <= 0 || lastExposedAt is null) return 1f;
+        if (halfLife <= 0f) return 1f;
+
+        var recoveryScale = recoveryHours > 0f ? recoveryHours : DefaultFatigueRecoveryHours;
+        var hoursSince = (float)Math.Max(0, (now - lastExposedAt.Value).TotalHours);
+        var timeDecay  = (float)Math.Exp(-hoursSince / recoveryScale);
+        var effective  = exposureCount * timeDecay;
+        return (float)Math.Exp(-effective / halfLife);
+    }
 
     public static float FuzzyTopicValenceLookup(
         string? content,

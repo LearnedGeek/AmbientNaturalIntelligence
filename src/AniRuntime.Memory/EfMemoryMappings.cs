@@ -39,6 +39,8 @@ internal static class EfMemoryMappings
         ConfirmedBy       = e.ConfirmedBy,
         Register          = e.Register,
         Significance      = e.Significance,
+        ExposureCount     = e.ExposureCount,
+        LastExposedAt     = e.LastExposedAt,
         // F-2 Phase 1 P2 (2026-08-21) — attribution fields
         AttributedTo               = e.AttributedTo,
         AttributedAt               = e.AttributedAt,
