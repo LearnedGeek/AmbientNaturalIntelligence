@@ -54,11 +54,12 @@ public static class AnchorPromotionScoring
         // so we emit a stable topic name (not everything lower-cased).
         var counts   = new Dictionary<string, int>(StringComparer.Ordinal);
         var originals = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var raw in recentAnchors)
+        var trimmedAnchors = recentAnchors
+            .Where(raw => !string.IsNullOrWhiteSpace(raw))
+            .Select(raw => raw.Trim());
+        foreach (var trimmed in trimmedAnchors)
         {
-            if (string.IsNullOrWhiteSpace(raw)) continue;
-            var trimmed = raw.Trim();
-            var lower   = trimmed.ToLowerInvariant();
+            var lower = trimmed.ToLowerInvariant();
             counts[lower] = counts.TryGetValue(lower, out var n) ? n + 1 : 1;
             if (!originals.ContainsKey(lower)) originals[lower] = trimmed;
         }
@@ -68,9 +69,8 @@ public static class AnchorPromotionScoring
         var existingByLower = new Dictionary<string, string>(StringComparer.Ordinal);
         if (existingKeys is not null)
         {
-            foreach (var k in existingKeys)
+            foreach (var k in existingKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
             {
-                if (string.IsNullOrWhiteSpace(k)) continue;
                 var lower = k.Trim().ToLowerInvariant();
                 if (!existingByLower.ContainsKey(lower))
                     existingByLower[lower] = k;
