@@ -78,9 +78,8 @@ public static class AnchorPromotionScoring
         }
 
         var result = new List<AnchorCandidate>();
-        foreach (var (lower, count) in counts)
+        foreach (var (lower, count) in counts.Where(kv => kv.Value >= threshold))
         {
-            if (count < threshold) continue;
             var topic = originals[lower];
             var match = existingByLower.TryGetValue(lower, out var canonical)
                 ? canonical
