@@ -11,9 +11,11 @@ namespace AniRuntime.Core.Interfaces;
 /// for an evolving life assumes they do.
 ///
 /// <para>
-/// Phase 1.0 scope: TopicValence only. ToneValence mutation deferred to
-/// Phase 1.1 (requires mapping Mark-reply register-classifier output to
-/// tone descriptors; non-trivial seam).
+/// Phase 1.1 (2026-10-23) added <see cref="UpdateToneValenceAsync"/> as
+/// the ToneValence sibling of <see cref="UpdateTopicValenceAsync"/>.
+/// Driven by Mark-reply register (via <see cref="IRegisterClassifier"/>)
+/// rather than inner-thought topic-salience; same bounded-delta discipline
+/// + fail-open contract.
 /// </para>
 ///
 /// <para>
@@ -87,6 +89,28 @@ public interface IGrowthEdgeMutator
         IReadOnlyList<MemoryRecord> recentThoughts,
         CancellationToken ct,
         IReadOnlyList<string>? recentAnchors = null);
+
+    /// <summary>
+    /// F-4 Phase 1.1 (2026-10-23) — ToneValence sibling of
+    /// <see cref="UpdateTopicValenceAsync"/>. Classifies each record in
+    /// <paramref name="recentMarkReplies"/> via
+    /// <see cref="IRegisterClassifier"/>, maps the resulting register
+    /// strings to tone descriptors, and applies bounded deltas to
+    /// <paramref name="characterState"/>'s
+    /// <see cref="CharacterStateDoc.ToneValence"/> dictionary in-place.
+    ///
+    /// <para>
+    /// Caller supplies the Mark-reply window (<c>ReflectionPhase</c>
+    /// pulls Episodic records filtered by <c>AttributedTo==Mark</c>). An
+    /// empty list is a no-op returning <see cref="GrowthEdgeUpdateResult.Empty"/>.
+    /// Classifier failures per-record are fail-open: that record is
+    /// skipped, the batch continues.
+    /// </para>
+    /// </summary>
+    Task<GrowthEdgeUpdateResult> UpdateToneValenceAsync(
+        CharacterStateDoc characterState,
+        IReadOnlyList<MemoryRecord> recentMarkReplies,
+        CancellationToken ct);
 }
 
 /// <summary>

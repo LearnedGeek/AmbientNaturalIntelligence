@@ -28,16 +28,19 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
 {
     private readonly IOllamaClient                      _ollama;
     private readonly AniOptions                         _options;
+    private readonly IRegisterClassifier?               _registerClassifier;
     private readonly ILogger<OllamaGrowthEdgeMutator>   _log;
 
     public OllamaGrowthEdgeMutator(
         IOllamaClient                       ollama,
         IOptions<AniOptions>                options,
-        ILogger<OllamaGrowthEdgeMutator>    log)
+        ILogger<OllamaGrowthEdgeMutator>    log,
+        IRegisterClassifier?                registerClassifier = null)
     {
-        _ollama  = ollama  ?? throw new ArgumentNullException(nameof(ollama));
-        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-        _log     = log     ?? throw new ArgumentNullException(nameof(log));
+        _ollama             = ollama  ?? throw new ArgumentNullException(nameof(ollama));
+        _options            = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _registerClassifier = registerClassifier;
+        _log                = log     ?? throw new ArgumentNullException(nameof(log));
     }
 
     public async Task<GrowthEdgeUpdateResult> UpdateTopicValenceAsync(
@@ -123,6 +126,77 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
         return ApplyUpdates(characterState, extracted);
     }
 
+    public async Task<GrowthEdgeUpdateResult> UpdateToneValenceAsync(
+        CharacterStateDoc characterState,
+        IReadOnlyList<MemoryRecord> recentMarkReplies,
+        CancellationToken ct)
+    {
+        if (characterState is null) throw new ArgumentNullException(nameof(characterState));
+        if (recentMarkReplies is null || recentMarkReplies.Count == 0)
+            return GrowthEdgeUpdateResult.Empty;
+        if (_registerClassifier is null)
+        {
+            _log.LogDebug(
+                "F4_TONE_UPDATE skipped — no IRegisterClassifier wired");
+            return GrowthEdgeUpdateResult.Empty;
+        }
+
+        // Classify each Mark reply via the already-live register classifier,
+        // then group by canonical register-family. Each tone descriptor's
+        // salience is its share of the recent window (frequency as proxy
+        // for Mark's current register preference).
+        var registerCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var classified = 0;
+        var scoreable = recentMarkReplies
+            .Where(r => !string.IsNullOrWhiteSpace(r.Content));
+        foreach (var reply in scoreable)
+        {
+            string register;
+            try
+            {
+                register = await _registerClassifier.ClassifyAsync(reply.Content, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            if (string.IsNullOrWhiteSpace(register) ||
+                string.Equals(register, "Unclassified", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var toneKey = ImpactCategoryDefaults.ToRegisterFamily(register)
+                .ToString().ToLowerInvariant();
+            registerCounts[toneKey] = registerCounts.TryGetValue(toneKey, out var n) ? n + 1 : 1;
+            classified++;
+        }
+
+        if (classified == 0)
+        {
+            _log.LogDebug("F4_TONE_UPDATE no classifiable Mark replies in window");
+            return GrowthEdgeUpdateResult.Empty;
+        }
+
+        // Convert counts to extracted-topic shape so ApplyUpdates discipline
+        // (bounded delta, new-key threshold, prune, soft cap) applies
+        // identically to ToneValence. Salience = count / classified so a
+        // register that dominates the window carries higher weight.
+        var existingKeys = new HashSet<string>(characterState.ToneValence.Keys,
+            StringComparer.OrdinalIgnoreCase);
+        var topics = registerCounts
+            .Select(kv =>
+            {
+                var salience = (float)kv.Value / classified;
+                var match = existingKeys.FirstOrDefault(k =>
+                    string.Equals(k, kv.Key, StringComparison.OrdinalIgnoreCase));
+                return new ExtractedTopic(kv.Key, salience, match);
+            })
+            .ToList();
+
+        return ApplyUpdatesToDictionary(characterState.ToneValence, topics, "ToneValence");
+    }
+
     /// <summary>
     /// Pure function: given a parsed list of extracted topics, mutates
     /// <paramref name="characterState"/>'s TopicValence dictionary in-place
@@ -132,6 +206,19 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
     internal GrowthEdgeUpdateResult ApplyUpdates(
         CharacterStateDoc characterState,
         IReadOnlyList<ExtractedTopic> extracted)
+        => ApplyUpdatesToDictionary(characterState.TopicValence, extracted, "TopicValence");
+
+    /// <summary>
+    /// Shared bounded-delta mutation applied to any growth-edge dictionary.
+    /// Phase 1.1 (2026-10-23): extracted from the TopicValence-specific body
+    /// so ToneValence can reuse the discipline. Caller supplies the dict
+    /// (<c>TopicValence</c> or <c>ToneValence</c>) and a <paramref name="logTag"/>
+    /// used in telemetry so journal lines distinguish which growth edge moved.
+    /// </summary>
+    internal GrowthEdgeUpdateResult ApplyUpdatesToDictionary(
+        Dictionary<string, float> dict,
+        IReadOnlyList<ExtractedTopic> extracted,
+        string logTag)
     {
         var maxDelta = _options.GrowthEdgeMaxDeltaPerCycle;
         var newKeyThreshold = _options.GrowthEdgeNewKeyThreshold;
@@ -149,7 +236,7 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
             var hasMatchClaim = !string.IsNullOrWhiteSpace(topic.ExistingKeyMatch);
 
             if (hasMatchClaim
-                && characterState.TopicValence.TryGetValue(topic.ExistingKeyMatch!, out var current))
+                && dict.TryGetValue(topic.ExistingKeyMatch!, out var current))
             {
                 // Bounded delta toward (not past) 1.0, scaled by salience
                 var delta = salience * maxDelta;
@@ -157,7 +244,7 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
                 var actualDelta = updated - current;
                 if (Math.Abs(actualDelta) > 1e-6f)
                 {
-                    characterState.TopicValence[topic.ExistingKeyMatch!] = updated;
+                    dict[topic.ExistingKeyMatch!] = updated;
                     changes.Add((topic.ExistingKeyMatch!, actualDelta));
                     keysUpdated++;
                 }
@@ -165,7 +252,7 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
             else if (!hasMatchClaim
                      && salience >= newKeyThreshold
                      && !string.IsNullOrWhiteSpace(topic.Topic)
-                     && !characterState.TopicValence.ContainsKey(topic.Topic))
+                     && !dict.ContainsKey(topic.Topic))
             {
                 // Strict discipline: a non-null-but-invalid existing_key_match
                 // is treated as model hallucination and the whole signal is
@@ -173,7 +260,7 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
                 // the match claim was already wrong). Only emit a new key
                 // when the model explicitly declined to match (null match).
                 var initial = Math.Clamp(salience * newKeyBase, 0f, 1f);
-                characterState.TopicValence[topic.Topic] = initial;
+                dict[topic.Topic] = initial;
                 changes.Add((topic.Topic, initial));
                 newKeysAdded++;
             }
@@ -184,12 +271,12 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
         // so prune mostly serves future expansion when decay is added, plus
         // tidying any key that was seeded very low.
         var pruned = new List<string>();
-        var toPrune = characterState.TopicValence
+        var toPrune = dict
             .Where(kv => kv.Value < pruneThreshold)
             .ToList();
         foreach (var kv in toPrune)
         {
-            characterState.TopicValence.Remove(kv.Key);
+            dict.Remove(kv.Key);
             pruned.Add(kv.Key);
         }
 
@@ -197,24 +284,24 @@ public sealed class OllamaGrowthEdgeMutator : IGrowthEdgeMutator
         // trim the lowest-weighted entries so the dictionary doesn't grow
         // unbounded. Seeded keys with high weight are protected by weight;
         // noise keys that got added once and never reinforced trim first.
-        if (characterState.TopicValence.Count > maxKeys)
+        if (dict.Count > maxKeys)
         {
-            var trim = characterState.TopicValence.Count - maxKeys;
-            var toTrim = characterState.TopicValence
+            var trim = dict.Count - maxKeys;
+            var toTrim = dict
                 .OrderBy(kv => kv.Value)
                 .Take(trim)
                 .Select(kv => kv.Key)
                 .ToList();
             foreach (var k in toTrim)
             {
-                characterState.TopicValence.Remove(k);
+                dict.Remove(k);
                 pruned.Add(k);
             }
         }
 
         _log.LogInformation(
-            "F4_GROWTH_EDGE_UPDATE updated={Updated} added={Added} pruned={Pruned} dictSize={Size}",
-            keysUpdated, newKeysAdded, pruned.Count, characterState.TopicValence.Count);
+            "F4_GROWTH_EDGE_UPDATE edge={Edge} updated={Updated} added={Added} pruned={Pruned} dictSize={Size}",
+            logTag, keysUpdated, newKeysAdded, pruned.Count, dict.Count);
 
         return new GrowthEdgeUpdateResult(
             KeysUpdated: keysUpdated,

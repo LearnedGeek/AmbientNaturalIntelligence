@@ -431,13 +431,51 @@ public class ReflectionPhase
                     .UpdateTopicValenceAsync(characterState, recentMemories, ct, recentAnchors)
                     .ConfigureAwait(false);
 
-                if (result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0)
+                // F-4 Phase 1.1 (2026-10-23) — ToneValence sibling. Pulls a
+                // small window of recent Episodic records attributed to Mark,
+                // classifies each via IRegisterClassifier, and mutates
+                // ToneValence under the same bounded-delta discipline.
+                // Gated on ToneGrowthEdgesEnabled; empty-pool / unavailable
+                // paths are no-ops.
+                var toneResult = GrowthEdgeUpdateResult.Empty;
+                if (_options.ToneGrowthEdgesEnabled)
+                {
+                    IReadOnlyList<MemoryRecord> markReplies = Array.Empty<MemoryRecord>();
+                    try
+                    {
+                        var window = Math.Max(1, _options.ToneGrowthEdgeMarkReplyWindow);
+                        var recent = await _search.GetByTypeAsync(
+                            MemoryType.Episodic, window, ct).ConfigureAwait(false);
+                        markReplies = recent
+                            .Where(r => r.AttributedTo == AttributedTo.Mark)
+                            .ToList();
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _log.LogWarning(ex,
+                            "F4_TONE_UPDATE Mark-reply retrieval failed — skipping ToneValence this cycle");
+                    }
+
+                    if (markReplies.Count > 0)
+                    {
+                        toneResult = await _growthEdges
+                            .UpdateToneValenceAsync(characterState, markReplies, ct)
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                var anyChanged =
+                    result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0 ||
+                    toneResult.KeysUpdated > 0 || toneResult.NewKeysAdded > 0 || toneResult.KeysPruned > 0;
+
+                if (anyChanged)
                 {
                     await _persist.SaveCharacterStateAsync(characterState, ct).ConfigureAwait(false);
                     _log.LogInformation(
-                        "F4_GROWTH_EDGE_PERSISTED keysUpdated={Updated} newKeys={Added} pruned={Pruned} totalKeys={Total}",
+                        "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) totals(topic={TC} tone={OC})",
                         result.KeysUpdated, result.NewKeysAdded, result.KeysPruned,
-                        characterState.TopicValence.Count);
+                        toneResult.KeysUpdated, toneResult.NewKeysAdded, toneResult.KeysPruned,
+                        characterState.TopicValence.Count, characterState.ToneValence.Count);
                 }
             }
             catch (OperationCanceledException)

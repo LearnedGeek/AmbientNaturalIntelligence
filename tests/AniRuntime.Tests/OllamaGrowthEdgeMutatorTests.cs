@@ -19,7 +19,8 @@ public class OllamaGrowthEdgeMutatorTests
 {
     private static OllamaGrowthEdgeMutator BuildMutator(
         string ollamaJsonResponse,
-        AniOptions? options = null)
+        AniOptions? options = null,
+        IRegisterClassifier? registerClassifier = null)
     {
         var mock = new Mock<IOllamaClient>();
         mock.Setup(o => o.ChatJsonWithModelAsync(
@@ -42,7 +43,8 @@ public class OllamaGrowthEdgeMutatorTests
             GrowthEdgeMutatorModel = "qwen3:14b",
         });
 
-        return new OllamaGrowthEdgeMutator(mock.Object, opts, NullLogger<OllamaGrowthEdgeMutator>.Instance);
+        return new OllamaGrowthEdgeMutator(
+            mock.Object, opts, NullLogger<OllamaGrowthEdgeMutator>.Instance, registerClassifier);
     }
 
     private static CharacterStateDoc StateWith(params (string Key, float Weight)[] entries)
@@ -402,5 +404,129 @@ public class OllamaGrowthEdgeMutatorTests
         // Fourth entry: empty topic and no match → drops
         topics.Should().HaveCount(1);
         topics[0].Topic.Should().Be("lila");
+    }
+
+    // ── Phase 1.1 ToneValence ──────────────────────────────────────────────
+
+    private static IRegisterClassifier FixedRegisterClassifier(
+        Func<string, string> classifier)
+    {
+        var mock = new Mock<IRegisterClassifier>();
+        mock.Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string content, CancellationToken _) => classifier(content));
+        return mock.Object;
+    }
+
+    private static IReadOnlyList<MemoryRecord> MarkReplies(params string[] contents)
+        => contents.Select(c => new MemoryRecord
+        {
+            Content = c,
+            Type = MemoryType.Episodic,
+            AttributedTo = AttributedTo.Mark,
+        }).ToList();
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_EmptyReplies_ReturnsEmpty()
+    {
+        var mutator = BuildMutator("{}", registerClassifier: FixedRegisterClassifier(_ => "Warmth"));
+        var result = await mutator.UpdateToneValenceAsync(
+            new CharacterStateDoc(), Array.Empty<MemoryRecord>(), CancellationToken.None);
+        result.Should().Be(GrowthEdgeUpdateResult.Empty);
+    }
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_NoClassifierWired_ReturnsEmpty()
+    {
+        var mutator = BuildMutator("{}", registerClassifier: null);
+        var result = await mutator.UpdateToneValenceAsync(
+            new CharacterStateDoc(), MarkReplies("hi", "ok"), CancellationToken.None);
+        result.Should().Be(GrowthEdgeUpdateResult.Empty);
+    }
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_UniformRegister_PromotesNewToneKey()
+    {
+        // All 4 Mark replies classify as Warmth → 100% salience → new key added
+        // at base × salience = 0.3 × 1.0 = 0.3.
+        var cs = new CharacterStateDoc();
+        var mutator = BuildMutator("{}",
+            registerClassifier: FixedRegisterClassifier(_ => "Warmth"));
+
+        var result = await mutator.UpdateToneValenceAsync(
+            cs, MarkReplies("hey babe", "miss you", "love you", "yeah"), CancellationToken.None);
+
+        cs.ToneValence.Should().ContainKey("warmth");
+        cs.ToneValence["warmth"].Should().BeApproximately(0.3f, 0.001f);
+        result.NewKeysAdded.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_ExistingKey_BoundedDeltaApplied()
+    {
+        var cs = new CharacterStateDoc();
+        cs.ToneValence["warmth"] = 0.5f;
+        var mutator = BuildMutator("{}",
+            registerClassifier: FixedRegisterClassifier(_ => "Warmth"));
+
+        var result = await mutator.UpdateToneValenceAsync(
+            cs, MarkReplies("a", "b"), CancellationToken.None);
+
+        // 100% salience × 0.05 max delta = +0.05
+        cs.ToneValence["warmth"].Should().BeApproximately(0.55f, 0.001f);
+        result.KeysUpdated.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_UnclassifiedResponsesSkipped()
+    {
+        var cs = new CharacterStateDoc();
+        var mutator = BuildMutator("{}",
+            registerClassifier: FixedRegisterClassifier(_ => "Unclassified"));
+
+        var result = await mutator.UpdateToneValenceAsync(
+            cs, MarkReplies("a", "b", "c"), CancellationToken.None);
+
+        cs.ToneValence.Should().BeEmpty();
+        result.Should().Be(GrowthEdgeUpdateResult.Empty);
+    }
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_MixedRegisters_SharesAcrossKeysBelowThreshold()
+    {
+        // 1 Warmth + 1 Hurt out of 2 → each at 0.5 salience, below default
+        // NewKeyThreshold 0.4? No — 0.5 is above 0.4, so each adds at
+        // 0.5 × 0.3 = 0.15.
+        var cs = new CharacterStateDoc();
+        var i = 0;
+        var mutator = BuildMutator("{}",
+            registerClassifier: FixedRegisterClassifier(_ =>
+                (i++ % 2 == 0) ? "Warmth" : "Hurt"));
+
+        await mutator.UpdateToneValenceAsync(
+            cs, MarkReplies("a", "b"), CancellationToken.None);
+
+        cs.ToneValence.Should().ContainKey("warmth");
+        cs.ToneValence.Should().ContainKey("hurt");
+        cs.ToneValence["warmth"].Should().BeApproximately(0.15f, 0.001f);
+        cs.ToneValence["hurt"].Should().BeApproximately(0.15f, 0.001f);
+    }
+
+    [Fact]
+    public async Task UpdateToneValenceAsync_BelowNewKeyThreshold_NotAdded()
+    {
+        // 1 Warmth out of 5 → 0.2 salience, below default NewKeyThreshold 0.4
+        var cs = new CharacterStateDoc();
+        var i = 0;
+        var mutator = BuildMutator("{}",
+            registerClassifier: FixedRegisterClassifier(_ =>
+                (i++ == 0) ? "Warmth" : "Hurt"));
+
+        await mutator.UpdateToneValenceAsync(
+            cs, MarkReplies("a", "b", "c", "d", "e"), CancellationToken.None);
+
+        cs.ToneValence.Should().NotContainKey("warmth",
+            "salience 0.2 is below NewKeyThreshold 0.4");
+        cs.ToneValence.Should().ContainKey("hurt",
+            "salience 0.8 crosses the threshold");
     }
 }
