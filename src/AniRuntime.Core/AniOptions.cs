@@ -566,6 +566,15 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 5a (2026-10-24) — temporal context for inner-thought composer.
+    // Writer (TemporalContextProvider) queries recent InnerThought records;
+    // reader renders their timestamps with explicit "prior cycles, not now"
+    // framing so the chat-tuned base distinguishes recalled prior reflections
+    // from current scene. Closes issue #184. Architectural precedent:
+    // Park et al 2023 Generative Agents §4.1 (memory-stream timestamps).
+    public bool  TemporalContextEnabled        { get; set; } = true;
+    public int   TemporalContextRecentK        { get; set; } = 3;    // recent inner thoughts to render with timestamps
+
     // F-4 Phase 7 (2026-10-23) — ongoing arcs / projects state.
     // Extractor runs at reflection time over recent inner thoughts;
     // mentions update or create entries in CharacterStateDoc.OngoingArcs;

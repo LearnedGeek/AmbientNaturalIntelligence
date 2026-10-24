@@ -203,6 +203,14 @@ public static class AniRuntimeServiceContainer
         // doc + issue #186.
         services.AddSingleton<IArcExtractor, QwenArcExtractor>();
 
+        // 2026-10-24 — F-4 Phase 5a temporal context provider.
+        // Reads recent InnerThought records at cycle time; InnerThoughtPhase
+        // passes the resulting TemporalContext through to the composer so
+        // "yesterday I was spinning Fleetwood Mac" lands as prior cycle,
+        // not current scene. Architectural precedent: Park et al 2023 §4.1.
+        // See ITemporalContextProvider XML doc + issue #184.
+        services.AddSingleton<ITemporalContextProvider, TemporalContextProvider>();
+
         // F-3 U4 (2026-08-24) — Qwen-sidecar per-quote attribution
         // extractor. Runs post-composition on the inner-thought composer
         // output to identify embedded attribution claims ("you said X",

@@ -54,6 +54,9 @@ public class InnerThoughtPhase
     private readonly int? _toneValenceTopK;   // F-4 Phase 1.1: null disables injection
     private readonly int? _ongoingArcsTopK;   // F-4 Phase 7:   null disables injection
     private readonly bool _namedSubstrateAnchorEnabled;  // F-4 Phase 2
+    private readonly ITemporalContextProvider? _temporalContextProvider;  // F-4 Phase 5a
+    private readonly int _temporalContextRecentK;                         // F-4 Phase 5a
+    private readonly bool _temporalContextEnabled;                        // F-4 Phase 5a
     private readonly string _hybridMetadataModel;
     private readonly bool _thoughtShapeClassificationEnabled;
     private readonly bool _claimExtractionEnabled;
@@ -85,7 +88,8 @@ public class InnerThoughtPhase
         Microsoft.Extensions.Options.IOptions<AniOptions>? aniOptions = null,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
         IThoughtShapeClassifier? shapeClassifier = null,
-        IInnerThoughtClaimExtractor? claimExtractor = null)
+        IInnerThoughtClaimExtractor? claimExtractor = null,
+        ITemporalContextProvider? temporalContextProvider = null)
     {
         _ollama = ollama;
         _registerClassifier = registerClassifier;
@@ -94,21 +98,24 @@ public class InnerThoughtPhase
         _epistemicRenderer = epistemicRenderer;
         _shapeClassifier = shapeClassifier;
         _claimExtractor = claimExtractor;
+        _temporalContextProvider = temporalContextProvider;
         _epistemicFramingEnabled = aniOptions?.Value.EpistemicFramingEnabled ?? false;
         _hybridCycleEnabled = aniOptions?.Value.UseHybridInnerThoughtCycle ?? false;
         _hybridMetadataModel = aniOptions?.Value.HybridInnerThoughtMetadataModel ?? "qwen3:14b";
         _thoughtShapeClassificationEnabled = aniOptions?.Value.ThoughtShapeClassificationEnabled ?? true;
         _claimExtractionEnabled = aniOptions?.Value.InnerThoughtClaimExtractionEnabled ?? true;
         _topicValenceTopK = (aniOptions?.Value.GrowthEdgesEnabled ?? false)
-            ? aniOptions!.Value.GrowthEdgeTopKInjected
+            ? aniOptions.Value.GrowthEdgeTopKInjected
             : (int?)null;
         _toneValenceTopK = (aniOptions?.Value.ToneGrowthEdgesEnabled ?? false)
-            ? aniOptions!.Value.ToneValenceTopKInjected
+            ? aniOptions.Value.ToneValenceTopKInjected
             : (int?)null;
         _ongoingArcsTopK = (aniOptions?.Value.OngoingArcsEnabled ?? false)
-            ? aniOptions!.Value.OngoingArcsTopKInjected
+            ? aniOptions.Value.OngoingArcsTopKInjected
             : (int?)null;
         _namedSubstrateAnchorEnabled = aniOptions?.Value.NamedSubstrateAnchorEnabled ?? false;
+        _temporalContextEnabled = aniOptions?.Value.TemporalContextEnabled ?? false;
+        _temporalContextRecentK = aniOptions?.Value.TemporalContextRecentK ?? 3;
     }
 
     /// <summary>
@@ -132,9 +139,22 @@ public class InnerThoughtPhase
             new Dictionary<string, object> { ["CyclePhase"] = "InnerThought" });
 
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
+
+        // F-4 Phase 5a (2026-10-24) — temporal context writer. See #184.
+        // Fail-open: provider itself swallows DB errors and returns a
+        // null/empty TemporalContext; the composer then skips the block.
+        // When flag is off OR provider wasn't registered, we pass null.
+        TemporalContext? temporal = null;
+        if (_temporalContextEnabled && _temporalContextProvider is not null)
+        {
+            temporal = await _temporalContextProvider.BuildAsync(
+                snapshot.BuiltAt, _temporalContextRecentK, ct).ConfigureAwait(false);
+        }
+
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(
             snapshot, rendererForPrompt,
-            _topicValenceTopK, _namedSubstrateAnchorEnabled, _toneValenceTopK, _ongoingArcsTopK);
+            _topicValenceTopK, _namedSubstrateAnchorEnabled, _toneValenceTopK, _ongoingArcsTopK,
+            temporal);
         // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
         // is safe: preserves empty base system (Modelfile SYSTEM fallback),
         // returns unchanged when history is unattributed, otherwise prepends
