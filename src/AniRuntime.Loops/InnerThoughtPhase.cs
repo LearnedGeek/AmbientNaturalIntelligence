@@ -52,6 +52,7 @@ public class InnerThoughtPhase
     private readonly bool _hybridCycleEnabled;
     private readonly int? _topicValenceTopK;  // F-4 Phase 1: null disables injection
     private readonly int? _toneValenceTopK;   // F-4 Phase 1.1: null disables injection
+    private readonly int? _ongoingArcsTopK;   // F-4 Phase 7:   null disables injection
     private readonly bool _namedSubstrateAnchorEnabled;  // F-4 Phase 2
     private readonly string _hybridMetadataModel;
     private readonly bool _thoughtShapeClassificationEnabled;
@@ -104,6 +105,9 @@ public class InnerThoughtPhase
         _toneValenceTopK = (aniOptions?.Value.ToneGrowthEdgesEnabled ?? false)
             ? aniOptions!.Value.ToneValenceTopKInjected
             : (int?)null;
+        _ongoingArcsTopK = (aniOptions?.Value.OngoingArcsEnabled ?? false)
+            ? aniOptions!.Value.OngoingArcsTopKInjected
+            : (int?)null;
         _namedSubstrateAnchorEnabled = aniOptions?.Value.NamedSubstrateAnchorEnabled ?? false;
     }
 
@@ -129,7 +133,8 @@ public class InnerThoughtPhase
 
         var rendererForPrompt = _epistemicFramingEnabled ? _epistemicRenderer : null;
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(
-            snapshot, rendererForPrompt, _topicValenceTopK, _namedSubstrateAnchorEnabled, _toneValenceTopK);
+            snapshot, rendererForPrompt,
+            _topicValenceTopK, _namedSubstrateAnchorEnabled, _toneValenceTopK, _ongoingArcsTopK);
         // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
         // is safe: preserves empty base system (Modelfile SYSTEM fallback),
         // returns unchanged when history is unattributed, otherwise prepends

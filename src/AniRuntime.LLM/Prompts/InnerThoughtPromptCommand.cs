@@ -10,7 +10,8 @@ public sealed record InnerThoughtPromptInput(
     IEpistemicSubstrateRenderer? EpistemicRenderer = null,
     int? TopicValenceTopK = null,
     bool NamedSubstrateAnchorEnabled = false,
-    int? ToneValenceTopK = null);
+    int? ToneValenceTopK = null,
+    int? OngoingArcsTopK = null);
 
 /// <summary>
 /// Inner-thought / world-experience prompt for the ambient cognitive cycle.
@@ -313,6 +314,33 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
                 sections.Add(
                     "Tones you've been meeting lately (feel free to lean into or away from any of these): "
                     + string.Join("; ", toneAnchors));
+            }
+        }
+
+        // F-4 Phase 7 (2026-10-23) — Ongoing-arcs top-K.
+        // Sibling of the TopicValence + ToneValence top-K blocks above,
+        // but for multi-week narrative threads: "the shelf you're building,"
+        // "the Peru cookbook," "the conversation with Lila." Renders only
+        // Active arcs (not Stalled or Completed). Each entry carries the
+        // arc's name + its one-sentence summary so the composer sees state,
+        // not just title. Same soft framing as its siblings.
+        var arcsTopK = input.OngoingArcsTopK ?? 0;
+        if (arcsTopK > 0 && cs.OngoingArcs.Count > 0)
+        {
+            var activeArcs = cs.OngoingArcs
+                .Where(a => a.Status == ArcStatus.Active)
+                .OrderByDescending(a => a.LastTouchedAt)
+                .Take(arcsTopK)
+                .Select(a => string.IsNullOrWhiteSpace(a.Summary)
+                    ? a.Name
+                    : $"{a.Name} ({a.Summary})")
+                .ToList();
+
+            if (activeArcs.Count > 0)
+            {
+                sections.Add(
+                    "Threads you're still inside of (any may surface in thought, or not — don't force it): "
+                    + string.Join("; ", activeArcs));
             }
         }
 

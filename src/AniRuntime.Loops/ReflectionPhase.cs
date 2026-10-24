@@ -29,6 +29,7 @@ public class ReflectionPhase
     private readonly IReflectionGistService? _gistService;
     private readonly IGrowthEdgeMutator? _growthEdges;
     private readonly IMemoryAnalytics? _analytics;
+    private readonly IArcExtractor? _arcExtractor;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
 
@@ -41,7 +42,8 @@ public class ReflectionPhase
         ICognitiveOutputGate? outputGate = null,
         IReflectionGistService? gistService = null,
         IGrowthEdgeMutator? growthEdges = null,
-        IMemoryAnalytics? analytics = null)
+        IMemoryAnalytics? analytics = null,
+        IArcExtractor? arcExtractor = null)
     {
         _ollama = ollama;
         _persist = persist;
@@ -51,6 +53,7 @@ public class ReflectionPhase
         _gistService = gistService;
         _growthEdges = growthEdges;
         _analytics = analytics;
+        _arcExtractor = arcExtractor;
         _log = log;
     }
 
@@ -468,13 +471,41 @@ public class ReflectionPhase
                     result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0 ||
                     toneResult.KeysUpdated > 0 || toneResult.NewKeysAdded > 0 || toneResult.KeysPruned > 0;
 
-                if (anyChanged)
+                // F-4 Phase 7 (2026-10-23) — ongoing-arcs extraction and
+                // mutation. Scans the same reflection window for multi-week
+                // narrative threads; mentions update or create entries on
+                // CharacterStateDoc.OngoingArcs. Arcs not touched for the
+                // configured stall threshold transition to Stalled; soft-
+                // capped at MaxActive. Gated on OngoingArcsEnabled.
+                var arcsMutated = false;
+                if (_options.OngoingArcsEnabled
+                    && _arcExtractor is not null
+                    && recentMemories.Count > 0)
+                {
+                    try
+                    {
+                        arcsMutated = await ApplyArcExtractionAsync(
+                            characterState, recentMemories, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _log.LogWarning(ex,
+                            "F4_ARC_EXTRACT persistence/state fault — reflection gist still saved");
+                    }
+                }
+
+                if (anyChanged || arcsMutated)
                 {
                     await _persist.SaveCharacterStateAsync(characterState, ct).ConfigureAwait(false);
                     _log.LogInformation(
-                        "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) totals(topic={TC} tone={OC})",
+                        "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) arcs={ArcCount} totals(topic={TC} tone={OC})",
                         result.KeysUpdated, result.NewKeysAdded, result.KeysPruned,
                         toneResult.KeysUpdated, toneResult.NewKeysAdded, toneResult.KeysPruned,
+                        characterState.OngoingArcs.Count,
                         characterState.TopicValence.Count, characterState.ToneValence.Count);
                 }
             }
@@ -604,6 +635,152 @@ public class ReflectionPhase
         }
 
         return gistId;
+    }
+
+    /// <summary>
+    /// F-4 Phase 7 (2026-10-23) — runs the arc extractor over
+    /// <paramref name="recentMemories"/>, applies each mention to
+    /// <paramref name="characterState"/>'s <see cref="CharacterStateDoc.OngoingArcs"/>
+    /// (update existing by name/match, create new, mark completions), and
+    /// then runs the stall + soft-cap pass. Returns true when any arc
+    /// state changed so the caller knows to persist.
+    /// </summary>
+    private async Task<bool> ApplyArcExtractionAsync(
+        CharacterStateDoc characterState,
+        IReadOnlyList<MemoryRecord> recentMemories,
+        CancellationToken ct)
+    {
+        if (_arcExtractor is null) return false;
+
+        var window = Math.Max(1, _options.OngoingArcsReflectionWindow);
+        var thoughts = recentMemories
+            .Where(r => r.Type == MemoryType.InnerThought)
+            .Take(window)
+            .ToList();
+        if (thoughts.Count == 0) return false;
+
+        var existingNames = characterState.OngoingArcs
+            .Select(a => a.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToList();
+
+        var mentions = await _arcExtractor
+            .ExtractAsync(thoughts, existingNames, ct)
+            .ConfigureAwait(false);
+
+        var now = DateTimeOffset.UtcNow;
+        var anyChanged = ApplyArcMentions(characterState, mentions, now);
+        var transitioned = ApplyArcStallAndCap(characterState, now,
+            TimeSpan.FromDays(Math.Max(1, _options.OngoingArcsStallDays)),
+            Math.Max(1, _options.OngoingArcsMaxActive));
+
+        if (anyChanged || transitioned)
+        {
+            _log.LogInformation(
+                "F4_ARC_EXTRACT mentions={Mentions} active={Active} stalled={Stalled} completed={Completed}",
+                mentions.Count,
+                characterState.OngoingArcs.Count(a => a.Status == ArcStatus.Active),
+                characterState.OngoingArcs.Count(a => a.Status == ArcStatus.Stalled),
+                characterState.OngoingArcs.Count(a => a.Status == ArcStatus.Completed));
+        }
+
+        return anyChanged || transitioned;
+    }
+
+    /// <summary>
+    /// Pure mutation: apply <paramref name="mentions"/> to
+    /// <paramref name="characterState"/>'s OngoingArcs list. Internal so
+    /// tests pin the matching + completion discipline without an LLM hop.
+    /// </summary>
+    internal static bool ApplyArcMentions(
+        CharacterStateDoc characterState,
+        IReadOnlyList<ArcMention> mentions,
+        DateTimeOffset now)
+    {
+        if (mentions is null || mentions.Count == 0) return false;
+
+        var changed = false;
+        foreach (var m in mentions.Where(m => !string.IsNullOrWhiteSpace(m.Name)))
+        {
+            // Match discipline: prefer explicit existing_match claim,
+            // fall back to case-insensitive name match. Avoids near-dup
+            // slots when the extractor varies casing or minor phrasing.
+            var existing = characterState.OngoingArcs.FirstOrDefault(a =>
+                (m.ExistingMatch is not null
+                    && string.Equals(a.Name, m.ExistingMatch, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(a.Name, m.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                existing.LastTouchedAt = now;
+                if (!string.IsNullOrWhiteSpace(m.Summary))
+                    existing.Summary = m.Summary;
+                if (m.IsCompletion)
+                    existing.Status = ArcStatus.Completed;
+                else if (existing.Status == ArcStatus.Stalled)
+                    existing.Status = ArcStatus.Active;  // resurrection
+                changed = true;
+            }
+            else if (!m.IsCompletion)
+            {
+                // Only create NEW arcs for non-completion mentions —
+                // a completion of a never-seen arc is likely a hallucination.
+                characterState.OngoingArcs.Add(new ArcState
+                {
+                    Name          = m.Name,
+                    StartedAt     = now,
+                    LastTouchedAt = now,
+                    Summary       = m.Summary ?? string.Empty,
+                    Status        = ArcStatus.Active,
+                });
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// Pure maintenance: transition active arcs not touched within
+    /// <paramref name="stallThreshold"/> to Stalled, and soft-cap total
+    /// Active arcs at <paramref name="maxActive"/> (oldest LastTouchedAt
+    /// trims first). Returns true if any arc transitioned.
+    /// </summary>
+    internal static bool ApplyArcStallAndCap(
+        CharacterStateDoc characterState,
+        DateTimeOffset now,
+        TimeSpan stallThreshold,
+        int maxActive)
+    {
+        var changed = false;
+
+        // Stall pass. .Where() keeps the loop body pure mutation.
+        var stallCandidates = characterState.OngoingArcs
+            .Where(a => a.Status == ArcStatus.Active
+                     && (now - a.LastTouchedAt) > stallThreshold);
+        foreach (var a in stallCandidates)
+        {
+            a.Status = ArcStatus.Stalled;
+            changed = true;
+        }
+
+        // Soft cap on active-arc count. Oldest-touched active arcs stall
+        // first; we never delete arcs here (completions can resurface in
+        // dashboards / audit).
+        var active = characterState.OngoingArcs
+            .Where(a => a.Status == ArcStatus.Active)
+            .OrderBy(a => a.LastTouchedAt)
+            .ToList();
+        if (active.Count > maxActive)
+        {
+            var over = active.Count - maxActive;
+            foreach (var a in active.Take(over))
+            {
+                a.Status = ArcStatus.Stalled;
+                changed = true;
+            }
+        }
+
+        return changed;
     }
 
     /// <summary>

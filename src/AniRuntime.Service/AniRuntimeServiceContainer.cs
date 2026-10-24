@@ -195,6 +195,14 @@ public static class AniRuntimeServiceContainer
         // doc + ANI-Foundation-Life-Refactor-Plan.md §Phase 4a.1b.
         services.AddSingleton<ISignificanceClassifier, QwenSignificanceClassifier>();
 
+        // 2026-10-23 — F-4 Phase 7 ongoing-arcs extractor.
+        // Scans recent inner thoughts for multi-week narrative threads
+        // ("the shelf", "Peru cookbook"). Mutator in ReflectionPhase applies
+        // mentions to CharacterStateDoc.OngoingArcs; reader surfaces active-
+        // arc top-K into the inner-thought composer. See IArcExtractor XML
+        // doc + issue #186.
+        services.AddSingleton<IArcExtractor, QwenArcExtractor>();
+
         // F-3 U4 (2026-08-24) — Qwen-sidecar per-quote attribution
         // extractor. Runs post-composition on the inner-thought composer
         // output to identify embedded attribution claims ("you said X",

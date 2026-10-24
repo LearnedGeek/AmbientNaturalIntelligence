@@ -566,6 +566,17 @@ public class AniOptions
     public int   GrowthEdgeTopKInjected           { get; set; } = 5;      // top-K read back into inner-thought composer
     public string GrowthEdgeMutatorModel          { get; set; } = "qwen3:14b";  // local utility model, same as LocalVerifierModelTag
 
+    // F-4 Phase 7 (2026-10-23) — ongoing arcs / projects state.
+    // Extractor runs at reflection time over recent inner thoughts;
+    // mentions update or create entries in CharacterStateDoc.OngoingArcs;
+    // reader surfaces active-arc top-K into inner-thought composer.
+    public bool   OngoingArcsEnabled           { get; set; } = true;
+    public string ArcExtractorModel            { get; set; } = "qwen3:14b";
+    public int    OngoingArcsReflectionWindow  { get; set; } = 10;   // inner-thought window the extractor sees per cycle
+    public int    OngoingArcsStallDays         { get; set; } = 28;   // arcs not touched for this many days → Stalled
+    public int    OngoingArcsMaxActive         { get; set; } = 10;   // soft cap on active-arc count (oldest-touched trim first)
+    public int    OngoingArcsTopKInjected      { get; set; } = 3;    // active-arc top-K read back into composer
+
     // F-4 Phase 1.1 (2026-10-23) — ToneValence sibling of Phase 1 TopicValence.
     // Mark-reply register classified via IRegisterClassifier maps to tone
     // descriptors (register-family) that mutate ToneValence under the same
