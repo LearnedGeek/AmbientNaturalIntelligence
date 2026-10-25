@@ -65,11 +65,22 @@ public sealed class TemporalContextProvider : ITemporalContextProvider
         {
             throw;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             // Fail-open per the interface contract — a Phase 5a stall must
             // never block the cognitive cycle. Composer sees null + empty
             // and skips the temporal block.
+            // InvalidOperationException covers EF Core state faults
+            // (connection closed, context disposed, concurrent access).
+            _log.LogWarning(ex,
+                "F-4 Phase 5a temporal context build failed; proceeding without temporal grounding.");
+            return new TemporalContext(null, Array.Empty<RecentInnerThought>());
+        }
+        catch (SystemException ex)
+        {
+            // SystemException covers DbException/SqliteException and other
+            // runtime faults from the SQLite path without swallowing
+            // application-level exceptions derived directly from Exception.
             _log.LogWarning(ex,
                 "F-4 Phase 5a temporal context build failed; proceeding without temporal grounding.");
             return new TemporalContext(null, Array.Empty<RecentInnerThought>());

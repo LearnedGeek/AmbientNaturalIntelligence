@@ -105,13 +105,13 @@ public class InnerThoughtPhase
         _thoughtShapeClassificationEnabled = aniOptions?.Value.ThoughtShapeClassificationEnabled ?? true;
         _claimExtractionEnabled = aniOptions?.Value.InnerThoughtClaimExtractionEnabled ?? true;
         _topicValenceTopK = (aniOptions?.Value.GrowthEdgesEnabled ?? false)
-            ? aniOptions.Value.GrowthEdgeTopKInjected
+            ? aniOptions?.Value.GrowthEdgeTopKInjected
             : (int?)null;
         _toneValenceTopK = (aniOptions?.Value.ToneGrowthEdgesEnabled ?? false)
-            ? aniOptions.Value.ToneValenceTopKInjected
+            ? aniOptions?.Value.ToneValenceTopKInjected
             : (int?)null;
         _ongoingArcsTopK = (aniOptions?.Value.OngoingArcsEnabled ?? false)
-            ? aniOptions.Value.OngoingArcsTopKInjected
+            ? aniOptions?.Value.OngoingArcsTopKInjected
             : (int?)null;
         _namedSubstrateAnchorEnabled = aniOptions?.Value.NamedSubstrateAnchorEnabled ?? false;
         _temporalContextEnabled = aniOptions?.Value.TemporalContextEnabled ?? false;
