@@ -11,7 +11,8 @@ public sealed record InnerThoughtPromptInput(
     int? TopicValenceTopK = null,
     bool NamedSubstrateAnchorEnabled = false,
     int? ToneValenceTopK = null,
-    int? OngoingArcsTopK = null);
+    int? OngoingArcsTopK = null,
+    TemporalContext? Temporal = null);
 
 /// <summary>
 /// Inner-thought / world-experience prompt for the ambient cognitive cycle.
@@ -40,6 +41,17 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         var now      = snapshot.BuiltAt.ToLocalTime();
         var timeLine = $"It is currently {now:h:mm tt} on {now:dddd}, {now:MMMM d}.";
+
+        // F-4 Phase 5a (2026-10-24) — elapsed-since-last-inner-thought line.
+        // When Temporal is provided and we have a prior thought, append a
+        // concrete elapsed-time phrase so Ani has a grounded sense of HOW
+        // LONG she's been quiet. Issue #184 — closes the "treats gist as
+        // current scene" trap: the system prompt names NOW explicitly so
+        // prior-cycle content below is unmistakably prior, not present.
+        if (input.Temporal?.HoursSinceLastInnerThought is { } hoursSince)
+        {
+            timeLine += $" Your last inner thought was {FormatElapsedPhrase(hoursSince)}.";
+        }
 
         var occupationLine = string.IsNullOrWhiteSpace(cs.Occupation)
             ? string.Empty
@@ -344,6 +356,40 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             }
         }
 
+        // F-4 Phase 5a (2026-10-24) — recent inner thoughts with timestamps.
+        //
+        // Issue #184: Ani's chat-tuned base model has no training-data
+        // category for "reporting-from-inside-a-thinking-mode-right-now vs
+        // responding-to-a-turn." The default behavior treats a gist like
+        // "I was spinning Fleetwood Mac" as the current scene, not a prior
+        // cycle's reflection being recalled.
+        //
+        // The fix is architectural (per Park et al 2023 §4.1): render recent
+        // inner thoughts WITH explicit timestamps and WITH explicit "prior
+        // cycles, not now" framing. The chat-mode base then has an unambiguous
+        // frame — the timestamps anchor the content as past, so the composer
+        // reports from NOW (which the system-prompt timeLine named explicitly)
+        // rather than treating the gist as present.
+        //
+        // Composition with the Phase 1/1.1/7 top-K blocks above: those render
+        // VALENCE SURFACES ("tones she's been meeting," "threads she's inside
+        // of"). This renders ACTUAL PRIOR CONTENT she thought — the raw gist,
+        // timestamped. Different grain, different purpose.
+        if (input.Temporal is { RecentInnerThoughts.Count: > 0 } temporal)
+        {
+            sections.Add("Thoughts you've had recently (prior cycles, not now — don't treat them as the current scene):");
+            sections.AddRange(temporal.RecentInnerThoughts
+                .Where(t => !string.IsNullOrWhiteSpace(t.Content))
+                .Select(t =>
+                {
+                    var hours = Math.Max(0.0, (snapshot.BuiltAt - t.OccurredAt).TotalHours);
+                    var when  = FormatElapsedPhrase(hours);
+                    var text  = t.Content.Trim();
+                    if (text.Length > 160) text = text[..160] + "...";
+                    return $"  - {when}: \"{text}\"";
+                }));
+        }
+
         // F-4 Phase 4a.2b (2026-10-22) — Associative-anchor chain.
         //
         // Dashboard "Associative Drift" view shows anchors chained across
@@ -489,5 +535,24 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         var user = string.Join("\n", sections);
         return new PromptPair(system, user);
+    }
+
+    /// <summary>
+    /// F-4 Phase 5a (2026-10-24) — human-reading elapsed-time phrase for
+    /// the temporal-context block. Returns a complete phrase (not a bare
+    /// duration) so renderings read naturally: "yesterday" / "last week"
+    /// stand alone, while "{N} hours ago" and "{N} days ago" carry their
+    /// own "ago." Buckets picked for ~hourly cycle cadence; coarse so Ani
+    /// sees remembered-subjective language rather than clock-shaped
+    /// externally-reported numbers.
+    /// </summary>
+    internal static string FormatElapsedPhrase(double hours)
+    {
+        if (hours < 1.0)   return "less than an hour ago";
+        if (hours < 1.75)  return "about an hour ago";
+        if (hours < 12.0)  return $"{(int)Math.Round(hours)} hours ago";
+        if (hours < 36.0)  return "yesterday";
+        if (hours < 24 * 7) return $"{(int)Math.Round(hours / 24.0)} days ago";
+        return "last week";
     }
 }
