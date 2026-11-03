@@ -950,6 +950,82 @@ public class ReflectionPhase
     }
 
     /// <summary>
+    /// F-4 Phase 6 alias resolution (issue #191). Collapse phrasing variants
+    /// of a canonical person's name onto the <see cref="CharacterStateDoc.CanonicalContacts"/>
+    /// short form so slot routing stays coherent across cycles. Example:
+    /// extractor emits "Lila" on one cycle and "Sister Lila" on the next;
+    /// both must land on the same <c>KnownPeople["Lila"]</c> slot, otherwise
+    /// the inner life fragments into phrasing-variant ghosts.
+    ///
+    /// <para>Resolution order:</para>
+    /// <list type="number">
+    ///   <item>Exact case-insensitive match on a <c>CanonicalContacts</c>
+    ///   entry → return that entry's trimmed form.</item>
+    ///   <item><c>CanonicalContacts</c> entry appears as a whole-word token
+    ///   inside <paramref name="emitted"/> (e.g. "Lila" within
+    ///   "Sister Lila") → return that entry's trimmed form. The whole-word
+    ///   check uses the same letter-boundary rule as
+    ///   <see cref="HasCapitalizedWholeWordMatch"/> but is case-insensitive
+    ///   on both ends so "sister lila" also collapses.</item>
+    ///   <item>Otherwise → return <c>emitted.Trim()</c> unchanged. Names
+    ///   that only match <c>FamilyContext</c> prose still land on their
+    ///   emitted form; they just don't benefit from alias collapse until
+    ///   <c>CanonicalContacts</c> is populated with their short form.</item>
+    /// </list>
+    /// </summary>
+    internal static string ResolveCanonicalSlotKey(string emitted, CharacterStateDoc cs)
+    {
+        if (string.IsNullOrWhiteSpace(emitted)) return string.Empty;
+        var trimmed = emitted.Trim();
+
+        if (cs.CanonicalContacts is not { Count: > 0 }) return trimmed;
+
+        var canonicals = cs.CanonicalContacts
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(e => e.Trim())
+            .ToList();
+
+        var exact = canonicals.FirstOrDefault(c =>
+            string.Equals(trimmed, c, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact;
+
+        var alias = canonicals.FirstOrDefault(c =>
+            HasCaseInsensitiveWholeWordMatch(trimmed, c));
+        return alias ?? trimmed;
+    }
+
+    /// <summary>
+    /// Returns true iff <paramref name="candidate"/> appears in
+    /// <paramref name="prose"/> as a whole-word match (letter-boundary on
+    /// both sides). Case-insensitive on both ends — unlike
+    /// <see cref="HasCapitalizedWholeWordMatch"/>, this does NOT require the
+    /// match in prose to start uppercase, because the whole alias-resolution
+    /// path only runs on candidates already accepted by
+    /// <see cref="IsCanonicalPersonName"/>, so capitalization has already
+    /// been enforced upstream.
+    /// </summary>
+    internal static bool HasCaseInsensitiveWholeWordMatch(string prose, string candidate)
+    {
+        if (string.IsNullOrEmpty(prose) || string.IsNullOrEmpty(candidate))
+            return false;
+
+        var idx = 0;
+        while (idx <= prose.Length - candidate.Length)
+        {
+            var found = prose.IndexOf(candidate, idx, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) return false;
+
+            var beforeOk = found == 0 || !char.IsLetter(prose[found - 1]);
+            var endIdx   = found + candidate.Length;
+            var afterOk  = endIdx >= prose.Length || !char.IsLetter(prose[endIdx]);
+
+            if (beforeOk && afterOk) return true;
+            idx = found + 1;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Pure mutation: apply <paramref name="tropes"/> to
     /// <paramref name="characterState"/>'s <see cref="CharacterStateDoc.KnownPeople"/>
     /// dict. Internal so tests pin the allowlist + bounded-trope discipline
@@ -982,15 +1058,20 @@ public class ReflectionPhase
 
         foreach (var t in accepted)
         {
+            // Collapse phrasing variants onto the CanonicalContacts short
+            // form before routing (issue #191): "Lila" and "Sister Lila"
+            // both resolve to "Lila" when CanonicalContacts has "Lila".
+            var resolved = ResolveCanonicalSlotKey(t.Name, characterState);
+
             // Case-insensitive slot match to prevent casing-variant drift.
             var slotKey = characterState.KnownPeople.Keys.FirstOrDefault(k =>
-                string.Equals(k, t.Name, StringComparison.OrdinalIgnoreCase));
+                string.Equals(k, resolved, StringComparison.OrdinalIgnoreCase));
 
             if (slotKey is null)
             {
                 var newSlot = new PersonState
                 {
-                    Name             = t.Name.Trim(),
+                    Name             = resolved,
                     FirstMentionedAt = now,
                     LastTouchedAt    = now,
                     MentionCount     = 1,

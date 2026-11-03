@@ -344,4 +344,143 @@ public class PersonTropeMutationTests
         var cast = ReflectionPhase.BuildCanonicalCast(cs);
         cast.Should().BeEquivalentTo(new[] { "Lila entry", "Sarah" });
     }
+
+    // -------- ResolveCanonicalSlotKey (issue #191) --------
+    //
+    // The alias-collapse resolver — "Lila" and "Sister Lila" must land on
+    // the same slot across cycles. Without this the inner life fragments
+    // into phrasing-variant ghosts (Copilot caught the gap on PR #189).
+
+    private static CharacterStateDoc BuildStateWithAliasCanonicals() => new()
+    {
+        PrimaryContactName = "Mark",
+        FamilyContext = new List<string>
+        {
+            "Sister Lila — my 'code-sis,' texts at midnight for birthdays with robot emojis",
+            "Dominus — my dog. He barks at horror movies and steals socks",
+        },
+        CanonicalContacts = new List<string> { "Lila", "Dominus" },
+    };
+
+    [Fact]
+    public void Resolve_ExactMatchOnCanonicalContacts_ReturnsCanonical()
+    {
+        var cs = BuildStateWithAliasCanonicals();
+        ReflectionPhase.ResolveCanonicalSlotKey("Lila",    cs).Should().Be("Lila");
+        ReflectionPhase.ResolveCanonicalSlotKey("Dominus", cs).Should().Be("Dominus");
+    }
+
+    [Fact]
+    public void Resolve_ExactMatchCaseInsensitive_ReturnsCanonical()
+    {
+        var cs = BuildStateWithAliasCanonicals();
+        ReflectionPhase.ResolveCanonicalSlotKey("lila", cs).Should().Be("Lila");
+        ReflectionPhase.ResolveCanonicalSlotKey("LILA", cs).Should().Be("Lila");
+    }
+
+    [Fact]
+    public void Resolve_AliasContainingCanonical_CollapsesToCanonical()
+    {
+        // The headline case: "Sister Lila" and "Lila" must route to one slot.
+        var cs = BuildStateWithAliasCanonicals();
+        ReflectionPhase.ResolveCanonicalSlotKey("Sister Lila", cs).Should().Be("Lila");
+        ReflectionPhase.ResolveCanonicalSlotKey("sister lila", cs).Should().Be("Lila");
+    }
+
+    [Fact]
+    public void Resolve_WholeWordBoundary_NoFalseCollapse()
+    {
+        // "Lilac" contains "Lila" as a substring but not as a whole word.
+        // Must NOT collapse — otherwise an unrelated name gets folded in.
+        var cs = BuildStateWithAliasCanonicals();
+        ReflectionPhase.ResolveCanonicalSlotKey("Lilac", cs).Should().Be("Lilac");
+    }
+
+    [Fact]
+    public void Resolve_NoCanonicalMatch_ReturnsEmittedTrimmed()
+    {
+        // Allowlist still gates upstream; this just confirms resolver is a
+        // passthrough when CanonicalContacts has nothing relevant.
+        var cs = BuildStateWithAliasCanonicals();
+        ReflectionPhase.ResolveCanonicalSlotKey("  Sarah  ", cs).Should().Be("Sarah");
+    }
+
+    [Fact]
+    public void Resolve_EmptyCanonicalContacts_ReturnsEmittedTrimmed()
+    {
+        var cs = new CharacterStateDoc
+        {
+            PrimaryContactName = "Mark",
+            CanonicalContacts  = new List<string>(),
+        };
+        ReflectionPhase.ResolveCanonicalSlotKey("Sister Lila", cs).Should().Be("Sister Lila");
+    }
+
+    [Fact]
+    public void Resolve_WhitespaceOrNullInput_ReturnsEmpty()
+    {
+        var cs = BuildStateWithAliasCanonicals();
+        ReflectionPhase.ResolveCanonicalSlotKey("",   cs).Should().Be(string.Empty);
+        ReflectionPhase.ResolveCanonicalSlotKey("  ", cs).Should().Be(string.Empty);
+    }
+
+    // -------- Alias collapse via ApplyPersonTropes (end-to-end) --------
+
+    [Fact]
+    public void Apply_SisterLilaAndLila_FoldToOneSlot()
+    {
+        // The exact regression #191 pins: PR #189 would have landed two
+        // slots. With CanonicalContacts = ["Lila", ...] the resolver
+        // collapses "Sister Lila" onto "Lila" so one slot carries both.
+        var cs = BuildStateWithAliasCanonicals();
+
+        ReflectionPhase.ApplyPersonTropes(cs,
+            new List<PersonTrope> { new("Lila", "classroom patience") },
+            maxTropesPerPerson: 5, now: Now);
+        ReflectionPhase.ApplyPersonTropes(cs,
+            new List<PersonTrope> { new("Sister Lila", "late-night texts") },
+            maxTropesPerPerson: 5, now: Now.AddMinutes(5));
+
+        cs.KnownPeople.Should().ContainSingle();
+        cs.KnownPeople.Should().ContainKey("Lila");
+        cs.KnownPeople["Lila"].SharedTropes
+            .Should().BeEquivalentTo(new[] { "late-night texts", "classroom patience" },
+                opts => opts.WithStrictOrdering());
+        cs.KnownPeople["Lila"].MentionCount.Should().Be(2); // one per cycle
+    }
+
+    [Fact]
+    public void Apply_AliasFirstThenCanonical_FoldToCanonicalKey()
+    {
+        // Ordering invariant: first cycle emits "Sister Lila", second emits
+        // "Lila". The slot KEY must be the canonical short form ("Lila"),
+        // not the alias — so later cycles that emit either form keep
+        // routing deterministically.
+        var cs = BuildStateWithAliasCanonicals();
+
+        ReflectionPhase.ApplyPersonTropes(cs,
+            new List<PersonTrope> { new("Sister Lila", "code-sis vibes") },
+            maxTropesPerPerson: 5, now: Now);
+
+        cs.KnownPeople.Should().ContainKey("Lila");
+        cs.KnownPeople.Should().NotContainKey("Sister Lila");
+        cs.KnownPeople["Lila"].Name.Should().Be("Lila");
+    }
+
+    [Fact]
+    public void Apply_LilacNotCollapsed_RejectedByAllowlist()
+    {
+        // "Lilac" would (hypothetically) survive the resolver as "Lilac"
+        // (whole-word boundary check rejects the collapse). It must still
+        // fail the upstream IsCanonicalPersonName allowlist because
+        // "Lilac" doesn't appear in FamilyContext prose or CanonicalContacts.
+        var cs = BuildStateWithAliasCanonicals();
+
+        var changed = ReflectionPhase.ApplyPersonTropes(cs,
+            new List<PersonTrope> { new("Lilac", "fabricated") },
+            maxTropesPerPerson: 5, now: Now);
+
+        changed.Should().BeFalse();
+        cs.KnownPeople.Should().BeEmpty();
+    }
 }
