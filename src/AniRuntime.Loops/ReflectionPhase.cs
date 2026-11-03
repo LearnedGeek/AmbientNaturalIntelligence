@@ -1026,6 +1026,123 @@ public class ReflectionPhase
     }
 
     /// <summary>
+    /// Idempotent startup backfill (issue #191 follow-up, Copilot + Devin
+    /// PR #193 reviews). Called once from <c>Program.cs</c> after the
+    /// seed-load block. Two operations, safe to re-run:
+    /// <list type="number">
+    ///   <item>If <paramref name="persistedState"/>'s
+    ///   <see cref="CharacterStateDoc.CanonicalContacts"/> is empty but
+    ///   <paramref name="seedCanonicalContacts"/> has entries, copy them
+    ///   in. Existing non-empty lists are left alone (doesn't clobber
+    ///   runtime-accrued edits — though today no path mutates
+    ///   <c>CanonicalContacts</c> at runtime).</item>
+    ///   <item>Run <see cref="MergeAliasedKnownPeopleSlots"/> to collapse
+    ///   any alias slots persisted before the resolver shipped
+    ///   (e.g. a legacy <c>"Sister Lila"</c> slot folds into
+    ///   <c>"Lila"</c>).</item>
+    /// </list>
+    /// Returns true iff either step mutated state (caller persists only
+    /// when true, avoiding unnecessary DB writes per restart).
+    /// </summary>
+    public static bool ApplyCanonicalContactsBackfill(
+        CharacterStateDoc persistedState,
+        IReadOnlyList<string> seedCanonicalContacts,
+        int maxTropesPerPerson)
+    {
+        if (persistedState is null) return false;
+
+        var changed = false;
+
+        if ((persistedState.CanonicalContacts is null || persistedState.CanonicalContacts.Count == 0)
+            && seedCanonicalContacts is { Count: > 0 })
+        {
+            persistedState.CanonicalContacts = seedCanonicalContacts
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToList();
+            changed = persistedState.CanonicalContacts.Count > 0;
+        }
+
+        if (MergeAliasedKnownPeopleSlots(persistedState, maxTropesPerPerson))
+            changed = true;
+
+        return changed;
+    }
+
+    /// <summary>
+    /// One-shot startup migration (issue #191 follow-up): rekey any
+    /// existing <see cref="CharacterStateDoc.KnownPeople"/> slots whose
+    /// name resolves to a different canonical form onto that canonical
+    /// slot, merging accumulated tropes and mention counts. Idempotent —
+    /// a second call is a no-op. Returns true iff any slot was merged
+    /// or rekeyed.
+    ///
+    /// <para>Why startup-only: the production invariant Phase 6 wants
+    /// is "one person, one slot." A runtime cycle that emits the
+    /// canonical form after an alias has already landed would create a
+    /// fresh slot and orphan the alias slot's accumulated history. The
+    /// resolver fix (<see cref="ResolveCanonicalSlotKey"/>) prevents
+    /// future drift; this helper repairs any drift already persisted
+    /// before the resolver shipped. Called from
+    /// <c>Program.cs</c> once per service start, after the seed-load
+    /// block populates <see cref="CharacterStateDoc.CanonicalContacts"/>.</para>
+    /// </summary>
+    public static bool MergeAliasedKnownPeopleSlots(
+        CharacterStateDoc characterState,
+        int maxTropesPerPerson)
+    {
+        if (characterState.KnownPeople is not { Count: > 0 }) return false;
+        if (characterState.CanonicalContacts is not { Count: > 0 }) return false;
+
+        var changed = false;
+        var rekeyPairs = characterState.KnownPeople.Keys
+            .Select(k => (OldKey: k, Canonical: ResolveCanonicalSlotKey(k, characterState)))
+            .Where(p => !string.Equals(p.OldKey, p.Canonical, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var (oldKey, canonical) in rekeyPairs)
+        {
+            if (!characterState.KnownPeople.TryGetValue(oldKey, out var oldSlot))
+                continue;
+
+            if (characterState.KnownPeople.TryGetValue(canonical, out var canonicalSlot))
+            {
+                // Merge: oldSlot folds into canonicalSlot. Append the
+                // alias's tropes that aren't already in the canonical
+                // slot (case-insensitive dedup); cap after.
+                var newTropes = oldSlot.SharedTropes
+                    .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .Where(t => !canonicalSlot.SharedTropes.Any(s =>
+                        string.Equals(s, t, StringComparison.OrdinalIgnoreCase)));
+                canonicalSlot.SharedTropes.AddRange(newTropes);
+                if (canonicalSlot.SharedTropes.Count > maxTropesPerPerson)
+                {
+                    canonicalSlot.SharedTropes.RemoveRange(
+                        maxTropesPerPerson,
+                        canonicalSlot.SharedTropes.Count - maxTropesPerPerson);
+                }
+
+                canonicalSlot.MentionCount += oldSlot.MentionCount;
+                if (oldSlot.FirstMentionedAt < canonicalSlot.FirstMentionedAt)
+                    canonicalSlot.FirstMentionedAt = oldSlot.FirstMentionedAt;
+                if (oldSlot.LastTouchedAt > canonicalSlot.LastTouchedAt)
+                    canonicalSlot.LastTouchedAt = oldSlot.LastTouchedAt;
+            }
+            else
+            {
+                // No canonical slot yet — rekey the alias slot in place.
+                oldSlot.Name = canonical;
+                characterState.KnownPeople[canonical] = oldSlot;
+            }
+
+            characterState.KnownPeople.Remove(oldKey);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>
     /// Pure mutation: apply <paramref name="tropes"/> to
     /// <paramref name="characterState"/>'s <see cref="CharacterStateDoc.KnownPeople"/>
     /// dict. Internal so tests pin the allowlist + bounded-trope discipline

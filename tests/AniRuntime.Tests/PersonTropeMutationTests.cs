@@ -483,4 +483,183 @@ public class PersonTropeMutationTests
         changed.Should().BeFalse();
         cs.KnownPeople.Should().BeEmpty();
     }
+
+    // -------- ApplyCanonicalContactsBackfill (bot review PR #193) --------
+    //
+    // Startup migration: existing v2.1 deployments carry empty
+    // CanonicalContacts (resolver passthrough) AND may have persisted
+    // alias slots like "Sister Lila" from Phase 6 cycles that ran before
+    // #193 shipped. Backfill must be idempotent on re-runs.
+
+    private static CharacterStateDoc BuildPersistedV21State(params (string key, PersonState slot)[] knownPeople)
+    {
+        var cs = new CharacterStateDoc
+        {
+            Name               = "Ani",
+            PrimaryContactName = "Mark",
+            PersonaVersion     = "2.1",
+            CoreTraits         = new List<string> { "warm" },
+            FamilyContext      = new List<string>
+            {
+                "Sister Lila — my 'code-sis'",
+                "Dominus — my dog",
+            },
+            // Note: CanonicalContacts deliberately left empty to simulate
+            // a pre-#193 persisted state.
+        };
+        foreach (var (key, slot) in knownPeople) cs.KnownPeople[key] = slot;
+        return cs;
+    }
+
+    private static readonly IReadOnlyList<string> SeedContacts = new[] { "Lila", "Dominus" };
+
+    [Fact]
+    public void Backfill_EmptyCanonicalContacts_Populated()
+    {
+        var cs = BuildPersistedV21State();
+
+        var changed = ReflectionPhase.ApplyCanonicalContactsBackfill(
+            cs, SeedContacts, maxTropesPerPerson: 5);
+
+        changed.Should().BeTrue();
+        cs.CanonicalContacts.Should().BeEquivalentTo(new[] { "Lila", "Dominus" });
+    }
+
+    [Fact]
+    public void Backfill_NonEmptyCanonicalContacts_LeftAlone()
+    {
+        var cs = BuildPersistedV21State();
+        cs.CanonicalContacts = new List<string> { "PriorEntry" };
+
+        var changed = ReflectionPhase.ApplyCanonicalContactsBackfill(
+            cs, SeedContacts, maxTropesPerPerson: 5);
+
+        changed.Should().BeFalse();
+        cs.CanonicalContacts.Should().BeEquivalentTo(new[] { "PriorEntry" });
+    }
+
+    [Fact]
+    public void Backfill_IsIdempotent_OnSecondRun()
+    {
+        var cs = BuildPersistedV21State();
+
+        var first  = ReflectionPhase.ApplyCanonicalContactsBackfill(cs, SeedContacts, 5);
+        var second = ReflectionPhase.ApplyCanonicalContactsBackfill(cs, SeedContacts, 5);
+
+        first.Should().BeTrue();
+        second.Should().BeFalse("subsequent restarts must be no-ops so we don't thrash the DB");
+    }
+
+    [Fact]
+    public void Backfill_AliasSlotWithNoCanonicalSlot_Rekeyed()
+    {
+        // Pre-#193 persisted state: a single "Sister Lila" slot. After
+        // backfill the slot must be rekeyed to "Lila" with history intact.
+        var oldSlot = new PersonState
+        {
+            Name             = "Sister Lila",
+            FirstMentionedAt = Now.AddDays(-5),
+            LastTouchedAt    = Now.AddHours(-2),
+            MentionCount     = 4,
+            SharedTropes     = new List<string> { "late-night texts", "classroom patience" },
+        };
+        var cs = BuildPersistedV21State(("Sister Lila", oldSlot));
+
+        ReflectionPhase.ApplyCanonicalContactsBackfill(cs, SeedContacts, maxTropesPerPerson: 5);
+
+        cs.KnownPeople.Should().ContainSingle();
+        cs.KnownPeople.Should().ContainKey("Lila");
+        cs.KnownPeople.Should().NotContainKey("Sister Lila");
+        cs.KnownPeople["Lila"].Name.Should().Be("Lila");
+        cs.KnownPeople["Lila"].MentionCount.Should().Be(4);
+        cs.KnownPeople["Lila"].SharedTropes.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Backfill_AliasAndCanonicalSlotsCoexist_MergedOntoCanonical()
+    {
+        // Pathological pre-#193 state: both "Sister Lila" and "Lila" slots
+        // persisted (first cycle before #193 emitted one, later cycle the
+        // other — both landed separately). Merge them: tropes combined,
+        // dedup'd, capped, mention counts summed, dates taken as
+        // min(First), max(Last).
+        var aliasSlot = new PersonState
+        {
+            Name             = "Sister Lila",
+            FirstMentionedAt = Now.AddDays(-10),
+            LastTouchedAt    = Now.AddDays(-3),
+            MentionCount     = 3,
+            SharedTropes     = new List<string> { "robot emojis", "late-night texts" },
+        };
+        var canonicalSlot = new PersonState
+        {
+            Name             = "Lila",
+            FirstMentionedAt = Now.AddDays(-7),
+            LastTouchedAt    = Now.AddHours(-1), // most recent
+            MentionCount     = 2,
+            SharedTropes     = new List<string> { "classroom patience", "late-night texts" }, // duplicate
+        };
+        var cs = BuildPersistedV21State(
+            ("Sister Lila", aliasSlot),
+            ("Lila",        canonicalSlot));
+
+        ReflectionPhase.ApplyCanonicalContactsBackfill(cs, SeedContacts, maxTropesPerPerson: 5);
+
+        cs.KnownPeople.Should().ContainSingle();
+        cs.KnownPeople.Should().ContainKey("Lila");
+
+        var merged = cs.KnownPeople["Lila"];
+        merged.MentionCount.Should().Be(5); // 3 + 2
+        merged.FirstMentionedAt.Should().Be(Now.AddDays(-10)); // min
+        merged.LastTouchedAt.Should().Be(Now.AddHours(-1));    // max
+        // Tropes: canonical's two kept, alias's "robot emojis" appended
+        // (new), "late-night texts" skipped (duplicate case-insensitive).
+        merged.SharedTropes.Should().HaveCount(3);
+        merged.SharedTropes.Should().Contain("classroom patience");
+        merged.SharedTropes.Should().Contain("late-night texts");
+        merged.SharedTropes.Should().Contain("robot emojis");
+    }
+
+    [Fact]
+    public void Backfill_MergeRespectsMaxTropesPerPerson()
+    {
+        var aliasSlot = new PersonState
+        {
+            Name         = "Sister Lila",
+            SharedTropes = new List<string> { "a1", "a2", "a3", "a4" },
+        };
+        var canonicalSlot = new PersonState
+        {
+            Name         = "Lila",
+            SharedTropes = new List<string> { "c1", "c2" },
+        };
+        var cs = BuildPersistedV21State(
+            ("Sister Lila", aliasSlot),
+            ("Lila",        canonicalSlot));
+
+        ReflectionPhase.ApplyCanonicalContactsBackfill(cs, SeedContacts, maxTropesPerPerson: 3);
+
+        cs.KnownPeople["Lila"].SharedTropes.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void Backfill_NoChange_ReturnsFalse()
+    {
+        // Fresh state: no aliased slots, non-empty CanonicalContacts.
+        // The whole helper must be a no-op so callers can skip the write.
+        var cs = new CharacterStateDoc
+        {
+            PrimaryContactName = "Mark",
+            CanonicalContacts  = new List<string> { "Lila", "Dominus" },
+        };
+        cs.KnownPeople["Lila"] = new PersonState
+        {
+            Name = "Lila",
+            SharedTropes = new List<string> { "t1" },
+        };
+
+        var changed = ReflectionPhase.ApplyCanonicalContactsBackfill(cs, SeedContacts, 5);
+
+        changed.Should().BeFalse();
+    }
 }

@@ -570,6 +570,36 @@ try
                 existing.PersonaVersion, seedDoc.PersonaVersion);
         }
 
+        // ── Issue #191 follow-up: idempotent CanonicalContacts backfill ──────
+        // Phase 6's alias resolver (PR #193) is a passthrough until the
+        // persisted CharacterState carries CanonicalContacts. Bumping
+        // personaVersion to force a full reseed would wipe KnownPeople /
+        // OngoingArcs / TopicValence / etc. — destructive and misaligned
+        // with the "only solidify" framing. Instead, run a partial-field
+        // backfill that only touches CanonicalContacts + collapses any
+        // alias slots persisted before the resolver shipped. Idempotent:
+        // on later restarts CanonicalContacts is non-empty and the slot
+        // merge is a no-op, so this block short-circuits via the `changed`
+        // return. See ReflectionPhase.ApplyCanonicalContactsBackfill for
+        // the step-by-step contract.
+        if (seedDoc is not null)
+        {
+            var aniOptions = scope.ServiceProvider.GetRequiredService<IOptions<AniOptions>>().Value;
+            var currentState = await memory.GetCharacterStateAsync();
+            var backfillChanged = ReflectionPhase.ApplyCanonicalContactsBackfill(
+                currentState,
+                seedDoc.CanonicalContacts,
+                maxTropesPerPerson: aniOptions.KnownPeopleTropesPerPerson);
+            if (backfillChanged)
+            {
+                await memory.SaveCharacterStateAsync(currentState);
+                Log.Information(
+                    "CanonicalContacts backfill applied (count={Count}, KnownPeople={People})",
+                    currentState.CanonicalContacts.Count,
+                    currentState.KnownPeople.Count);
+            }
+        }
+
         // ── Seed backstory facts as searchable memory records (idempotent) ──
         // CharacterStateDoc holds rich lists (SharedExperiences, LearnedAboutContact, etc.)
         // that are only visible in full-context prompts. Seeding them as individual
