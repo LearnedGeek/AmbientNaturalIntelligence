@@ -407,9 +407,8 @@ public class ReflectionPhase
         // so test fixtures that don't need growth-edge coverage still work.
         // State mutations across Phase 1/1.1/7/6 share one persist step at
         // the end. Each mutator gates on its OWN feature flag; growth-edges
-        // being off must not silently disable Phase 6 (Devin + Copilot review
-        // on PR #189 flagged this). Phase 7's arcs still share the growth-
-        // edges gate pending a separate issue.
+        // being off only disables Phase 1/1.1 — Phase 7 arcs (PR #192) and
+        // Phase 6 known-people (PR #189) run as independent siblings below.
         var result        = GrowthEdgeUpdateResult.Empty;
         var toneResult    = GrowthEdgeUpdateResult.Empty;
         var arcsMutated   = false;
@@ -479,31 +478,6 @@ public class ReflectionPhase
                     }
                 }
 
-                // F-4 Phase 7 (2026-10-23) — ongoing-arcs extraction and
-                // mutation. Scans the same reflection window for multi-week
-                // narrative threads; mentions update or create entries on
-                // CharacterStateDoc.OngoingArcs. Arcs not touched for the
-                // configured stall threshold transition to Stalled; soft-
-                // capped at MaxActive. Gated on OngoingArcsEnabled.
-                if (_options.OngoingArcsEnabled
-                    && _arcExtractor is not null
-                    && recentMemories.Count > 0)
-                {
-                    try
-                    {
-                        arcsMutated = await ApplyArcExtractionAsync(
-                            characterState, recentMemories, ct).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        _log.LogWarning(ex,
-                            "F4_ARC_EXTRACT persistence/state fault — reflection gist still saved");
-                    }
-                }
             }
             catch (OperationCanceledException)
             {
@@ -529,6 +503,37 @@ public class ReflectionPhase
                 // get swallowed silently.
                 _log.LogWarning(ex,
                     "F4_GROWTH_EDGE_UPDATE persistence/state fault — reflection gist still saved");
+            }
+        }
+
+        // F-4 Phase 7 (2026-10-23) — ongoing-arcs extraction and mutation.
+        // Independent of GrowthEdgesEnabled: Phase 7 writes to OngoingArcs,
+        // not TopicValence/ToneValence, and must stay reachable when growth-
+        // edges are disabled. Hoisted out of the growth-edges gate on
+        // 2026-11-02 (PR #190) to match the Phase 6 structural fix from PR
+        // #189; Devin + Copilot surfaced the same bug shape there. Scans
+        // the reflection window for multi-week narrative threads; mentions
+        // update or create entries on CharacterStateDoc.OngoingArcs. Arcs
+        // not touched for the configured stall threshold transition to
+        // Stalled; soft-capped at MaxActive. Issue #190.
+        if (_options.OngoingArcsEnabled
+            && _arcExtractor is not null
+            && saved > 0
+            && recentMemories.Count > 0)
+        {
+            try
+            {
+                arcsMutated = await ApplyArcExtractionAsync(
+                    characterState, recentMemories, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _log.LogWarning(ex,
+                    "F4_ARC_EXTRACT persistence/state fault — reflection gist still saved");
             }
         }
 
