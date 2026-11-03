@@ -586,6 +586,20 @@ public class AniOptions
     public int    OngoingArcsMaxActive         { get; set; } = 10;   // soft cap on active-arc count (oldest-touched trim first)
     public int    OngoingArcsTopKInjected      { get; set; } = 3;    // active-arc top-K read back into composer
 
+    // F-4 Phase 6 (2026-11-02) — non-Mark relationship evolution.
+    // IPersonTropeExtractor runs at reflection time over the same inner-
+    // thought window; extracted tropes land on CharacterStateDoc.KnownPeople
+    // slots keyed by canonical name (allowlist-filtered on write). Reader
+    // surfaces most-recently-touched top-K people into inner-thought composer.
+    // See issue #185. Confabulation discipline (tropes-not-events, canonical-
+    // cast allowlist) lives in IPersonTropeExtractor and the mutator path;
+    // the options here only govern volumes and gating.
+    public bool   KnownPeopleEnabled           { get; set; } = true;
+    public string KnownPeopleExtractorModel    { get; set; } = "qwen3:14b";
+    public int    KnownPeopleReflectionWindow  { get; set; } = 10;   // inner-thought window the extractor sees per cycle
+    public int    KnownPeopleTropesPerPerson   { get; set; } = 5;    // max tropes retained per person slot (most-recent kept)
+    public int    KnownPeopleReaderTopK        { get; set; } = 3;    // most-recently-touched people surfaced into composer
+
     // F-4 Phase 1.1 (2026-10-23) — ToneValence sibling of Phase 1 TopicValence.
     // Mark-reply register classified via IRegisterClassifier maps to tone
     // descriptors (register-family) that mutate ToneValence under the same

@@ -203,6 +203,16 @@ public static class AniRuntimeServiceContainer
         // doc + issue #186.
         services.AddSingleton<IArcExtractor, QwenArcExtractor>();
 
+        // 2026-11-02 — F-4 Phase 6 person-trope extractor.
+        // Scans recent inner thoughts for mentions of canonical-cast
+        // non-Mark people (Sister Lila, Dominus, ...) and emits short
+        // general tropes about them. Mutator in ReflectionPhase applies
+        // tropes to CharacterStateDoc.KnownPeople under allowlist-defense
+        // + bounded-trope discipline; reader surfaces most-recently-touched
+        // top-K people into the inner-thought composer. See
+        // IPersonTropeExtractor XML doc + issue #185.
+        services.AddSingleton<IPersonTropeExtractor, QwenPersonTropeExtractor>();
+
         // 2026-10-24 — F-4 Phase 5a temporal context provider.
         // Reads recent InnerThought records at cycle time; InnerThoughtPhase
         // passes the resulting TemporalContext through to the composer so
