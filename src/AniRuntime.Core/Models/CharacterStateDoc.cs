@@ -84,6 +84,18 @@ public class CharacterStateDoc
     /// </summary>
     public List<ArcState>            OngoingArcs  { get; set; } = new();
 
+    /// <summary>
+    /// F-4 Phase 6 (2026-11-02) — accrued state about canonical non-Mark
+    /// people in Ani's world (Sister Lila, Dominus, etc.). Keyed by
+    /// canonical name. Mutated by <c>IPersonTropeExtractor</c> at reflection
+    /// time; read back as a composer top-K section in the inner-thought
+    /// prompt. Mark himself is explicitly out of scope (he evolves via
+    /// conversation + ReactiveShareService). See <see cref="PersonState"/>
+    /// for the per-slot shape and issue #185 for the confabulation
+    /// discipline (tropes-not-events, canonical-cast allowlist).
+    /// </summary>
+    public Dictionary<string, PersonState> KnownPeople { get; set; } = new();
+
     // Feature 19: Relationship-specific words that carry outsized emotional weight
     public List<LexicalAnchor> LexicalAnchors { get; set; } = new();
 

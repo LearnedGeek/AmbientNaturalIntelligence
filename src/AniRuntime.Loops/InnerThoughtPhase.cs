@@ -53,6 +53,7 @@ public class InnerThoughtPhase
     private readonly int? _topicValenceTopK;  // F-4 Phase 1: null disables injection
     private readonly int? _toneValenceTopK;   // F-4 Phase 1.1: null disables injection
     private readonly int? _ongoingArcsTopK;   // F-4 Phase 7:   null disables injection
+    private readonly int? _knownPeopleTopK;   // F-4 Phase 6:   null disables injection
     private readonly bool _namedSubstrateAnchorEnabled;  // F-4 Phase 2
     private readonly ITemporalContextProvider? _temporalContextProvider;  // F-4 Phase 5a
     private readonly int _temporalContextRecentK;                         // F-4 Phase 5a
@@ -113,6 +114,9 @@ public class InnerThoughtPhase
         _ongoingArcsTopK = (aniOptions?.Value.OngoingArcsEnabled ?? false)
             ? aniOptions?.Value.OngoingArcsTopKInjected
             : (int?)null;
+        _knownPeopleTopK = (aniOptions?.Value.KnownPeopleEnabled ?? false)
+            ? aniOptions?.Value.KnownPeopleReaderTopK
+            : (int?)null;
         _namedSubstrateAnchorEnabled = aniOptions?.Value.NamedSubstrateAnchorEnabled ?? false;
         _temporalContextEnabled = aniOptions?.Value.TemporalContextEnabled ?? false;
         _temporalContextRecentK = aniOptions?.Value.TemporalContextRecentK ?? 3;
@@ -154,7 +158,7 @@ public class InnerThoughtPhase
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(
             snapshot, rendererForPrompt,
             _topicValenceTopK, _namedSubstrateAnchorEnabled, _toneValenceTopK, _ongoingArcsTopK,
-            temporal);
+            _knownPeopleTopK, temporal);
         // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
         // is safe: preserves empty base system (Modelfile SYSTEM fallback),
         // returns unchanged when history is unattributed, otherwise prepends

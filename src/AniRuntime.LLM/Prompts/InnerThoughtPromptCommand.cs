@@ -12,6 +12,7 @@ public sealed record InnerThoughtPromptInput(
     bool NamedSubstrateAnchorEnabled = false,
     int? ToneValenceTopK = null,
     int? OngoingArcsTopK = null,
+    int? KnownPeopleTopK = null,
     TemporalContext? Temporal = null);
 
 /// <summary>
@@ -353,6 +354,32 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
                 sections.Add(
                     "Threads you're still inside of (any may surface in thought, or not — don't force it): "
                     + string.Join("; ", activeArcs));
+            }
+        }
+
+        // F-4 Phase 6 (2026-11-02) — Known-people top-K.
+        // Sibling of the Phase 7 arcs block: canonical non-Mark people
+        // (Sister Lila, Dominus, bookstore regulars) with the most-recent
+        // shared-tropes extracted from her own inner thoughts. The tropes
+        // are patterns — "classroom patience," "comforting when thunder
+        // scares her" — not events. Only accrues on canonical-cast allowlist
+        // (ReflectionPhase.IsCanonicalPersonName) so fabricated names can't
+        // land here. Same soft framing as its siblings. See issue #185.
+        var peopleTopK = input.KnownPeopleTopK ?? 0;
+        if (peopleTopK > 0 && cs.KnownPeople.Count > 0)
+        {
+            var recent = cs.KnownPeople.Values
+                .Where(p => !string.IsNullOrWhiteSpace(p.Name) && p.SharedTropes.Count > 0)
+                .OrderByDescending(p => p.LastTouchedAt)
+                .Take(peopleTopK)
+                .Select(p => $"{p.Name} ({string.Join("; ", p.SharedTropes.Take(3))})")
+                .ToList();
+
+            if (recent.Count > 0)
+            {
+                sections.Add(
+                    "People on your mind recently (any may surface in thought, or not — don't force it): "
+                    + string.Join(" | ", recent));
             }
         }
 

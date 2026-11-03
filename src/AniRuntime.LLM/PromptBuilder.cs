@@ -18,11 +18,18 @@ public static class PromptBuilder
         bool namedSubstrateAnchorEnabled = false,
         int? toneValenceTopK = null,
         int? ongoingArcsTopK = null,
+        int? knownPeopleTopK = null,
         TemporalContext? temporal = null)
         => new Prompts.InnerThoughtPromptCommand()
             .Build(new Prompts.InnerThoughtPromptInput(
-                snapshot, epistemicRenderer, topicValenceTopK, namedSubstrateAnchorEnabled,
-                toneValenceTopK, ongoingArcsTopK, temporal));
+                Snapshot: snapshot,
+                EpistemicRenderer: epistemicRenderer,
+                TopicValenceTopK: topicValenceTopK,
+                NamedSubstrateAnchorEnabled: namedSubstrateAnchorEnabled,
+                ToneValenceTopK: toneValenceTopK,
+                OngoingArcsTopK: ongoingArcsTopK,
+                KnownPeopleTopK: knownPeopleTopK,
+                Temporal: temporal));
 
 
     /// <summary>

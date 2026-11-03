@@ -30,6 +30,7 @@ public class ReflectionPhase
     private readonly IGrowthEdgeMutator? _growthEdges;
     private readonly IMemoryAnalytics? _analytics;
     private readonly IArcExtractor? _arcExtractor;
+    private readonly IPersonTropeExtractor? _personTropeExtractor;
     private readonly ILogger<ReflectionPhase> _log;
     private int _cyclesSinceLastReflection;
 
@@ -43,7 +44,8 @@ public class ReflectionPhase
         IReflectionGistService? gistService = null,
         IGrowthEdgeMutator? growthEdges = null,
         IMemoryAnalytics? analytics = null,
-        IArcExtractor? arcExtractor = null)
+        IArcExtractor? arcExtractor = null,
+        IPersonTropeExtractor? personTropeExtractor = null)
     {
         _ollama = ollama;
         _persist = persist;
@@ -54,6 +56,7 @@ public class ReflectionPhase
         _growthEdges = growthEdges;
         _analytics = analytics;
         _arcExtractor = arcExtractor;
+        _personTropeExtractor = personTropeExtractor;
         _log = log;
     }
 
@@ -498,14 +501,43 @@ public class ReflectionPhase
                     }
                 }
 
-                if (anyChanged || arcsMutated)
+                // F-4 Phase 6 (2026-11-02) — non-Mark relationship evolution.
+                // Scans the same reflection window for mentions of canonical-
+                // cast people (FamilyContext + CanonicalContacts, minus the
+                // primary contact). Extracted shared-tropes land on
+                // CharacterStateDoc.KnownPeople slots keyed by canonical name
+                // under allowlist-defense + bounded-trope discipline. Gated
+                // on KnownPeopleEnabled. See issue #185.
+                var peopleMutated = false;
+                if (_options.KnownPeopleEnabled
+                    && _personTropeExtractor is not null
+                    && recentMemories.Count > 0)
+                {
+                    try
+                    {
+                        peopleMutated = await ApplyPersonTropeExtractionAsync(
+                            characterState, recentMemories, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _log.LogWarning(ex,
+                            "F4_PERSON_TROPE_EXTRACT persistence/state fault — reflection gist still saved");
+                    }
+                }
+
+                if (anyChanged || arcsMutated || peopleMutated)
                 {
                     await _persist.SaveCharacterStateAsync(characterState, ct).ConfigureAwait(false);
                     _log.LogInformation(
-                        "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) arcs={ArcCount} totals(topic={TC} tone={OC})",
+                        "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) arcs={ArcCount} people={PeopleCount} totals(topic={TC} tone={OC})",
                         result.KeysUpdated, result.NewKeysAdded, result.KeysPruned,
                         toneResult.KeysUpdated, toneResult.NewKeysAdded, toneResult.KeysPruned,
                         characterState.OngoingArcs.Count,
+                        characterState.KnownPeople.Count,
                         characterState.TopicValence.Count, characterState.ToneValence.Count);
                 }
             }
@@ -733,6 +765,181 @@ public class ReflectionPhase
                     Summary       = m.Summary ?? string.Empty,
                     Status        = ArcStatus.Active,
                 });
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// F-4 Phase 6 (2026-11-02) — runs the person-trope extractor over
+    /// <paramref name="recentMemories"/>, applies each emitted trope to
+    /// <paramref name="characterState"/>'s <see cref="CharacterStateDoc.KnownPeople"/>
+    /// dictionary under allowlist-defense + bounded-trope discipline, and
+    /// returns true when any state changed so the caller knows to persist.
+    /// </summary>
+    private async Task<bool> ApplyPersonTropeExtractionAsync(
+        CharacterStateDoc characterState,
+        IReadOnlyList<MemoryRecord> recentMemories,
+        CancellationToken ct)
+    {
+        if (_personTropeExtractor is null) return false;
+
+        var window = Math.Max(1, _options.KnownPeopleReflectionWindow);
+        var thoughts = recentMemories
+            .Where(r => r.Type == MemoryType.InnerThought)
+            .Take(window)
+            .ToList();
+        if (thoughts.Count == 0) return false;
+
+        var canonicalCast = BuildCanonicalCast(characterState);
+        if (canonicalCast.Count == 0) return false;
+
+        var existingNames = characterState.KnownPeople.Keys
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToList();
+
+        var tropes = await _personTropeExtractor
+            .ExtractAsync(thoughts, canonicalCast, characterState.PrimaryContactName ?? string.Empty, existingNames, ct)
+            .ConfigureAwait(false);
+
+        var changed = ApplyPersonTropes(
+            characterState,
+            tropes,
+            Math.Max(1, _options.KnownPeopleTropesPerPerson),
+            DateTimeOffset.UtcNow);
+
+        if (changed)
+        {
+            _log.LogInformation(
+                "F4_PERSON_TROPE_EXTRACT emitted={Emitted} people={People}",
+                tropes.Count,
+                characterState.KnownPeople.Count);
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Build the canonical-cast prose list handed to the extractor:
+    /// <see cref="CharacterStateDoc.FamilyContext"/> + <see cref="CharacterStateDoc.CanonicalContacts"/>,
+    /// minus any entries that are blank. The primary contact's exclusion
+    /// is applied inside the extractor prompt + at allowlist-check time;
+    /// their lore line may remain in the cast so the extractor sees the
+    /// relational context, but the extractor is instructed not to emit them.
+    /// </summary>
+    internal static List<string> BuildCanonicalCast(CharacterStateDoc cs)
+    {
+        var cast = new List<string>();
+        if (cs.FamilyContext is { Count: > 0 })
+            cast.AddRange(cs.FamilyContext.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (cs.CanonicalContacts is { Count: > 0 })
+            cast.AddRange(cs.CanonicalContacts.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return cast;
+    }
+
+    /// <summary>
+    /// Defense-in-depth allowlist check for emitted person names. Accepts
+    /// a name iff it is a case-insensitive substring of some
+    /// <see cref="CharacterStateDoc.FamilyContext"/> entry OR equals (case-
+    /// insensitive) some <see cref="CharacterStateDoc.CanonicalContacts"/>
+    /// entry, AND is NOT the primary contact. Short strings (&lt; 2 chars)
+    /// and whitespace are rejected to catch pathological extractor output.
+    /// </summary>
+    internal static bool IsCanonicalPersonName(string candidate, CharacterStateDoc cs)
+    {
+        if (string.IsNullOrWhiteSpace(candidate)) return false;
+        var trimmed = candidate.Trim();
+        if (trimmed.Length < 2) return false;
+
+        if (!string.IsNullOrWhiteSpace(cs.PrimaryContactName)
+            && string.Equals(trimmed, cs.PrimaryContactName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (cs.CanonicalContacts is { Count: > 0 }
+            && cs.CanonicalContacts.Any(c =>
+                !string.IsNullOrWhiteSpace(c)
+                && string.Equals(trimmed, c, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (cs.FamilyContext is { Count: > 0 }
+            && cs.FamilyContext.Any(entry =>
+                !string.IsNullOrWhiteSpace(entry)
+                && entry.Contains(trimmed, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Pure mutation: apply <paramref name="tropes"/> to
+    /// <paramref name="characterState"/>'s <see cref="CharacterStateDoc.KnownPeople"/>
+    /// dict. Internal so tests pin the allowlist + bounded-trope discipline
+    /// without an LLM hop.
+    /// </summary>
+    internal static bool ApplyPersonTropes(
+        CharacterStateDoc characterState,
+        IReadOnlyList<PersonTrope> tropes,
+        int maxTropesPerPerson,
+        DateTimeOffset now)
+    {
+        if (tropes is null || tropes.Count == 0) return false;
+
+        // Confabulation discipline, folded into the filter:
+        //   - name + trope non-empty (schema sanity)
+        //   - IsCanonicalPersonName allowlist (May 3 2026 "hey perez" defense)
+        // Any extractor-emitted name that fails the allowlist never reaches
+        // the mutation body — the writer path cannot land a fabricated name.
+        var changed = false;
+        var accepted = tropes.Where(t =>
+            !string.IsNullOrWhiteSpace(t.Name)
+            && !string.IsNullOrWhiteSpace(t.Trope)
+            && IsCanonicalPersonName(t.Name, characterState));
+
+        foreach (var t in accepted)
+        {
+            // Case-insensitive slot match to prevent casing-variant drift.
+            var slotKey = characterState.KnownPeople.Keys.FirstOrDefault(k =>
+                string.Equals(k, t.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (slotKey is null)
+            {
+                var newSlot = new PersonState
+                {
+                    Name             = t.Name.Trim(),
+                    FirstMentionedAt = now,
+                    LastTouchedAt    = now,
+                    MentionCount     = 1,
+                    SharedTropes     = new List<string> { t.Trope.Trim() },
+                };
+                characterState.KnownPeople[newSlot.Name] = newSlot;
+                changed = true;
+            }
+            else
+            {
+                var slot = characterState.KnownPeople[slotKey];
+                slot.LastTouchedAt = now;
+                slot.MentionCount += 1;
+
+                // Dedupe case-insensitively: a repeat trope moves to front
+                // (freshen) rather than growing the list.
+                var dupIdx = slot.SharedTropes.FindIndex(s =>
+                    string.Equals(s, t.Trope, StringComparison.OrdinalIgnoreCase));
+                if (dupIdx >= 0) slot.SharedTropes.RemoveAt(dupIdx);
+                slot.SharedTropes.Insert(0, t.Trope.Trim());
+
+                if (slot.SharedTropes.Count > maxTropesPerPerson)
+                {
+                    slot.SharedTropes.RemoveRange(
+                        maxTropesPerPerson,
+                        slot.SharedTropes.Count - maxTropesPerPerson);
+                }
                 changed = true;
             }
         }
