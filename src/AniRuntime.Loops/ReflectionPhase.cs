@@ -407,9 +407,8 @@ public class ReflectionPhase
         // so test fixtures that don't need growth-edge coverage still work.
         // State mutations across Phase 1/1.1/7/6 share one persist step at
         // the end. Each mutator gates on its OWN feature flag; growth-edges
-        // being off must not silently disable Phase 6 (Devin + Copilot review
-        // on PR #189 flagged this). Phase 7's arcs still share the growth-
-        // edges gate pending a separate issue.
+        // being off only disables Phase 1/1.1 — Phase 7 arcs (PR #192) and
+        // Phase 6 known-people (PR #189) run as independent siblings below.
         var result        = GrowthEdgeUpdateResult.Empty;
         var toneResult    = GrowthEdgeUpdateResult.Empty;
         var arcsMutated   = false;
