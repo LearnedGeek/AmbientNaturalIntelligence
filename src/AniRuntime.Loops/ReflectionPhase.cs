@@ -405,6 +405,16 @@ public class ReflectionPhase
         //
         // Gated on GrowthEdgesEnabled; opt-dep (null mutator → skip entirely)
         // so test fixtures that don't need growth-edge coverage still work.
+        // State mutations across Phase 1/1.1/7/6 share one persist step at
+        // the end. Each mutator gates on its OWN feature flag; growth-edges
+        // being off must not silently disable Phase 6 (Devin + Copilot review
+        // on PR #189 flagged this). Phase 7's arcs still share the growth-
+        // edges gate pending a separate issue.
+        var result        = GrowthEdgeUpdateResult.Empty;
+        var toneResult    = GrowthEdgeUpdateResult.Empty;
+        var arcsMutated   = false;
+        var peopleMutated = false;
+
         if (_options.GrowthEdgesEnabled && _growthEdges is not null && saved > 0)
         {
             try
@@ -433,7 +443,7 @@ public class ReflectionPhase
                     }
                 }
 
-                var result = await _growthEdges
+                result = await _growthEdges
                     .UpdateTopicValenceAsync(characterState, recentMemories, ct, recentAnchors)
                     .ConfigureAwait(false);
 
@@ -443,7 +453,6 @@ public class ReflectionPhase
                 // ToneValence under the same bounded-delta discipline.
                 // Gated on ToneGrowthEdgesEnabled; empty-pool / unavailable
                 // paths are no-ops.
-                var toneResult = GrowthEdgeUpdateResult.Empty;
                 if (_options.ToneGrowthEdgesEnabled)
                 {
                     IReadOnlyList<MemoryRecord> markReplies = Array.Empty<MemoryRecord>();
@@ -470,17 +479,12 @@ public class ReflectionPhase
                     }
                 }
 
-                var anyChanged =
-                    result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0 ||
-                    toneResult.KeysUpdated > 0 || toneResult.NewKeysAdded > 0 || toneResult.KeysPruned > 0;
-
                 // F-4 Phase 7 (2026-10-23) — ongoing-arcs extraction and
                 // mutation. Scans the same reflection window for multi-week
                 // narrative threads; mentions update or create entries on
                 // CharacterStateDoc.OngoingArcs. Arcs not touched for the
                 // configured stall threshold transition to Stalled; soft-
                 // capped at MaxActive. Gated on OngoingArcsEnabled.
-                var arcsMutated = false;
                 if (_options.OngoingArcsEnabled
                     && _arcExtractor is not null
                     && recentMemories.Count > 0)
@@ -499,46 +503,6 @@ public class ReflectionPhase
                         _log.LogWarning(ex,
                             "F4_ARC_EXTRACT persistence/state fault — reflection gist still saved");
                     }
-                }
-
-                // F-4 Phase 6 (2026-11-02) — non-Mark relationship evolution.
-                // Scans the same reflection window for mentions of canonical-
-                // cast people (FamilyContext + CanonicalContacts, minus the
-                // primary contact). Extracted shared-tropes land on
-                // CharacterStateDoc.KnownPeople slots keyed by canonical name
-                // under allowlist-defense + bounded-trope discipline. Gated
-                // on KnownPeopleEnabled. See issue #185.
-                var peopleMutated = false;
-                if (_options.KnownPeopleEnabled
-                    && _personTropeExtractor is not null
-                    && recentMemories.Count > 0)
-                {
-                    try
-                    {
-                        peopleMutated = await ApplyPersonTropeExtractionAsync(
-                            characterState, recentMemories, ct).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        _log.LogWarning(ex,
-                            "F4_PERSON_TROPE_EXTRACT persistence/state fault — reflection gist still saved");
-                    }
-                }
-
-                if (anyChanged || arcsMutated || peopleMutated)
-                {
-                    await _persist.SaveCharacterStateAsync(characterState, ct).ConfigureAwait(false);
-                    _log.LogInformation(
-                        "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) arcs={ArcCount} people={PeopleCount} totals(topic={TC} tone={OC})",
-                        result.KeysUpdated, result.NewKeysAdded, result.KeysPruned,
-                        toneResult.KeysUpdated, toneResult.NewKeysAdded, toneResult.KeysPruned,
-                        characterState.OngoingArcs.Count,
-                        characterState.KnownPeople.Count,
-                        characterState.TopicValence.Count, characterState.ToneValence.Count);
                 }
             }
             catch (OperationCanceledException)
@@ -565,6 +529,67 @@ public class ReflectionPhase
                 // get swallowed silently.
                 _log.LogWarning(ex,
                     "F4_GROWTH_EDGE_UPDATE persistence/state fault — reflection gist still saved");
+            }
+        }
+
+        // F-4 Phase 6 (2026-11-02) — non-Mark relationship evolution.
+        // Independent of GrowthEdgesEnabled: Phase 6 writes to KnownPeople,
+        // not TopicValence/ToneValence, and must stay reachable when growth-
+        // edges are disabled. Gated on its own KnownPeopleEnabled flag +
+        // extractor availability + a non-empty reflection window. See the
+        // review on PR #189 (Devin + Copilot both flagged the earlier
+        // nesting under GrowthEdgesEnabled). Issue #185.
+        if (_options.KnownPeopleEnabled
+            && _personTropeExtractor is not null
+            && saved > 0
+            && recentMemories.Count > 0)
+        {
+            try
+            {
+                peopleMutated = await ApplyPersonTropeExtractionAsync(
+                    characterState, recentMemories, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _log.LogWarning(ex,
+                    "F4_PERSON_TROPE_EXTRACT persistence/state fault — reflection gist still saved");
+            }
+        }
+
+        // Unified persist step. Each phase's own flag controls whether it
+        // ran; this just serializes the resulting state once if anything
+        // actually changed. Failure here is fail-open — gist is already
+        // durable, next cycle retries.
+        var anyChanged =
+            result.KeysUpdated > 0 || result.NewKeysAdded > 0 || result.KeysPruned > 0 ||
+            toneResult.KeysUpdated > 0 || toneResult.NewKeysAdded > 0 || toneResult.KeysPruned > 0 ||
+            arcsMutated || peopleMutated;
+
+        if (anyChanged)
+        {
+            try
+            {
+                await _persist.SaveCharacterStateAsync(characterState, ct).ConfigureAwait(false);
+                _log.LogInformation(
+                    "F4_GROWTH_EDGE_PERSISTED topic(updated={TU} added={TA} pruned={TP}) tone(updated={OU} added={OA} pruned={OP}) arcs={ArcCount} people={PeopleCount} totals(topic={TC} tone={OC})",
+                    result.KeysUpdated, result.NewKeysAdded, result.KeysPruned,
+                    toneResult.KeysUpdated, toneResult.NewKeysAdded, toneResult.KeysPruned,
+                    characterState.OngoingArcs.Count,
+                    characterState.KnownPeople.Count,
+                    characterState.TopicValence.Count, characterState.ToneValence.Count);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _log.LogWarning(ex,
+                    "F4_CHARACTER_STATE_PERSIST failure — mutations held in memory, next cycle retries");
             }
         }
 
@@ -840,11 +865,22 @@ public class ReflectionPhase
 
     /// <summary>
     /// Defense-in-depth allowlist check for emitted person names. Accepts
-    /// a name iff it is a case-insensitive substring of some
-    /// <see cref="CharacterStateDoc.FamilyContext"/> entry OR equals (case-
-    /// insensitive) some <see cref="CharacterStateDoc.CanonicalContacts"/>
-    /// entry, AND is NOT the primary contact. Short strings (&lt; 2 chars)
-    /// and whitespace are rejected to catch pathological extractor output.
+    /// a name iff it (1) exactly matches some
+    /// <see cref="CharacterStateDoc.CanonicalContacts"/> entry (case-
+    /// insensitive) OR (2) appears in some
+    /// <see cref="CharacterStateDoc.FamilyContext"/> entry as a
+    /// capitalized whole-word phrase, AND is NOT the primary contact.
+    ///
+    /// <para>
+    /// The capitalized-whole-word rule rejects three failure modes the
+    /// looser substring form shipped on PR #189 before review caught them:
+    /// <list type="bullet">
+    ///   <item>Lowercase substantives — "parents", "family" matching
+    ///   "No parents in the picture" / "my family now".</item>
+    ///   <item>Non-boundary substrings — "Rob" matching "robot emojis".</item>
+    ///   <item>Any name introduced in prose with a lowercase first letter.</item>
+    /// </list>
+    /// </para>
     /// </summary>
     internal static bool IsCanonicalPersonName(string candidate, CharacterStateDoc cs)
     {
@@ -869,11 +905,42 @@ public class ReflectionPhase
         if (cs.FamilyContext is { Count: > 0 }
             && cs.FamilyContext.Any(entry =>
                 !string.IsNullOrWhiteSpace(entry)
-                && entry.Contains(trimmed, StringComparison.OrdinalIgnoreCase)))
+                && HasCapitalizedWholeWordMatch(entry, trimmed)))
         {
             return true;
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true iff <paramref name="candidate"/> appears in
+    /// <paramref name="prose"/> as a whole-word match (letter-boundary on
+    /// both sides) AND the match's first character in prose is uppercase.
+    /// The case-sensitive first-letter check is what rejects "parents" in
+    /// "No parents in the picture"; the whole-word check is what rejects
+    /// "Rob" in "robot". Case-insensitive match overall for the full
+    /// candidate so "lila" and "Lila" both resolve to the "Lila" slot.
+    /// </summary>
+    internal static bool HasCapitalizedWholeWordMatch(string prose, string candidate)
+    {
+        if (string.IsNullOrEmpty(prose) || string.IsNullOrEmpty(candidate))
+            return false;
+
+        var idx = 0;
+        while (idx <= prose.Length - candidate.Length)
+        {
+            var found = prose.IndexOf(candidate, idx, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) return false;
+
+            var beforeOk = found == 0 || !char.IsLetter(prose[found - 1]);
+            var endIdx   = found + candidate.Length;
+            var afterOk  = endIdx >= prose.Length || !char.IsLetter(prose[endIdx]);
+            var startsUpper = char.IsUpper(prose[found]);
+
+            if (beforeOk && afterOk && startsUpper) return true;
+            idx = found + 1;
+        }
         return false;
     }
 
@@ -902,6 +969,12 @@ public class ReflectionPhase
             && !string.IsNullOrWhiteSpace(t.Trope)
             && IsCanonicalPersonName(t.Name, characterState));
 
+        // MentionCount tracks REFLECTION CYCLES that touched the slot, not
+        // the number of tropes extracted in this call. Multiple tropes for
+        // the same person in one call bump the count once (PR #189 Devin
+        // review). Case-insensitive tracking so casing variants fold.
+        var bumpedThisCall = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var t in accepted)
         {
             // Case-insensitive slot match to prevent casing-variant drift.
@@ -919,13 +992,15 @@ public class ReflectionPhase
                     SharedTropes     = new List<string> { t.Trope.Trim() },
                 };
                 characterState.KnownPeople[newSlot.Name] = newSlot;
+                bumpedThisCall.Add(newSlot.Name);
                 changed = true;
             }
             else
             {
                 var slot = characterState.KnownPeople[slotKey];
                 slot.LastTouchedAt = now;
-                slot.MentionCount += 1;
+                if (bumpedThisCall.Add(slotKey))
+                    slot.MentionCount += 1;
 
                 // Dedupe case-insensitively: a repeat trope moves to front
                 // (freshen) rather than growing the list.

@@ -99,6 +99,13 @@ public sealed class QwenPersonTropeExtractor : IPersonTropeExtractor
         try
         {
             using var doc = JsonDocument.Parse(raw.Trim());
+            // Guard non-object roots ("[]", "null", "\"...\"", "42"): valid
+            // JSON that would throw InvalidOperationException on
+            // TryGetProperty — the JsonException catch below wouldn't fire.
+            // Caught by Copilot review on PR #189.
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return Array.Empty<PersonTrope>();
+
             if (!doc.RootElement.TryGetProperty("people", out var people)
                 || people.ValueKind != JsonValueKind.Array)
             {
@@ -162,10 +169,9 @@ public sealed class QwenPersonTropeExtractor : IPersonTropeExtractor
     {
         var sb = new StringBuilder();
         sb.AppendLine("CANONICAL CAST (only extract people found here):");
-        foreach (var c in canonicalCast)
+        foreach (var c in canonicalCast.Where(e => !string.IsNullOrWhiteSpace(e)))
         {
-            if (!string.IsNullOrWhiteSpace(c))
-                sb.AppendLine($"  - {c}");
+            sb.AppendLine($"  - {c}");
         }
         sb.AppendLine();
         if (!string.IsNullOrWhiteSpace(primaryContactName))

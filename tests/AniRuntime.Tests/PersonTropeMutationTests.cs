@@ -77,6 +77,39 @@ public class PersonTropeMutationTests
     }
 
     [Fact]
+    public void IsCanonical_SubstringOfLoreWord_Rejected()
+    {
+        // PR #189 Devin + Copilot: the earlier substring form accepted "Rob"
+        // from "robot emojis" and would persist it as a canonical slot.
+        // Whole-word boundary rejects.
+        var cs = BuildState();
+        ReflectionPhase.IsCanonicalPersonName("Rob",  cs).Should().BeFalse();
+        ReflectionPhase.IsCanonicalPersonName("rob",  cs).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsCanonical_LowercaseProseSubstantive_Rejected()
+    {
+        // PR #189 Devin: the earlier form accepted "parents" from
+        // "No parents in the picture" and "family" from "my family now".
+        // Capitalized-first-letter rule rejects.
+        var cs = BuildState();
+        ReflectionPhase.IsCanonicalPersonName("parents", cs).Should().BeFalse();
+        ReflectionPhase.IsCanonicalPersonName("Parents", cs).Should().BeFalse(); // seed has lowercase
+        ReflectionPhase.IsCanonicalPersonName("family",  cs).Should().BeFalse();
+        ReflectionPhase.IsCanonicalPersonName("Family",  cs).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsCanonical_CapitalizedMultiWordName_Accepted()
+    {
+        // "Sister Lila" appears verbatim in the seed prose as a capitalized
+        // two-word phrase. Should match.
+        var cs = BuildState();
+        ReflectionPhase.IsCanonicalPersonName("Sister Lila", cs).Should().BeTrue();
+    }
+
+    [Fact]
     public void IsCanonical_WhitespaceOrTooShort_Rejected()
     {
         var cs = BuildState();
@@ -248,6 +281,33 @@ public class PersonTropeMutationTests
         cs.KnownPeople.Should().ContainSingle();
         cs.KnownPeople.Should().ContainKey("Lila");
         cs.KnownPeople["Lila"].SharedTropes.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Apply_MultipleTropesForOnePersonInOneCall_BumpsMentionCountOnce()
+    {
+        // PR #189 Devin: MentionCount tracks REFLECTION CYCLES touching the
+        // slot, not the number of extracted tropes. Two tropes for Lila in
+        // one call must count as one cycle.
+        var cs = BuildState();
+        cs.KnownPeople["Lila"] = new PersonState
+        {
+            Name          = "Lila",
+            LastTouchedAt = Now.AddDays(-1),
+            MentionCount  = 4,
+            SharedTropes  = new List<string> { "late-night texts" },
+        };
+
+        var tropes = new List<PersonTrope>
+        {
+            new("Lila", "classroom patience"),
+            new("Lila", "robot emojis on birthdays"),
+        };
+
+        ReflectionPhase.ApplyPersonTropes(cs, tropes, maxTropesPerPerson: 5, now: Now);
+
+        cs.KnownPeople["Lila"].MentionCount.Should().Be(5); // 4 + 1 (not + 2)
+        cs.KnownPeople["Lila"].SharedTropes.Should().HaveCount(3);
     }
 
     [Fact]

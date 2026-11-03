@@ -122,6 +122,22 @@ public class QwenPersonTropeExtractorTests
     }
 
     [Fact]
+    public async Task Extract_NonObjectJsonRoot_ReturnsEmpty()
+    {
+        // PR #189 Copilot: valid JSON with a non-object root ("[]", "null",
+        // "\"foo\"", "42") makes TryGetProperty throw InvalidOperationException
+        // which the JsonException catch wouldn't handle. Guard the root kind.
+        foreach (var payload in new[] { "[]", "null", "\"foo\"", "42" })
+        {
+            var e = BuildExtractor(payload);
+            var result = await e.ExtractAsync(
+                Thoughts("x"), Cast("Lila"), "Mark",
+                Array.Empty<string>(), CancellationToken.None);
+            result.Should().BeEmpty($"non-object root '{payload}' must fail-open to empty");
+        }
+    }
+
+    [Fact]
     public async Task Extract_EmptyNameOrTrope_Skipped()
     {
         var e = BuildExtractor(
