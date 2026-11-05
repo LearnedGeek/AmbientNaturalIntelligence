@@ -74,10 +74,12 @@ public class ContextSnapshot
     /// Theme R.1 (2026-05-24, #64) — Ani's most-recent inner-thought dominant register
     /// (one of <c>ClosedConversationSummarizer.Registers</c>). Populated by
     /// <c>ContextBuilder</c> from <c>IDominantRegisterTracker.Current</c>; updated
-    /// after every inner-thought composition on the hybrid path. Consumers
-    /// (OutreachMessagePromptCommand, LeanConversationPromptCommand) branch
-    /// composition shape on this value — STRUCTURAL consumption per R.0 contract,
-    /// not prose framing.
+    /// after every inner-thought composition on the hybrid path. The live
+    /// consumers are <c>LeanConversationPromptCommand</c> and
+    /// <c>InnerThoughtPromptCommand</c>, both of which branch composition
+    /// shape on the register value. (The outreach composer that formerly
+    /// consumed this value was retired under Theme K.3.) STRUCTURAL
+    /// consumption per R.0 contract, not prose framing.
     /// <para>Null when no recent inner-thought register is available (cold start,
     /// non-hybrid path). Consumers default to the existing prompt shape on null.</para>
     /// </summary>

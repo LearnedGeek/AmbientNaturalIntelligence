@@ -27,19 +27,15 @@ namespace AniRuntime.Tests.Infrastructure;
 public static class ConversationReplyPhaseTestBuilder
 {
     public static ConversationReplyPhase Build(
-        IStateStore state,
         IMemoryPersistence persist,
         IMemorySearch search,
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IConversationService conversations,
         IReplyChannelResolver channels,
-        AniActionDispatcher dispatcher,
         DesireEngine desire,
         EmotionalProcessor emotional,
         ContextBuilder contextBuilder,
-        KeywordExtractor keywords,
-        IIntentExtractor intent,
         IConversationGateState gateState,
         ContextCompressor compressor,
         ClaimVerificationPhase claimVerifier,
@@ -56,8 +52,8 @@ public static class ConversationReplyPhaseTestBuilder
         IEpistemicSubstrateRenderer? epistemicRenderer = null)
     {
         var pipeline = BuildPipeline(
-            state, persist, search, analytics, ollama, conversations, channels,
-            dispatcher, desire, emotional, contextBuilder, keywords, intent,
+            persist, search, analytics, ollama, conversations, channels,
+            desire, emotional, contextBuilder,
             gateState, compressor, claimVerifier, withdrawal, aniOptions, ollamaOptions,
             mlClassifier, personaCache, em9Detector, outputGate, vibeBias,
             consciousGist, gateTripTracker, epistemicRenderer);
@@ -66,19 +62,15 @@ public static class ConversationReplyPhaseTestBuilder
     }
 
     public static ConversationReplyPipeline BuildPipeline(
-        IStateStore state,
         IMemoryPersistence persist,
         IMemorySearch search,
         IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IConversationService conversations,
         IReplyChannelResolver channels,
-        AniActionDispatcher dispatcher,
         DesireEngine desire,
         EmotionalProcessor emotional,
         ContextBuilder contextBuilder,
-        KeywordExtractor keywords,
-        IIntentExtractor intent,
         IConversationGateState gateState,
         ContextCompressor compressor,
         ClaimVerificationPhase claimVerifier,
@@ -106,15 +98,10 @@ public static class ConversationReplyPhaseTestBuilder
             ollama, aniOptions, NullLogger<ReplyEvaluator>.Instance,
             outputGate, gateTripTracker);
 
-        // dispatcher (AniActionDispatcher) was injected but unused by the
-        // pipeline pre-§5.4d — kept in this builder's positional signature
-        // for caller-side parity with the prior shape, then discarded here.
-        _ = dispatcher;
-
         return new ConversationReplyPipeline(
-            state, persist, search, analytics, ollama, conversations,
-            replyDispatcher, postReply, replyEvaluator, contextBuilder, keywords, intent,
-            gateState, compressor, claimVerifier, withdrawal, aniOptions, ollamaOptions,
+            persist, search, ollama, conversations,
+            replyDispatcher, postReply, replyEvaluator, contextBuilder,
+            gateState, compressor, claimVerifier, aniOptions, ollamaOptions,
             NullLogger<ConversationReplyPipeline>.Instance,
             mlClassifier, personaCache, em9Detector, vibeBias,
             consciousGist, epistemicRenderer);

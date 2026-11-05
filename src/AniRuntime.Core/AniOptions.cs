@@ -381,14 +381,15 @@ public class AniOptions
     public bool MotivationEmphasisEnabled { get; set; } = true;
 
     // Life Engine A.−1 (Nov 2026): neutralize the Theme R.6 contribution-
-    // trajectory "lean in" rule in the two composer prompts that consume it
-    // (OutreachMessagePromptCommand and LeanConversationPromptCommand). The
+    // trajectory "lean in" rule in the composer prompt that consumes it
+    // (LeanConversationPromptCommand; the outreach composer that formerly
+    // consumed it was retired under Theme K.3 before A.−1 shipped). The
     // rule fires on any non-null ContributionTrajectory: high volatility →
     // "light touch"; low volatility → "you can lean into the register
     // confidently." Under register lock, the state IS stable, so the rule
     // tells the model to stay locked.
     //
-    // When FALSE, both composers skip the trajectory switch — no extra
+    // When FALSE, the composer skips the trajectory switch — no extra
     // rule is injected. Default TRUE preserves pre-A.−1 behaviour; prod
     // appsettings flips it to false for the 72h A.−1 observation. The flag
     // is paired with MotivationEmphasisEnabled so the 2x2 can isolate
@@ -1215,10 +1216,11 @@ public class AniOptions
     /// When <c>true</c>: the selector runs before composition; on
     /// <see cref="Models.OutreachFrame.None"/> the outreach is suppressed
     /// (decay desire 0.30 + 10-minute cooldown — same shape as the
-    /// universal output-gate-fail path); on a real frame, the
-    /// <c>PromptBuilder.BuildOutreachMessagePrompt</c> call receives the
-    /// frame so it can prepend a <c>[FRAME: &lt;type&gt;]</c> header and
-    /// an <c>[ANCHOR]</c> section to the composition user prompt.
+    /// universal output-gate-fail path).
+    /// (The composition-time frame prepending that the N.3 rollout
+    /// originally shipped lived in <c>OutreachMessagePromptCommand</c>, which
+    /// was retired under Theme K.3. If frame-aware outreach needs to be
+    /// re-wired into the live Ollama direct-call path, file a follow-up.)
     ///
     /// See <c>docs/spec/ANI-Theme-N-Outreach-Grounding-Source-Typing-Plan.md</c>
     /// §10 N.3 + N.4 for the rollout sequence.

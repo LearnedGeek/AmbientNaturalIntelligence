@@ -280,19 +280,6 @@ public static class PromptBuilder
         => new Prompts.ReconsiderationReplyPromptCommand()
             .Build(new Prompts.ReconsiderationReplyPromptInput(snapshot, thread));
 
-    public static (string System, string User) BuildOutreachMessagePrompt(
-        ContextSnapshot snapshot, string recentThought, string reasoning,
-        bool reasoningInComposition = false,
-        OutreachFrame? frame = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null,
-        bool motivationEmphasisEnabled = true,
-        bool contributionTrajectoryEnabled = true)
-        => new Prompts.OutreachMessagePromptCommand()
-            .Build(new Prompts.OutreachMessagePromptInput(
-                snapshot, recentThought, reasoning, reasoningInComposition, frame, epistemicRenderer,
-                motivationEmphasisEnabled, contributionTrajectoryEnabled));
-
-
     /// <summary>
     /// Scores emotional-shift deltas + severity given a pre-classified
     /// <paramref name="register"/>. Register was moved from output to input

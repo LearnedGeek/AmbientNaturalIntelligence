@@ -52,7 +52,7 @@ public static class OutreachPhaseTestBuilder
             conversations, NullLogger<OutboundThreadRecorder>.Instance);
 
         var pipeline = new OutreachPipeline(
-            state, persist, search, ollama, dispatcher, desire, claimVerifier,
+            persist, search, ollama, dispatcher, desire, claimVerifier,
             threadRecorder, aniOptions,
             NullLogger<OutreachPipeline>.Instance,
             mlClassifier, personaCache, em9Detector, outputGate, vibeBias,

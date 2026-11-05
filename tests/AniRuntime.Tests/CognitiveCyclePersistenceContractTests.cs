@@ -32,7 +32,6 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
     private readonly Mock<IPerceptionSource>     _mockSource          = new();
     private readonly Mock<IAniAction>            _mockSmsAction       = new();
     private readonly Mock<IConversationService>  _mockConversations   = new(MockBehavior.Strict);
-    private readonly Mock<IIntentExtractor>      _mockIntent          = new();
     private readonly Mock<IReplyChannelResolver> _mockChannelResolver = new();
 
     /// <summary>
@@ -95,9 +94,6 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
                 It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<MemoryRecord>());
 
-        _mockIntent.Setup(i => i.ExtractIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                   .ReturnsAsync((string msg, CancellationToken _) => msg);
-
         var mockChannel = new Mock<IReplyChannel>();
         mockChannel.Setup(c => c.ChannelId).Returns("sms");
         mockChannel.Setup(c => c.SendReplyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -137,18 +133,16 @@ public class CognitiveCyclePersistenceContractTests : AniTestBase
         var contextBuilder = new ContextBuilder(
             NoOpState(), NoOpRetrieval(), NoOpEpistemic(), NoOpConversation(), NoOpEmotional(),
             DefaultOptions, NullLogger<ContextBuilder>.Instance);
-        var keywordExtractor = new KeywordExtractor(
-            MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();
         var compressor = new ContextCompressor(MockOllama.Object, NullLogger<ContextCompressor>.Instance);
         var claimVerifier = new ClaimVerificationPhase(
             MockMemory.Object, MockOllama.Object, DefaultOptions,
             NullLogger<ClaimVerificationPhase>.Instance);
         var conversationReply = ConversationReplyPhaseTestBuilder.Build(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
-            _mockChannelResolver.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            _mockIntent.Object, gateState, compressor, claimVerifier, new WithdrawalStateTracker(), DefaultOptions, DefaultOllamaOptions);
+            _mockChannelResolver.Object, desire, emotional, contextBuilder,
+            gateState, compressor, claimVerifier, new WithdrawalStateTracker(), DefaultOptions, DefaultOllamaOptions);
         var outreach = OutreachPhaseTestBuilder.Build(
             MockMemory.Object, MockMemory.Object, MockMemory.Object, MockOllama.Object,
             dispatcher, desire, claimVerifier, _mockConversations.Object, DefaultOptions);
