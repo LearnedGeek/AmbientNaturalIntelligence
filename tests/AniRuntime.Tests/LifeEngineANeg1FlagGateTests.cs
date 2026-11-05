@@ -87,36 +87,6 @@ public class LifeEngineANeg1FlagGateTests
         system.Should().NotContain("Competence is high");
     }
 
-    // ── R.4 emphasis: OutreachMessage composer ───────────────────────
-
-    [Fact]
-    public void OutreachMessage_RelatednessVector_FlagOn_InjectsEmphasisRule()
-    {
-        var vec = new MotivationVector(Relatedness: 1.0f, Autonomy: 0.0f, Competence: 0.0f);
-        var snap = SnapshotWith(vector: vec);
-
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            snap, recentThought: "a thought", reasoning: "a feeling",
-            motivationEmphasisEnabled: true);
-
-        system.Should().Contain("reaching FOR connection");
-    }
-
-    [Fact]
-    public void OutreachMessage_RelatednessVector_FlagOff_OmitsEmphasisRule()
-    {
-        var vec = new MotivationVector(Relatedness: 1.0f, Autonomy: 0.0f, Competence: 0.0f);
-        var snap = SnapshotWith(vector: vec);
-
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            snap, recentThought: "a thought", reasoning: "a feeling",
-            motivationEmphasisEnabled: false);
-
-        system.Should().NotContain("reaching FOR connection");
-        system.Should().NotContain("autonomous state");
-        system.Should().NotContain("sharing-from-skill state");
-    }
-
     // ── R.4 emphasis: LeanConversation composer ──────────────────────
 
     [Fact]
@@ -143,37 +113,6 @@ public class LifeEngineANeg1FlagGateTests
         system.Should().NotContain("reaching-for-connection state");
         system.Should().NotContain("autonomous state");
         system.Should().NotContain("sharing-from-skill state");
-    }
-
-    // ── R.6 trajectory: OutreachMessage composer ─────────────────────
-
-    [Fact]
-    public void OutreachMessage_StableTrajectory_FlagOn_InjectsLeanInRule()
-    {
-        var traj = new EmotionalContributionTrajectory(
-            RecentVolatility: 0.1f, DominantRegistersRecent: ["Yearning"]);
-        var snap = SnapshotWith(trajectory: traj);
-
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            snap, recentThought: "a thought", reasoning: "a feeling",
-            contributionTrajectoryEnabled: true);
-
-        system.Should().Contain("lean into the register confidently");
-    }
-
-    [Fact]
-    public void OutreachMessage_StableTrajectory_FlagOff_OmitsLeanInRule()
-    {
-        var traj = new EmotionalContributionTrajectory(
-            RecentVolatility: 0.1f, DominantRegistersRecent: ["Yearning"]);
-        var snap = SnapshotWith(trajectory: traj);
-
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            snap, recentThought: "a thought", reasoning: "a feeling",
-            contributionTrajectoryEnabled: false);
-
-        system.Should().NotContain("lean into the register confidently");
-        system.Should().NotContain("fluctuating recently");
     }
 
     // ── R.6 trajectory: LeanConversation composer ────────────────────

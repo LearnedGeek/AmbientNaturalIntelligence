@@ -257,62 +257,11 @@ public class EpistemicGroundingPromptTests
         system.Should().Contain("full creative latitude");
     }
 
-    // ─── BuildOutreachMessagePrompt ───────────────────────────────────────────
-
-    [Fact]
-    public void OutreachMessage_WithFacts_RendersWhatIsTrueSection()
-    {
-        var snapshot = BuildSnapshot(facts: new List<MemoryRecord>
-        {
-            Fact("Mark teaches evening classes at WCTC"),
-        });
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, "thinking of him teaching tonight", "warm, wanted to check in");
-
-        user.Should().Contain("[FACTS]");
-        user.Should().Contain("Mark teaches evening classes at WCTC");
-    }
-
-    [Fact]
-    public void OutreachMessage_NoFacts_SignalsNullResult()
-    {
-        var snapshot = BuildSnapshot();
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, "thought of him", "warm");
-
-        user.Should().Contain("[FACTS]");
-        user.Should().Contain("no grounding memories retrieved");
-    }
-
-    [Fact]
-    public void OutreachMessage_WithInterior_RendersDirectionShapeNotVerbatim()
-    {
-        // G.2 (2026-06-11) — same direction-shape treatment for outreach as
-        // for conversation reply. Empirical anchor: 2026-06-11 07:06 outreach
-        // where "imperfect vs preterite" 5/24 confabulation resurfaced via
-        // this exact verbatim-memory surfacing path. #92 §G.2.
-        var snapshot = BuildSnapshot(interior: new List<MemoryRecord>
-        {
-            Interior("the bookstore felt quiet today"),
-        });
-        snapshot.EmotionalState = new EmotionalState
-        {
-            Warmth = 0.65f, WarmthBaseline = 0.50f,  // +0.15 → "warmth elevated"
-            Energy = 0.35f, EnergyBaseline = 0.50f,  // -0.15 → "energy low"
-        };
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, "thinking of him", "gentle");
-
-        user.Should().Contain("[INTERIOR]",
-            "the section header still appears so the model can scan for it");
-        user.Should().Contain("interior right now",
-            "G.2 direction-shape body present");
-        user.Should().NotContain("the bookstore felt quiet today",
-            "G.2 invariant: raw MemoryRecord content MUST NOT appear in [INTERIOR]");
-    }
+    // (OutreachMessagePrompt tests removed when the composer was retired under
+    // Theme K.3; Audit Root B 2026-11-05. The [FACTS] / [INTERIOR] rendering
+    // for Reply above exercises the same rendering code; outreach now goes
+    // through the lean user-turn path and the facts / interior framing lives
+    // in that pre-prompt builder.)
 
     // ─── Cross-cutting: fact vs interior separation ───────────────────────────
 

@@ -28,17 +28,13 @@ namespace AniRuntime.Loops;
 /// </summary>
 public class ConversationReplyPipeline : IConversationReplyPipeline
 {
-    private readonly IStateStore _state;
     private readonly IMemoryPersistence _persist;
     private readonly IMemorySearch _search;
-    private readonly IMemoryAnalytics _analytics;
     private readonly IOllamaClient _ollama;
     private readonly IConversationService _conversations;
     private readonly IReplyDispatcher _replyDispatcher;
     private readonly IPostReplyEmotionalProcessor _postReply;
     private readonly ContextBuilder _contextBuilder;
-    private readonly KeywordExtractor _keywords;
-    private readonly IIntentExtractor _intent;
     private readonly IConversationGateState _gateState;
     private readonly ContextCompressor _compressor;
     private readonly ClaimVerificationPhase _claimVerifier;
@@ -81,30 +77,18 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         new AniRuntime.LLM.Prompts.VirtualIntimacyConversationPromptCommand();
     private readonly ILogger<ConversationReplyPipeline> _log;
 
-    // Feature 18: Reactive withdrawal state. Owned by IWithdrawalStateTracker
-    // (Singleton, extracted in §5.4a). The pipeline reads/writes via the
-    // tracker; the public IsWithdrawn / SetWithdrawalExpiry surface lives
-    // on the ConversationReplyPhase facade so external consumers
-    // (CognitiveCycleProcessor) reach the same Singleton instance.
-    private readonly IWithdrawalStateTracker _withdrawal;
-
     public ConversationReplyPipeline(
-        IStateStore state,
         IMemoryPersistence persist,
         IMemorySearch search,
-        IMemoryAnalytics analytics,
         IOllamaClient ollama,
         IConversationService conversations,
         IReplyDispatcher replyDispatcher,
         IPostReplyEmotionalProcessor postReply,
         IReplyEvaluator replyEvaluator,
         ContextBuilder contextBuilder,
-        KeywordExtractor keywords,
-        IIntentExtractor intent,
         IConversationGateState gateState,
         ContextCompressor compressor,
         ClaimVerificationPhase claimVerifier,
-        IWithdrawalStateTracker withdrawal,
         IOptions<AniOptions> aniOptions,
         IOptions<OllamaOptions> ollamaOptions,
         ILogger<ConversationReplyPipeline> log,
@@ -118,22 +102,17 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         IRoutingClassifier? routingClassifier = null,
         IToolCallInvocation? toolCall = null)
     {
-        _state = state;
         _persist = persist;
         _search = search;
-        _analytics = analytics;
         _ollama = ollama;
         _conversations = conversations;
         _replyDispatcher = replyDispatcher ?? throw new ArgumentNullException(nameof(replyDispatcher));
         _postReply = postReply ?? throw new ArgumentNullException(nameof(postReply));
         _replyEvaluator = replyEvaluator ?? throw new ArgumentNullException(nameof(replyEvaluator));
         _contextBuilder = contextBuilder;
-        _keywords = keywords;
-        _intent = intent;
         _gateState = gateState;
         _compressor = compressor;
         _claimVerifier = claimVerifier;
-        _withdrawal = withdrawal ?? throw new ArgumentNullException(nameof(withdrawal));
         _aniOptions = aniOptions.Value;
         _ollamaOptions = ollamaOptions.Value;
         _mlClassifier = mlClassifier;

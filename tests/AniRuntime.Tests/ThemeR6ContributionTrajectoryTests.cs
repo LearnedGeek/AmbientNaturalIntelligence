@@ -44,59 +44,21 @@ public class ThemeR6ContributionTrajectoryTests
         Messages      = [],
     };
 
-    // ── Outreach — volatility branch ─────────────────────────────────
+    // (Outreach volatility tests removed when OutreachMessagePromptCommand was
+    // retired under Theme K.3; Audit Root B 2026-11-05. The Reply branch below
+    // exercises the same rule-text through LeanConversationPromptCommand.)
 
     [Fact]
-    public void Outreach_HighVolatility_AddsLightTouchRule()
+    public void Reply_NullTrajectory_NoExtraRule()
     {
-        var trajectory = new EmotionalContributionTrajectory(
-            RecentVolatility: 0.7f,
-            DominantRegistersRecent: ["Tenderness", "Wistful"]);
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(trajectory), recentThought: "x", reasoning: string.Empty);
-
-        system.Should().Contain("fluctuating recently");
-        system.Should().Contain("Light touch");
-    }
-
-    [Fact]
-    public void Outreach_LowVolatility_AddsConfidentContinuationRule()
-    {
-        var trajectory = new EmotionalContributionTrajectory(
-            RecentVolatility: 0.1f,
-            DominantRegistersRecent: ["Tenderness"]);
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(trajectory), recentThought: "x", reasoning: string.Empty);
-
-        system.Should().Contain("stable recently");
-        system.Should().Contain("lean into the register confidently");
-    }
-
-    [Fact]
-    public void Outreach_NullTrajectory_NoExtraRule()
-    {
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(null), recentThought: "x", reasoning: string.Empty);
+        var (system, _) = PromptBuilder.BuildLeanConversationPrompt(
+            SnapshotWith(null), EmptyThread());
 
         system.Should().NotContain("fluctuating recently");
         system.Should().NotContain("stable recently");
     }
 
-    [Fact]
-    public void Outreach_BehaviorDiffers_HighVsLowVolatility()
-    {
-        var (high, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(new EmotionalContributionTrajectory(0.7f, ["Tenderness"])),
-            recentThought: "x", reasoning: string.Empty);
-        var (low, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(new EmotionalContributionTrajectory(0.1f, ["Tenderness"])),
-            recentThought: "x", reasoning: string.Empty);
-
-        high.Should().NotBe(low,
-            "R.0 contract: high vs low volatility must produce different prompts");
-    }
-
-    // ── Reply — same branch ────────────────────────────────────────
+    // ── Reply — volatility branch ─────────────────────────────────
 
     [Fact]
     public void Reply_HighVolatility_AddsLightTouchRule()
@@ -146,8 +108,8 @@ public class ThemeR6ContributionTrajectoryTests
         var trajectory = new EmotionalContributionTrajectory(
             RecentVolatility: 0.4f,
             DominantRegistersRecent: ["Tenderness"]);
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(trajectory), recentThought: "x", reasoning: string.Empty);
+        var (system, _) = PromptBuilder.BuildLeanConversationPrompt(
+            SnapshotWith(trajectory), EmptyThread());
 
         system.Should().Contain("stable recently",
             "0.4 exact is the boundary; treated as low (stable)");

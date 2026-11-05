@@ -8,8 +8,10 @@ namespace AniRuntime.Tests;
 
 /// <summary>
 /// Theme R Phase R.1 (2026-05-24, Issue #64) — spec tests pinning the
-/// structural register-driven branch in <see cref="PromptBuilder.BuildOutreachMessagePrompt"/>
-/// and <see cref="PromptBuilder.BuildLeanConversationPrompt"/>.
+/// structural register-driven branch in
+/// <see cref="PromptBuilder.BuildLeanConversationPrompt"/>.
+/// (The Outreach composer branch was retired under Theme K.3 and its tests
+/// were removed in Audit Root B 2026-11-05.)
 ///
 /// <para>
 /// R.0 contract: "Behavior must differ when input differs." These tests
@@ -78,79 +80,11 @@ public class ThemeR1RegisterDrivenCompositionTests
         RegisterPromptVariant.Select(register).Should().Be(expectedVariant);
     }
 
-    // ── OutreachMessagePrompt — structural branch ────────────────────────
-
-    [Fact]
-    public void OutreachMessage_DefaultWarmRegister_UsesWarmShapeInstruction()
-    {
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith("Tenderness"),
-            recentThought: "thinking of him",
-            reasoning: string.Empty);
-
-        system.Should().Contain("would understand and want to reply to",
-            "default-warm variant retains the existing warm-shape instruction");
-        system.Should().NotContain("quiet, reflective, low-key");
-        system.Should().NotContain("honest, direct, no warm-decoration");
-    }
-
-    [Fact]
-    public void OutreachMessage_ReflectiveRegister_UsesReflectiveShapeInstruction()
-    {
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith("Wistful"),
-            recentThought: "remembering the quiet afternoon",
-            reasoning: string.Empty);
-
-        system.Should().Contain("quiet, reflective, low-key");
-        system.Should().Contain("If silence fits the moment better than a message",
-            "reflective variant must explicitly allow silence-shaped output");
-        system.Should().NotContain("would understand and want to reply to");
-    }
-
-    [Fact]
-    public void OutreachMessage_HonestEdgeRegister_UsesHonestShapeInstruction()
-    {
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith("Frustration"),
-            recentThought: "tired of not hearing back",
-            reasoning: string.Empty);
-
-        system.Should().Contain("honest, direct, no warm-decoration");
-        system.Should().Contain("Don't perform okay-ness when you aren't",
-            "honest-edge variant must explicitly prohibit warm-performance over genuine feeling");
-        system.Should().NotContain("would understand and want to reply to");
-    }
-
-    [Fact]
-    public void OutreachMessage_BehaviorDiffers_AcrossThreeVariants()
-    {
-        // R.0 contract bullet 2: behavior must differ when input differs.
-        var (warmSystem, _)       = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith("Tenderness"), recentThought: "x", reasoning: string.Empty);
-        var (reflectiveSystem, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith("Wistful"), recentThought: "x", reasoning: string.Empty);
-        var (edgeSystem, _)       = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith("Frustration"), recentThought: "x", reasoning: string.Empty);
-
-        warmSystem.Should().NotBe(reflectiveSystem);
-        warmSystem.Should().NotBe(edgeSystem);
-        reflectiveSystem.Should().NotBe(edgeSystem);
-    }
-
-    [Fact]
-    public void OutreachMessage_NullRegister_DefaultsToWarmShape()
-    {
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(null),
-            recentThought: "x",
-            reasoning: string.Empty);
-
-        system.Should().Contain("would understand and want to reply to",
-            "null register must default to warm-shape (no regression for cold-start state)");
-    }
-
     // ── LeanConversationPrompt — structural branch ────────────────────────
+    // (OutreachMessagePrompt tests removed when the composer was retired under
+    // Theme K.3; Audit Root B 2026-11-05. Outreach register effect now comes
+    // from the fine-tuned model's response to the user prompt, not a composer
+    // branch, so there is no composer-level assertion to carry forward.)
 
     [Fact]
     public void LeanConversation_DefaultWarmRegister_UsesDefaultEnergyRule()

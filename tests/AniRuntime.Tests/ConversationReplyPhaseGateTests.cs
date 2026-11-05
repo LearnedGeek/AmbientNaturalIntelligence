@@ -33,7 +33,6 @@ public class ConversationReplyPhaseGateTests : AniTestBase
     private readonly Mock<IConversationService>     _mockConversations  = new(MockBehavior.Loose);
     private readonly Mock<IReplyChannelResolver>    _mockChannels       = new(MockBehavior.Loose);
     private readonly Mock<ICognitiveOutputGate>     _mockGate           = new(MockBehavior.Strict);
-    private readonly Mock<IIntentExtractor>         _mockIntent         = new(MockBehavior.Loose);
 
     private const string OriginalReply = "okay baby — i'll let you sit with that for a minute. tell me when you're ready.";
     private const string Regenerated   = "got it. i'm here when you want to talk it through.";
@@ -43,8 +42,6 @@ public class ConversationReplyPhaseGateTests : AniTestBase
         ICognitiveOutputGate? gate = null)
     {
         options ??= DefaultOptions;
-        var dispatcher = new AniActionDispatcher(
-            Array.Empty<IAniAction>(), NullLogger<AniActionDispatcher>.Instance);
         var desire = new DesireEngine(
             MockMemory.Object, MockMemory.Object, options,
             NullLogger<DesireEngine>.Instance);
@@ -52,14 +49,9 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, new StubRegisterClassifier(), options,
             NullLogger<EmotionalProcessor>.Instance);
-        var diagnostic = new Mock<IDiagnosticService>();
-        diagnostic.Setup(d => d.RunDiagnosticAsync(It.IsAny<CancellationToken>()))
-                  .ReturnsAsync(new DiagnosticReport());
         var contextBuilder = new ContextBuilder(
             NoOpState(), NoOpRetrieval(), NoOpEpistemic(), NoOpConversation(), NoOpEmotional(),
             options, NullLogger<ContextBuilder>.Instance);
-        var keywordExtractor = new KeywordExtractor(
-            MockMemory.Object, NullLogger<KeywordExtractor>.Instance);
         var gateState = new ConversationGateState();
         var compressor = new ContextCompressor(
             MockOllama.Object, NullLogger<ContextCompressor>.Instance);
@@ -68,10 +60,10 @@ public class ConversationReplyPhaseGateTests : AniTestBase
             NullLogger<ClaimVerificationPhase>.Instance);
 
         return ConversationReplyPhaseTestBuilder.BuildPipeline(
-            MockMemory.Object, MockMemory.Object, MockMemory.Object, MockMemory.Object,
+            MockMemory.Object, MockMemory.Object, MockMemory.Object,
             MockOllama.Object, _mockConversations.Object,
-            _mockChannels.Object, dispatcher, desire, emotional, contextBuilder, keywordExtractor,
-            _mockIntent.Object, gateState, compressor, claimVerifier, new WithdrawalStateTracker(), options, DefaultOllamaOptions,
+            _mockChannels.Object, desire, emotional, contextBuilder,
+            gateState, compressor, claimVerifier, new WithdrawalStateTracker(), options, DefaultOllamaOptions,
             outputGate: gate);
     }
 

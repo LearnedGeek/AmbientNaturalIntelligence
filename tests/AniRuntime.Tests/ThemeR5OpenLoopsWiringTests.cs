@@ -46,79 +46,11 @@ public class ThemeR5OpenLoopsWiringTests
         Messages      = [],
     };
 
-    // ── Outreach — open-loops section appears/disappears ─────────────
-
-    [Fact]
-    public void Outreach_OpenLoopsPresent_SectionAppears()
-    {
-        var loops = new List<OpenLoop>
-        {
-            new() { Description = "follow up on Spanish class outcome" },
-            new() { Description = "ask about Mia's recital" },
-        };
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(loops), recentThought: "x", reasoning: string.Empty);
-
-        user.Should().Contain("[OPEN LOOPS] unresolved threads with Mark");
-        user.Should().Contain("follow up on Spanish class outcome");
-        user.Should().Contain("prefer that over an invented topic");
-    }
-
-    [Fact]
-    public void Outreach_OpenLoopsAbsent_SectionDoesNotAppear()
-    {
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith([]), recentThought: "x", reasoning: string.Empty);
-
-        user.Should().NotContain("[OPEN LOOPS]");
-    }
-
-    [Fact]
-    public void Outreach_BehaviorDiffers_PresentVsAbsent()
-    {
-        var (_, withLoops) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith([new() { Description = "x" }]),
-            recentThought: "x", reasoning: string.Empty);
-        var (_, withoutLoops) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith([]), recentThought: "x", reasoning: string.Empty);
-
-        withLoops.Should().NotBe(withoutLoops,
-            "R.0 contract: presence of open-loops must produce different prompt");
-    }
-
-    [Fact]
-    public void Outreach_OpenLoopsCappedAtThree()
-    {
-        var loops = Enumerable.Range(1, 5)
-            .Select(i => new OpenLoop { Description = $"loop {i}" })
-            .ToList();
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(loops), recentThought: "x", reasoning: string.Empty);
-
-        user.Should().Contain("loop 1");
-        user.Should().Contain("loop 3");
-        user.Should().NotContain("loop 4",
-            "open-loop section caps at 3 to keep prompt budget bounded");
-        user.Should().NotContain("loop 5");
-    }
-
-    [Fact]
-    public void Outreach_OpenLoopsWithEmptyDescription_Filtered()
-    {
-        var loops = new List<OpenLoop>
-        {
-            new() { Description = "" },
-            new() { Description = "real loop" },
-            new() { Description = "   " },
-        };
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(loops), recentThought: "x", reasoning: string.Empty);
-
-        user.Should().Contain("real loop");
-        user.Should().Contain("[OPEN LOOPS]");
-    }
-
-    // ── Reply — same shape ─────────────────────────────────────────
+    // ── Reply — open-loops section appears/disappears ──────────────
+    // (Outreach tests removed when OutreachMessagePromptCommand was retired
+    // under Theme K.3; Audit Root B 2026-11-05. Open-loops injection in the
+    // live outreach path is handled by the pre-prompt user-turn builder, not
+    // the composer; its tests live with that path.)
 
     [Fact]
     public void Reply_OpenLoopsPresent_SectionAppears()

@@ -30,7 +30,6 @@ namespace AniRuntime.Loops.Outreach;
 /// </summary>
 public sealed class OutreachPipeline : IOutreachPipeline
 {
-    private readonly IStateStore _state;
     private readonly IMemoryPersistence _persist;
     private readonly IMemorySearch _search;
     private readonly IOllamaClient _ollama;
@@ -52,7 +51,6 @@ public sealed class OutreachPipeline : IOutreachPipeline
     private readonly ILogger<OutreachPipeline> _log;
 
     public OutreachPipeline(
-        IStateStore state,
         IMemoryPersistence persist,
         IMemorySearch search,
         IOllamaClient ollama,
@@ -72,7 +70,6 @@ public sealed class OutreachPipeline : IOutreachPipeline
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
         IVibeBiasObservationStore? vibeBiasObservations = null)
     {
-        _state             = state          ?? throw new ArgumentNullException(nameof(state));
         _persist           = persist        ?? throw new ArgumentNullException(nameof(persist));
         _search            = search         ?? throw new ArgumentNullException(nameof(search));
         _ollama            = ollama         ?? throw new ArgumentNullException(nameof(ollama));
@@ -217,9 +214,10 @@ public sealed class OutreachPipeline : IOutreachPipeline
         // Step 2b: Compose.
         //
         // Phase K.3 (2026-07-06) — LeanOutreachComposerEnabled flag retired.
-        // The lean path is the only path. Substrate-injecting
-        // BuildOutreachMessagePrompt call, JSON envelope parse, and the
-        // composedNotes debug-log surface are all deleted here.
+        // The lean path is the only path. The substrate-injecting composer
+        // (OutreachMessagePromptCommand) and its PromptBuilder facade were
+        // deleted under Audit Root B (2026-11-05); nothing in src/ built the
+        // substrate-injecting path for four months before that.
         //
         // Shape: ChatAsync with an empty system prompt (Modelfile SYSTEM
         // in effect), snapshot.RecentHistory unchanged, recentThought as

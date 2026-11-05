@@ -327,166 +327,11 @@ public class PromptBuilderTests
     // ── Theme J Phase J.1 — strip reasoning pipe from outreach composition ──
     // Default behaviour omits reasoning; rollback path preserves legacy.
 
-    [Fact]
-    public void BuildOutreachMessagePrompt_J1_OmitsReasoningByDefault()
-    {
-        // J.1 default: reasoningInComposition = false (the parameter default).
-        // Reasoning text must NOT appear in the composition user prompt.
-        var snapshot = MinimalSnapshot();
-        const string reasoningText = "missing him after a long day back from class";
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "thinking about pillowy potatoes",
-            reasoning: reasoningText);
-
-        user.Should().NotContain("Feeling:");
-        user.Should().NotContain(reasoningText);
-        user.Should().Contain("Trigger:");
-        user.Should().Contain("pillowy potatoes");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_J1_IncludesReasoningWhenFlagOn_RollbackPath()
-    {
-        // Rollback path: reasoningInComposition = true preserves the pre-J.1
-        // behaviour. Tests this branch so the rollback is verified-correct,
-        // not just available.
-        var snapshot = MinimalSnapshot();
-        const string reasoningText = "missing him after a long day back from class";
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "thinking about pillowy potatoes",
-            reasoning: reasoningText,
-            reasoningInComposition: true);
-
-        user.Should().Contain("Feeling:");
-        user.Should().Contain(reasoningText);
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_J1_OmitsFeelingLineWhenReasoningEmpty_FlagOn()
-    {
-        // Edge case: even with the rollback flag on, an empty reasoning
-        // string should NOT add a literal "Feeling:" line to the prompt.
-        var snapshot = MinimalSnapshot();
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "thinking about pillowy potatoes",
-            reasoning: string.Empty,
-            reasoningInComposition: true);
-
-        user.Should().NotContain("Feeling:");
-        user.Should().Contain("Trigger:");
-    }
-
     // ── Theme J Phase J.2 step 3 — composition uses structured summary ──
     // The Apr 27 06:54 incident: Ani's outreach opened with Mark's verbatim
     // morning text because the prose summary blob fused both speakers.
     // The structured form tags every line with speaker / time so source
     // attribution is structural, not model-side.
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_G3_StructuredSummary_RendersCountLineNotVerbatim()
-    {
-        // G.3 (2026-06-11) — supersedes the historic J.2 test that pinned the
-        // verbatim Mark/Ani turn rendering in the no-epistemic-renderer fallback.
-        // The fallback was a leak vector (#92 §E + §G.3): structured summaries
-        // surfaced as raw "Mark: <text> / Ani: <text>" turn content, letting
-        // the model lift phrasings. The fallback now renders a single count
-        // line. The structured summary STILL takes precedence over the prose
-        // form (that's the J.2 invariant) — the prose blob must not appear.
-        var t1 = new DateTimeOffset(2026, 04, 27, 06, 54, 0, TimeSpan.Zero);
-        var snapshot = MinimalSnapshot();
-        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: prose form should be ignored.\nAni: prose form should be ignored.";
-        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
-            t1, t1.AddMinutes(1),
-            new[]
-            {
-                new SummaryTurn(t1,                 "Mark", "Hey good morning! How is your day looking?"),
-                new SummaryTurn(t1.AddMinutes(1),   "Ani",  "your morning looks peaceful from what i can see..."),
-            });
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "thinking about pillowy potatoes",
-            reasoning: "");
-
-        user.Should().Contain("active thread with Mark: 2 recent turn(s)",
-            "G.3: count line surfaces, not verbatim turns");
-        user.Should().NotContain("Hey good morning! How is your day looking?",
-            "G.3 invariant: verbatim Mark turn MUST NOT appear in fallback rendering");
-        user.Should().NotContain("your morning looks peaceful",
-            "G.3 invariant: verbatim Ani turn MUST NOT appear in fallback rendering");
-        user.Should().NotContain("prose form should be ignored",
-            "J.2 invariant preserved: structured form takes precedence; the prose blob does not appear");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_G3_StructuredSummary_NoAttributionFramingNeeded()
-    {
-        // G.3 (2026-06-11) — supersedes the historic J.2 "framing line"
-        // test. Previously the fallback included an attribution warning
-        // ("Each line is tagged with who said it; do not lift Mark's
-        // exact words") that paired with the verbatim turn dump. With the
-        // turn dump gone, the framing warning is gone too — the model
-        // can't lift what isn't there.
-        var t1 = DateTimeOffset.UtcNow.AddMinutes(-2);
-        var snapshot = MinimalSnapshot();
-        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
-            t1, t1,
-            new[] { new SummaryTurn(t1, "Mark", "any plans?") });
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "wandering",
-            reasoning: "");
-
-        user.Should().Contain("active thread with Mark: 1 recent turn(s)",
-            "G.3: count-line direction surfaces the activity without quoting");
-        user.Should().NotContain("any plans?",
-            "G.3 invariant: verbatim turn content MUST NOT appear");
-        user.Should().NotContain("Each line is tagged",
-            "G.3: attribution-warning framing is no longer needed because nothing verbatim is rendered");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_V14_DoesNotFallBackToLegacyProse()
-    {
-        // Vibe Loop V1.4 (Apr 29, 2026): outreach composition no longer
-        // reads the legacy verbatim-Episodic prose surface. That's the
-        // consumer side of the Apr 29 verbatim-parrot leak — outreach
-        // will never produce a parrot off legacy substrate again because
-        // the legacy substrate is no longer plumbed into the prompt.
-        var snapshot = MinimalSnapshot();
-        snapshot.RecentConversationSummary = "Conversation (1 messages):\nMark: hi";
-        snapshot.StructuredConversationSummary = null;
-        snapshot.RecentClosedConversation = null;
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "wandering",
-            reasoning: "");
-
-        user.Should().NotContain("Conversation (1 messages)",
-            "V1.4: outreach composition no longer reads the legacy verbatim-Episodic prose");
-        user.Should().NotContain("Mark: hi",
-            "V1.4: legacy verbatim transcripts must not appear in the outreach composition prompt");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_J2_NoConversationSection_WhenBothNull()
-    {
-        var snapshot = MinimalSnapshot();
-        snapshot.RecentConversationSummary = null;
-        snapshot.StructuredConversationSummary = null;
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot,
-            recentThought: "wandering",
-            reasoning: "");
-
-        user.Should().NotContain("You recently talked with");
-    }
 
     // ── Theme J Phase J.2 step 4 — inner-thought prompt uses structured ──
 
@@ -619,36 +464,6 @@ public class PromptBuilderTests
     };
 
     [Fact]
-    public void BuildOutreachMessagePrompt_V14_PrefersClosedConversationRecord_OverStructuredAndProse()
-    {
-        var t1 = DateTimeOffset.UtcNow.AddMinutes(-10);
-        var snapshot = MinimalSnapshot();
-        snapshot.RecentConversationSummary = "Conversation (2 messages):\nMark: legacy prose must not appear";
-        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
-            t1, t1.AddMinutes(1),
-            new[]
-            {
-                new SummaryTurn(t1,               "Mark", "structured form must also yield to V1"),
-                new SummaryTurn(t1.AddMinutes(1), "Ani",  "structured form must also yield to V1"),
-            });
-        snapshot.RecentClosedConversation = MakeRecord(
-            gist: "Mark and Ani spoke about a long workday; he relaxed by the end.",
-            markRegister: new() { ["Frustration"] = 0.6f, ["Tenderness"] = 0.4f },
-            aniRegister:  new() { ["Tenderness"] = 0.7f, ["Curiosity"] = 0.3f });
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought: "wondering how he settled", reasoning: "");
-
-        user.Should().Contain("Mark and Ani spoke about a long workday");
-        user.Should().Contain("Frustration");
-        user.Should().Contain("Tenderness");
-        user.Should().NotContain("legacy prose must not appear",
-            "V1.4: ClosedConversationRecord wins; legacy verbatim prose stays out");
-        user.Should().NotContain("structured form must also yield to V1",
-            "V1.4: ClosedConversationRecord wins over Structured for outreach (Structured is active-thread fallback)");
-    }
-
-    [Fact]
     public void BuildOutreachPrompt_V14_PrefersClosedConversationRecord_OverStructuredAndProse()
     {
         var t1 = DateTimeOffset.UtcNow.AddMinutes(-10);
@@ -674,82 +489,6 @@ public class PromptBuilderTests
         user.Should().Contain("Tenderness");
         user.Should().NotContain("legacy prose must not appear");
         user.Should().NotContain("structured form must also yield to V1");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_G3_FallsBackToStructuredSummary_AsCountLine()
-    {
-        // G.3 (2026-06-11) — supersedes the V1.4 test. When the most recent
-        // thread is still active and no closed record exists, the structured
-        // summary fallback is invoked. After G.3 it renders a count line, not
-        // verbatim turn content. The surface still exists (J.2 invariant
-        // preserved — the structured form is the load-bearing fallback when
-        // ClosedConversationRecord is absent) but the leak vector is closed.
-        var t1 = DateTimeOffset.UtcNow.AddMinutes(-2);
-        var snapshot = MinimalSnapshot();
-        snapshot.RecentClosedConversation = null;
-        snapshot.StructuredConversationSummary = new StructuredConversationSummary(
-            t1, t1,
-            new[] { new SummaryTurn(t1, "Mark", "any plans?") });
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought: "wandering", reasoning: "");
-
-        user.Should().Contain("active thread with Mark: 1 recent turn(s)",
-            "G.3: count-line direction surfaces the active thread substrate");
-        user.Should().NotContain("any plans?",
-            "G.3 invariant: verbatim turn content MUST NOT appear in fallback rendering");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_V14_AntiParrot_GistDoesNotCarryContactVerbatim()
-    {
-        // Apr 29 dentist-conversation regression fixture. The producer
-        // (V1.2 summarizer) is responsible for paraphrasing the gist —
-        // V1.6 covers the empirical paraphrase verification against a
-        // real LLM run. THIS test pins the structural property at the
-        // CONSUMER: given a paraphrased gist, the rendered outreach
-        // prompt MUST NOT contain Mark's verbatim text. (The consumer's
-        // half of the anti-parrot guarantee is "we read the gist, not
-        // the transcript" — that's V1.4's contract.)
-        const string MarkVerbatim =
-            "i'm trying to pretend to work while being distracted by you. haha";
-
-        var snapshot = MinimalSnapshot();
-        // Set up a snapshot that LOOKS like the Apr 29 leak conditions:
-        // the legacy verbatim-prose surface contains Mark's exact words,
-        // and a closed-conversation gist has the paraphrased version.
-        snapshot.RecentConversationSummary =
-            $"Conversation (3 messages):\nMark: {MarkVerbatim}";
-        snapshot.StructuredConversationSummary = null;
-        snapshot.RecentClosedConversation = MakeRecord(
-            gist: "Mark teased Ani about being distracted at work; the mood stayed playful.",
-            markRegister: new() { ["Playfulness"] = 0.7f, ["Tenderness"] = 0.3f },
-            aniRegister:  new() { ["Tenderness"] = 0.6f, ["Playfulness"] = 0.4f });
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought: "thinking about him", reasoning: "");
-
-        user.Should().NotContain(MarkVerbatim,
-            "V1.4 consumer-side anti-parrot: outreach must read the gist, not the legacy verbatim prose surface");
-        user.Should().NotContain("pretend to work while being distracted",
-            "no 7+ token substring of Mark's verbatim text should appear in the outreach prompt");
-        user.Should().Contain("Mark teased Ani about being distracted at work",
-            "the paraphrased gist IS what the outreach prompt sees");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_V14_NoConversationSection_WhenAllSurfacesNull()
-    {
-        var snapshot = MinimalSnapshot();
-        snapshot.RecentConversationSummary       = null;
-        snapshot.StructuredConversationSummary   = null;
-        snapshot.RecentClosedConversation        = null;
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought: "wandering", reasoning: "");
-
-        user.Should().NotContain("You recently talked with");
     }
 
     [Fact]
@@ -807,20 +546,6 @@ public class PromptBuilderTests
             Type       = MemoryType.Episodic,
             OccurredAt = DateTimeOffset.Now - age,
         };
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_J3_GroundedFacts_IncludeTemporalAttribution()
-    {
-        var snapshot = MinimalSnapshot();
-        snapshot.GroundedFacts.Add(FactWithAge("Mark mentioned a class until 10pm", TimeSpan.FromDays(3)));
-
-        var (_, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, recentThought: "wandering", reasoning: "");
-
-        user.Should().Contain("Mark mentioned a class until 10pm");
-        user.Should().Contain("3 days ago",
-            "GroundedFacts must render with temporal attribution so the composition model can't treat a 3-day-old assertion as present.");
-    }
 
     [Fact]
     public void BuildConversationReplyPrompt_J3_GroundedFacts_IncludeTemporalAttribution()
@@ -1175,18 +900,6 @@ public class PromptBuilderTests
         var thread = new ConversationThread { Id = Guid.NewGuid(), InitiatedBy = Roles.Mark };
 
         var (system, user) = PromptBuilder.BuildConversationReplyPrompt(snapshot, thread);
-
-        system.Should().NotContain("WHAT IS TRUE");
-        user.Should().NotContain("WHAT IS TRUE");
-        user.Should().Contain("[FACTS]");
-    }
-
-    [Fact]
-    public void BuildOutreachMessagePrompt_DoesNotUseWhatIsTrueDirective()
-    {
-        var snapshot = MinimalSnapshot();
-        var (system, user) = PromptBuilder.BuildOutreachMessagePrompt(
-            snapshot, "rain on the window", reasoning: "", reasoningInComposition: false);
 
         system.Should().NotContain("WHAT IS TRUE");
         user.Should().NotContain("WHAT IS TRUE");

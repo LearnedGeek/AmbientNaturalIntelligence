@@ -53,69 +53,6 @@ public class ThemeR3VibeLoopDrivingTests
 
     // ── Outreach composer — vibe overrides dominant ─────────────────
 
-    [Fact]
-    public void Outreach_VibeRecommended_OverridesDominantRegister()
-    {
-        // Dominant says Tenderness (would select DefaultWarm).
-        // Vibe says Frustration (would select HonestEdge).
-        // R.3 contract: vibe wins → HonestEdge variant.
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(dominant: "Tenderness", vibe: "Frustration"),
-            recentThought: "x",
-            reasoning: string.Empty);
-
-        system.Should().Contain("honest, direct, no warm-decoration",
-            "Vibe recommendation Frustration overrides Dominant Tenderness — HonestEdge variant wins");
-        system.Should().NotContain("would understand and want to reply to");
-    }
-
-    [Fact]
-    public void Outreach_VibeNull_FallsBackToDominantRegister()
-    {
-        // Vibe not set; dominant alone determines variant.
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(dominant: "Wistful", vibe: null),
-            recentThought: "x",
-            reasoning: string.Empty);
-
-        system.Should().Contain("quiet, reflective, low-key",
-            "Null vibe → fall back to dominant (Wistful → Reflective variant)");
-    }
-
-    [Fact]
-    public void Outreach_VibeAndDominantBothNull_DefaultsToWarm()
-    {
-        var (system, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(dominant: null, vibe: null),
-            recentThought: "x",
-            reasoning: string.Empty);
-
-        system.Should().Contain("would understand and want to reply to",
-            "Both null → default-warm");
-    }
-
-    [Fact]
-    public void Outreach_BehaviorDiffers_SameDominantDifferentVibe()
-    {
-        // R.0 contract bullet 2: behavior differs when input differs.
-        // Same dominant (Tenderness) with two different vibes must
-        // produce different system prompts.
-        var (warmVibe, _)       = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(dominant: "Tenderness", vibe: "Playfulness"),
-            recentThought: "x", reasoning: string.Empty);
-        var (reflectiveVibe, _) = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(dominant: "Tenderness", vibe: "Wistful"),
-            recentThought: "x", reasoning: string.Empty);
-        var (edgeVibe, _)       = PromptBuilder.BuildOutreachMessagePrompt(
-            SnapshotWith(dominant: "Tenderness", vibe: "Frustration"),
-            recentThought: "x", reasoning: string.Empty);
-
-        warmVibe.Should().NotBe(reflectiveVibe,
-            "vibe shift across variants must produce different prompt even with same dominant");
-        warmVibe.Should().NotBe(edgeVibe);
-        reflectiveVibe.Should().NotBe(edgeVibe);
-    }
-
     // ── Reply composer — vibe overrides dominant ────────────────────
 
     [Fact]

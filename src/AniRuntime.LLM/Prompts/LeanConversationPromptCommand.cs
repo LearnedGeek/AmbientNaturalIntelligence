@@ -88,7 +88,7 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
         // Theme R.6 (#64) — STRUCTURAL contribution-trajectory branch.
         //
         // Life Engine A.−1 (2026-11-05): bypassed when flag is false. See
-        // OutreachMessagePromptCommand for the full rationale.
+        // AniOptions.ContributionTrajectoryEnabled for the full rationale.
         var trajectoryRule = input.ContributionTrajectoryEnabled
             ? snapshot.ContributionTrajectory switch
             {
