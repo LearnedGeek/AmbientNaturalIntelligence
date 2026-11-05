@@ -162,14 +162,22 @@ public class InnerThoughtPhase
         // call so A.−1's 72h experiment can attribute register distribution
         // changes directly to the R.4 rule firing or being gated. See
         // spec/ANI-Life-Engine-Design.md §6 Candidate A.−1.
+        //
+        // `applied` mirrors the composer's actual branch: a non-null vector
+        // whose dominant axis isn't Balanced AND the flag is on. PR #194
+        // review (Copilot): prior version reported flag-value, which
+        // over-counted "applied" on balanced/null vectors where the
+        // composer emits no rule.
         var mv = snapshot.MotivationVector;
+        var selected = MotivationEmphasis.Select(mv);
+        var emphasisApplied = _motivationEmphasisEnabled && selected != MotivationEmphasis.Balanced;
         _log.LogInformation(
             "composer motivation-emphasis: composer=InnerThought vector=(r={R:F2} a={A:F2} c={C:F2}) selected={Selected} applied={Applied}",
             mv?.Relatedness ?? 0f,
             mv?.Autonomy ?? 0f,
             mv?.Competence ?? 0f,
-            MotivationEmphasis.Select(mv),
-            _motivationEmphasisEnabled);
+            selected,
+            emphasisApplied);
 
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(
             snapshot, rendererForPrompt,
