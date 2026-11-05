@@ -113,8 +113,31 @@ public class VoiceTurnPipeline
             // shared experiences that competed with the conversation for the model's
             // attention, producing confabulation and non-sequiturs.
             var rendererForPrompt = _aniOptions.EpistemicFramingEnabled ? _epistemicRenderer : null;
+            // Life Engine A.−1 (2026-11-05) — flag-gate the R.4 motivation
+            // emphasis + R.6 trajectory switches in the Lean composer. See
+            // spec/ANI-Life-Engine-Design.md §6 Candidate A.−1.
+            //
+            // `*Applied` mirrors the composer's actual branch — flag on AND
+            // the input would have produced a non-empty rule. PR #194
+            // review (Copilot).
+            var mv = snapshot.MotivationVector;
+            var selected = MotivationEmphasis.Select(mv);
+            var emphasisApplied = _aniOptions.MotivationEmphasisEnabled
+                                  && selected != MotivationEmphasis.Balanced;
+            var trajectoryApplied = _aniOptions.ContributionTrajectoryEnabled
+                                    && snapshot.ContributionTrajectory is not null;
+            _log.LogInformation(
+                "composer motivation-emphasis: composer=VoiceLean vector=(r={R:F2} a={A:F2} c={C:F2}) selected={Selected} emphasisApplied={EmphasisApplied} trajectoryApplied={TrajectoryApplied}",
+                mv?.Relatedness ?? 0f,
+                mv?.Autonomy ?? 0f,
+                mv?.Competence ?? 0f,
+                selected,
+                emphasisApplied,
+                trajectoryApplied);
             var prompt = PromptBuilder.BuildLeanConversationPrompt(
-                snapshot, thread ?? new ConversationThread(), rendererForPrompt);
+                snapshot, thread ?? new ConversationThread(), rendererForPrompt,
+                motivationEmphasisEnabled: _aniOptions.MotivationEmphasisEnabled,
+                contributionTrajectoryEnabled: _aniOptions.ContributionTrajectoryEnabled);
 
             var tokenBuffer = new TokenBuffer();
             var fullReply = new StringBuilder();

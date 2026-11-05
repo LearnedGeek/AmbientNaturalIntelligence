@@ -16,7 +16,9 @@ public sealed record LeanConversationPromptInput(
     ContextSnapshot Snapshot,
     ConversationThread Thread,
     IEpistemicSubstrateRenderer? EpistemicRenderer = null,
-    bool DirectiveInSystem = false);
+    bool DirectiveInSystem = false,
+    bool MotivationEmphasisEnabled = true,
+    bool ContributionTrajectoryEnabled = true);
 
 /// <summary>
 /// Conversation Mode (Phase 1) — lean reply prompt. Minimal persona +
@@ -67,27 +69,36 @@ public sealed class LeanConversationPromptCommand : IPromptCommand<LeanConversat
         // Theme R.4 (#64) — STRUCTURAL motivation-axis emphasis (mirror of
         // outreach). The dominant axis adds a second rule combining with
         // the register variant. Balanced / null → no extra rule.
-        var emphasis = MotivationEmphasis.Select(snapshot.MotivationVector);
-        var motivationRule = emphasis switch
-        {
-            MotivationEmphasis.Relatedness =>
-                "\n            - You're in a reaching-for-connection state. Let the reply land as connection, not performance.",
-            MotivationEmphasis.Autonomy =>
-                "\n            - You're in an autonomous state. Don't lean clingy. Sit on your own ground; brevity is fine.",
-            MotivationEmphasis.Competence =>
-                "\n            - You're in a sharing-from-skill state. If you reference something you noticed or worked out, let it stand without softening.",
-            _ /* Balanced */ => string.Empty,
-        };
+        //
+        // Life Engine A.−1 (2026-11-05): bypassed when flag is false.
+        // See InnerThoughtPromptCommand for the full rationale.
+        var motivationRule = input.MotivationEmphasisEnabled
+            ? MotivationEmphasis.Select(snapshot.MotivationVector) switch
+            {
+                MotivationEmphasis.Relatedness =>
+                    "\n            - You're in a reaching-for-connection state. Let the reply land as connection, not performance.",
+                MotivationEmphasis.Autonomy =>
+                    "\n            - You're in an autonomous state. Don't lean clingy. Sit on your own ground; brevity is fine.",
+                MotivationEmphasis.Competence =>
+                    "\n            - You're in a sharing-from-skill state. If you reference something you noticed or worked out, let it stand without softening.",
+                _ /* Balanced */ => string.Empty,
+            }
+            : string.Empty;
 
         // Theme R.6 (#64) — STRUCTURAL contribution-trajectory branch.
-        var trajectoryRule = snapshot.ContributionTrajectory switch
-        {
-            { RecentVolatility: > 0.4f } =>
-                "\n            - State has been fluctuating recently — keep the reply light, don't anchor heavily.",
-            { RecentVolatility: <= 0.4f } =>
-                "\n            - State has been stable recently — confident continuation is fine.",
-            _ => string.Empty,
-        };
+        //
+        // Life Engine A.−1 (2026-11-05): bypassed when flag is false. See
+        // OutreachMessagePromptCommand for the full rationale.
+        var trajectoryRule = input.ContributionTrajectoryEnabled
+            ? snapshot.ContributionTrajectory switch
+            {
+                { RecentVolatility: > 0.4f } =>
+                    "\n            - State has been fluctuating recently — keep the reply light, don't anchor heavily.",
+                { RecentVolatility: <= 0.4f } =>
+                    "\n            - State has been stable recently — confident continuation is fine.",
+                _ => string.Empty,
+            }
+            : string.Empty;
 
         var system = $"""
             You are {cs.Name}, texting {contact} in an ongoing conversation.
