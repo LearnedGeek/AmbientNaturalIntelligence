@@ -11,7 +11,9 @@ public sealed record OutreachMessagePromptInput(
     string Reasoning,
     bool ReasoningInComposition = false,
     OutreachFrame? Frame = null,
-    IEpistemicSubstrateRenderer? EpistemicRenderer = null);
+    IEpistemicSubstrateRenderer? EpistemicRenderer = null,
+    bool MotivationEmphasisEnabled = true,
+    bool ContributionTrajectoryEnabled = true);
 
 /// <summary>
 /// Composition-stage prompt for the outreach pipeline (May 15, 2026
@@ -65,30 +67,43 @@ public sealed class OutreachMessagePromptCommand : IPromptCommand<OutreachMessag
         // shape rule that combines with the register variant. Different
         // axis → different rule → different prompt. Balanced / null →
         // empty rule (existing register variant runs alone).
-        var emphasis = MotivationEmphasis.Select(snapshot.MotivationVector);
-        var motivationRule = emphasis switch
-        {
-            MotivationEmphasis.Relatedness =>
-                "\n            - You're reaching FOR connection right now. The text should land as a hand reaching, not as a performance.",
-            MotivationEmphasis.Autonomy =>
-                "\n            - You're in an autonomous state right now. The text should not lean clingy or seek reply-confirmation. Sit on your own ground.",
-            MotivationEmphasis.Competence =>
-                "\n            - You're in a sharing-from-skill state right now. If the text references something you noticed or worked out, let it stand without softening.",
-            _ /* Balanced */ => string.Empty,
-        };
+        //
+        // Life Engine A.−1 (2026-11-05): when MotivationEmphasisEnabled is
+        // false, the switch is bypassed. See InnerThoughtPromptCommand for
+        // the full rationale.
+        var motivationRule = input.MotivationEmphasisEnabled
+            ? MotivationEmphasis.Select(snapshot.MotivationVector) switch
+            {
+                MotivationEmphasis.Relatedness =>
+                    "\n            - You're reaching FOR connection right now. The text should land as a hand reaching, not as a performance.",
+                MotivationEmphasis.Autonomy =>
+                    "\n            - You're in an autonomous state right now. The text should not lean clingy or seek reply-confirmation. Sit on your own ground.",
+                MotivationEmphasis.Competence =>
+                    "\n            - You're in a sharing-from-skill state right now. If the text references something you noticed or worked out, let it stand without softening.",
+                _ /* Balanced */ => string.Empty,
+            }
+            : string.Empty;
 
         // Theme R.6 (#64) — STRUCTURAL contribution-trajectory branch. High
         // recent volatility means state has been fluctuating; light touch is
         // better than a heavy framing. Low volatility (stable trajectory)
         // allows confident continuation. Null trajectory → no extra rule.
-        var trajectoryRule = snapshot.ContributionTrajectory switch
-        {
-            { RecentVolatility: > 0.4f } =>
-                "\n            - Your emotional state has been fluctuating recently. Light touch — don't commit to a heavy framing the next 30 minutes might invert.",
-            { RecentVolatility: <= 0.4f } =>
-                "\n            - Your emotional state has been stable recently. You can lean into the register confidently; the next 30 minutes will likely match.",
-            _ => string.Empty,
-        };
+        //
+        // Life Engine A.−1 (2026-11-05): when ContributionTrajectoryEnabled
+        // is false, the switch is bypassed. Under register lock the state
+        // IS stable, so "lean in confidently" tells the model to stay
+        // locked — the flag is paired with MotivationEmphasisEnabled for
+        // the 72h A.−1 experiment.
+        var trajectoryRule = input.ContributionTrajectoryEnabled
+            ? snapshot.ContributionTrajectory switch
+            {
+                { RecentVolatility: > 0.4f } =>
+                    "\n            - Your emotional state has been fluctuating recently. Light touch — don't commit to a heavy framing the next 30 minutes might invert.",
+                { RecentVolatility: <= 0.4f } =>
+                    "\n            - Your emotional state has been stable recently. You can lean into the register confidently; the next 30 minutes will likely match.",
+                _ => string.Empty,
+            }
+            : string.Empty;
 
         var system = $$"""
             You are {{cs.Name}}, texting {{contact}}.

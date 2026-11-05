@@ -19,7 +19,8 @@ public static class PromptBuilder
         int? toneValenceTopK = null,
         int? ongoingArcsTopK = null,
         int? knownPeopleTopK = null,
-        TemporalContext? temporal = null)
+        TemporalContext? temporal = null,
+        bool motivationEmphasisEnabled = true)
         => new Prompts.InnerThoughtPromptCommand()
             .Build(new Prompts.InnerThoughtPromptInput(
                 Snapshot: snapshot,
@@ -29,7 +30,8 @@ public static class PromptBuilder
                 ToneValenceTopK: toneValenceTopK,
                 OngoingArcsTopK: ongoingArcsTopK,
                 KnownPeopleTopK: knownPeopleTopK,
-                Temporal: temporal));
+                Temporal: temporal,
+                MotivationEmphasisEnabled: motivationEmphasisEnabled));
 
 
     /// <summary>
@@ -236,9 +238,13 @@ public static class PromptBuilder
     public static (string System, string User) BuildLeanConversationPrompt(
         ContextSnapshot snapshot, ConversationThread thread,
         IEpistemicSubstrateRenderer? epistemicRenderer = null,
-        bool directiveInSystem = false)
+        bool directiveInSystem = false,
+        bool motivationEmphasisEnabled = true,
+        bool contributionTrajectoryEnabled = true)
         => new Prompts.LeanConversationPromptCommand()
-            .Build(new Prompts.LeanConversationPromptInput(snapshot, thread, epistemicRenderer, directiveInSystem));
+            .Build(new Prompts.LeanConversationPromptInput(
+                snapshot, thread, epistemicRenderer, directiveInSystem,
+                motivationEmphasisEnabled, contributionTrajectoryEnabled));
 
     /// <summary>
     /// Full conversation prompt — used for outreach reconsideration and as fallback.
@@ -278,10 +284,13 @@ public static class PromptBuilder
         ContextSnapshot snapshot, string recentThought, string reasoning,
         bool reasoningInComposition = false,
         OutreachFrame? frame = null,
-        IEpistemicSubstrateRenderer? epistemicRenderer = null)
+        IEpistemicSubstrateRenderer? epistemicRenderer = null,
+        bool motivationEmphasisEnabled = true,
+        bool contributionTrajectoryEnabled = true)
         => new Prompts.OutreachMessagePromptCommand()
             .Build(new Prompts.OutreachMessagePromptInput(
-                snapshot, recentThought, reasoning, reasoningInComposition, frame, epistemicRenderer));
+                snapshot, recentThought, reasoning, reasoningInComposition, frame, epistemicRenderer,
+                motivationEmphasisEnabled, contributionTrajectoryEnabled));
 
 
     /// <summary>

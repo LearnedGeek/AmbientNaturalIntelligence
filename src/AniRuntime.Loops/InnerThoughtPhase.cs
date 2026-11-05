@@ -1,6 +1,7 @@
 using AniRuntime.Core;
 using AniRuntime.Core.Interfaces;
 using AniRuntime.Core.Models;
+using AniRuntime.Core.Utilities;
 using AniRuntime.LLM;
 using Microsoft.Extensions.Logging;
 
@@ -58,6 +59,7 @@ public class InnerThoughtPhase
     private readonly ITemporalContextProvider? _temporalContextProvider;  // F-4 Phase 5a
     private readonly int _temporalContextRecentK;                         // F-4 Phase 5a
     private readonly bool _temporalContextEnabled;                        // F-4 Phase 5a
+    private readonly bool _motivationEmphasisEnabled;                     // Life Engine A.−1
     private readonly string _hybridMetadataModel;
     private readonly bool _thoughtShapeClassificationEnabled;
     private readonly bool _claimExtractionEnabled;
@@ -120,6 +122,7 @@ public class InnerThoughtPhase
         _namedSubstrateAnchorEnabled = aniOptions?.Value.NamedSubstrateAnchorEnabled ?? false;
         _temporalContextEnabled = aniOptions?.Value.TemporalContextEnabled ?? false;
         _temporalContextRecentK = aniOptions?.Value.TemporalContextRecentK ?? 3;
+        _motivationEmphasisEnabled = aniOptions?.Value.MotivationEmphasisEnabled ?? true;
     }
 
     /// <summary>
@@ -155,10 +158,23 @@ public class InnerThoughtPhase
                 snapshot.BuiltAt, _temporalContextRecentK, ct).ConfigureAwait(false);
         }
 
+        // Life Engine A.−1 (2026-11-05) — log the emphasis attribution per
+        // call so A.−1's 72h experiment can attribute register distribution
+        // changes directly to the R.4 rule firing or being gated. See
+        // spec/ANI-Life-Engine-Design.md §6 Candidate A.−1.
+        var mv = snapshot.MotivationVector;
+        _log.LogInformation(
+            "composer motivation-emphasis: composer=InnerThought vector=(r={R:F2} a={A:F2} c={C:F2}) selected={Selected} applied={Applied}",
+            mv?.Relatedness ?? 0f,
+            mv?.Autonomy ?? 0f,
+            mv?.Competence ?? 0f,
+            MotivationEmphasis.Select(mv),
+            _motivationEmphasisEnabled);
+
         var thoughtPrompt = PromptBuilder.BuildInnerThoughtPrompt(
             snapshot, rendererForPrompt,
             _topicValenceTopK, _namedSubstrateAnchorEnabled, _toneValenceTopK, _ongoingArcsTopK,
-            _knownPeopleTopK, temporal);
+            _knownPeopleTopK, temporal, _motivationEmphasisEnabled);
         // F-2 Phase 1 P5 (2026-08-22, PR #129 review-fix) — WithAttributionKey
         // is safe: preserves empty base system (Modelfile SYSTEM fallback),
         // returns unchanged when history is unattributed, otherwise prepends

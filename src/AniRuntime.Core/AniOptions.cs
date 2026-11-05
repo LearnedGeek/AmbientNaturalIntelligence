@@ -360,6 +360,43 @@ public class AniOptions
     // a concern. Phase 2b/2c/2d introduce their own separate flags.
     public bool MotivationVectorLoggingEnabled { get; set; } = true;
 
+    // Life Engine A.−1 (Nov 2026): neutralize the Theme R.4 motivation-axis
+    // emphasis rule in the three composer prompts (InnerThought, Outreach,
+    // LeanConversation). Opus 5.5 review of ANI-Life-Engine-Design.md found
+    // that Theme R.4 (commit 7ba5a62, May 24 2026) wired the unvalidated
+    // Phase 2a MotivationVector into MotivationEmphasis.Select() → three
+    // composer prompts, without the Phase 2a liveness gate the Apr 23 Layer
+    // 2 plan required. With autonomy stuck at 0 (dead obs.Severity field)
+    // and competence often 0, Relatedness wins the switch nearly every
+    // cycle → every prompt receives "You're reaching FOR connection right
+    // now." This is a closed positive-feedback loop in the countermeasure
+    // stack, running since May 2026.
+    //
+    // When FALSE, the three composers skip the MotivationEmphasis switch
+    // entirely (as if the vector were always Balanced) — no emphasis rule
+    // is injected. Default TRUE preserves pre-A.−1 behaviour so the gate
+    // is opt-in from code; prod appsettings flips it to false for the 72h
+    // A.−1 observation window. See spec/ANI-Life-Engine-Design.md §6
+    // Candidate A.−1 and spec/ANI-Life-Engine-Design-Review-Opus.md.
+    public bool MotivationEmphasisEnabled { get; set; } = true;
+
+    // Life Engine A.−1 (Nov 2026): neutralize the Theme R.6 contribution-
+    // trajectory "lean in" rule in the two composer prompts that consume it
+    // (OutreachMessagePromptCommand and LeanConversationPromptCommand). The
+    // rule fires on any non-null ContributionTrajectory: high volatility →
+    // "light touch"; low volatility → "you can lean into the register
+    // confidently." Under register lock, the state IS stable, so the rule
+    // tells the model to stay locked.
+    //
+    // When FALSE, both composers skip the trajectory switch — no extra
+    // rule is injected. Default TRUE preserves pre-A.−1 behaviour; prod
+    // appsettings flips it to false for the 72h A.−1 observation. The flag
+    // is paired with MotivationEmphasisEnabled so the 2x2 can isolate
+    // which rule contributes more to the floor if the combined test moves
+    // the register distribution. See spec/ANI-Life-Engine-Design.md
+    // §6 Candidate A.−1.
+    public bool ContributionTrajectoryEnabled { get; set; } = true;
+
     // Theme J Phase J.1 (Apr 27, 2026): strip the decision-stage reasoning
     // pipe from outreach composition. When this flag is FALSE (the default
     // post-J.1), the outreach-decision LLM's free-text reasoning field is

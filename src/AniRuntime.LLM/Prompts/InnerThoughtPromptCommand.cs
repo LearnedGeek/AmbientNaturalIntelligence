@@ -13,7 +13,8 @@ public sealed record InnerThoughtPromptInput(
     int? ToneValenceTopK = null,
     int? OngoingArcsTopK = null,
     int? KnownPeopleTopK = null,
-    TemporalContext? Temporal = null);
+    TemporalContext? Temporal = null,
+    bool MotivationEmphasisEnabled = true);
 
 /// <summary>
 /// Inner-thought / world-experience prompt for the ambient cognitive cycle.
@@ -76,17 +77,25 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
         // Theme R.4 (#64) — motivation-axis emphasis applied to inner thought
         // texture. The Layer 2 vector picks which axis the thought leans toward.
-        var emphasis = MotivationEmphasis.Select(snapshot.MotivationVector);
-        var motivationTextureRule = emphasis switch
-        {
-            MotivationEmphasis.Relatedness =>
-                "\n            - Relatedness is high in you right now. The thought may reach toward connection or another person without acting on it.",
-            MotivationEmphasis.Autonomy =>
-                "\n            - Autonomy is high in you right now. The thought may sit with its own ground — yourself, your space, not other-oriented.",
-            MotivationEmphasis.Competence =>
-                "\n            - Competence is high in you right now. The thought may notice a thing you figured out, a thing you can do, the texture of skill.",
-            _ /* Balanced */ => string.Empty,
-        };
+        //
+        // Life Engine A.−1 (2026-11-05): when MotivationEmphasisEnabled is
+        // false, the switch is bypassed and no emphasis rule is injected
+        // (as if the vector were always Balanced). Opus review found this
+        // rule has been firing as a positive-feedback loop since May 2026
+        // because autonomy≡0 → Relatedness wins every cycle. See
+        // spec/ANI-Life-Engine-Design.md §6 Candidate A.−1.
+        var motivationTextureRule = input.MotivationEmphasisEnabled
+            ? MotivationEmphasis.Select(snapshot.MotivationVector) switch
+            {
+                MotivationEmphasis.Relatedness =>
+                    "\n            - Relatedness is high in you right now. The thought may reach toward connection or another person without acting on it.",
+                MotivationEmphasis.Autonomy =>
+                    "\n            - Autonomy is high in you right now. The thought may sit with its own ground — yourself, your space, not other-oriented.",
+                MotivationEmphasis.Competence =>
+                    "\n            - Competence is high in you right now. The thought may notice a thing you figured out, a thing you can do, the texture of skill.",
+                _ /* Balanced */ => string.Empty,
+            }
+            : string.Empty;
 
         var system = $"""
             You are {cs.Name}.{occupationLine}
