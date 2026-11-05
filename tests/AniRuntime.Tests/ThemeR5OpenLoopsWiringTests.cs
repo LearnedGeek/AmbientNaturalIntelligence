@@ -48,9 +48,12 @@ public class ThemeR5OpenLoopsWiringTests
 
     // ── Reply — open-loops section appears/disappears ──────────────
     // (Outreach tests removed when OutreachMessagePromptCommand was retired
-    // under Theme K.3; Audit Root B 2026-11-05. Open-loops injection in the
-    // live outreach path is handled by the pre-prompt user-turn builder, not
-    // the composer; its tests live with that path.)
+    // under Theme K.3; Audit Root B 2026-11-05. Composition-time injection
+    // of [OPEN LOOPS] was retired with the composer — the live outreach
+    // path calls ChatAsync with an empty system prompt and recentThought
+    // as the user message, with no open-loops rendering. The tests below
+    // cover Reply composition only; there is no equivalent outreach
+    // composition-time assertion to carry forward.)
 
     [Fact]
     public void Reply_OpenLoopsPresent_SectionAppears()

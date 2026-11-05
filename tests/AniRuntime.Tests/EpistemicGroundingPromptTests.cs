@@ -258,10 +258,11 @@ public class EpistemicGroundingPromptTests
     }
 
     // (OutreachMessagePrompt tests removed when the composer was retired under
-    // Theme K.3; Audit Root B 2026-11-05. The [FACTS] / [INTERIOR] rendering
-    // for Reply above exercises the same rendering code; outreach now goes
-    // through the lean user-turn path and the facts / interior framing lives
-    // in that pre-prompt builder.)
+    // Theme K.3; Audit Root B 2026-11-05. Composition-time [FACTS] / [INTERIOR]
+    // rendering was retired with the composer — the live outreach path calls
+    // ChatAsync with an empty system prompt and recentThought as the user
+    // message, with no epistemic rendering. The Reply tests above cover the
+    // only live composer-level [FACTS] / [INTERIOR] shape.)
 
     // ─── Cross-cutting: fact vs interior separation ───────────────────────────
 

@@ -2,10 +2,12 @@ namespace AniRuntime.Core.Utilities;
 
 /// <summary>
 /// Theme R.1 (2026-05-24, Issue #64) — maps the 9-register taxonomy to a
-/// small set of composition prompt-variant keys. The live consumer is
-/// <c>LeanConversationPromptCommand</c>, which branches on the returned key
-/// to select between system-prompt template variants. (The outreach composer
-/// that formerly consumed this value was retired under Theme K.3.)
+/// small set of composition prompt-variant keys. The live consumers are
+/// <c>LeanConversationPromptCommand</c> and <c>InnerThoughtPromptCommand</c>,
+/// which each call <c>Select</c> on their respective register input and
+/// branch on the returned key to select between system-prompt template
+/// variants. (The outreach composer that formerly consumed this value was
+/// retired under Theme K.3.)
 ///
 /// <para>
 /// The variant set is deliberately small — three variants — to keep the
