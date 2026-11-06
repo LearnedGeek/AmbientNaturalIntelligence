@@ -161,7 +161,12 @@ public class ConsciousSubstrateGistComposer : IConsciousSubstrateGist
 
         // Compose: §4.6 slice ordering — tension → register →
         // closed-conversation → inner-thought-aggregate → contact-state
-        // → world-self. All six slices now ship at M.5-lite.
+        // → world-self. Three slices ship in default production
+        // (ClosedConversation, ContactState, WorldSelf); the other three
+        // (TensionState, RegisterState, InnerThoughtAggregate) are
+        // flag-gated off per Issue #86 (2026-06-08). Each flag-gated
+        // slice is already documented at its own ComposeXxxSlice call
+        // site above; keep this ordering block aligned with that state.
         var sliceParts = new List<string>(6);
         var flags = new GistSliceFlags
         {
