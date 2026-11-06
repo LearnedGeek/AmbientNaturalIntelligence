@@ -11,9 +11,18 @@ namespace AniRuntime.Core.Models;
 ///
 /// Live consumption as of 2026-11-05: Theme R.4 (commit <c>7ba5a62</c>,
 /// 2026-05-24) wired the vector into three composer prompts via
-/// <c>MotivationEmphasis.Select</c>. The Phase 2a "emits this vector for
-/// logging only" framing that shipped with the original header is obsolete;
-/// Phase 2b (drift) and Phase 2c (consumption-action wiring) supersede it.
+/// <c>MotivationEmphasis.Select</c>, so the Phase 2a "emits this vector
+/// for logging only" framing is no longer accurate — the vector now shapes
+/// prompt composition.
+///
+/// What has NOT shipped: Phase 2b parallel desire drift. See
+/// <c>CognitiveCyclePipeline.cs:613,640</c> — only
+/// <see cref="Relatedness"/> is extracted and passed to
+/// <c>DesireEngine.ApplyDriftAsync</c>; <see cref="Autonomy"/> and
+/// <see cref="Competence"/> are recorded on the motivation tracker and
+/// consumed by R.4 prompt emphasis, but do not drive
+/// <c>DesireToConnect</c>. Desire drift remains relatedness-only.
+///
 /// See <c>AniRuntime.Core.MotivationScorer</c> for the construction-defect
 /// note on the Autonomy axis (Life Engine Opus 5.5 review §Q2 — autonomy
 /// and relatedness are anticorrelated by shared-scalar construction, not
