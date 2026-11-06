@@ -26,8 +26,15 @@ namespace AniRuntime.Core;
 /// Deci SDT (relatedness / autonomy / competence). The existing scalar
 /// <see cref="Score"/> is preserved verbatim and now delegates to the
 /// <see cref="MotivationVector.Relatedness"/> component — identical
-/// behaviour, no drift-math change. Phase 2a emits the vector for logging
-/// only; Phases 2b–2d consume the non-relatedness axes.
+/// behaviour, no drift-math change.
+///
+/// Live consumption as of 2026-11-05: Theme R.4 (commit <c>7ba5a62</c>,
+/// 2026-05-24) wired the vector straight into three composers via
+/// <c>MotivationEmphasis.Select</c>. Life Engine A.−1 (2026-11-05) placed
+/// that wiring behind <c>AniOptions.MotivationEmphasisEnabled</c> for the
+/// 72-hour observation window; the file-level "logging only" framing that
+/// shipped with Phase 2a is obsolete. See
+/// <c>spec/ANI-Life-Engine-Design.md</c> §6 Candidate A.−1.
 /// </summary>
 public static class MotivationScorer
 {
@@ -56,6 +63,16 @@ public static class MotivationScorer
     ///     but low caregiver-valence (near-neutral relational valence).
     ///     Inverse pattern of Relatedness on the valence axis, weighted
     ///     by severity. See plan §2.2.
+    ///
+    ///     **Known construction defect (Life Engine Opus 5.5 review §Q2
+    ///     bullet 3, §Q3 point 2 — 2026-11-05):** <c>valenceIntensity</c>
+    ///     and <c>valenceNeutrality</c> are derived from the same scalar
+    ///     (one LLM score on one thought), so autonomy is anticorrelated
+    ///     with relatedness by construction, not by independent
+    ///     measurement. The SDT framing is aspirational. Life Engine
+    ///     A.0b redefines autonomy from input-sourced signals; do not
+    ///     reason about this formula as a standalone drive until that
+    ///     work ships.
     ///
     ///   - Competence ∈ [0, 1.5]: world-engagement motivation. Rises
     ///     proportionally with the fraction of the retrieval pool
