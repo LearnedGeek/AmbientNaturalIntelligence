@@ -61,8 +61,12 @@ public sealed class OutreachPromptCommand : IPromptCommand<OutreachPromptInput>
         // G.3 (2026-06-11) — when epistemicRenderer is null, fall back to a
         // direction-shape line rather than rendering the full closed-conversation
         // prose or the structured-summary turn-by-turn transcript. Issue #92 §G.3.
-        // Production runs with EpistemicFramingEnabled=true (renderer non-null),
-        // so the fallback is defensive against future config drift.
+        // Audit Root C (2026-11-05): production actually runs with
+        // EpistemicFramingEnabled=false (default; never flipped on in prod
+        // appsettings), so the null-renderer branch below IS the live path on
+        // every cycle. The renderer branch is dormant pending the flag-flip
+        // experiment scheduled post-A.−1. Earlier comments here claimed the
+        // opposite — they were wrong.
         var decisionClosed = snapshot.RecentClosedConversation;
         var decisionStructured = snapshot.StructuredConversationSummary;
         if (decisionClosed is not null && !string.IsNullOrWhiteSpace(decisionClosed.Gist))

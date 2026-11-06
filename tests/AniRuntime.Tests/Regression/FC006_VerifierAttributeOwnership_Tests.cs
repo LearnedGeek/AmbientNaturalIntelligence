@@ -4,9 +4,12 @@ using FluentAssertions;
 using Xunit;
 
 // Theme M slice migration (2026-05-14): FC-006 SPEC now verifies the
-// with-renderer path. Production flips the SPEC closed via the
-// EpistemicFramingEnabled flag; the harness verifies the architectural
-// surface is intact regardless of flag state.
+// with-renderer path. Audit Root C (2026-11-05): production has NOT
+// flipped the SPEC closed — EpistemicFramingEnabled remains false in
+// prod appsettings, so the null-renderer path is live on every cycle.
+// The harness still verifies the with-renderer architectural surface
+// is intact for the flag-flip experiment scheduled post-A.−1; the
+// earlier "production flips the SPEC closed" framing was aspirational.
 
 namespace AniRuntime.Tests.Regression;
 

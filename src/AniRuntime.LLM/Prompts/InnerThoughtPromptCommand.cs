@@ -461,9 +461,12 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
         // G.4 (2026-06-11) — same fallback hardening as G.3 for the outreach
         // path. When epistemicRenderer is null, surface a direction-shape
         // count line rather than the verbatim turn dump (StructuredConversationSummary)
-        // or the prose blob (RecentConversationSummary). Production runs with
-        // EpistemicFramingEnabled=true so the renderer is non-null and these
-        // fallbacks are defensive. Issue #92 §G.4.
+        // or the prose blob (RecentConversationSummary). Issue #92 §G.4.
+        // Audit Root C (2026-11-05): production actually runs with
+        // EpistemicFramingEnabled=false, so the null-renderer branch IS the
+        // live path on every cycle. The renderer branch is dormant pending
+        // the flag-flip experiment scheduled post-A.−1. Earlier "production
+        // runs with EpistemicFramingEnabled=true" framing here was wrong.
         var ittStructured = snapshot.StructuredConversationSummary;
         var contactName = cs.PrimaryContactName ?? "the contact";
         if (ittStructured is { Turns.Count: > 0 })
