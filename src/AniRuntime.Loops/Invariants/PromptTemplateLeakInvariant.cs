@@ -74,6 +74,18 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
         // memory now enters composer prompts with this bracket-prefix; if
         // the model echoes it into a reply, this pattern must catch it.
         FromAttributionMarker(),
+
+        // Issue #203 (2026-11-08) — ALL-CAPS mood / body-sense directive
+        // headers produced by the pre-#203 BuildMoodInstruction and
+        // InteroceptiveDescriptorRenderer.Render. The structural fix
+        // rewrote both to parenthetical form so these never leave the
+        // composer anymore, but the invariant is kept as defense-in-depth:
+        // 31 records across 30 days slipped through before the pattern
+        // was added, and anyone adding a new directive block should
+        // trip this gate immediately.
+        CurrentMoodDirective(),
+        CurrentBodySenseDirective(),
+        ColorYourMessageDirective(),
     };
 
     public Task<InvariantResult> EvaluateAsync(
@@ -148,4 +160,20 @@ public sealed partial class PromptTemplateLeakInvariant : ICognitiveOutputInvari
     // through). Case-insensitive to catch echoed variants like `[from: ...]`.
     [GeneratedRegex(@"\[FROM:\s*", RegexOptions.IgnoreCase)]
     private static partial Regex FromAttributionMarker();
+
+    // Issue #203 (2026-11-08) — ALL-CAPS mood / body-sense directive
+    // headers from the pre-#203 BuildMoodInstruction / Render. Case-sensitive
+    // on purpose: lowercase "your current mood" shows up in legitimate
+    // casual prose, but ALL CAPS is the specific echoed scaffold shape.
+    [GeneratedRegex(@"\bYOUR\s+CURRENT\s+MOOD\b")]
+    private static partial Regex CurrentMoodDirective();
+
+    [GeneratedRegex(@"\bYOUR\s+CURRENT\s+BODY[\s-]SENSE\b")]
+    private static partial Regex CurrentBodySenseDirective();
+
+    // Case-insensitive on this one: the trailing "let this color your
+    // message / how you speak" clause is distinctive enough on its own
+    // that casual-prose false-positives are unlikely.
+    [GeneratedRegex(@"let\s+this\s+color\s+(?:your\s+message|how\s+you\s+speak)", RegexOptions.IgnoreCase)]
+    private static partial Regex ColorYourMessageDirective();
 }
