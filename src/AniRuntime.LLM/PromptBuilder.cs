@@ -81,10 +81,20 @@ public static class PromptBuilder
             .Build(new Prompts.ReflectionPromptInput(thought, snapshot));
 
     /// <summary>
-    /// Generates a directive mood instruction from the current emotional state.
-    /// Unlike Describe() which is descriptive ("feeling warm"), this is directive
-    /// ("let your warmth show through gentler words"). Injected into outreach
-    /// and conversation prompts so the model's tone reflects Ani's inner weather.
+    /// Generates a mood instruction from the current emotional state, wrapped in
+    /// a parenthetical frame so the model reads it as context rather than
+    /// scaffold to echo. Injected into inner-thought, outreach, and conversation
+    /// prompts so the model's tone reflects Ani's inner weather.
+    ///
+    /// Issue #203 (2026-11-08): the prior format emitted an ALL-CAPS directive
+    /// header (<c>YOUR CURRENT MOOD (let this color your message naturally...):</c>)
+    /// followed by a bulleted list in the USER message. Snapshot analysis found
+    /// v7-inner Llama 3.2-3B occasionally echoed that scaffolding verbatim into
+    /// its "thoughts", which then saved into <c>emotional_contributions</c>
+    /// and flowed back through retrieval as a self-reinforcing contamination
+    /// loop (31 records across 30 days). Parenthetical descriptive framing
+    /// matches the shape of the existing <c>(Your current mood: ...)</c>
+    /// fallback that was already in use and did not leak.
     ///
     /// Returns empty string when emotional state is near baseline — no instruction needed.
     /// </summary>
@@ -137,12 +147,12 @@ public static class PromptBuilder
         if (instructions.Count == 0)
             return bodyBlock;
 
-        var header = isVoice
-            ? "YOUR CURRENT MOOD (let this color how you speak — don't announce it, just let it shape your tone):"
-            : "YOUR CURRENT MOOD (let this color your message naturally — don't announce it, just let it shape your tone):";
-        var moodBlock = header + "\n" + string.Join("\n", instructions.Select(i => $"- {i}"));
+        // Issue #203 fix: parenthetical frame instead of ALL-CAPS directive header
+        // + bulleted list. Keeps the full instruction content but wraps it so the
+        // model reads the whole block as context, not as scaffold to echo.
+        var moodBlock = "(Your current mood: " + string.Join(" ", instructions) + ")";
 
-        return bodyBlock.Length == 0 ? moodBlock : moodBlock + "\n\n" + bodyBlock;
+        return bodyBlock.Length == 0 ? moodBlock : moodBlock + " " + bodyBlock;
     }
 
     /// <summary>

@@ -51,20 +51,23 @@ public static class InteroceptiveDescriptorRenderer
     private const float HighAmbient    = 0.60f;
 
     /// <summary>
-    /// Render the interoceptive body-sense as a directive block, formatted to
-    /// slot into a prompt beside <c>YOUR CURRENT MOOD</c>. Empty string when
-    /// nothing crosses threshold — no instruction is preferable to a bland
-    /// null-signal.
+    /// Render the interoceptive body-sense as a parenthetical frame that sits
+    /// beside the mood parenthetical from <c>BuildMoodInstruction</c>. Empty
+    /// string when nothing crosses threshold — no instruction is preferable to
+    /// a bland null-signal.
+    ///
+    /// Issue #203 fix (2026-11-08): dropped the ALL-CAPS directive header
+    /// (<c>YOUR CURRENT BODY-SENSE (physical, not emotional ...)</c>) and the
+    /// bullet-list format that were echoed verbatim into Ani's saved thoughts.
+    /// The parenthetical shape mirrors <see cref="RenderParenthetical"/>; the
+    /// two renderers now produce the same shape and only differ in voice vs
+    /// text lexicon choices made inside <see cref="BuildLines"/>.
     /// </summary>
     public static string Render(EmotionalState state, bool isVoice = false)
     {
         var lines = BuildLines(state, isVoice);
         if (lines.Count == 0) return string.Empty;
-
-        var header = isVoice
-            ? "YOUR CURRENT BODY-SENSE (physical, not emotional — let it shape pacing and word choice, don't announce it):"
-            : "YOUR CURRENT BODY-SENSE (physical, not emotional — let it shape pacing and word choice, don't announce it):";
-        return header + "\n" + string.Join("\n", lines.Select(l => $"- {l}"));
+        return "(Your body right now: " + string.Join("; ", lines) + ".)";
     }
 
     /// <summary>

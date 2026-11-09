@@ -130,7 +130,7 @@ public class InteroceptiveDescriptorRendererTests
     }
 
     [Fact]
-    public void Render_AllAxesElevated_ProducesMultipleLinesWithHeader()
+    public void Render_AllAxesElevated_ProducesParentheticalBlockWithEveryAxis()
     {
         var s = new EmotionalState
         {
@@ -142,9 +142,15 @@ public class InteroceptiveDescriptorRendererTests
 
         var rendered = InteroceptiveDescriptorRenderer.Render(s);
 
-        rendered.Should().Contain("YOUR CURRENT BODY-SENSE");
-        rendered.Should().Contain("physical, not emotional");
-        rendered.Split('\n').Length.Should().BeGreaterThan(3);
+        // Issue #203 fix (2026-11-08): dropped the ALL-CAPS directive header
+        // + bulleted list. Render now emits a single-line parenthetical that
+        // mirrors RenderParenthetical. The semicolon-joined list carries every
+        // axis.
+        rendered.Should().StartWith("(Your body right now:");
+        rendered.Should().EndWith(".)");
+        rendered.Should().NotContain("\n");
+        rendered.Split(';').Length.Should().BeGreaterOrEqualTo(4,
+            "every axis (tiredness, restlessness, groundedness, ambient) should contribute a semicolon-separated clause");
         rendered.Should().NotContainAny(ForbiddenWarmVocab);
     }
 
@@ -181,13 +187,13 @@ public class InteroceptiveDescriptorRendererTests
     }
 
     [Fact]
-    public void Render_VoiceMode_UsesSlightlyDifferentPhrasingButSameHeaderShape()
+    public void Render_VoiceMode_UsesSlightlyDifferentPhrasingSameParentheticalShape()
     {
         var s = new EmotionalState { Restlessness = 0.85f };
 
         var rendered = InteroceptiveDescriptorRenderer.Render(s, isVoice: true);
 
-        rendered.Should().Contain("YOUR CURRENT BODY-SENSE");
+        rendered.Should().StartWith("(Your body right now:");
         rendered.Should().Contain("restless");
         rendered.Should().NotContainAny(ForbiddenWarmVocab);
     }

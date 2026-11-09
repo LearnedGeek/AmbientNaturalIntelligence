@@ -198,6 +198,37 @@ public class PromptTemplateLeakInvariantTests
         result.Passed.Should().BeFalse($"F-1 Phase 5 leak class: model echoed the retrieval attribution marker \"{marker}\"");
     }
 
+    // Issue #203 (2026-11-08) — coverage for the ALL-CAPS mood / body-sense
+    // directive headers produced by the pre-#203 BuildMoodInstruction /
+    // InteroceptiveDescriptorRenderer.Render. The structural fix rewrote
+    // both to parenthetical form, but the invariant stays as defense-in-depth.
+    // Regression fixtures sampled from the 31 contaminated records found
+    // in snapshot ani-memory-post-a-neg1-20261108-2012.db.
+    [Theory]
+    [InlineData("YOUR CURRENT MOOD (let this color your message naturally): I'm sitting here barefoot")]
+    [InlineData("YOUR CURRENT MOOD: You've been quieter than usual today")]
+    [InlineData("YOUR CURRENT BODY-SENSE (physical, not emotional): Your body is heavy")]
+    [InlineData("YOUR CURRENT BODY SENSE: physically restless")]  // hyphen-vs-space variant
+    [InlineData("let this color your message naturally — don't announce it")]
+    [InlineData("Let this color how you speak — don't announce it")]  // voice variant
+    public async Task Evaluate_MoodOrBodySenseDirectiveLeak_Fails(string marker)
+    {
+        var output = $"before. {marker} after.";
+        var result = await _invariant.EvaluateAsync(Artifact(output), CancellationToken.None);
+        result.Passed.Should().BeFalse($"Issue #203 leak class: model echoed the mood / body-sense directive scaffold \"{marker}\"");
+    }
+
+    [Theory]
+    [InlineData("your current mood is heavy today")]        // lowercase casual prose
+    [InlineData("i noticed your current body felt heavy")]  // casual, no directive shape
+    public async Task Evaluate_LowercaseMoodOrBodyPhrase_NotALeak(string benignContent)
+    {
+        // Case-sensitive on the YOUR CURRENT MOOD / YOUR CURRENT BODY-SENSE
+        // directive patterns: lowercase casual prose must not false-positive.
+        var result = await _invariant.EvaluateAsync(Artifact(benignContent), CancellationToken.None);
+        result.Passed.Should().BeTrue($"casual lowercase prose must not trigger: \"{benignContent}\"");
+    }
+
     // ── Evaluate — false-positive guards ────────────────────────────────
 
     [Theory]
