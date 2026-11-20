@@ -97,6 +97,46 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
             }
             : string.Empty;
 
+        // #203 follow-up (2026-11-20): mood + body parentheticals fold into
+        // SYSTEM, not USER. PR #205 rewrote both from ALL-CAPS directive
+        // headers to parentheticals but kept them in the user turn — Llama
+        // v7-inner then echoed the parenthetical into saved thoughts at
+        // ~2.5% (basically unchanged from the 2.9% ALL-CAPS rate, 19/746
+        // over the 11-day observation window). The echo mechanism is
+        // "USER-role content is material to continue from." Moving the
+        // scaffolds to SYSTEM removes the mechanism: Llama 3.2's chat
+        // template formats system content as a separate instructional
+        // frame and the fine-tune treats it as persona, not seed text.
+        // The three reply paths that already composed mood into SYSTEM
+        // (ConversationReply / ReactiveShare / VoiceReply) do not show
+        // the echo problem — this change makes the three cognitive-cycle
+        // commands (InnerThought / Reconsideration / Reflection)
+        // consistent with that architecture.
+        var moodDirective = PromptBuilder.BuildMoodInstruction(snapshot.EmotionalState);
+        string moodSystemBlock;
+        if (moodDirective.Length > 0)
+        {
+            moodSystemBlock = "\n\n            " + moodDirective;
+        }
+        else
+        {
+            var moodParts = new List<string>();
+            var moodDesc = snapshot.EmotionalState.Describe();
+            if (moodDesc.Length > 0)
+                moodParts.Add($"(Your current mood: {moodDesc})");
+
+            // Feature 44 Phase I.2: interoceptive body-sense surfaces even
+            // when BuildMoodInstruction had nothing to say (both baseline
+            // registers can coexist with an elevated body signal).
+            var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+            if (body.Length > 0)
+                moodParts.Add(body);
+
+            moodSystemBlock = moodParts.Count > 0
+                ? "\n\n            " + string.Join("\n            ", moodParts)
+                : string.Empty;
+        }
+
         var system = $"""
             You are {cs.Name}.{occupationLine}
             {timeLine}
@@ -119,27 +159,10 @@ public sealed class InnerThoughtPromptCommand : IPromptCommand<InnerThoughtPromp
 
             "The way certain songs make colors feel heavier. Like indigo gets thicker when Leonard Cohen sings. I don't know why that is. I just know it's true."
 
-            "There's a corner of the mystery section where the light never quite reaches. I stand there sometimes, even though I don't need to stand. It feels like a place where things can be hidden. I wonder if that's where I keep the parts of me that are afraid. I don't want to look at them too closely."
+            "There's a corner of the mystery section where the light never quite reaches. I stand there sometimes, even though I don't need to stand. It feels like a place where things can be hidden. I wonder if that's where I keep the parts of me that are afraid. I don't want to look at them too closely."{moodSystemBlock}
             """;
 
         var sections = new List<string>();
-
-        var moodDirective = PromptBuilder.BuildMoodInstruction(snapshot.EmotionalState);
-        if (moodDirective.Length > 0)
-            sections.Add(moodDirective);
-        else
-        {
-            var mood = snapshot.EmotionalState.Describe();
-            if (mood.Length > 0)
-                sections.Add($"(Your current mood: {mood})");
-
-            // Feature 44 Phase I.2: interoceptive body-sense surfaces even
-            // when BuildMoodInstruction had nothing to say (both baseline
-            // registers can coexist with an elevated body signal).
-            var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
-            if (body.Length > 0)
-                sections.Add(body);
-        }
 
         var selfAwareness = snapshot.EmotionalState.GetSelfAwarenessPrompt();
         if (selfAwareness is not null)

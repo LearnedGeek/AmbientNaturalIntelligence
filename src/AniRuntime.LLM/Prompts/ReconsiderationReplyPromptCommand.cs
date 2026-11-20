@@ -22,8 +22,30 @@ public sealed class ReconsiderationReplyPromptCommand : IPromptCommand<Reconside
         var cs       = snapshot.CharacterState;
         var contact  = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "them" : cs.PrimaryContactName;
 
-        var moodBlock = PromptBuilder.BuildMoodInstruction(snapshot.EmotionalState);
-        var moodSection = moodBlock.Length > 0 ? $"\n\n            {moodBlock}" : "";
+        // #203 follow-up (2026-11-20): all mood + body scaffolds land in
+        // SYSTEM. BuildMoodInstruction was already in SYSTEM here; the
+        // describe-form fallback and body parenthetical were in USER and
+        // provided the material Llama v7-inner echoed back into saved
+        // thoughts. See InnerThoughtPromptCommand for the full rationale.
+        var moodDirective = PromptBuilder.BuildMoodInstruction(snapshot.EmotionalState);
+        string moodSystemBlock;
+        if (moodDirective.Length > 0)
+        {
+            moodSystemBlock = "\n\n            " + moodDirective;
+        }
+        else
+        {
+            var moodParts = new List<string>();
+            var moodDesc = snapshot.EmotionalState.Describe();
+            if (moodDesc.Length > 0)
+                moodParts.Add($"(Your current mood: {moodDesc})");
+            var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+            if (body.Length > 0)
+                moodParts.Add(body);
+            moodSystemBlock = moodParts.Count > 0
+                ? "\n\n            " + string.Join("\n            ", moodParts)
+                : string.Empty;
+        }
 
         var system = $"""
             You are {cs.Name}, texting {contact}.
@@ -39,7 +61,7 @@ public sealed class ReconsiderationReplyPromptCommand : IPromptCommand<Reconside
             - Match the energy and length of the conversation.
             - Talk TO {contact}: "you", "your". NEVER third person.
             - Be yourself — warm, funny, real.
-            - Write ONLY the text message. No commentary, no quotation marks.{moodSection}
+            - Write ONLY the text message. No commentary, no quotation marks.{moodSystemBlock}
             """;
 
         var sections = new List<string>();
@@ -53,16 +75,6 @@ public sealed class ReconsiderationReplyPromptCommand : IPromptCommand<Reconside
             sections.Add("What's been on your mind lately:");
             sections.AddRange(recentThoughts.Select(t => $"  - {PromptBuilder.FormatMemoryWithTime(t)}"));
         }
-
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(Your current mood: {mood})");
-
-        // Feature 44 Phase I.2: interoceptive body-sense as a distinct
-        // physical-substrate line beside the emotional mood.
-        var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
-        if (body.Length > 0)
-            sections.Add(body);
 
         sections.Add($"Acknowledge {contact}'s message, then share what's on your mind.");
 

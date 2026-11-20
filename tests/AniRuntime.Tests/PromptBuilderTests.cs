@@ -50,9 +50,12 @@ public class PromptBuilderTests
             Energy = 0.7f, EnergyBaseline = 0.5f, // W ≥ 0.75, E ≥ 0.65 → "bright and warm"
         };
 
-        var (_, user) = PromptBuilder.BuildReflectionPrompt("a quiet thought", snapshot);
+        // #203 follow-up (2026-11-20): mood scaffold now lands in SYSTEM, not
+        // USER, to prevent the model from echoing the parenthetical back into
+        // saved thoughts (19/746 echo rate over the PR #205 observation window).
+        var (system, _) = PromptBuilder.BuildReflectionPrompt("a quiet thought", snapshot);
 
-        user.Should().Contain("warm");
+        system.Should().Contain("warm");
     }
 
     [Fact]
