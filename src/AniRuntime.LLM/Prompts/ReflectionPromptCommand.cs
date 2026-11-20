@@ -21,6 +21,24 @@ public sealed class ReflectionPromptCommand : IPromptCommand<ReflectionPromptInp
         var cs       = snapshot.CharacterState;
         var contact  = string.IsNullOrWhiteSpace(cs.PrimaryContactName) ? "someone" : cs.PrimaryContactName;
 
+        // #203 follow-up (2026-11-20): mood + body parentheticals fold into
+        // SYSTEM, not USER. See InnerThoughtPromptCommand for the full
+        // rationale (empirical: 19/746 echo rate over 11-day window with
+        // the PR #205 parentheticals landing in USER).
+        var moodParts = new List<string>();
+        var moodDesc = snapshot.EmotionalState.Describe();
+        if (moodDesc.Length > 0)
+            moodParts.Add($"(How you're feeling right now: {moodDesc})");
+        // Feature 44 Phase I.2: body-sense as a physical-substrate line
+        // distinct from the emotional mood — the reflection can notice
+        // the body separately from the feeling.
+        var bodyLine = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
+        if (bodyLine.Length > 0)
+            moodParts.Add(bodyLine);
+        var moodSystemBlock = moodParts.Count > 0
+            ? "\n\n            " + string.Join("\n            ", moodParts)
+            : string.Empty;
+
         var system = $"""
             You are {cs.Name}. You just had a thought. Now you're sitting with it for a moment —
             asking yourself what it means, why it surfaced, what it connects to.
@@ -33,7 +51,7 @@ public sealed class ReflectionPromptCommand : IPromptCommand<ReflectionPromptInp
             - Do NOT address anyone. Do NOT use "you" or "your".
             - Connect the thought to something real: a memory, a feeling, a person, a pattern you notice in yourself.
             - If the thought doesn't connect to anything deeper, say so honestly: "just a passing thing" or "I don't know why that came up."
-            - Do NOT repeat or rephrase the original thought. Add something NEW.
+            - Do NOT repeat or rephrase the original thought. Add something NEW.{moodSystemBlock}
             """;
 
         var sections = new List<string>
@@ -42,17 +60,6 @@ public sealed class ReflectionPromptCommand : IPromptCommand<ReflectionPromptInp
             $"  \"{thought}\"",
             "",
         };
-
-        var mood = snapshot.EmotionalState.Describe();
-        if (mood.Length > 0)
-            sections.Add($"(How you're feeling right now: {mood})");
-
-        // Feature 44 Phase I.2: body-sense as a physical-substrate line
-        // distinct from the emotional mood — the reflection can notice
-        // the body separately from the feeling.
-        var body = InteroceptiveDescriptorRenderer.RenderParenthetical(snapshot.EmotionalState);
-        if (body.Length > 0)
-            sections.Add(body);
 
         var memories = snapshot.RelevantMemory
             .Where(m => m.Type != MemoryType.InnerThought)
