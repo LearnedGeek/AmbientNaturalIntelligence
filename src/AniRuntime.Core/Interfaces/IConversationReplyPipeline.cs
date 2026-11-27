@@ -18,7 +18,13 @@ namespace AniRuntime.Core.Interfaces;
 /// </summary>
 public interface IConversationReplyPipeline
 {
-    Task RunAsync(
+    // Audit Root A (#197, 2026-11-27): returns the reply that was
+    // dispatched so the cycle pipeline can wire obs.ReplyMessage. Returns
+    // null on every non-dispatch outcome (terminal message, silence
+    // heuristic, empty reply, suppression, exception). Pre-fix the
+    // observation's ReplyMessage was null on every conversation cycle,
+    // hiding the H2 ResonanceScorer.OutreachQuality reply-tier branch.
+    Task<string?> RunAsync(
         ConversationThread thread,
         List<PerceptionEvent> perceptions,
         CancellationToken ct,

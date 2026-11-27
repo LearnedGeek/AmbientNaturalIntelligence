@@ -131,7 +131,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
     /// Conversation mode: contact texted and their message is the last in the thread.
     /// Decides whether to reply, and if so, generates and sends a contextual response.
     /// </summary>
-    public async Task RunAsync(
+    public async Task<string?> RunAsync(
         ConversationThread thread, List<PerceptionEvent> perceptions, CancellationToken ct,
         EmotionalState? emotionalState = null, bool isReconsideration = false)
     {
@@ -173,7 +173,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         if (ConversationFeatureDetector.IsTerminalMessage(lastMessage))
         {
             _log.LogInformation("Terminal message detected (\"{Message}\") — no reply needed", lastMessage);
-            return;
+            return null;
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -233,7 +233,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                     : "Message was a conversation closer";
                 _gateState.LastEvaluatedMessageAt = thread.Messages[^1].SentAt;
                 _log.LogInformation("Reply decision: NO (heuristic) — {Reasoning}", reasoning);
-                return;
+                return null;
             }
 
             // She's replying — clear the gate so future messages evaluate fresh
@@ -552,7 +552,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         if (string.IsNullOrWhiteSpace(reply))
         {
             _log.LogWarning("Conversation reply was empty — skipping");
-            return;
+            return null;
         }
 
         // ─── Feature 14 v2: Outbound claim verification (Apr 22, 2026) ───
@@ -742,20 +742,20 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
                             else
                             {
                                 _log.LogWarning("Null-result regeneration returned empty — suppressing dispatch");
-                                return;
+                                return null;
                             }
                         }
                         catch (Exception ex)
                         {
                             _log.LogWarning(ex, "Null-result regeneration failed — suppressing dispatch to prevent fabrication");
-                            return;
+                            return null;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     _log.LogWarning(ex, "Confabulation grounding retrieval failed — suppressing dispatch to prevent fabrication");
-                    return;
+                    return null;
                 }
             }
         }
@@ -849,6 +849,7 @@ public class ConversationReplyPipeline : IConversationReplyPipeline
         // pipeline drops EmotionalProcessor as a direct dep.
         // ═══════════════════════════════════════════════════════════════════════
         await _postReply.ProcessAsync(lastMessage, reply, snapshot, emotionalState, ct).ConfigureAwait(false);
+        return reply;
     }
 
     /// <summary>

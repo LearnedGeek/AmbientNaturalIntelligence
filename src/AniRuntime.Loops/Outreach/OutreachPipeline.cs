@@ -90,7 +90,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
         _log               = log ?? throw new ArgumentNullException(nameof(log));
     }
 
-    public async Task RunAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
+    public async Task<OutreachResult> RunAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
         // F-5 Phase 2 (2026-08-24) — phase scope tag so log lines emitted
         // inside outreach decision + composition render as
@@ -145,7 +145,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
                 TriggerType.SpontaneousThought, 0.3f,
                 "considered reaching out but held back", ct,
                 source: "held-back-outreach").ConfigureAwait(false);
-            return;
+            return new OutreachResult(null, "no-reach");
         }
 
         if (decision.Confidence < (float)_aniOptions.OutreachConfidenceFloor)
@@ -154,7 +154,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
                 "Outreach confidence too low: {Confidence:F2} < {Floor:F2} — soft NO, retrying later. Reasoning: {Reasoning}",
                 decision.Confidence, _aniOptions.OutreachConfidenceFloor, decision.Reasoning);
             await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(15), ct).ConfigureAwait(false);
-            return;
+            return new OutreachResult(null, "low-confidence");
         }
 
         // Step 2a: Grounding retrieval — find real memories relevant to the thought.
@@ -207,7 +207,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
                     "OutreachPhase: frame-selector returned None — suppressing outreach (substrate too thin)");
                 await _desire.DecayDesireAsync(0.30f, "frame selector None (substrate too thin)", ct).ConfigureAwait(false);
                 await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-                return;
+                return new OutreachResult(null, "frame-selector-none");
             }
         }
 
@@ -257,7 +257,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
                     _log.LogInformation("Outreach confabulation detected ({Confidence:F2}): {Reason}. Suppressing.",
                         confab.Confidence, confab.Reason);
                     await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-                    return;
+                    return new OutreachResult(null, "ml-confab");
                 }
                 _log.LogDebug("Outreach confabulation check: {Result} ({Confidence:F2})",
                     confab.IsConfabulated ? "confabulated (below threshold)" : "grounded", confab.Confidence);
@@ -272,7 +272,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
         {
             _log.LogWarning("Outreach message was empty after composition — retrying next opportunity");
             await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
-            return;
+            return new OutreachResult(null, "empty-composition");
         }
 
         // Theme N N.5 — frame coherence check.
@@ -295,7 +295,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
                     selectedFrame.FrameType, violationsList);
                 await _desire.DecayDesireAsync(0.30f, $"frame coherence violation ({selectedFrame.FrameType})", ct).ConfigureAwait(false);
                 await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-                return;
+                return new OutreachResult(null, "frame-coherence");
             }
 
             _log.LogDebug("N5_FRAME_COHERENCE result=Coherent frame={Frame}", selectedFrame.FrameType);
@@ -306,7 +306,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
         {
             _log.LogWarning("Outreach echo: composed message too similar to recent outreach — suppressing");
             await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(15), ct).ConfigureAwait(false);
-            return;
+            return new OutreachResult(null, "echo");
         }
 
         // Step 3: producer-side direct-address rewrite.
@@ -327,7 +327,7 @@ public sealed class OutreachPipeline : IOutreachPipeline
                     string.Join(", ", claimResult.Unverified.Select(c => $"\"{c.Text}\"")));
                 await _desire.DecayDesireAsync(0.30f, "claim verification suppression", ct).ConfigureAwait(false);
                 await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-                return;
+                return new OutreachResult(null, "claim-verification");
             }
         }
 
@@ -355,12 +355,13 @@ public sealed class OutreachPipeline : IOutreachPipeline
                 var verdict = await _outputGate.EvaluateAsync(artifact, ct).ConfigureAwait(false);
                 if (verdict.Verdict != OutputGateVerdict.Pass)
                 {
+                    var firedInvariants = string.Join(",", verdict.FiredInvariants);
                     _log.LogInformation(
                         "Output gate {Verdict} on outreach [{Fired}]: {Hint} — suppressing dispatch.",
-                        verdict.Verdict, string.Join(",", verdict.FiredInvariants), verdict.RemediationHint);
-                    await _desire.DecayDesireAsync(0.30f, $"output gate {verdict.Verdict} ({string.Join(",", verdict.FiredInvariants)})", ct).ConfigureAwait(false);
+                        verdict.Verdict, firedInvariants, verdict.RemediationHint);
+                    await _desire.DecayDesireAsync(0.30f, $"output gate {verdict.Verdict} ({firedInvariants})", ct).ConfigureAwait(false);
                     await _desire.ApplyCooldownAsync(TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
-                    return;
+                    return new OutreachResult(null, $"output-gate:{firedInvariants}");
                 }
             }
             catch (Exception ex)
@@ -438,6 +439,11 @@ public sealed class OutreachPipeline : IOutreachPipeline
         };
         await _persist.SaveAsync(outreachRecord, ct).ConfigureAwait(false);
         outreachRecord.LogAttribution(_log);
+
+        // Audit Root A (#197, 2026-11-27): surface the dispatched message
+        // so CognitiveCyclePipeline can wire obs.OutreachMessage. No
+        // gate-door label on success — the gate stack passed.
+        return new OutreachResult(decision.Message, null);
     }
 
     // ─── J.5g extractors ───────────────────────────────────────────────────

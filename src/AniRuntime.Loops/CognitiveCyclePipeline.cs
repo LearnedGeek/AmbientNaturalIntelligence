@@ -253,7 +253,10 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             {
                 _log.LogInformation("Conversation mode — {Contact}'s last message: {Message}",
                     charState.PrimaryContactName, lastMsg.Content);
-                await _conversationReply.RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState).ConfigureAwait(false);
+                // Audit Root A (#197): capture the dispatched reply onto the
+                // observation so the H2 ResonanceScorer reply-tier branch sees it.
+                obs.ReplyMessage = await _conversationReply.RunConversationReplyAsync(
+                    activeThread, perceptions, ct, emotionalState).ConfigureAwait(false);
                 return;
             }
         }
@@ -339,6 +342,11 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             _registerTracker.Record(innerResult.Register, DateTimeOffset.UtcNow);
             _log.LogInformation("R.1 — dominant register recorded: {Register}", innerResult.Register);
         }
+
+        // Audit Root A (#197, 2026-11-27) — mirror the hybrid-path register
+        // onto the observation. H8 EmergenceObserver persists this column;
+        // pre-fix the row's register was null on every cycle.
+        obs.Register = innerResult.Register;
 
         // Posture-S+1 (Issue #38, May 17 2026) — when the hybrid cycle is
         // enabled, the model emits Register / Importance / AssociativeAnchor
@@ -556,8 +564,21 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
         var preShiftWo = emotionalState.Worry;
         var preShiftP = emotionalState.Playfulness;
 
-        await _emotional.ApplyEmotionalShiftAsync(emotionalState, thought, ct,
+        // Audit Root A (#197, 2026-11-27) — capture the contribution so we
+        // can wire obs.Severity + the dual-signal ML triplet. Pre-fix those
+        // four fields were null on every cycle (H1 EM8 detector unreachable,
+        // H6 MotivationScorer severity term dead, H8 emergence row severity
+        // constant 0). Null contribution = method short-circuited (zero
+        // deltas or exception); leave fields at their defaults.
+        var contribution = await _emotional.ApplyEmotionalShiftAsync(emotionalState, thought, ct,
             isAmbientCycle: true, category: ImpactCategory.Ambient).ConfigureAwait(false);
+        if (contribution is not null)
+        {
+            obs.Severity        = contribution.Severity;
+            obs.MLEmotion       = contribution.MLEmotion;
+            obs.MLConfidence    = contribution.MLConfidence;
+            obs.DivergenceScore = contribution.DivergenceScore;
+        }
 
         // Save associative anchor on the contribution that was just created
         if (_lastAssociativeAnchor is not null)
@@ -664,7 +685,8 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
                 _log.LogInformation(
                     "F1_THOUGHT_SHAPE_AT_COMPOSITION producer=InnerThoughtPhase consumer=ConversationReplyPipeline shape={Shape} chars={Chars} branch=reconsideration",
                     innerResult.Shape, thought.Length);
-                await _conversationReply.RunConversationReplyAsync(activeThread, perceptions, ct, emotionalState,
+                obs.ReplyMessage = await _conversationReply.RunConversationReplyAsync(
+                    activeThread, perceptions, ct, emotionalState,
                     isReconsideration: true).ConfigureAwait(false);
             }
             else
@@ -733,8 +755,14 @@ public class CognitiveCyclePipeline : ICognitiveCyclePipeline
             "F1_THOUGHT_SHAPE_AT_COMPOSITION producer=InnerThoughtPhase consumer=OutreachPipeline shape={Shape} chars={Chars} branch=outreach",
             innerResult.Shape, thought.Length);
 
-        await _outreach.RunOutreachAsync(snapshot, thought, ct).ConfigureAwait(false);
-        obs.OutreachOutcome = "send";
+        // Audit Root A (#197, 2026-11-27) — capture dispatched message
+        // and the coherence-gate "door" label (null on successful send).
+        // H2 ResonanceScorer.OutreachQuality reads the message; H8
+        // EmergenceObserver persists the door label on every row.
+        var outreachResult = await _outreach.RunOutreachAsync(snapshot, thought, ct).ConfigureAwait(false);
+        obs.OutreachMessage   = outreachResult.Message;
+        obs.CoherenceGateDoor = outreachResult.CoherenceGateDoor;
+        obs.OutreachOutcome   = outreachResult.Message is not null ? "send" : "suppress-gate";
 
         } // end try
         finally
