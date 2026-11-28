@@ -58,7 +58,7 @@ public class OutreachPhase
         _log             = log             ?? throw new ArgumentNullException(nameof(log));
     }
 
-    public async Task RunOutreachAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
+    public async Task<OutreachResult> RunOutreachAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct)
     {
         // Apr 21, 2026 — OutreachEnabled flag (Option C, commit 2). When
         // false, the proactive outreach path short-circuits at entry. Inbound
@@ -67,7 +67,7 @@ public class OutreachPhase
         {
             _log.LogInformation(
                 "Outreach disabled: OutreachEnabled=false in config — skipping proactive outreach composition and dispatch");
-            return;
+            return OutreachResult.None;
         }
 
         // F-4 Phase 2.1 — anchor-bearing seed selection. The lean composer
@@ -81,7 +81,7 @@ public class OutreachPhase
                 .ConfigureAwait(false);
         }
 
-        await _pipeline.RunAsync(snapshot, seed, ct).ConfigureAwait(false);
+        return await _pipeline.RunAsync(snapshot, seed, ct).ConfigureAwait(false);
     }
 
     public Task<bool> TryReactiveShareAsync(

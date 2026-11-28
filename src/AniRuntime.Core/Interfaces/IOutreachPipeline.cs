@@ -18,5 +18,25 @@ namespace AniRuntime.Core.Interfaces;
 /// </summary>
 public interface IOutreachPipeline
 {
-    Task RunAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct);
+    // Audit Root A (#197, 2026-11-27): returns the dispatched message
+    // + the coherence-gate "door" label on suppression, so the cycle
+    // pipeline can wire obs.OutreachMessage + obs.CoherenceGateDoor.
+    // Pre-fix those two fields were null on every cycle, hiding H2
+    // (ResonanceScorer tier branches) + H8 (EmergenceObserver
+    // register/door columns).
+    Task<OutreachResult> RunAsync(ContextSnapshot snapshot, string recentThought, CancellationToken ct);
+}
+
+/// <summary>
+/// Result of one proactive-outreach attempt. <see cref="Message"/> is the
+/// final dispatched text (null on any non-dispatch outcome). <see cref="CoherenceGateDoor"/>
+/// labels which gate closed when outreach was suppressed (e.g.
+/// "output-gate:InnerThoughtBleedInvariant", "frame-coherence",
+/// "claim-verification", "echo", "ml-confab", "frame-selector-none",
+/// "low-confidence", "no-reach", "parse-failure"), or null on a successful
+/// dispatch / an early short-circuit the gate stack never reached.
+/// </summary>
+public sealed record OutreachResult(string? Message, string? CoherenceGateDoor)
+{
+    public static readonly OutreachResult None = new(null, null);
 }

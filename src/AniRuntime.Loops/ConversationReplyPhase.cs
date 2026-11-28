@@ -42,7 +42,9 @@ public class ConversationReplyPhase
     /// <summary>
     /// Run one inbound-reply turn. Delegates to the pipeline implementation.
     /// </summary>
-    public Task RunConversationReplyAsync(
+    /// <returns>The reply that was dispatched, or null on any non-dispatch outcome
+    /// (terminal message, silence heuristic, empty/suppressed reply). Audit Root A (#197).</returns>
+    public Task<string?> RunConversationReplyAsync(
         ConversationThread thread,
         List<PerceptionEvent> perceptions,
         CancellationToken ct,

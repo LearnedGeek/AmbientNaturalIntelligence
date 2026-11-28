@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace AniRuntime.Core.Models;
 
 /// <summary>
@@ -46,33 +48,49 @@ public class CycleObservationBuilder
     // Perceptions
     public List<string> PerceptionSummaries { get; set; } = new();
 
-    public CycleObservation Build() => new()
+    public CycleObservation Build()
     {
-        InnerThought          = InnerThought,
-        Reflection            = Reflection,
-        RelationalValence     = RelationalValence,
-        Warmth                = EmotionalState?.Warmth ?? 0,
-        Energy                = EmotionalState?.Energy ?? 0,
-        Worry                 = EmotionalState?.Worry ?? 0,
-        Playfulness           = EmotionalState?.Playfulness ?? 0,
-        WarmthDelta           = WarmthDelta,
-        EnergyDelta           = EnergyDelta,
-        WorryDelta            = WorryDelta,
-        PlayfulnessDelta      = PlayfulnessDelta,
-        Severity              = Severity,
-        Register              = Register,
-        DesireToConnect        = DesireToConnect,
-        DesireThresholdCrossed = DesireThresholdCrossed,
-        OutreachOutcome        = OutreachOutcome,
-        OutreachMessage        = OutreachMessage,
-        CoherenceGateDoor      = CoherenceGateDoor,
-        WasConversationCycle   = WasConversationCycle,
-        ContactMessage         = ContactMessage,
-        ReplyMessage           = ReplyMessage,
-        ChoseSilence           = ChoseSilence,
-        MLEmotion              = MLEmotion,
-        MLConfidence           = MLConfidence,
-        DivergenceScore        = DivergenceScore,
-        PerceptionSummaries    = PerceptionSummaries,
-    };
+        // Audit Root A (#197, 2026-11-27) — debug-build invariants on the
+        // newly-wired fields. A plain "WasConversationCycle → ReplyMessage"
+        // assertion from the issue acceptance list would false-positive on
+        // legitimate silence paths (terminal message, silence heuristic,
+        // empty-reply suppression). The contrapositives below catch
+        // cross-wire bugs (a reply set without a conversation flag, or an
+        // outreach message co-existing with a gate-door suppression label)
+        // without flagging legitimate silence outcomes.
+        Debug.Assert(ReplyMessage is null || WasConversationCycle,
+            "CycleObservationBuilder: ReplyMessage set outside WasConversationCycle — upstream mis-wire.");
+        Debug.Assert(OutreachMessage is null || CoherenceGateDoor is null,
+            "CycleObservationBuilder: OutreachMessage set together with CoherenceGateDoor — pipeline should only populate one.");
+
+        return new CycleObservation
+        {
+            InnerThought           = InnerThought,
+            Reflection             = Reflection,
+            RelationalValence      = RelationalValence,
+            Warmth                 = EmotionalState?.Warmth ?? 0,
+            Energy                 = EmotionalState?.Energy ?? 0,
+            Worry                  = EmotionalState?.Worry ?? 0,
+            Playfulness            = EmotionalState?.Playfulness ?? 0,
+            WarmthDelta            = WarmthDelta,
+            EnergyDelta            = EnergyDelta,
+            WorryDelta             = WorryDelta,
+            PlayfulnessDelta       = PlayfulnessDelta,
+            Severity               = Severity,
+            Register               = Register,
+            DesireToConnect        = DesireToConnect,
+            DesireThresholdCrossed = DesireThresholdCrossed,
+            OutreachOutcome        = OutreachOutcome,
+            OutreachMessage        = OutreachMessage,
+            CoherenceGateDoor      = CoherenceGateDoor,
+            WasConversationCycle   = WasConversationCycle,
+            ContactMessage         = ContactMessage,
+            ReplyMessage           = ReplyMessage,
+            ChoseSilence           = ChoseSilence,
+            MLEmotion              = MLEmotion,
+            MLConfidence           = MLConfidence,
+            DivergenceScore        = DivergenceScore,
+            PerceptionSummaries    = PerceptionSummaries,
+        };
+    }
 }

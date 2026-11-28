@@ -70,7 +70,16 @@ public class EmotionalProcessor
     /// creates an EmotionalContribution that decays over time via its half-life.
     /// Replaces the old model where deltas were applied permanently.
     /// </summary>
-    public async Task ApplyEmotionalShiftAsync(
+    // Audit Root A (#197, 2026-11-27): return the contribution that was
+    // created/refreshed so the cycle pipeline can wire Severity + the
+    // dual-signal ML fields (MLEmotion / MLConfidence / DivergenceScore)
+    // onto CycleObservationBuilder. Pre-fix the method returned Task and
+    // the observation's Severity + ML triplet were null on every cycle,
+    // killing H1 (EM8 display-rule divergence), H2 ResonanceScorer tiers,
+    // H6 MotivationScorer severity term, and H8 EmergenceObserver rows.
+    // Null return = no contribution produced (exception, all-deltas-zero
+    // early return).
+    public async Task<EmotionalContribution?> ApplyEmotionalShiftAsync(
         EmotionalState state, string content, CancellationToken ct,
         float maxDelta = 0.2f, bool isAmbientCycle = false,
         ImpactCategory category = ImpactCategory.Ambient)
@@ -144,7 +153,7 @@ public class EmotionalProcessor
                 && MathF.Abs(energy) < ZeroEpsilon
                 && MathF.Abs(worry) < ZeroEpsilon
                 && MathF.Abs(playfulness) < ZeroEpsilon)
-                return;
+                return null;
 
             // Tier promotion: high-severity thoughts promote to longer-lasting tiers
             var effectiveCategory = ImpactCategoryDefaults.DetermineEffectiveTier(category, severity, _aniOptions);
@@ -198,7 +207,7 @@ public class EmotionalProcessor
 
                     _log.LogDebug("Emotional contribution refreshed ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00}",
                         category, register, severity, halfLife, warmth, energy, worry, playfulness);
-                    return;
+                    return match;
                 }
             }
 
@@ -231,10 +240,12 @@ public class EmotionalProcessor
             _log.LogDebug("Emotional contribution ({Category}/{Register}, sev={Severity:F2}, halfLife={HalfLife:F1}h): W={Warmth:+0.00;-0.00} E={Energy:+0.00;-0.00} C={Worry:+0.00;-0.00} P={Playfulness:+0.00;-0.00} ML={MLEmotion}({MLConf:F2}) div={Div:F2}",
                 effectiveCategory, register, severity, halfLife, warmth, energy, worry, playfulness,
                 contribution.MLEmotion ?? "—", contribution.MLConfidence ?? 0f, contribution.DivergenceScore ?? 0f);
+            return contribution;
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Emotional shift scoring failed — continuing with current state");
+            return null;
         }
     }
 
